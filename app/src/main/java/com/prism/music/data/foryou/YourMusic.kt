@@ -1,0 +1,264 @@
+package com.prism.music.data.foryou
+
+import com.prism.music.AppContainer
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.model.Song
+import com.prism.music.download.PlayLikelihood
+import com.prism.music.playback.MusicKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+
+/**
+ * What Prism makes from the listener's own music, on the phone, without YouTube: Prism's radio ([radio], what autoplay
+ * plays after a song from your own plays, likes, downloads and files), Home's lists ([sections]: On repeat, Repeat
+ * rewind, Forgotten favourites) and mixes from your music ([Sections.mixes]: by genre, by artist, and what's ready
+ * offline). All from Replay's history, which never leaves the phone.
+ */
+class YourMusic(private val c: AppContainer) {
+    private val lock = Mutex()
+    private var snap: Snapshot? = null
+    @Volatile private var lastSections: Sections? = null
+
+    /** The phone's music, read once every few minutes (or after new plays). */
+    private class Snapshot(
+        val at: Long,
+        val events: List<PlayEventEntity>,
+        val songs: Map<String, Song>,
+        val liked: List<Song>,
+        val offline: List<Song>,
+        val genres: Map<String, String>,
+        val model: PlayLikelihood,
+        val coListen: Map<String, Map<String, Double>>,
+    )
+
+    private suspend fun snapshot(): Snapshot = lock.withLock {
+        val now = System.currentTimeMillis()
+        val count = runCatching { c.db.plays().count(0, now) }.getOrDefault(0)
+        // Kept for a few minutes, and only while no new play has come in.
+        snap?.takeIf { now - it.at < 5 * 60_000 && count == total }?.let { return@withLock it }
+        withContext(Dispatchers.IO) {
+            val events = c.db.plays().tasteEventsSince(now - YEAR)
+            val liked = c.db.songs().liked().map { it.toSong() }
+            val local = c.localMusic.tracks.value.map { it.song }
+            val downloaded = c.downloads.completedSongs()
+            val songs = HashMap<String, Song>()
+            events.map { it.songId }.distinct().chunked(500).flatMap { c.db.songs().getAll(it) }.forEach { songs[it.id] = it.toSong() }
+            (liked + downloaded + local).forEach { songs.putIfAbsent(it.id, it) }
+            val usable = songs.values.filter { ok(it) }
+            val genres = runCatching { c.meta.cachedGenres(usable) }.getOrDefault(emptyMap())
+            val model = PlayLikelihood(events, songs, liked.map { it.id }.toSet(), now)
+            val co = LocalRadio.coListen(events.map { LocalRadio.Play(it.songId, it.timestamp) })
+            Snapshot(now, events, songs, liked, (downloaded + local).distinctBy { it.id }, genres, model, co).also { snap = it; total = count }
+        }
+    }
+
+    @Volatile private var total = -1
+
+    private fun ok(s: Song) = !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
+
+    /**
+     * Prism's radio: up to [count] songs from your own music to follow [seedIds] (the newest last), none of [inQueue],
+     * nothing played in the last two hours. [offlineOnly]: only songs that play without a connection.
+     */
+    suspend fun radio(seedIds: List<String>, inQueue: Set<String>, count: Int, offlineOnly: Boolean): List<LocalRadio.Pick> {
+        val s = snapshot()
+        val seeds = seedIds.mapNotNull { id -> s.songs[id] ?: c.db.songs().get(id)?.toSong() }
+        if (seeds.isEmpty()) return emptyList()
+        val now = System.currentTimeMillis()
+        val recent = s.events.filter { now - it.timestamp < 2 * HOUR }.map { it.songId }.toSet()
+        val pool = LocalRadio.Pool(
+            // Not clips under a minute (an album's intro, a skit, a sound file on the phone): they'd break the run of songs.
+            songs = s.songs.values.filter { ok(it) && !it.isVideo && (it.durationSec == 0 || it.durationSec >= 60) && (!offlineOnly || c.availableOffline(it.id)) },
+            coListen = s.coListen,
+            affinity = { s.model.score(it) },
+            genreOf = { s.genres[it] },
+            keyFit = { a, b -> keyFit(a, b) },
+        )
+        val day = LocalDate.now().toString()
+        return LocalRadio.pick(seeds, pool, inQueue + recent, count) { id -> 0.9 + 0.2 * (((id + day + seedIds.last()).hashCode().toLong() and 0xffff) / 65535.0) }
+    }
+
+    private fun keyFit(a: String, b: String): Double {
+        val ka = c.mixTempo.key(a) ?: return 0.0
+        val kb = c.mixTempo.key(b) ?: return 0.0
+        return (1.0 - 2 * MusicKey.clash(ka, kb)).coerceIn(0.0, 1.0)
+    }
+
+    data class Sections(
+        val onRepeat: List<Song>,
+        val repeatRewind: List<Song>,
+        val forgotten: List<Song>,
+        val mixes: List<Mix>,
+    )
+
+    /** Home's lists and mixes from your music; [offlineOnly] keeps to songs that play without a connection. */
+    suspend fun sections(offlineOnly: Boolean): Sections = withContext(Dispatchers.Default) {
+        val s = snapshot()
+        val now = System.currentTimeMillis()
+        val play: (Song) -> Boolean = { ok(it) && !it.isVideo && (!offlineOnly || c.availableOffline(it.id)) }
+        val byId = s.events.groupBy { it.songId }
+        val last = byId.mapValues { (_, e) -> e.maxOf { it.timestamp } }
+
+        fun counted(from: Long, to: Long) = s.events.asSequence().filter { it.timestamp in from until to }.groupingBy { it.songId }.eachCount()
+
+        val month = counted(now - 30 * DAY, now)
+        val onRepeat = month.filter { it.value >= 2 }.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenByDescending { last[it.key] ?: 0 })
+            .mapNotNull { s.songs[it.key] }.filter(play).distinctBy { LocalRadio.sameSong(it) }.take(30).takeIf { it.size >= MIN_LIST }.orEmpty()
+
+        val before = counted(now - YEAR, now - 60 * DAY)
+        val repeatRewind = before.filter { it.value >= 3 && (last[it.key] ?: 0) < now - 60 * DAY }.entries
+            .sortedByDescending { it.value }
+            .mapNotNull { s.songs[it.key] }.filter(play).distinctBy { LocalRadio.sameSong(it) }.take(30).takeIf { it.size >= MIN_LIST }.orEmpty()
+
+        val plays = byId.mapValues { it.value.size }
+        val forgotten = (
+            s.liked.filter { (last[it.id] ?: 0) < now - 90 * DAY } +
+                plays.filter { it.value >= 5 && (last[it.key] ?: 0) < now - 120 * DAY }.keys.mapNotNull { s.songs[it] }
+            ).distinctBy { it.id }
+            .sortedByDescending { plays[it.id] ?: 0 }
+            .filter(play).distinctBy { LocalRadio.sameSong(it) }.take(30).takeIf { it.size >= MIN_LIST }.orEmpty()
+
+        val mixes = libraryMixes(s, play)
+        Sections(onRepeat, repeatRewind, forgotten, mixes).also { lastSections = it }
+    }
+
+    /** A mix from your music by id (for its page), from the last [sections]. */
+    fun mix(id: String): Mix? = lastSections?.mixes?.firstOrNull { it.id == id }
+
+    /**
+     * Mixes from your music: one for each of your top genres and artists, made from songs you know (played, liked,
+     * downloaded, on the phone), best first with a day's shuffle; and, when there's enough, what's ready offline.
+     */
+    private fun libraryMixes(s: Snapshot, play: (Song) -> Boolean): List<Mix> {
+        val day = LocalDate.now().toString()
+        fun j(id: String) = 0.85 + 0.3 * (((id + day).hashCode().toLong() and 0xffff) / 65535.0)
+        val candidates = s.songs.values.filter(play)
+        val score = candidates.associate { it.id to s.model.score(it) * j(it.id) }
+        // One copy of each song (the best liked), however many uploads of it you've played.
+        val known = candidates.sortedByDescending { score[it.id] ?: 0.0 }.distinctBy { LocalRadio.sameSong(it) }
+        val out = ArrayList<Mix>()
+
+        val byGenre = known.groupBy { s.genres[it.id] }.filterKeys { it != null }
+        byGenre.entries.sortedByDescending { (_, songs) -> songs.sumOf { score[it.id] ?: 0.0 } }.take(3).forEach { (genre, songs) ->
+            if (songs.size < MIN_MIX) return@forEach
+            val list = spread(songs.sortedByDescending { score[it.id] ?: 0.0 }.take(MIX_SIZE))
+            out += Mix("lib:genre:$genre", "Your ${genre!!.substringBefore(" & ")} mix", MadeForYou.namesLine(artists(list)), artists(list).take(4), color(genre), s.at, list)
+        }
+
+        val artistPlays = s.events.groupingBy { s.songs[it.songId]?.primaryArtist.orEmpty() }.eachCount().filterKeys { it.isNotBlank() }
+        artistPlays.entries.sortedByDescending { it.value }.take(3).forEach { (artist, _) ->
+            val theirs = known.filter { it.primaryArtist.equals(artist, ignoreCase = true) }.sortedByDescending { score[it.id] ?: 0.0 }
+            if (theirs.size < 3) return@forEach
+            // Their songs you know, with the ones you play around them.
+            val around = LocalRadio.pick(
+                theirs.take(3), LocalRadio.Pool(known, s.coListen, { s.model.score(it) }, { s.genres[it] }),
+                theirs.map { it.id }.toSet(), 20,
+            ).filter { it.related }.map { it.song }
+            val list = MadeForYou.interleave(theirs.take(20), around, MIX_SIZE) { it.primaryArtist.lowercase() }
+            if (list.size < MIN_MIX) return@forEach
+            out += Mix("lib:artist:$artist", "$artist mix", "With " + MadeForYou.namesLine(artists(list).filterNot { it.equals(artist, true) }.ifEmpty { listOf(artist) }), listOf(artist), color(artist), s.at, list)
+        }
+
+        // What plays with no connection at all: downloads, songs kept whole in the cache, files on the phone.
+        val ready = known.filter { c.availableOffline(it.id) }.sortedByDescending { score[it.id] ?: 0.0 }
+        if (ready.size >= MIN_MIX) out += Mix(OFFLINE_MIX, "Ready offline", "A mix of songs already on your phone", artists(ready).take(4), 0xFF37474F.toInt(), s.at, spread(ready.take(MIX_SIZE)))
+        return out
+    }
+
+    /**
+     * Quick picks made around the artists the listener plays: favourites by their top artists they haven't played for
+     * a few days, new songs from radios of their top three artists ([radioOf], none they've played), and [youtube]'s own
+     * picks when they're by artists the listener plays; taken in turn (two favourites, two new, one of YouTube's), no
+     * artist twice running and three at most. With too little history to go on, [youtube] as it is.
+     */
+    suspend fun quickPicks(youtube: List<Song>, radioOf: suspend (Song) -> List<Song>, count: Int = 20): List<Song> {
+        val s = snapshot()
+        val now = System.currentTimeMillis()
+        val recent = s.events.filter { now - it.timestamp < 90 * DAY }
+        if (recent.size < MIN_PICK_HISTORY) return youtube
+        // How much the listener plays each main artist: newer plays count more (halving every 30 days), likes add.
+        val aff = HashMap<String, Double>()
+        for (e in recent) {
+            val a = s.songs[e.songId]?.primaryArtist?.lowercase().orEmpty()
+            if (a.isNotBlank()) aff[a] = (aff[a] ?: 0.0) + Math.pow(0.5, (now - e.timestamp) / (30.0 * DAY))
+        }
+        s.liked.forEach { val a = it.primaryArtist.lowercase(); if (a.isNotBlank()) aff[a] = (aff[a] ?: 0.0) + 0.5 }
+        val top = aff.values.maxOrNull()?.takeIf { it > 0 } ?: return youtube
+        fun affinity(song: Song) = song.artists.maxOfOrNull { (aff[it.name.lowercase()] ?: 0.0) / top } ?: 0.0
+        val heardToday = s.events.filter { now - it.timestamp < DAY }.map { it.songId }.toSet()
+        val heardSongs = heardToday.mapNotNull { s.songs[it] }.map { LocalRadio.sameSong(it) }.toSet()
+        fun fresh(song: Song) = ok(song) && !song.isVideo && song.id !in heardToday && LocalRadio.sameSong(song) !in heardSongs
+        val day = LocalDate.now().toString()
+        fun j(id: String) = 0.85 + 0.3 * (((id + day).hashCode().toLong() and 0xffff) / 65535.0)
+
+        val last = s.events.groupBy { it.songId }.mapValues { (_, e) -> e.maxOf { it.timestamp } }
+        val favourites = s.songs.values
+            .filter { fresh(it) && (last[it.id] ?: 0) < now - 3 * DAY && affinity(it) > 0.15 && (it.durationSec == 0 || it.durationSec >= 60) }
+            .sortedByDescending { s.model.score(it) * j(it.id) }.distinctBy { LocalRadio.sameSong(it) }.take(count)
+        val topArtists = aff.entries.sortedByDescending { it.value }.take(3).map { it.key }
+        val seeds = topArtists.mapNotNull { a -> s.songs.values.filter { it.primaryArtist.equals(a, true) && !it.isVideo && !it.isLocal }.maxByOrNull { s.model.score(it) } }
+        val played = s.events.map { it.songId }.toSet()
+        val playedSongs = played.mapNotNull { s.songs[it] }.map { LocalRadio.sameSong(it) }.toSet()
+        val discovered = seeds.flatMap { seed -> runCatching { radioOf(seed) }.getOrDefault(emptyList()).filter { it.id != seed.id } }
+            .filter { fresh(it) && it.id !in played && LocalRadio.sameSong(it) !in playedSongs }
+            .distinctBy { LocalRadio.sameSong(it) }
+            .sortedByDescending { (0.6 + affinity(it)) * j(it.id) }
+        val fromYouTube = youtube.filter { fresh(it) && affinity(it) > 0.05 }
+
+        val pools = listOf(favourites.toMutableList(), discovered.toMutableList(), fromYouTube.toMutableList())
+        val turns = listOf(0, 1, 0, 1, 2)
+        val out = ArrayList<Song>()
+        val perArtist = HashMap<String, Int>()
+        val taken = HashSet<String>()
+        fun fits(song: Song): Boolean {
+            val a = song.primaryArtist.lowercase()
+            return LocalRadio.sameSong(song) !in taken && (perArtist[a] ?: 0) < 3 && (out.isEmpty() || out.last().primaryArtist.lowercase() != a || a.isBlank())
+        }
+        var turn = 0
+        while (out.size < count) {
+            val order = listOf(turns[turn % turns.size]) + (0..2).filter { it != turns[turn % turns.size] }
+            val pool = order.map { pools[it] }.firstOrNull { p -> p.any { fits(it) } } ?: break
+            val song = pool.first { fits(it) }
+            pool.remove(song)
+            out += song
+            taken += LocalRadio.sameSong(song)
+            song.primaryArtist.lowercase().let { perArtist[it] = (perArtist[it] ?: 0) + 1 }
+            turn++
+        }
+        // Still short (a new listener's few artists): YouTube's own fill the rest.
+        youtube.filter { fresh(it) && LocalRadio.sameSong(it) !in taken }.take(count - out.size).forEach { out += it }
+        return out
+    }
+
+    /** Songs ready offline, most likely first: Quick picks' stand-in with no connection. */
+    suspend fun offlinePicks(count: Int = 20): List<Song> {
+        val s = snapshot()
+        return s.songs.values.filter { ok(it) && !it.isVideo && c.availableOffline(it.id) }
+            .sortedByDescending { s.model.score(it) }.distinctBy { LocalRadio.sameSong(it) }.take(count)
+    }
+
+    private fun artists(list: List<Song>) = list.map { it.primaryArtist }.filter { it.isNotBlank() }.distinct()
+
+    /** The same artist not twice running where it can be helped. */
+    private fun spread(list: List<Song>) = MadeForYou.interleave(list, emptyList(), list.size) { it.primaryArtist.lowercase() }
+
+    private fun color(key: String) = COLORS[((key.hashCode() % COLORS.size) + COLORS.size) % COLORS.size]
+
+    companion object {
+        const val OFFLINE_MIX = "lib:offline"
+        fun isLibraryMix(id: String) = id.startsWith("lib:")
+        private const val HOUR = 3_600_000L
+        private const val DAY = 86_400_000L
+        private const val YEAR = 365 * DAY
+        private const val MIN_LIST = 4
+        /** Plays in 90 days before Quick picks are made around the listener's artists. */
+        private const val MIN_PICK_HISTORY = 15
+        private const val MIN_MIX = 8
+        private const val MIX_SIZE = 40
+        private val COLORS = listOf(0xFF2E7D6B, 0xFF6A4C93, 0xFFB5523B, 0xFF1F6FB2, 0xFF8C6D1F, 0xFF9C3D6B).map { it.toInt() }
+    }
+}

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vinz</string>
+    <string name="tile_recognize">Recognize song</string>
+    <string name="downloads">Downloads</string>
+    <string name="playback">Playback</string>
+    <!-- In other apps' share sheets, for YouTube and YouTube Music links. -->
+    <string name="open_in_prism">Play in Vinz</string>
+<!-- Home screen widgets -->
+    <string name="widget_prism_name">Vinz</string>
+    <string name="widget_prism_desc">Now playing on frosted glass made from the cover</string>
+    <string name="widget_spotify_name">Vinz · Spotify style</string>
+    <string name="widget_spotify_desc">A slim dark bar with a green play button</string>
+    <string name="widget_apple_name">Vinz · Apple Music style</string>
+    <string name="widget_apple_desc">A big cover on a card in the cover\'s color</string>
+    <string name="widget_ytmusic_name">Vinz · YouTube Music style</string>
+    <string name="widget_ytmusic_desc">Dark, with thumbs up and a red progress line</string>
+    <string name="widget_cover_name">Vinz · Cover</string>
+    <string name="widget_cover_desc">The cover filling a small square, with the title and play</string>
+    <string name="widget_disc_name">Vinz · Disc</string>
+    <string name="widget_disc_desc">The cover as a round disc, in a ring that fills as the song plays</string>
+    <string name="widget_strip_name">Vinz · Strip</string>
+    <string name="widget_strip_desc">A slim bar in the cover\'s color, with previous, play and next</string>
+    <string name="widget_recognize_name">Vinz · Recognize</string>
+    <string name="widget_recognize_desc">Find out what\'s playing around you. Make it wider to see the last song found</string>
+    <string name="widget_recognize_label">RECOGNIZED</string>
+    <string name="widget_recognize_empty">Recognize a song</string>
+    <string name="widget_recognize_empty_hint">Tap the button to find out what\'s playing</string>
+    <string name="widget_recognize_waiting">Saved, will check when you\'re online</string>
+    <string name="widget_recognize_listen">Recognize a song</string>
+    <string name="widget_recognize_open">Recognized songs</string>
+    <string name="widget_recognize_play">Play the song recognized</string>
+    <string name="widget_prism_label">VINZ</string>
+    <string name="widget_now_playing">Now playing</string>
+    <string name="widget_nothing">Nothing playing</string>
+    <string name="widget_tap_to_play">Tap play to pick up where you left off</string>
+    <string name="widget_open">Open Vinz</string>
+    <string name="widget_play">Play</string>
+    <string name="widget_pause">Pause</string>
+    <string name="widget_next">Next</string>
+    <string name="widget_previous">Previous</string>
+    <string name="widget_like">Like</string>
+</resources>
