@@ -192,7 +192,7 @@ dependencies {
     // packed into the APK (see packaging below): they're downloaded with Sing's model on first use (ModelStore).
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     // Blend: QR codes made and read (ZXing core, Apache-2.0), the camera for scanning one (CameraX, Apache-2.0).
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
     val camerax = "1.4.2"
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
