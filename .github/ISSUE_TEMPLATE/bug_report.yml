@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Prism doesn't work the way it should
+description: Something in Vinz doesn't work the way it should
 labels: [bug]
 body:
   - type: markdown
@@ -8,7 +8,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Prism version
+      label: Vinz version
       description: Settings → About
       placeholder: "1.5.9"
     validations:

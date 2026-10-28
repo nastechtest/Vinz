@@ -1,11 +1,11 @@
 name: Feature request
-description: An idea for something Prism could do
+description: An idea for something Vinz could do
 labels: [enhancement]
 body:
   - type: textarea
     id: idea
     attributes:
-      label: What would you like Prism to do?
+      label: What would you like Vinz to do?
     validations:
       required: true
   - type: textarea

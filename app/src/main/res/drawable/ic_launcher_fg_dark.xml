@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Prism mark (1.7): a rounded prism, its sound as seven bars inside it. 108-unit adaptive icon grid; the mark spans 32-76 x 35-74, inside the 66-unit safe circle. Light icon: near-black prism, bars in a deeper spectrum that reads on white. -->
+<!-- The Vinz mark (1.7): a rounded vinz, its sound as seven bars inside it. 108-unit adaptive icon grid; the mark spans 32-76 x 35-74, inside the 66-unit safe circle. Light icon: near-black vinz, bars in a deeper spectrum that reads on white. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <!-- Up 2.5: a triangle's weight sits low (its centroid is two-thirds down), so a centred box looks low in a circle. -->
     <group android:translateY="-2.5">

@@ -39,7 +39,7 @@
   async function api(path, body) {
     const opts = body === undefined
       ? { credentials: 'same-origin', cache: 'no-store' }
-      : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Prism': '1' }, body: JSON.stringify(body) };
+      : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Vinz': '1' }, body: JSON.stringify(body) };
     const r = await fetch(path, opts);
     if (r.status === 401) { showPair(); throw new Error('not paired'); }
     return r;
@@ -132,7 +132,7 @@
     try {
       const r = await fetch('/api/pair', {
         method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-Prism': '1' },
+        headers: { 'Content-Type': 'application/json', 'X-Vinz': '1' },
         body: JSON.stringify({ code, name: browserName() }),
       });
       if (r.ok) { $('code').value = ''; showApp(); return; }

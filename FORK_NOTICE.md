@@ -1,11 +1,5 @@
-# Fork notice
+# Fork and attribution notice
 
-This is a local Vinz rebrand/fork of [Yigder/Prism](https://github.com/Yigder/Prism).
-The upstream author and project are credited; no attempt is made to claim Prism's
-original code as newly authored. The project remains under GPL-3.0-or-later; retain
-the `LICENSE` and all component notices when modifying or distributing it.
+Vinz is an unofficial fork of an Android music client originally authored by Yigder. Copyright in the original work remains with its respective holders; this repository does not claim that upstream work as newly authored. Original copyright notices, third-party attributions, and component license texts are retained.
 
-Changes made by `scripts/rebrand_vinz.py` update visible product text, app identity,
-and fork documentation. The script deliberately does not alter historical release
-notes, upstream copyright, source attribution, code identifiers, or internal
-`prism://` protocol and storage identifiers.
+This project is distributed under the GNU General Public License, version 3 or later. Keep the `LICENSE` file and component notices with any copy or modified distribution. Vinz is not affiliated with Yigder, Google, or YouTube.

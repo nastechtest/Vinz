@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Prism mark (ic_launcher_foreground) at 24 dp for the status bar: the same prism, five bars instead of seven so
+<!-- The Vinz mark (ic_launcher_foreground) at 24 dp for the status bar: the same vinz, five bars instead of seven so
      they don't run together (three read as a warning sign's "!"). Drawn in the launcher's 108-unit grid, scaled to 0.4
      round the mark's centre. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"

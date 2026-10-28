@@ -5,10 +5,10 @@
     <string name="downloads">Downloads</string>
     <string name="playback">Playback</string>
     <!-- In other apps' share sheets, for YouTube and YouTube Music links. -->
-    <string name="open_in_prism">Play in Vinz</string>
+    <string name="open_in_vinz">Play in Vinz</string>
 <!-- Home screen widgets -->
-    <string name="widget_prism_name">Vinz</string>
-    <string name="widget_prism_desc">Now playing on frosted glass made from the cover</string>
+    <string name="widget_vinz_name">Vinz</string>
+    <string name="widget_vinz_desc">Now playing on frosted glass made from the cover</string>
     <string name="widget_spotify_name">Vinz · Spotify style</string>
     <string name="widget_spotify_desc">A slim dark bar with a green play button</string>
     <string name="widget_apple_name">Vinz · Apple Music style</string>
@@ -30,7 +30,7 @@
     <string name="widget_recognize_listen">Recognize a song</string>
     <string name="widget_recognize_open">Recognized songs</string>
     <string name="widget_recognize_play">Play the song recognized</string>
-    <string name="widget_prism_label">VINZ</string>
+    <string name="widget_vinz_label">VINZ</string>
     <string name="widget_now_playing">Now playing</string>
     <string name="widget_nothing">Nothing playing</string>
     <string name="widget_tap_to_play">Tap play to pick up where you left off</string>

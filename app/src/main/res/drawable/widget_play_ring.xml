@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Play on Prism's widgets, as in the app: a white disc edged with a thin ring of split light (no gap). -->
+<!-- Play on Vinz's widgets, as in the app: a white disc edged with a thin ring of split light (no gap). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="52dp"

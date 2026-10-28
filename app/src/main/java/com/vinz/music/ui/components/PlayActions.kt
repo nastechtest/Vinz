@@ -1,0 +1,333 @@
+package com.vinz.music.ui.components
+
+import com.vinz.music.ui.theme.VinzIcons
+import android.widget.Toast
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.vinz.music.AppContainer
+import com.vinz.music.data.model.AlbumItem
+import com.vinz.music.data.model.ArtistItem
+import com.vinz.music.data.model.BrowseItem
+import com.vinz.music.data.model.MoodItem
+import com.vinz.music.data.model.PlaylistItem
+import com.vinz.music.data.model.Song
+import com.vinz.music.data.model.SongItem
+import com.vinz.music.playback.QueueKind
+import com.vinz.music.playback.QueueSource
+import com.vinz.music.ui.theme.LocalContainer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** Something a long press can play: an album, playlist, artist or song, or one of Vinz's own lists. */
+sealed interface Playable {
+    data class Of(val item: BrowseItem) : Playable
+    data object Liked : Playable
+    data object Downloads : Playable
+
+    /**
+     * An album or playlist page's own ⋯: the songs it already has ([load]) rather than a fresh lookup, and its own
+     * share sheet ([share]).
+     */
+    class Page(
+        val title: String,
+        val subtitle: String,
+        val art: String?,
+        val album: Boolean,
+        val share: ShareTarget,
+        val load: suspend () -> Pair<List<Song>, QueueSource>,
+    ) : Playable
+}
+
+/** Moods and genres are pages of shelves, not something to play. */
+fun BrowseItem.playable(): Playable? = if (this is MoodItem) null else Playable.Of(this)
+
+/**
+ * A long-press menu for cards and tiles: call the returned function with what was pressed and the
+ * sheet opens (songs get the usual song actions).
+ */
+@Composable
+fun rememberPlayMenu(): (Playable) -> Unit {
+    var target by remember { mutableStateOf<Playable?>(null) }
+    target?.let { PlayActionsSheet(it) { target = null } }
+    return remember { { target = it } }
+}
+
+/**
+ * Play or shuffle a whole album, playlist or list; for an artist, shuffle their songs or start their mix. [extra] adds
+ * rows (e.g. delete), in a group of their own under [extraTitle] when it's given.
+ */
+@Composable
+fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), extraTitle: String? = null, onDismiss: () -> Unit) {
+    val item = (target as? Playable.Of)?.item
+    if (item is SongItem) { SongActionsSheet(item.song, extra, onDismiss = onDismiss); return }
+    val c = LocalContainer.current
+    val context = LocalContext.current
+    val liked by c.library.likedShown.collectAsState()
+    var sharing by remember { mutableStateOf<ShareTarget?>(null) }
+    sharing?.let { t -> ShareSheet(t) { sharing = null; onDismiss() }; return }
+    // Its songs, on their way into a playlist (Reddit R8).
+    var adding by remember { mutableStateOf<List<Song>?>(null) }
+    val ui = com.vinz.music.ui.theme.LocalUi.current
+    val (title, subtitle) = when (target) {
+        Playable.Liked -> "Liked songs" to com.vinz.music.data.model.songCount(liked.size)
+        Playable.Downloads -> "Downloads" to com.vinz.music.data.model.songCount(c.downloads.completedSongs().size)
+        is Playable.Page -> target.title to target.subtitle
+        is Playable.Of -> target.item.title to target.item.subtitle.ifBlank {
+            when (target.item) { is AlbumItem -> "Album"; is ArtistItem -> "Artist"; else -> "Playlist" }
+        }
+    }
+    val art = when (target) {
+        Playable.Liked -> c.covers.custom("liked")
+        Playable.Downloads -> c.covers.custom("downloads")
+        is Playable.Page -> target.art
+        is Playable.Of -> c.covers.art(target.item)
+    }
+    adding?.let { songs -> PlaylistPicker(songs, title) { adding = null; onDismiss() }; return }
+    fun play(shuffle: Boolean, mix: Boolean = false) = c.scope.launch(Dispatchers.Main) {
+        val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle, mix) } }.getOrNull()
+        if (loaded == null || loaded.first.isEmpty()) {
+            Toast.makeText(context, if (loaded == null) "Couldn't load \"$title\"" else "Nothing to play in \"$title\"", Toast.LENGTH_SHORT).show()
+            return@launch
+        }
+        // An artist's shuffle and mix come already in YouTube's order; the player shouldn't reshuffle them.
+        c.player.playQueue(loaded.first, 0, loaded.second, shuffle = shuffle && item !is ArtistItem)
+    }
+
+    /** The whole list after the current song ([next]) or at the end of the queue. */
+    fun queue(next: Boolean) = c.scope.launch(Dispatchers.Main) {
+        val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+        if (loaded == null || loaded.first.isEmpty()) {
+            Toast.makeText(context, if (loaded == null) "Couldn't load \"$title\"" else "Nothing to play in \"$title\"", Toast.LENGTH_SHORT).show()
+            return@launch
+        }
+        if (next) c.player.playNext(loaded.first, loaded.second) else c.player.addToQueue(loaded.first, loaded.second)
+        Toast.makeText(context, "${com.vinz.music.data.model.songCount(loaded.first.size)} ${if (next) "playing next" else "added to the queue"}", Toast.LENGTH_SHORT).show()
+    }
+    val quick = if (item is ArtistItem) listOf(
+        ActionItem(VinzIcons.Shuffle, "Shuffle") { play(shuffle = true) },
+        ActionItem(VinzIcons.Radio, "Mix") { play(shuffle = false, mix = true) },
+    ) else listOf(
+        ActionItem(VinzIcons.Play, "Play") { play(shuffle = false) },
+        ActionItem(VinzIcons.Shuffle, "Shuffle") { play(shuffle = true) },
+        ActionItem(VinzIcons.PlaylistPlay, "Play next") { queue(next = true) },
+        ActionItem(VinzIcons.QueueMusic, "Add to queue") { queue(next = false) },
+    )
+
+    ActionSheet(art, onDismiss) { close ->
+        ActionHeader(
+            art, title, subtitle,
+            shape = if (item is ArtistItem) ui.artistArt else ui.albumArt,
+            placeholderIcon = when {
+                target == Playable.Liked -> VinzIcons.HeartFilled
+                target == Playable.Downloads -> VinzIcons.DownloadDone
+                item is ArtistItem -> VinzIcons.Person
+                item is AlbumItem || (target as? Playable.Page)?.album == true -> VinzIcons.Album
+                else -> VinzIcons.QueueMusic
+            },
+        ) {
+            // Save to (or take out of) the library, or star an artist, right from the cover's long press (Reddit 1.7).
+            LibraryToggle(item)
+            SheetIconButton(VinzIcons.Share, "Share") {
+                sharing = when (target) {
+                    Playable.Liked -> ShareTarget("Liked songs", com.vinz.music.data.model.songCount(liked.size), "Playlist", art, null, songs = liked)
+                    Playable.Downloads -> c.downloads.completedSongs().let { ShareTarget("Downloads", com.vinz.music.data.model.songCount(it.size), "Playlist", art, null, songs = it) }
+                    is Playable.Page -> target.share
+                    // A Vinz playlist has no link: it's shared as its picture and song list.
+                    is Playable.Of -> c.vinzLibrary.list(target.item.id)?.let { l ->
+                        ShareTarget(l.title, com.vinz.music.data.model.songCount(l.songs.size), "Playlist", art, null, songs = l.songs)
+                    } ?: target.item.shareTarget(art)
+                }
+            }
+        }
+        QuickActions(quick) { runAction(it, close) }
+        // An album in the library can be taken out from here, by the library's own entry (a remaster or other edition
+        // opens as another album page, whose bookmark didn't reach this one).
+        val inLibrary = item is AlbumItem && c.settings.current.isLoggedIn && c.library.albums.value.any { it.id == item.id }
+        // Saved on the phone (no account): taken out of the phone's library.
+        val savedHere = !c.settings.current.isLoggedIn && when (item) {
+            is AlbumItem -> c.vinzLibrary.isSaved(item.id)
+            is PlaylistItem -> c.vinzLibrary.isPlaylistSaved(item.id)
+            else -> false
+        }
+        val remove = if (savedHere) listOf(ActionItem(VinzIcons.Delete, "Remove from library") {
+            if (item is AlbumItem) c.vinzLibrary.unsaveAlbum(item.id) else if (item != null) c.vinzLibrary.unsavePlaylist(item.id)
+            Toast.makeText(context, "Removed from your library", Toast.LENGTH_SHORT).show()
+        }) else if (inLibrary) listOf(ActionItem(VinzIcons.Delete, "Remove from library") {
+            c.scope.launch(Dispatchers.Main) {
+                val ok = c.library.removeAlbum(item.id, (item as AlbumItem).playlistId)
+                Toast.makeText(context, if (ok) "Removed from your library" else "Couldn't update your library", Toast.LENGTH_SHORT).show()
+            }
+        }) else emptyList()
+        // Played in the order that blends best, mixed and beat-matched (DJ mode).
+        val djSet = if (item is ArtistItem) emptyList() else listOf(ActionItem(VinzIcons.Album, "Play as a DJ set") {
+            c.scope.launch(Dispatchers.Main) {
+                val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+                if (loaded == null || loaded.first.size < 2) {
+                    Toast.makeText(context, if (loaded == null) "Couldn't load \"$title\"" else "A DJ set needs more than one song", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                c.player.playDjSet(loaded.first, loaded.second)
+            }
+        })
+        // Every song of it into one of your playlists, as a song's menu does for one (Reddit R8).
+        val addTo = if (item is ArtistItem) emptyList() else listOf(ActionItem(VinzIcons.PlaylistAdd, "Add to playlist", keepOpen = true) {
+            c.scope.launch(Dispatchers.Main) {
+                val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+                if (loaded == null || loaded.first.isEmpty()) {
+                    Toast.makeText(context, if (loaded == null) "Couldn't load \"$title\"" else "Nothing to add in \"$title\"", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                adding = loaded.first
+            }
+        })
+        // A YouTube playlist, copied whole into a Vinz playlist of your own (H7; signed in or not).
+        val copyable: Pair<String, String>? = when {
+            item is PlaylistItem && !item.isMix -> item.id to item.title
+            target is Playable.Page && !target.album -> target.share.url?.let { PLAYLIST_IN_LINK.find(it)?.groupValues?.get(1) }?.let { it to target.title }
+            else -> null
+        }?.takeIf { (id, _) -> !com.vinz.music.data.VinzLibrary.isMix(id) && !com.vinz.music.data.VinzLibrary.isVinzList(id) }
+        val copy = copyable?.let { (id, name) ->
+            listOf(ActionItem(VinzIcons.PlaylistAdd, "Save a copy as a Vinz playlist") { copyToVinz(c, context, id, name) })
+        }.orEmpty()
+        // A section of its own on Home (1.7.6): its songs, under its name.
+        val pin = item?.let { com.vinz.music.ui.screens.OwnSections.pinOf(it) }?.let { cfg ->
+            val layout = c.settings.current.homeLayout
+            val on = layout.any { it.key == cfg.key }
+            listOf(ActionItem(if (on) VinzIcons.PinFilled else VinzIcons.Pin, if (on) "Unpin from Home" else "Pin to Home") {
+                c.settings.setHomeLayout(if (on) layout.filterNot { it.key == cfg.key } else listOf(cfg) + layout)
+                Toast.makeText(context, if (on) "Taken off Home" else "Pinned to the top of Home", Toast.LENGTH_SHORT).show()
+            })
+        }.orEmpty()
+        if (extraTitle != null) {
+            ActionGroup(null, addTo + djSet + copy + pin + remove) { runAction(it, close) }
+            ActionGroup(extraTitle, extra.map { it.toAction() }) { runAction(it, close) }
+        } else ActionGroup(null, addTo + djSet + copy + pin + extra.map { it.toAction() } + remove) { runAction(it, close) }
+    }
+}
+
+/**
+ * The header's library button: an album or playlist saved to your library (YouTube Music when signed in; on the phone
+ * for albums when not), or an artist starred. Nothing for Vinz's own lists, mixes and radios.
+ */
+@Composable
+private fun LibraryToggle(item: BrowseItem?) {
+    val c = LocalContainer.current
+    val context = LocalContext.current
+    val signedIn = c.settings.current.isLoggedIn
+    when (item) {
+        is AlbumItem -> {
+            val albums by c.library.albums.collectAsState()
+            val here by c.vinzLibrary.albums.collectAsState()
+            val saved = if (signedIn) albums.any { it.id == item.id } else here.any { it.id == item.id }
+            SheetIconButton(if (saved) VinzIcons.LibraryAdded else VinzIcons.LibraryAdd, if (saved) "Remove from library" else "Add to library") {
+                if (!signedIn) {
+                    if (saved) c.vinzLibrary.unsaveAlbum(item.id)
+                    else c.vinzLibrary.saveAlbum(com.vinz.music.data.SavedAlbum(item.id, item.title, item.subtitle, item.thumbnail, item.playlistId, System.currentTimeMillis()))
+                    Toast.makeText(context, if (saved) "Removed from your library" else "Added to your library", Toast.LENGTH_SHORT).show()
+                } else c.scope.launch(Dispatchers.Main) {
+                    val ok = if (saved) c.library.removeAlbum(item.id, item.playlistId)
+                    else c.library.setSaved(item.playlistId ?: item.id, true)
+                    Toast.makeText(context, if (!ok) "Couldn't update your library" else if (saved) "Removed from your library" else "Added to your library", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        is PlaylistItem -> {
+            if (item.isMix || com.vinz.music.data.VinzLibrary.isMix(item.id) || com.vinz.music.data.VinzLibrary.isVinzList(item.id)) return
+            if (!signedIn) {
+                // Without an account, kept on the phone as a bookmark (H7).
+                val here by c.vinzLibrary.playlists.collectAsState()
+                val saved = here.any { com.vinz.music.data.VinzLibrary.samePlaylist(it.id, item.id) }
+                SheetIconButton(if (saved) VinzIcons.LibraryAdded else VinzIcons.LibraryAdd, if (saved) "Remove from library" else "Add to library") {
+                    if (saved) c.vinzLibrary.unsavePlaylist(item.id)
+                    else c.vinzLibrary.savePlaylist(com.vinz.music.data.SavedPlaylist(item.id, item.title, item.subtitle, item.thumbnail, System.currentTimeMillis()))
+                    Toast.makeText(context, if (saved) "Removed from your library" else "Added to your library", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+            val playlists by c.library.playlists.collectAsState()
+            val saved = playlists.any { it.id.removePrefix("VL") == item.id.removePrefix("VL") }
+            SheetIconButton(if (saved) VinzIcons.LibraryAdded else VinzIcons.LibraryAdd, if (saved) "Remove from library" else "Add to library") {
+                c.scope.launch(Dispatchers.Main) {
+                    val ok = c.library.setSaved(item.id, !saved)
+                    Toast.makeText(context, if (!ok) "Couldn't update your library" else if (saved) "Removed from your library" else "Added to your library", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        is ArtistItem -> {
+            val favorites by c.artistPrefs.favorites.collectAsState()
+            val starred = favorites.any { it.id == item.id }
+            SheetIconButton(if (starred) VinzIcons.StarFilled else VinzIcons.Star, if (starred) "Remove from favorites" else "Add to favorites") {
+                c.library.setFavoriteArtist(com.vinz.music.data.FavoriteArtist(item.id, item.title, item.thumbnail), null, !starred)
+            }
+        }
+        else -> Unit
+    }
+}
+
+private val PLAYLIST_IN_LINK = Regex("[?&]list=([A-Za-z0-9_-]+)")
+
+/**
+ * Every song of the YouTube playlist [id] (all its pages), into a new Vinz playlist named [title] (H7): the copy is
+ * yours, on the phone, and stays as it is when the original changes.
+ */
+fun copyToVinz(c: AppContainer, context: android.content.Context, id: String, title: String) {
+    Toast.makeText(context, "Copying \"$title\"…", Toast.LENGTH_SHORT).show()
+    c.scope.launch(Dispatchers.Main) {
+        val songs = runCatching { withContext(Dispatchers.IO) { c.ytm.playlistAll(id, 5000).songs } }.getOrNull()
+        if (songs.isNullOrEmpty()) {
+            Toast.makeText(context, if (songs == null) "Couldn't load \"$title\"" else "\"$title\" has no songs to copy", Toast.LENGTH_SHORT).show()
+            return@launch
+        }
+        c.vinzLibrary.create(title, songs)
+        Toast.makeText(context, "Saved \"$title\" as a Vinz playlist (${com.vinz.music.data.model.songCount(songs.size)})", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** The songs to queue for [target], and what the queue is called. */
+private suspend fun songsFor(c: AppContainer, target: Playable, shuffle: Boolean, mix: Boolean): Pair<List<Song>, QueueSource> = when (target) {
+    Playable.Liked -> c.library.likedShown.value to QueueSource(QueueKind.PLAYLIST, "Liked songs")
+    Playable.Downloads -> c.downloads.completedSongs() to QueueSource(QueueKind.PLAYLIST, "Downloads")
+    is Playable.Page -> target.load()
+    is Playable.Of -> when (val item = target.item) {
+        is AlbumItem -> c.ytm.album(item.id).songs to QueueSource(QueueKind.ALBUM, item.title)
+        is PlaylistItem ->
+            // A Vinz playlist is on the phone; mixes and radios only exist as a watch queue.
+            if (com.vinz.music.data.VinzLibrary.isVinzList(item.id))
+                (c.vinzLibrary.list(item.id)?.songs ?: emptyList()) to QueueSource(QueueKind.PLAYLIST, item.title, originId = item.id)
+            else if (item.isMix || item.id.startsWith("RD")) radio(c, item.seedVideoId, item.id, item.params, item.title)
+            else c.ytm.playlistAll(item.id, 1000).songs to QueueSource(QueueKind.PLAYLIST, item.title, originId = item.id.removePrefix("VL"))
+        is ArtistItem -> {
+            val a = c.ytm.artist(item.id)
+            if (shuffle && !mix && a.shufflePlaylistId != null) radio(c, a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams, a.name)
+            else radio(c, a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException("No mix"), a.radioParams, "${a.name} Mix")
+        }
+        else -> emptyList<Song>() to QueueSource(QueueKind.OTHER, item.title)
+    }
+}
+
+private suspend fun radio(c: AppContainer, videoId: String?, playlistId: String, params: String?, title: String): Pair<List<Song>, QueueSource> {
+    val r = c.radio(videoId, playlistId, params)
+    return r.songs to QueueSource(QueueKind.RADIO, title)
+}

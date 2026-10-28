@@ -21,7 +21,7 @@ You need JDK 17+ and the Android SDK (compile SDK 37). On Windows use `.\gradlew
 ./gradlew :app:assembleDebug
 ```
 
-To try your build without touching an installed Vinz, build a side-by-side copy. It installs as `com.prism.music.dev` with its own data:
+To try your build without touching an installed Vinz, build a side-by-side copy. It installs as `com.vinz.music.dev` with its own data:
 
 ```bash
 ./gradlew :app:assembleDebug -PsideBySide

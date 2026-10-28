@@ -12,5 +12,5 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen"
-    android:configure="com.prism.music.ui.screens.WidgetConfigActivity"
+    android:configure="com.vinz.music.ui.screens.WidgetConfigActivity"
     android:widgetFeatures="reconfigurable|configuration_optional" />

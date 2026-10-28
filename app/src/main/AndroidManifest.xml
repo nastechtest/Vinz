@@ -8,7 +8,7 @@
     <!-- Saving lyrics into your music files on Android 9 and older (newer ones ask per change instead). -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Prism Connect: finding speakers and TVs on the Wi-Fi (SSDP multicast). -->
+    <!-- Vinz Connect: finding speakers and TVs on the Wi-Fi (SSDP multicast). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -23,10 +23,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <!-- Installing Prism's own updates from GitHub (the listener confirms each in Android's installer). -->
+    <!-- Installing Vinz's own updates from GitHub (the listener confirms each in Android's installer). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
-    <!-- Only to open Android's "uninstall Prism?" prompt when moving to the newly signed Prism. -->
+    <!-- Only to open Android's "uninstall Vinz?" prompt when moving to the newly signed Vinz. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <queries>
@@ -42,24 +42,24 @@
     </queries>
 
     <application
-        android:name=".PrismApp"
+        android:name=".VinzApp"
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="${appLabel}"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Prism"
+        android:theme="@style/Theme.Vinz"
         tools:targetApi="36">
 
-        <!-- Profiling from adb: only the side-by-side test copy ("Prism Dev", build.gradle.kts). -->
+        <!-- Profiling from adb: only the side-by-side test copy ("Vinz Dev", build.gradle.kts). -->
         <profileable
             android:shell="${profileable}"
             tools:targetApi="29" />
 
         <!-- The app's one screen. Its launcher entries are the aliases below, one per app icon (#20). -->
         <activity
-            android:name=".PrismActivity"
+            android:name=".VinzActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="true"
             android:launchMode="singleTask"
@@ -73,14 +73,14 @@
                 <data android:scheme="https" />
                 <data android:host="music.youtube.com" />
             </intent-filter>
-            <!-- YouTube / YouTube Music links shared from other apps ("Play in Prism"). -->
-            <intent-filter android:label="@string/open_in_prism">
+            <!-- YouTube / YouTube Music links shared from other apps ("Play in Vinz"). -->
+            <intent-filter android:label="@string/open_in_vinz">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <!-- Looks (1.7.3): a .prismlook file (a zip) sent to Prism or opened with it. -->
-            <intent-filter android:label="@string/open_in_prism">
+            <!-- Looks (1.7.3): a .vinzlook file (a zip) sent to Vinz or opened with it. -->
+            <intent-filter android:label="@string/open_in_vinz">
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -91,56 +91,56 @@
         <!-- App icons (Settings → Appearance → App icon, #20): exactly one of these launcher entries is enabled
              (`AppIcons`). The classic one keeps the old ".MainActivity" name, so home-screen icons from before
              1.6.7 still point at it. -->
-        <activity-alias android:name=".MainActivity" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".MainActivity" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconSpectrum" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconSpectrum" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_spectrum" android:roundIcon="@mipmap/ic_launcher_spectrum">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconSolid" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconSolid" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_solid" android:roundIcon="@mipmap/ic_launcher_solid">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconLight" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconLight" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_light" android:roundIcon="@mipmap/ic_launcher_light">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconWave" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconWave" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_wave" android:roundIcon="@mipmap/ic_launcher_wave">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconMidnight" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconMidnight" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_midnight" android:roundIcon="@mipmap/ic_launcher_midnight">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconDusk" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconDusk" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_dusk" android:roundIcon="@mipmap/ic_launcher_dusk">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconPaper" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconPaper" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_paper" android:roundIcon="@mipmap/ic_launcher_paper">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconNeon" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconNeon" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_neon" android:roundIcon="@mipmap/ic_launcher_neon">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconPastel" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconPastel" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_pastel" android:roundIcon="@mipmap/ic_launcher_pastel">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconLine" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconLine" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_line" android:roundIcon="@mipmap/ic_launcher_line">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".IconGold" android:targetActivity=".PrismActivity" android:exported="true"
+        <activity-alias android:name=".IconGold" android:targetActivity=".VinzActivity" android:exported="true"
             android:enabled="false" android:icon="@mipmap/ic_launcher_gold" android:roundIcon="@mipmap/ic_launcher_gold">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
 
-        <!-- "Hey Google, play … on Prism": Assistant / Gemini only offer apps that take this as music sources. -->
+        <!-- "Hey Google, play … on Vinz": Assistant / Gemini only offer apps that take this as music sources. -->
         <activity
             android:name=".playback.VoicePlayActivity"
             android:exported="true"
@@ -333,17 +333,17 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.Prism">
+            android:theme="@style/Theme.Vinz">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
         </activity>
 
         <!-- Home screen widgets: one per look, so each shows up in the launcher's list. -->
         <receiver
-            android:name=".widget.PrismWidget"
+            android:name=".widget.VinzWidget"
             android:exported="false"
-            android:label="@string/widget_prism_name">
+            android:label="@string/widget_vinz_name">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_prism_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vinz_info" />
         </receiver>
         <receiver
             android:name=".widget.SpotifyStyleWidget"
@@ -406,7 +406,7 @@
             android:name=".widget.WidgetActionReceiver"
             android:exported="false" />
 
-        <!-- Results from Android's installer while Prism updates itself. -->
+        <!-- Results from Android's installer while Vinz updates itself. -->
         <receiver
             android:name=".data.UpdateInstallReceiver"
             android:exported="false" />
@@ -420,7 +420,7 @@
             android:resource="@drawable/ic_notification" />
 
         <service
-            android:name=".download.PrismDownloadService"
+            android:name=".download.VinzDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync">
             <intent-filter>
@@ -429,7 +429,7 @@
             </intent-filter>
         </service>
 
-        <!-- Quick Settings: "Recognize song" opens Prism already listening. -->
+        <!-- Quick Settings: "Recognize song" opens Vinz already listening. -->
         <service
             android:name=".data.recognize.RecognizeTileService"
             android:exported="true"

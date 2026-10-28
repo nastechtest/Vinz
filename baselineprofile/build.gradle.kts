@@ -1,5 +1,5 @@
-// Scripted journeys through Prism on a connected phone or emulator (1.7.4):
-// - BaselineProfileGenerator writes Prism's baseline profile: `./gradlew :app:generateReleaseBaselineProfile`
+// Scripted journeys through Vinz on a connected phone or emulator (1.7.4):
+// - BaselineProfileGenerator writes Vinz's baseline profile: `./gradlew :app:generateReleaseBaselineProfile`
 //   (Android 13+ or a rooted device; the emulator image with Google APIs is fine). The profile lands in
 //   app/src/release/generated/baselineProfiles and ships in the APK.
 // - JankBenchmark times frames on the same journeys, with and without the profile:
@@ -11,14 +11,14 @@ plugins {
 }
 
 android {
-    namespace = "com.prism.music.baselineprofile"
+    namespace = "com.vinz.music.baselineprofile"
     compileSdk = 37
 
     defaultConfig {
         minSdk = 28
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Prism is measured on emulators here (no spare phone): the numbers compare runs with each other, not with phones.
+        // Vinz is measured on emulators here (no spare phone): the numbers compare runs with each other, not with phones.
         testInstrumentationRunnerArguments["androidx.benchmark.suppressErrors"] = "EMULATOR"
     }
 

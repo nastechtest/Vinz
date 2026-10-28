@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Prism mark (1.7), Neon: a pink prism, mint bars. -->
+<!-- The Vinz mark (1.7), Neon: a pink vinz, mint bars. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <!-- Up 2.5: a triangle's weight sits low (its centroid is two-thirds down), so a centred box looks low in a circle. -->
     <group android:translateY="-2.5">
