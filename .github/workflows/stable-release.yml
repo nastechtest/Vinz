@@ -101,10 +101,12 @@ jobs:
             tag="v${version}-preview.${GITHUB_RUN_NUMBER}"
           fi
 
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${version}"
+            echo "version_code=${version_code}"
+            echo "tag=${tag}"
+            echo "sha=${sha}"
+          } >> "$GITHUB_OUTPUT"
 
           previous=$(./scripts/ci/version.sh previous-stable-tag || true)
           echo "::notice::${CHANNEL}: ${version} (versionCode ${version_code}, tag ${tag}) from ${sha:0:7}; previous release ${previous:-none}"
