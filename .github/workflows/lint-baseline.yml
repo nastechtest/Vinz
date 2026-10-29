@@ -3,7 +3,9 @@
 name: Generate lint baseline
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ci/release-pipeline]
+    paths: ['.github/workflows/lint-baseline.yml']
 
 permissions:
   contents: read
