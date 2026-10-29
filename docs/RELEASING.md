@@ -7,7 +7,8 @@ approving it.
 | --- | --- | --- | --- | --- |
 | Pull request | Opening or pushing to a PR | `pr-42-1.7.7.1-3` | Actions artifact `Vinz-PR-42-build-3.apk` | debug key |
 | Main development | Every push to `main` | `v1.7.7.1-main.15` | Prerelease **Main — Latest** + Actions artifact | debug key |
-| Stable | `workflow_dispatch` + approval | `v1.7.8` | GitHub Release `Vinz-1.7.8-release.apk` | release key |
+| Preview | `workflow_dispatch`, channel `preview` | `v1.7.8-preview.3` | Prerelease `Vinz-1.7.8-release.apk` | release key |
+| Stable | `workflow_dispatch`, channel `stable` | `v1.7.8` | GitHub Release `Vinz-1.7.8-release.apk` | release key |
 
 ## Branch strategy
 
@@ -81,82 +82,82 @@ a workflow variable has none of those properties.
 
 To browse history, use the Actions artifacts: each one contains the exact commit SHA and a checksum.
 
-## 3. Stable release (approval required)
+## 3. Releases: pick a bump, pick a channel
 
-A stable release is never triggered by a push, a merge, or a tag. It is started by hand, validated, and
-then published only after a reviewer approves the `stable-production` environment.
+A release is one dispatch. Nothing is typed by hand: no version, no commit SHA. The workflow works the
+version out, stamps the build, tags it, signs it and publishes it.
 
-### Step 1 — prepare the version, in a pull request
+Actions → **Release** → *Run workflow*:
 
-Edit `version.properties` at the repository root:
-
-```properties
-versionName=1.7.8
-versionCode=48
-```
-
-`versionCode` **must** be greater than the versionCode of the previous stable release, otherwise Android
-refuses to install the update. The workflow enforces this by reading the previous release tag out of git.
-
-Open the PR against `main`, let CI pass, merge it, then promote it:
+| Input | Values | Meaning |
+| --- | --- | --- |
+| `bump` | `patch` / `minor` / `major` | How far to move the version |
+| `channel` | `preview` / `stable` | Try it first, or publish it |
+| `release_notes` | optional | Highlights and known issues for the top of the notes |
 
 ```bash
-gh pr create --base stable --head main --title "Release 1.7.8" --body "Release candidate for 1.7.8"
+gh workflow run stable-release.yml -f bump=patch -f channel=preview
+gh workflow run stable-release.yml -f bump=patch -f channel=stable
 ```
 
-### Step 2 — start the workflow
+### What a bump means
 
-Actions → **Stable release** → *Run workflow*:
+The version comes from the higher of `version.properties` and the newest stable tag, then moves:
 
-| Input | Value |
-| --- | --- |
-| `version` | `1.7.8` (no `v` prefix; must equal `versionName`) |
-| `commit_sha` | Full 40-character SHA of the merge commit on `stable` |
-| `release_notes` | Optional highlights and known issues; goes at the top of the notes |
+| Bump | From `1.7.7.1` | From `1.7.8` |
+| --- | --- | --- |
+| `patch` | `1.7.7.2` | `1.7.9` |
+| `minor` | `1.8.0.0` | `1.8.0` |
+| `major` | `2.0.0.0` | `2.0.0` |
 
-```bash
-gh workflow run stable-release.yml -f version=1.7.8 -f commit_sha=<sha> -f release_notes="..."
-```
+`patch` moves the last number; `minor` and `major` move their position and reset everything after it. The
+number of parts never changes. `versionCode` is always one more than the last released one, which is read
+back from the release tag.
 
-### Step 3 — what happens before approval
+### `preview`
 
-The **Validate the release candidate** job runs with `contents: read` and **no access to signing
-secrets**, so a bad request cannot touch the release key. It fails unless all of this holds:
+A signed prerelease, `v1.7.7.2-preview.<run number>`, marked *prerelease* and not *latest*. It is signed
+with the same release key, so it installs straight over a stable Vinz — you are trying the exact build you
+are about to publish. It creates no stable tag, so running it twice claims nothing twice.
 
-- the SHA is well formed, exists, and is an ancestor of `stable`;
-- `version.properties` at that commit says exactly the requested version;
-- no `v<version>` tag exists, locally or on the remote;
-- `versionCode` is greater than the previous stable tag's;
-- a successful **PR checks** or **Main build** run *and* a successful **CodeQL** run exist for that commit.
+### `stable`
 
-### Step 4 — approve
+Tags `v1.7.7.2` on the released commit, publishes it as the latest release, and records its `versionCode`
+in the annotated tag.
 
-The **Sign, tag and publish** job waits on the `stable-production` environment. A required reviewer
-approves in the run page (or via `gh api`). Until then, no step of that job has executed.
+### What happens, in order
 
-After approval it:
+1. **Work out the next version** — `contents: read` and no secrets — and refuse if that stable tag already
+   exists.
+2. Confirm the commit already passed CI (PR checks or Main build, plus CodeQL).
+3. **The approval gate.** The `stable-production` environment holds the job: nothing below has run, no
+   signing key has been read, no tag exists. If that environment has no required reviewers the run goes
+   straight through, and logs a warning saying it published without a human.
+4. Run the deterministic unit tests.
+5. Import the keystore, failing in seconds if the alias or password is wrong.
+6. Build `:app:assembleRelease`, stamped with `-PciVersionName` and `-PciVersionCode`.
+7. **Reject a debug-signed APK.** AGP falls back to the debug key when `keystore.properties` is missing, so
+   this is the check that stops one being published.
+8. Verify package id, `versionName`, `versionCode` and the signer certificate.
+9. Create and push the annotated tag (stable only).
+10. Publish the GitHub Release with the APK and its SHA-256.
+11. Delete the keystore and its password file from the runner.
 
-1. confirms the environment really has required reviewers (so a missing configuration cannot silently
-   turn into an unapproved release);
-2. re-checks that the version is still unreleased (approval can take hours);
-3. runs the deterministic unit tests again;
-4. imports the keystore, fails fast if the alias or password is wrong;
-5. builds `:app:assembleRelease` and **rejects a debug-signed APK** — the build falls back to the debug
-   key when `keystore.properties` is missing, so this is the check that prevents shipping one;
-6. verifies package id, `versionName`, `versionCode` and the signer certificate;
-7. creates the annotated tag `v1.7.8` on the approved commit and pushes it;
-8. publishes a full (non-prerelease) GitHub Release with the APK, its SHA-256, and notes listing the
-   version, changes since the previous release, commit, checksum and timestamp;
-9. deletes the keystore and its password file from the runner, and confirms the release's assets.
+Nothing is published if any step fails, and a tag is created only after the build verifies.
 
-If any step fails, nothing is published. A tag is created only after the build and verification succeed.
+### Version numbers
+
+`version.properties` is a floor, not the record. The APK is *stamped* rather than committed, so a released
+version lives in its tag — which is why the tag carries the `versionCode`. `scripts/ci/version.sh` always
+takes the higher of the file and the newest stable tag, so a file that lags behind can never hand out a
+version twice.
 
 ## Versioning: four different things
 
 | Thing | Example | Lives in | Changes when |
 | --- | --- | --- | --- |
-| `versionName` | `1.7.8` | `version.properties` | A release PR bumps it |
-| `versionCode` | `48` | `version.properties` | Same release PR; must strictly increase |
+| `versionName` | `1.7.8` | `version.properties`, and the release tag | The workflow stamps the build; the file is only a floor |
+| `versionCode` | `48` | The release tag's annotation | Computed per release; always one more than the last |
 | Git tag | `v1.7.8` | Git refs | Created once, by the release workflow. Never moved |
 | APK filename | `Vinz-1.7.8-release.apk` | The release asset | Derived; not authoritative |
 
@@ -213,14 +214,11 @@ Settings that still need a human, in Settings → Actions → General: allow the
 workflow permissions by default (the workflows request their own write scopes per job), and keep *Allow
 GitHub Actions to create and approve pull requests* off.
 
-### Create the stable branch
+### The `stable` branch (optional)
 
-```bash
-git checkout main && git pull
-git push origin main:stable
-```
-
-Then confirm the ruleset covers `refs/heads/stable` (the script does this).
+Releases are tagged from `main`, so a `stable` branch is not required by the release workflow. Keep it if
+you want a long-lived pointer at the last release; if you do, confirm the ruleset covers
+`refs/heads/stable`.
 
 ### Optional variables
 
@@ -238,8 +236,9 @@ change are worth their own fix PR; if you must unblock a release quickly, add a 
 (`android { lint { baseline = file("lint-baseline.xml") } }`, then `./gradlew :app:lintDebug` regenerates
 it) rather than disabling lint.
 
-**The wrong release candidate.** Cancel the workflow run, or simply do not approve it — an unapproved run
-publishes nothing and creates no tag. Start again with the correct `commit_sha`.
+**The wrong release.** Cancel the run, or simply do not approve it — an unapproved run publishes nothing
+and creates no tag. A preview can be thrown away with `gh release delete <tag> --cleanup-tag`, since it
+never claimed a stable version. A stable release cannot be undone: tags under `v*` are immutable.
 
 **A stable release is bad.** You cannot take an APK back from users who installed it, and you must not
 rewrite history. Do this instead:
@@ -265,7 +264,7 @@ set and that `ANDROID_KEY_ALIAS` matches the keystore (`keytool -list -keystore 
 Users would have to uninstall and reinstall, losing app data. Back the keystore up somewhere that survives
 losing a laptop.
 
-## Worked example: PR → main → stable
+## Worked example: PR → main → release
 
 ```bash
 # A contributor fixes lyric timing.
@@ -274,29 +273,28 @@ git commit -am "Fix lyric offset drift after seek"
 git push -u origin feature/lyric-offset
 gh pr create --base main --fill
 #  → PR checks: wrapper OK, lint OK, 91 tests pass, Vinz-PR-64-build-1.apk uploaded.
-#  → The maintainer installs the artifact on a phone, confirms the fix, re-runs the workflow
-#    from a second push: Vinz-PR-64-build-2.apk, identifier pr-64-1.7.7.1-2.
+#  → The maintainer installs the artifact on a phone and confirms the fix.
 #  → Approve and merge.
 
-# main now has the commit; Main build publishes v1.7.7.1-main.12 as Vinz-main-1.7.7.1-build-12.apk
+# main now has the commit; Main build publishes Vinz-main-1.7.7.1-build-12.apk
 # and refreshes "Main — Latest".
 
-# A few merged PRs later, cut a release.
-git checkout main && git pull
-git checkout -b release/1.7.8
-#   version.properties: versionName=1.7.8, versionCode=48
-git commit -am "Release 1.7.8"
-git push -u origin release/1.7.8
-gh pr create --base main --title "Release 1.7.8" --fill   # lands the bump on main
-gh pr create --base stable --head main --title "Release 1.7.8" --fill
-
-# With the stable merge commit SHA in hand:
-gh workflow run stable-release.yml -f version=1.7.8 -f commit_sha=<sha> \
+# A few merged PRs later, cut a release. No version, no SHA.
+gh workflow run stable-release.yml -f bump=patch -f channel=preview \
   -f release_notes="Fixes lyric offset drift after seeking."
-#  → validate: green. release: waiting for approval.
-#  → Reviewer approves in the run page.
-#  → Tag v1.7.8 created on <sha>; Vinz-1.7.8-release.apk published on the Releases page.
+#  → 1.7.7.2 worked out on its own, versionCode 48.
+#  → Validate: green. Release: waiting for approval.
+#  → Approve: v1.7.7.2-preview.7 published as a prerelease. Install it over your stable Vinz.
+
+# Happy with it? Publish the same version, no approval-less guessing:
+gh workflow run stable-release.yml -f bump=patch -f channel=stable \
+  -f release_notes="Fixes lyric offset drift after seeking."
+#  → Tag v1.7.7.2 created on the released commit, versionCode 48 recorded in it.
+#  → Vinz-1.7.7.2-release.apk published as the latest release.
 ```
+
+Note that the second run computes the same `1.7.7.2`: a preview claims no version, so publishing after one
+picks up exactly where the preview left off.
 
 ## What this costs
 

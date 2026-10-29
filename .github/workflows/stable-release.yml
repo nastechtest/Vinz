@@ -1,23 +1,42 @@
-# Stable release: manually triggered, validated, then held by a protected environment until a human approves.
+# Release: pick a bump and a channel, and nothing else.
 #
-# Nothing here runs on a push or a merge. A stable release exists only because a maintainer started this
-# workflow, pointed it at an approved commit on "stable", and a reviewer approved the "stable-production"
-# environment. Until that approval lands, no signing key is touched and no tag is created.
-name: Stable release
+#   patch / minor / major   the version is worked out from the newest stable tag and version.properties;
+#                           nobody types a version or a commit SHA.
+#   preview                 a signed prerelease you can install and try, without claiming a version or
+#                           touching a branch.
+#   stable                  the same build, published as the stable release, tagged immutably.
+#
+# The version lives in the tag once a release exists: version.sh takes the higher of version.properties
+# and the newest stable tag, so a file that lags behind can never hand out a version twice. The APK is
+# stamped with -PciVersionName / -PciVersionCode, so the file does not have to be rewritten to be correct.
+#
+# Signing keys are read only by the "release" job, behind the stable-production environment. If that
+# environment has required reviewers, both channels wait for one approval; if it has none, a run goes
+# straight through. Set reviewers in Settings -> Environments -> stable-production to require a human.
+name: Release
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Stable version without the v prefix (e.g. 1.7.8). Must equal versionName in version.properties at the approved commit."
+      bump:
+        description: "Version bump"
         required: true
-        type: string
-      commit_sha:
-        description: "Full 40-character commit SHA on stable that has passed CI (e.g. from a merged release PR)."
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      channel:
+        description: "preview = signed prerelease to try first; stable = publish it"
         required: true
-        type: string
+        default: preview
+        type: choice
+        options:
+          - preview
+          - stable
       release_notes:
-        description: "Optional: highlights or known issues to put at the top of the release notes."
+        description: "Optional: highlights or known issues for the top of the release notes"
         required: false
         type: string
 
@@ -25,127 +44,111 @@ permissions:
   contents: read
 
 concurrency:
-  group: stable-release-${{ inputs.version }}
+  group: release
   cancel-in-progress: false
 
 env:
   APP_PACKAGE: com.vinz.music
   JAVA_VERSION: "17"
-  VINZ_GIT_SHA: ${{ inputs.commit_sha }}
-  VINZ_BUILD_CHANNEL: stable
 
 jobs:
-  validate:
-    name: Validate the release candidate
+  prepare:
+    name: Work out the next version
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # No secrets are available to this job: validation cannot leak the signing key, and it must pass before
-    # the approval gate is even reached.
+    timeout-minutes: 15
+    # Read-only, no secrets: nothing here can touch the signing key.
     permissions:
       contents: read
       actions: read
     outputs:
-      version: ${{ steps.verify.outputs.version }}
-      version-code: ${{ steps.verify.outputs.version-code }}
-      previous-tag: ${{ steps.verify.outputs.previous-tag }}
+      version: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
     steps:
-      - name: Check out the approved commit
+      - name: Check out the default branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.commit_sha }}
-          # Full history and tags: ancestry, the previous stable tag and its versionCode all come from git.
+          ref: ${{ github.ref }}
+          # Full history and tags: the previous stable tag decides the next version and its versionCode.
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
 
-      - name: Verify the commit, the version and the release history
-        id: verify
+      - name: Compute the version the bump asks for
+        id: version
         env:
-          INPUT_VERSION: ${{ inputs.version }}
-          INPUT_SHA: ${{ inputs.commit_sha }}
+          BUMP: ${{ inputs.bump }}
+          CHANNEL: ${{ inputs.channel }}
         run: |
           set -euo pipefail
           die() { printf '::error::%s\n' "$*" >&2; exit 1; }
 
-          version="$INPUT_VERSION"
-          sha="$INPUT_SHA"
+          version=$(./scripts/ci/version.sh bump-name "$BUMP")
+          version_code=$(./scripts/ci/version.sh bump-code)
+          sha=$(git rev-parse HEAD)
 
-          # 1. The inputs are well formed. Anything else never reaches a shell downstream.
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "commit_sha must be a full 40-character lowercase SHA, got '$sha'"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
-            die "version must look like 1.7.8 (no 'v' prefix), got '$version'"
+          [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "'$version' is not a dotted numeric version"
 
-          # 2. The commit exists and is what we checked out.
-          git cat-file -e "${sha}^{commit}" 2>/dev/null || die "commit $sha does not exist in this repository"
-          actual=$(git rev-parse HEAD)
-          [[ "$actual" == "$sha" ]] || die "checked out $actual but expected $sha"
-
-          # 3. The commit is part of stable's history. Anything else is not a release candidate.
-          git rev-parse --verify --quiet 'origin/stable^{commit}' >/dev/null ||
-            die "branch 'stable' not found. Create it (see docs/RELEASING.md) before releasing."
-          git merge-base --is-ancestor "$sha" origin/stable ||
-            die "commit ${sha:0:7} is not on stable; merge the release PR into stable first"
-
-          # 4. version.properties at that commit is the authority for the version.
-          file_version=$(./scripts/ci/version.sh name-at "$sha")
-          [[ "$file_version" == "$version" ]] ||
-            die "version.properties at ${sha:0:7} says '$file_version' but the workflow was asked for '$version'. Bump version.properties in the release PR instead of passing a different version."
-          file_code=$(./scripts/ci/version.sh code-at "$sha")
-          echo "version.properties: $file_version (versionCode $file_code)"
-
-          # 5. This version has not been released. Existing tags are never reused or moved.
-          if git rev-parse --verify --quiet "refs/tags/v${version}" >/dev/null; then
-            die "tag v${version} already exists: ${version} has been released. Tags are immutable."
-          fi
-          if git ls-remote --tags origin "refs/tags/v${version}" | grep -q .; then
-            die "tag v${version} already exists on the remote: ${version} has been released."
-          fi
-
-          # 6. versionCode increases. Android refuses to install an APK whose versionCode is not higher than
-          #    the installed one, so a published release must always move forward.
-          previous_tag=$(./scripts/ci/version.sh previous-stable-tag)
-          if [[ -n "$previous_tag" ]]; then
-            previous_code=$(./scripts/ci/version.sh code-at "$previous_tag")
-            [[ "$file_code" -gt "$previous_code" ]] ||
-              die "versionCode $file_code is not greater than $previous_code from $previous_tag. Android would reject the update."
-            echo "versionCode: $file_code > $previous_code ($previous_tag)"
+          # A preview never takes the stable tag; the run number keeps preview tags distinct and the
+          # hyphen keeps them out of version.sh's stable-tag list, so they can never be "the latest release".
+          if [[ "$CHANNEL" == stable ]]; then
+            tag="v${version}"
+            if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
+              die "tag ${tag} already exists: ${version} has been released. Tags are immutable; pick another bump."
+            fi
           else
-            echo "versionCode: $file_code (first stable release)"
+            tag="v${version}-preview.${GITHUB_RUN_NUMBER}"
           fi
 
-          {
-            echo "version=$version"
-            echo "version-code=$file_code"
-            echo "previous-tag=$previous_tag"
-          } >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
-          echo "::notice::Release candidate ${version} (${sha:0:7}) validated."
+          previous=$(./scripts/ci/version.sh previous-stable-tag || true)
+          echo "::notice::${CHANNEL}: ${version} (versionCode ${version_code}, tag ${tag}) from ${sha:0:7}; previous release ${previous:-none}"
 
-      - name: Verify the commit passed CI
+      - name: Confirm the default branch passed CI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ inputs.commit_sha }}
-        run: ./scripts/ci/check-required-checks.sh "$SHA"
+        run: ./scripts/ci/check-required-checks.sh "${{ steps.version.outputs.sha }}"
 
   release:
-    name: Sign, tag and publish
-    needs: validate
+    name: ${{ inputs.channel == 'stable' && 'Sign, tag and publish' || 'Sign and publish a preview' }}
+    needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # The approval gate. Configure "stable-production" with required reviewers and limit it to the "stable"
-    # branch (docs/RELEASING.md). While this job waits, nothing below has run and no secret has been read.
+    # The approval gate and the only place the signing key is read. Waiting here means no secret has been
+    # touched and no tag has been created.
     environment:
       name: stable-production
-      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ inputs.version }}
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag }}
     permissions:
       contents: write
     steps:
-      - name: Check out the approved commit
+      - name: Check out the commit being released
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Note whether the approval gate is actually protected
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # A warning rather than a failure: an unprotected environment is a deliberate choice to let a
+          # run publish without a human, and this workflow should not overrule it. Say so loudly instead.
+          if rules=$(gh api "repos/${GITHUB_REPOSITORY}/environments/stable-production" \
+              --jq '[.protection_rules[].type] | join(",")' 2>/dev/null); then
+            if [[ "$rules" != *required_reviewers* ]]; then
+              echo "::warning::stable-production has no required reviewers, so this run publishes without a human approval. Add reviewers in Settings -> Environments to require one."
+            fi
+          else
+            echo "::notice::Could not read the environment's protection rules (the workflow token usually lacks permission). Check Settings -> Environments -> stable-production."
+          fi
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -158,35 +161,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
-
-      - name: Confirm the approval gate is actually protected
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          # If the environment does not exist, GitHub creates it without reviewers, and this workflow would
-          # then publish without any human approval. Verify rather than assume.
-          if rules=$(gh api "repos/${GITHUB_REPOSITORY}/environments/stable-production" \
-              --jq '[.protection_rules[].type] | join(",")' 2>/dev/null); then
-            echo "protection rules: ${rules:-none}"
-            if [[ "$rules" != *required_reviewers* ]]; then
-              echo "::error::The stable-production environment has no required reviewers, so this run was never approved by a human. Add required reviewers in Settings -> Environments before releasing."
-              exit 1
-            fi
-          else
-            echo "::warning::Could not read the environment's protection rules (the workflow token usually lacks permission). Confirm in Settings -> Environments -> stable-production that required reviewers are set."
-          fi
-
-      - name: Re-check that the version is still unreleased
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          # The approval may have taken hours; a tag could have appeared in the meantime.
-          if git ls-remote --tags origin "refs/tags/v${INPUT_VERSION}" | grep -q .; then
-            echo "::error::tag v${INPUT_VERSION} appeared while this release was waiting for approval. Nothing has been published."
-            exit 1
-          fi
 
       - name: Run the deterministic unit tests
         run: ./scripts/ci/run-unit-tests.sh
@@ -226,23 +200,32 @@ jobs:
           fi
           echo "Signing key '$ANDROID_KEY_ALIAS' is present."
 
-      # No -PdebugSign and no missing keystore.properties, so AGP selects the release signing config. If the
+      # No -PdebugSign and keystore.properties present, so AGP selects the release signing config. If the
       # import above ever failed, the build would silently fall back to the debug key, which is why the
       # verification step below rejects a debug-signed APK.
       - name: Build the signed release APK
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        env:
+          VINZ_GIT_SHA: ${{ needs.prepare.outputs.sha }}
+          VINZ_BUILD_CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          # Stamped rather than written into version.properties: the same tree produces either channel,
+          # and nothing has to be committed to get the right version into Settings -> About.
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
+            -PciVersionName="$VERSION" -PciVersionCode="$VERSION_CODE"
 
       - name: Verify the APK identity and signature
         env:
-          EXPECTED_VERSION_NAME: ${{ needs.validate.outputs.version }}
-          EXPECTED_VERSION_CODE: ${{ needs.validate.outputs.version-code }}
+          EXPECTED_VERSION_NAME: ${{ needs.prepare.outputs.version }}
+          EXPECTED_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
         run: ./scripts/ci/verify-apk.sh app/build/outputs/apk/release/app-release.apk "$APP_PACKAGE"
 
       - name: Checksum and stage the release
         id: stage
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
-          VERSION_CODE: ${{ needs.validate.outputs.version-code }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -252,52 +235,66 @@ jobs:
           echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
           echo "SHA-256: $checksum"
 
-      - name: Create the immutable tag
+      - name: Create the immutable release tag
+        if: inputs.channel == 'stable'
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
-          RELEASE_SHA: ${{ inputs.commit_sha }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+          VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
         run: |
           set -euo pipefail
           [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] ||
-            { echo "::error::HEAD is not the approved commit; refusing to tag"; exit 1; }
+            { echo "::error::HEAD is not the commit being released; refusing to tag"; exit 1; }
+          # The approval may have taken a while; a tag could have appeared meanwhile. Re-check, never reuse.
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
+            echo "::error::tag ${TAG} appeared while this release waited for approval. Nothing has been published."
+            exit 1
+          fi
           git config user.name "Vinz Release"
           git config user.email "releases@users.noreply.github.com"
-          # Annotated tag on the exact approved commit. Nothing else is ever tagged for a stable release, and
-          # the tag is never moved: a released version is a permanent fact.
-          git tag -a "v${VERSION}" -m "Vinz ${VERSION}" "$RELEASE_SHA"
-          git push origin "refs/tags/v${VERSION}"
-          echo "Tagged v${VERSION} at ${RELEASE_SHA}"
+          # Annotated tag on the released commit, never moved: a released version is a permanent fact.
+          # The message records the versionCode, because the APK is stamped rather than committed and this
+          # tag is the only durable record of what was released. version.sh reads it back for the next bump.
+          git tag -a "$TAG" -m "Vinz ${TAG#v}" -m "versionCode: ${VERSION_CODE}" "$RELEASE_SHA"
+          git push origin "refs/tags/${TAG}"
+          echo "Tagged ${TAG} at ${RELEASE_SHA}"
 
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.validate.outputs.version }}
-          VERSION_CODE: ${{ needs.validate.outputs.version-code }}
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+          TAG: ${{ needs.prepare.outputs.tag }}
           CHECKSUM: ${{ steps.stage.outputs.checksum }}
-          PREVIOUS_TAG: ${{ needs.validate.outputs.previous-tag }}
           NOTES: ${{ inputs.release_notes }}
-          # workflow_dispatch sets GITHUB_SHA to the default branch's tip, which is NOT necessarily the
-          # approved commit: the commit checkouts below pinned must be read from HEAD.
-          RELEASE_SHA: ${{ inputs.commit_sha }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
-          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] ||
-            { echo "::error::checked out $(git rev-parse HEAD), expected $RELEASE_SHA"; exit 1; }
+          previous=$(./scripts/ci/version.sh previous-stable-tag || true)
+
           {
-            echo "## Vinz ${VERSION}"
+            if [[ "$CHANNEL" == stable ]]; then
+              echo "## Vinz ${VERSION}"
+            else
+              echo "## Vinz ${VERSION} — preview"
+              echo
+              echo "**PREVIEW — NOT A STABLE RELEASE.** ${VERSION} has not been published as stable yet."
+              echo "Install it, try it, and publish the same version from the Release workflow when you are happy."
+            fi
             echo
             if [[ -n "${NOTES:-}" ]]; then
               printf '%s\n\n' "$NOTES"
             fi
-            echo "Signed release build for Android ${APP_PACKAGE}. Install with \`adb install -r Vinz-${VERSION}-release.apk\`"
-            echo "or by opening the APK on the device."
+            echo "Signed with the Vinz release key for Android \`${APP_PACKAGE}\`. Install with"
+            echo "\`adb install -r Vinz-${VERSION}-release.apk\`, or by opening the APK on the device."
             echo
             echo "### Changes"
             echo
-            if [[ -n "$PREVIOUS_TAG" ]]; then
-              echo "Since \`${PREVIOUS_TAG}\`:"
+            if [[ -n "$previous" ]]; then
+              echo "Since \`${previous}\`:"
               echo
-              git log --no-merges --pretty='- %s (%h)' "${PREVIOUS_TAG}..${RELEASE_SHA}" || true
+              git log --no-merges --pretty='- %s (%h)' "${previous}..${RELEASE_SHA}" || true
             else
               echo "First stable release. Recent work:"
               echo
@@ -310,31 +307,47 @@ jobs:
             echo "| --- | --- |"
             echo "| Version | \`${VERSION}\` |"
             echo "| versionCode | \`${VERSION_CODE}\` |"
+            echo "| Channel | \`${CHANNEL}\` |"
             echo "| Commit | \`${RELEASE_SHA}\` |"
-            echo "| Tag | \`v${VERSION}\` |"
+            echo "| Tag | \`${TAG}\` |"
             echo "| APK SHA-256 | \`${CHECKSUM}\` |"
             echo "| Signed with | release key (see the verification step in the workflow run) |"
             echo "| Released | $(date -u +%Y-%m-%dT%H:%M:%SZ) |"
             echo "| Workflow run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |"
           } > release-notes.md
 
-          gh release create "v${VERSION}" \
-            "dist/Vinz-${VERSION}-release.apk#Vinz-${VERSION}-release.apk" \
-            "dist/Vinz-${VERSION}-release.apk.sha256#Vinz-${VERSION}-release.apk.sha256" \
-            --title "Vinz ${VERSION}" \
-            --notes-file release-notes.md \
-            --verify-tag \
-            --latest
+          # -R on every call: gh must not have to discover the repository from a working copy.
+          if [[ "$CHANNEL" == stable ]]; then
+            gh release create "$TAG" \
+              "dist/Vinz-${VERSION}-release.apk#Vinz-${VERSION}-release.apk" \
+              "dist/Vinz-${VERSION}-release.apk.sha256#Vinz-${VERSION}-release.apk.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Vinz ${VERSION}" \
+              --notes-file release-notes.md \
+              --verify-tag \
+              --latest
+          else
+            # --target lets gh create the preview tag itself, at the commit that was built.
+            gh release create "$TAG" \
+              "dist/Vinz-${VERSION}-release.apk#Vinz-${VERSION}-release.apk" \
+              "dist/Vinz-${VERSION}-release.apk.sha256#Vinz-${VERSION}-release.apk.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Vinz ${VERSION} — preview" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --target "$RELEASE_SHA"
+          fi
 
-          echo "::notice::Published Vinz ${VERSION} from ${RELEASE_SHA}"
+          echo "::notice::Published ${TAG} (${CHANNEL}) from ${RELEASE_SHA}"
 
       - name: Confirm the published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.validate.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          gh release view "v${VERSION}" --json tagName,isPrerelease,isDraft,assets \
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isPrerelease,isDraft,assets \
             --jq '"tag: \(.tagName)  draft: \(.isDraft)  prerelease: \(.isPrerelease)  assets: \([.assets[].name] | join(", "))"'
 
       - name: Remove signing material
@@ -346,22 +359,24 @@ jobs:
       - name: Write the job summary
         if: always()
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
-          VERSION_CODE: ${{ needs.validate.outputs.version-code }}
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+          TAG: ${{ needs.prepare.outputs.tag }}
           CHECKSUM: ${{ steps.stage.outputs.checksum }}
-          RELEASE_SHA: ${{ inputs.commit_sha }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
           STATUS: ${{ job.status }}
         run: |
           set -euo pipefail
           {
-            echo "## Stable release ${VERSION}"
+            echo "## ${CHANNEL} release ${VERSION}"
             echo
             echo "| | |"
             echo "| --- | --- |"
             echo "| Result | **${STATUS}** |"
             echo "| Version | \`${VERSION}\` (versionCode \`${VERSION_CODE}\`) |"
+            echo "| Channel | \`${CHANNEL}\` |"
             echo "| Commit | \`${RELEASE_SHA}\` |"
-            echo "| Tag | \`v${VERSION}\` |"
+            echo "| Tag | \`${TAG}\` |"
             echo "| APK SHA-256 | \`${CHECKSUM:-n/a}\` |"
-            echo "| Approver | approved via the \`stable-production\` environment |"
           } >> "$GITHUB_STEP_SUMMARY"
