@@ -12,6 +12,20 @@ plugins {
     id("androidx.baselineprofile")
 }
 
+// The app version lives in version.properties at the repository root: one source of truth for local
+// builds, CI and the release workflow. CI stamps development builds with -PciVersionName (and, if ever
+// needed, -PciVersionCode) so an installed dev build says which build it is in Settings -> About,
+// without any commit rewriting the file.
+val appVersionFile = rootProject.file("version.properties")
+val appVersion = Properties().apply {
+    require(appVersionFile.exists()) {
+        "version.properties is missing; it is the single source of truth for versionName and versionCode."
+    }
+    appVersionFile.inputStream().use { load(it) }
+}
+val ciVersionName: String? = providers.gradleProperty("ciVersionName").orNull
+val ciVersionCode: Int? = providers.gradleProperty("ciVersionCode").orNull?.toInt()
+
 // Room writes each database version's schema here (checked in); MigrationTest builds old versions from them.
 room {
     schemaDirectory("$projectDir/schemas")
@@ -25,8 +39,8 @@ android {
         applicationId = "com.vinz.music"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "1.7.7.1"
+        versionCode = ciVersionCode ?: appVersion.getProperty("versionCode").toInt()
+        versionName = ciVersionName ?: appVersion.getProperty("versionName")
         vectorDrawables { useSupportLibrary = true }
         // The name under the launcher icon; a side-by-side build (below) is called "Vinz Dev" so it can't be mistaken for Vinz.
         manifestPlaceholders["appLabel"] = "@string/app_name"
