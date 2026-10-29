@@ -44,10 +44,8 @@ jobs:
       matrix:
         include:
         - language: java-kotlin
-          build-mode: autobuild
+          build-mode: manual
         - language: javascript-typescript
-          build-mode: none
-        - language: python
           build-mode: none
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
@@ -60,6 +58,26 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v7
+
+    - name: Set up JDK for Android analysis
+      if: matrix.language == 'java-kotlin'
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Install Android SDK for analysis
+      if: matrix.language == 'java-kotlin'
+      run: |
+        set -e
+        sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+        if [ -z "$sdkmanager" ]; then echo 'Android SDK manager not found' >&2; exit 1; fi
+        yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
+        "$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-37.0' 'platform-tools'
+        test -d "$ANDROID_HOME/platforms/android-37.0"
+        if [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+          ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+        fi
 
     # Add any setup steps before running the `github/codeql-action/init` action.
     # This includes steps like installing compilers or runtimes (`actions/setup-node`
@@ -86,16 +104,9 @@ jobs:
     # to build your code.
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - name: Run manual build steps
-      if: matrix.build-mode == 'manual'
-      shell: bash
-      run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        exit 1
+    - name: Build Android sources for CodeQL extraction
+      if: matrix.language == 'java-kotlin'
+      run: ./gradlew :app:assembleDebug :baselineprofile:assemble --no-daemon
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4

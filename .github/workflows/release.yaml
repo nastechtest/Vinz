@@ -24,7 +24,11 @@ jobs:
           sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
           if [ -z "$sdkmanager" ]; then echo 'Android SDK manager not found' >&2; exit 1; fi
           yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
-          "$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-37' 'platform-tools'
+          "$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-37.0' 'platform-tools'
+          test -d "$ANDROID_HOME/platforms/android-37.0"
+          if [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
       - uses: gradle/actions/setup-gradle@v4
       - name: Verify tag and prepare persistent signing key
         env:
