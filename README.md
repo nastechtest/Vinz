@@ -17,7 +17,7 @@
 </a>
 <img src="https://img.shields.io/badge/Language-Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
 <img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android" />
-<img src="https://img.shields.io/badge/Maintained%20by-Nastech%20Research-0EA5E9?style=for-the-badge" alt="Maintained by Nastech Research" />
+<img src="https://img.shields.io/badge/Built%20by-Nastech%20Research-0EA5E9?style=for-the-badge" alt="Built by Nastech Research" />
 
 <br /><br />
 
@@ -58,8 +58,12 @@
 
 ## 📖 What Vinz is
 
-**Vinz** is an unofficial Android client for YouTube Music, built on open-source work by **Yigder** and developed
-independently by **Nastech Research**.
+**Vinz** is an unofficial Android client for YouTube Music: created and maintained by **Nastech Research**, built on
+open-source work by **Yigder**.
+
+Vinz is not a rename of that work. It is developed independently and no longer tracks upstream — there is no upstream
+remote and no upstream sync anywhere in its history. It began as a fork, though, and that lineage is kept in the
+credits and the notices, as the GPL requires.
 
 The project keeps what makes a music client good — fast navigation, a player that gets out of the way, lyrics that
 keep up — and puts the *look* of the app in your hands. Vinz's own contribution is its **Looks** system: a whole
@@ -157,7 +161,7 @@ YouTube Music feature is implemented.
 | Version | [`version.properties`](version.properties) — currently `1.7.7.1` (`versionCode` 47) |
 | License | GNU GPL-3.0-or-later |
 | Upstream attribution | Yigder and original component authors |
-| Maintained by | [Nastech Research](https://github.com/nastechresearch) |
+| Created by | [Nastech Research](https://github.com/nastechresearch) |
 | Repository | [`nastechtest/Vinz`](https://github.com/nastechtest/Vinz) |
 | Distribution | Build locally or use a project-published release when available |
 
@@ -350,21 +354,43 @@ Include any known limitations, network dependencies, and steps needed to reprodu
 
 ## 👥 Contributors
 
+### 🎧 Nastech Research — creator & maintainer of Vinz
+
+<a href="https://github.com/nastechresearch">@nastechresearch</a>
+
+Wrote the code Vinz is today. The Vinz identity and the full rebrand — application ID, namespace, source paths, and
+every internal identifier; the three CI/CD pipelines (PR checks, main development builds, and the approval-gated stable
+release); versioning through `version.properties`; the release-signing verification that refuses a debug-signed APK;
+the dependency and security automation; and this documentation. Vinz is developed and maintained independently of the
+client it began from.
+
+### 🌱 Yigder — original author of the client Vinz began from
+
+The foundation. Vinz started as a fork of Yigder's open-source Android music client, and the parts that descend from
+that work remain his under the GPL. Also contributed four of the community Looks: *Aurora Glass*, *Graphite*,
+*Sunset Drive*, and *Forest Walk*.
+
+### Everyone else
+
 <div align="center">
 
 | | Who | Contribution |
 |:--|:--|:--|
-| 🎧 | **Nastech Research** <br/> [@nastechresearch](https://github.com/nastechresearch) | **Maintainer of Vinz.** Project identity, the CI/CD pipelines, the approval-gated release process, versioning, and this documentation. |
-| 🌱 | **Yigder** | Author of the **original open-source Android client** Vinz is built on — the foundation of this project. Also contributed the *Aurora Glass*, *Graphite*, *Sunset Drive*, and *Forest Walk* Looks. |
-| ✨ | **ZeroxDev** | Contributed the *Nothing* community Look. |
-| ⚖️ | **GNU Project / Free Software Foundation** | Authors of the GNU General Public License that Vinz is distributed under. |
-| 🤖 | **Dependabot** | Keeps the GitHub Actions and Gradle dependencies current. |
+| ✨ | **ZeroxDev** | Contributed the *Nothing* community Look |
+| ⚖️ | **GNU Project / Free Software Foundation** | Authors of the GNU General Public License Vinz is distributed under |
+| 🤖 | **Dependabot** | Keeps the GitHub Actions and Gradle dependencies current |
 
 </div>
 
-Vinz exists because people published their work under a license that lets it be built on. Keeping the upstream
-copyright notices, the component attributions, and the license intact is a condition of that, not an afterthought —
-please preserve them in any redistribution.
+> [!NOTE]
+> **On authorship.** Both credits above stay, and they are not interchangeable. Nastech Research is the author and
+> maintainer of Vinz — the project, its identity, and its code today. Yigder is the origin of the code Vinz grew out
+> of, and the GPL makes keeping his copyright and notices a condition of distributing Vinz at all, however far the
+> codebase has since diverged. Crediting one does not cost the other anything.
+
+Vinz exists because someone published their work under a license that allowed it to be built on. Keeping the upstream
+copyright notices, the component attributions, and the license intact is a condition of that, not a courtesy — please
+preserve them in any redistribution.
 
 ---
 
@@ -397,6 +423,10 @@ In short — this is a summary, not a substitute for the license:
 
 Because Vinz is distributed under the GPL, anyone who distributes a modified version must also make the complete
 corresponding source available under the GPL. There is no separate "commercial" or proprietary edition.
+
+**Copyright.** The code written for Vinz is © Nastech Research and the Vinz contributors, licensed under
+GPL-3.0-or-later. Portions that descend from the client Vinz began from remain © Yigder and the original component
+authors, under the same license. See [`FORK_NOTICE.md`](FORK_NOTICE.md).
 
 Relevant files:
 
