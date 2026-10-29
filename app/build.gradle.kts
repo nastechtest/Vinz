@@ -120,6 +120,18 @@ android {
         buildConfig = true
     }
 
+    lint {
+        // This repository carries a backlog of pre-existing findings (86 errors at the time the pipeline
+        // was introduced, first one WebRemote.kt:81 ResourceType). They are frozen in lint-baseline.xml so
+        // that a *new* lint error fails the build, instead of the backlog blocking every pull request and
+        // every release. Regenerate with ./gradlew :app:updateLintBaseline after fixing some of them, and
+        // delete this block once the file is empty.
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        // Fatal-issue checks do not need to run on every release build: the debug lint job already covers it.
+        checkReleaseBuilds = false
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
         // Robolectric tests can read the app's own resources (strings, the widgets' layouts).
