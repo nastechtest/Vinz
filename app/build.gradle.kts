@@ -249,7 +249,7 @@ dependencies {
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Renders the backgrounds to PNGs on the PC (BackdropRenderTest), with Robolectric's real graphics.
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("org.robolectric:robolectric:4.17")
 }
 
 // The tests use ONNX Runtime's desktop build (with its PC libraries); the Android one's classes would clash with it.
