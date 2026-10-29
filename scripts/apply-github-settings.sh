@@ -79,6 +79,7 @@ branch_ruleset=$(cat <<'JSON'
         "required_status_checks": [
           { "context": "Validate Gradle wrapper" },
           { "context": "Lint" },
+          { "context": "CI scripts and workflows" },
           { "context": "Unit tests and debug build" },
           { "context": "Analyze (java-kotlin)" }
         ]

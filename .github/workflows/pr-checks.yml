@@ -22,6 +22,9 @@ concurrency:
 env:
   APP_PACKAGE: com.vinz.music
   JAVA_VERSION: "17"
+  # Stamped into BuildConfig: an installed build can name the exact commit it came from.
+  VINZ_GIT_SHA: ${{ github.event.pull_request.head.sha }}
+  VINZ_BUILD_CHANNEL: pr
 
 jobs:
   wrapper:
@@ -38,6 +41,35 @@ jobs:
       # wrapper is how a compromised PR would otherwise execute arbitrary code on the runner.
       - name: Validate wrapper checksum
         uses: gradle/actions/wrapper-validation@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+
+  ci-scripts:
+    name: CI scripts and workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # Pinned and checksum-verified: a linter fetched by tag is the same supply-chain risk as an
+      # action referenced by tag.
+      - name: Lint the workflow files
+        run: |
+          set -euo pipefail
+          version=1.7.12
+          expected=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          curl -sSLo /tmp/actionlint.tgz \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
+          echo "${expected}  /tmp/actionlint.tgz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tgz -C /tmp actionlint
+          /tmp/actionlint -no-color
+
+      - name: Shellcheck the CI scripts
+        run: shellcheck -x scripts/*.sh scripts/ci/*.sh scripts/tests/*.sh
+
+      - name: Test the CI scripts
+        run: ./scripts/tests/ci-scripts-test.sh
 
   lint:
     name: Lint

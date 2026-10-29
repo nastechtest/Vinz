@@ -36,6 +36,7 @@ object CrashLog {
         val stack = StringWriter().also { error.printStackTrace(PrintWriter(it)) }.toString()
         val text = buildString {
             append("Vinz ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.APPLICATION_ID}\n")
+            append("Build: ${BuildConfig.BUILD_CHANNEL} ${BuildConfig.GIT_SHA}\n")
             append("Phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
             append("When: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}\n")
             append("Thread: ${thread.name}\n\n")
@@ -81,6 +82,7 @@ object CrashLog {
             else null
             val text = buildString {
                 append("Vinz ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.APPLICATION_ID}\n")
+            append("Build: ${BuildConfig.BUILD_CHANNEL} ${BuildConfig.GIT_SHA}\n")
                 append("Phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
                 append("When: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(e.timestamp))}\n")
                 append("Vinz ended: $why\n")

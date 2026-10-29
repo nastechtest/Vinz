@@ -26,6 +26,14 @@ val appVersion = Properties().apply {
 val ciVersionName: String? = providers.gradleProperty("ciVersionName").orNull
 val ciVersionCode: Int? = providers.gradleProperty("ciVersionCode").orNull?.toInt()
 
+// Which commit and which channel produced this APK. CI sets these; a local build says "local". Filtered
+// to hex/dash so nothing can escape the generated string literal. Crash reports and the in-app update
+// screen can then name the exact commit without asking whoever is holding the phone.
+val gitSha = (providers.environmentVariable("VINZ_GIT_SHA").orNull ?: "local")
+    .filter { it.isLetterOrDigit() }.ifEmpty { "local" }
+val buildChannel = (providers.environmentVariable("VINZ_BUILD_CHANNEL").orNull ?: "local")
+    .filter { it.isLetterOrDigit() || it == '-' }.ifEmpty { "local" }
+
 // Room writes each database version's schema here (checked in); MigrationTest builds old versions from them.
 room {
     schemaDirectory("$projectDir/schemas")
@@ -41,6 +49,8 @@ android {
         targetSdk = 36
         versionCode = ciVersionCode ?: appVersion.getProperty("versionCode").toInt()
         versionName = ciVersionName ?: appVersion.getProperty("versionName")
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+        buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
         vectorDrawables { useSupportLibrary = true }
         // The name under the launcher icon; a side-by-side build (below) is called "Vinz Dev" so it can't be mistaken for Vinz.
         manifestPlaceholders["appLabel"] = "@string/app_name"

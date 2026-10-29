@@ -31,6 +31,8 @@ concurrency:
 env:
   APP_PACKAGE: com.vinz.music
   JAVA_VERSION: "17"
+  VINZ_GIT_SHA: ${{ inputs.commit_sha }}
+  VINZ_BUILD_CHANNEL: stable
 
 jobs:
   validate:

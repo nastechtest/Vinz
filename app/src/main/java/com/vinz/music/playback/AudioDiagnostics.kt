@@ -159,6 +159,7 @@ object AudioDiagnostics {
         return buildString {
             append("Phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
             append("Vinz: ${com.vinz.music.BuildConfig.VERSION_NAME} (${com.vinz.music.BuildConfig.VERSION_CODE}) ${com.vinz.music.BuildConfig.APPLICATION_ID}\n")
+            append("Build: ${com.vinz.music.BuildConfig.BUILD_CHANNEL} ${com.vinz.music.BuildConfig.GIT_SHA}\n")
             append("Settings: quality ${s.audioQuality}, lossless ${s.lossless}, normalize ${s.normalize}, ")
             append("skip silence ${s.skipSilence}, crossfade ${s.mix} (${s.mixSeconds} s), spatial ${s.spatial} (${(s.spatialAmount * 100).toInt()}%), ")
             append("EQ ${s.eq.enabled}, Sing ${c.sing.on.value}, DJ ${c.dj.onNow}, ")
