@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.time.Instant
@@ -33,6 +34,19 @@ import kotlin.math.abs
 class LookTest {
     private val context get() = org.robolectric.RuntimeEnvironment.getApplication()
     private fun repo() = SettingsRepository(context, CoroutineScope(SupervisorJob() + Dispatchers.Default))
+
+    /**
+     * The settings live in one file (`vinz_settings`) in the app's own directory, so every test in this class — and in
+     * the other test classes, `LookStoreTest` among them — shares them. Start each one from Vinz's defaults, the way
+     * `LookStoreTest` puts the Look back, so a Look one test applies (its Neon, say) is never part of the next one's.
+     */
+    @Before
+    fun startFromVinzDefaults(): Unit = runBlocking {
+        val r = repo()
+        r.editNow { it.clear() }
+        // And wait for it: `lookValues` starts from the settings as they read when the repository was made.
+        withTimeout(5_000) { r.lookValues.first { it.isEmpty() } }
+    }
 
     @Test
     fun everySettingIsInALookOrSaidNotToBe() {
