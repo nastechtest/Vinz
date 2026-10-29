@@ -185,6 +185,9 @@ jobs:
       - name: Move the rolling tag and refresh the prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job has no working copy (it only downloads the APK), so `gh` cannot discover the repo from a
+          # git remote. Point it at the repository explicitly, here and with -R below.
+          GH_REPO: ${{ github.repository }}
           APK_NAME: ${{ needs.build.outputs.apk-name }}
           LABEL: ${{ needs.build.outputs.label }}
           VERSION_NAME: ${{ needs.build.outputs.version-name }}
@@ -232,13 +235,16 @@ jobs:
 
           # Recreated rather than edited so the release always targets the newest commit (a moved tag does
           # not update a release's target on its own). --cleanup-tag=false keeps the tag we just moved.
-          gh release delete main-latest --yes --cleanup-tag=false >/dev/null 2>&1 || true
+          # -R on each call: no working copy here, so gh must not go looking for one.
+          # --verify-tag is gone: the tag was created or moved by the API three lines above and its result was
+          # already checked, so there is nothing left to verify -- and it is the flag that reaches for git.
+          gh release delete main-latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag=false >/dev/null 2>&1 || true
           gh release create main-latest \
             "$apk#${APK_NAME}" \
             "dist/${APK_NAME}.sha256#${APK_NAME}.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Main — Latest (development)" \
             --notes-file release-notes.md \
-            --prerelease \
-            --verify-tag
+            --prerelease
 
           echo "::notice::Latest development build: ${LABEL} (${GITHUB_SHA})"
