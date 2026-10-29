@@ -141,26 +141,53 @@ A passing offline CI run does not necessarily mean every live integration test h
 
 ⚙️ Continuous integration
 
-Pull requests and pushes to the "main" branch run the project's Android build and unit-test workflow.
+Three pipelines cover the three kinds of build. Full details, including recovery steps, are in the
+[release guide](docs/RELEASING.md).
 
-The purpose of these checks is to catch compilation and test failures before changes are merged.
+Event| Automation
+Pull request opened or updated| Android Lint, the deterministic unit tests, a debug APK, and an uploaded test build
+Push to "main"| The same checks, then a development build numbered from the commit count
+Manual "Stable release" run| Validation, a human approval, then a signed release and an immutable tag
 
-Event| Expected automation
-Pull request| Run the configured Android build and unit-test workflow
-Push to "main"| Run the configured Android build and unit-test workflow
-Push of a "v*" tag| Trigger the configured signed APK release workflow
+The checks that gate a merge are "Validate Gradle wrapper", "Lint", "Unit tests and debug build", and
+"Analyze (java-kotlin)".
 
-The repository's actual GitHub Actions workflow files determine the precise jobs, permissions, triggers, and required checks.
+Unit tests in CI
+
+The 20 test classes whose names contain "Live" or "ApiTest" call real YouTube Music and lyric endpoints.
+They are excluded from CI because they fail whenever a remote service is slow or changes its output.
+The remaining 91 test classes run on the JVM and do gate a merge.
+
+Testing a pull request on a phone
+
+Every successful pull request build attaches an installable APK named "Vinz-PR-<number>-build-<n>.apk" to
+the workflow run, linked from the job summary. It is a test build signed with the debug key, so it cannot
+be installed over an official Vinz:
+
+```bash
+gh run download <run-id> -n Vinz-PR-42-build-3 -R nastechtest/Vinz
+adb install -r Vinz-PR-42-build-3.apk
+```
+
+Development builds
+
+Every push to "main" produces "Vinz-main-<version>-build-<n>.apk", where "n" is the number of commits on
+"main", and refreshes the "Main — Latest" prerelease. These are development builds: they are not tested
+beyond CI and are not stable releases.
 
 📦 Releases and APK signing
 
-Vinz uses a release workflow triggered by version tags matching "v*".
+Stable releases are never published automatically. A maintainer starts the "Stable release" workflow with
+a version and an approved commit on the "stable" branch; the workflow verifies that the commit is on
+"stable", that "version.properties" agrees with the requested version, that the version has not been
+released, and that the commit passed CI — and then waits for a reviewer to approve the protected
+"stable-production" environment.
 
-For example, a future release tag could follow this format:
+Version source of truth
 
-v1.0.0
-
-The example is a versioning illustration, not a claim that this release exists.
+[version.properties](version.properties) holds "versionName" and "versionCode". A release is prepared by a
+pull request that bumps both; the workflow refuses to publish if the file and the requested version
+disagree, and if "versionCode" does not increase.
 
 Release signing requirements
 
@@ -172,6 +199,9 @@ Secret| Purpose
 "ANDROID_KEY_ALIAS"| Alias identifying the signing key
 "ANDROID_KEY_PASSWORD"| Password for the signing key
 
+The four secrets are only ever read by the "stable-release" workflow, after the approval gate. Pull request
+and main workflows never receive them.
+
 Security requirements
 
 - Keep keystore files and passwords out of Git.
@@ -181,13 +211,16 @@ Security requirements
 - Never distribute a debug-signed APK as a production release.
 - Verify the release artifact and its signature before publishing it.
 
-The release workflow intentionally fails if its required signing secrets are absent. This prevents an incomplete signing configuration from silently producing an incorrectly signed production artifact.
+The release workflow intentionally fails if its required signing secrets are absent, and it rejects an APK
+signed with the Android debug key. This prevents an incomplete signing configuration from silently
+producing an incorrectly signed production artifact.
 
 Obtaining a release
 
 Visit the repository's "Releases page" (https://github.com/nastechtest/Vinz/releases) to check whether a published APK is available.
 
-If no release is listed, build the application locally using the instructions above.
+For a build to try on your own phone, download the "Main — Latest" prerelease or the artifact of any recent
+run. If no release is listed, build the application locally using the instructions above.
 
 🏗️ Development and contribution
 

@@ -39,10 +39,23 @@ If you change a screen background, run `BackdropRenderTest` and look at the cont
 
 ## Pull requests
 
+Open pull requests against `main`. CI runs Android Lint, the deterministic unit tests and a debug build on
+every push, so you will know within a few minutes whether your change compiles and passes the tests.
+
+A successful build also produces an installable APK (`Vinz-PR-<number>-build-<n>.apk`), linked from the
+workflow summary. It is signed with the debug key, so uninstall Vinz before installing it, or build locally
+with `-PsideBySide` to install a copy alongside the real app.
+
 - Keep each pull request to one change, and say what it fixes or adds and how you checked it (which phone or emulator, light and dark mode for UI changes).
 - Match the surrounding code: Kotlin, Jetpack Compose, the same naming and comment style. Dependencies are wired by hand in `AppContainer.kt` (no Hilt/Dagger).
 - Don't enable R8/minification. NewPipe Extractor and Rhino rely on reflection.
 - New libraries need a license compatible with GPL-3.0, and an entry in `ui/screens/LicensesPage.kt` (plus its license text in `app/src/main/assets/licenses/` if it isn't one already there).
+
+## Releases
+
+Maintainers cut releases from the `stable` branch with a manually approved workflow. The full procedure,
+including the branch strategy, versioning rules and rollback steps, is in
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Ground rules
 

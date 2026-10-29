@@ -1,0 +1,240 @@
+# Pull request pipeline: every PR is compiled, linted, tested, and gets an installable APK the author and
+# maintainers can sideload before merging.
+#
+# Fork safety: this workflow needs no secrets and holds no write permissions, so a pull request from a fork
+# runs exactly the same steps as a branch in the repository and cannot touch the release keystore.
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main, stable]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Read-only by default; no job here writes to the repository, a package, or a release.
+permissions:
+  contents: read
+
+# A new push to the same PR supersedes the previous run.
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  APP_PACKAGE: com.vinz.music
+  JAVA_VERSION: "17"
+
+jobs:
+  wrapper:
+    name: Validate Gradle wrapper
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # Fails if gradle-wrapper.jar does not match the checksum for the declared Gradle version: a tampered
+      # wrapper is how a compromised PR would otherwise execute arbitrary code on the runner.
+      - name: Validate wrapper checksum
+        uses: gradle/actions/wrapper-validation@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+
+      # Vinz does not configure a Kotlin formatter (no ktlint/spotless plugin), so there is no formatting
+      # task to run; Android Lint is the static check the build system actually provides.
+      - name: Run Android Lint
+        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lint-report-pr-${{ github.event.pull_request.number }}
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.txt
+            app/build/reports/lint-results-debug.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  build:
+    name: Unit tests and debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          # Never write to the cache from a fork: a poisoned cache entry would be restored by later runs.
+          cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+
+      - name: Compute the build identifier
+        id: build-id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          build_number=$(./scripts/ci/pr-build-number.sh "$PR_NUMBER")
+          label=$(./scripts/ci/version.sh pr "$PR_NUMBER" "$build_number")
+          base=$(./scripts/ci/version.sh name)
+          # Stamped into Settings -> About so an installed test build identifies itself.
+          stamped="${base}-pr${PR_NUMBER}.${build_number}"
+          {
+            echo "number=$build_number"
+            echo "label=$label"
+            echo "version-name=$stamped"
+            echo "apk-name=Vinz-PR-${PR_NUMBER}-build-${build_number}.apk"
+          } >> "$GITHUB_OUTPUT"
+          echo "PR build: $label (versionName $stamped)"
+
+      - name: Run deterministic unit tests
+        run: ./scripts/ci/run-unit-tests.sh
+
+      # :baselineprofile is a com.android.test module: assembling it proves the benchmark journeys still
+      # compile against the app. Running them needs a device, which hosted PR runners do not have.
+      - name: Assemble debug APK and baseline profile module
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug :baselineprofile:assemble \
+            -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            --no-daemon --stacktrace
+
+      - name: Verify the APK
+        env:
+          ALLOW_DEBUG_SIGNATURE: "true"
+          EXPECTED_VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+        run: ./scripts/ci/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk "$APP_PACKAGE"
+
+      - name: Stage the test build
+        env:
+          APK_NAME: ${{ steps.build-id.outputs.apk-name }}
+          LABEL: ${{ steps.build-id.outputs.label }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/${APK_NAME}"
+          sha256sum "dist/${APK_NAME}" | awk '{print $1}' > "dist/${APK_NAME}.sha256"
+          {
+            echo "TEST BUILD - NOT AN OFFICIAL RELEASE"
+            echo
+            echo "build:    ${LABEL}"
+            echo "commit:   ${SHA}"
+            echo "branch:   ${SOURCE_BRANCH}"
+            echo "package:  ${APP_PACKAGE}"
+            echo "sha256:   $(cat "dist/${APK_NAME}.sha256")"
+            echo
+            echo "Install: adb install -r ${APK_NAME}"
+            echo "This build uses the Android debug key and cannot update an official Vinz install:"
+            echo "uninstall Vinz (or build with -PsideBySide) before installing it."
+          } > dist/BUILD-INFO.txt
+          cat dist/BUILD-INFO.txt
+
+      - name: Upload the test APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.build-id.outputs.apk-name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: ${{ vars.ARTIFACT_RETENTION_DAYS || 14 }}
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unit-test-report-pr-${{ github.event.pull_request.number }}
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Write the job summary
+        if: always()
+        env:
+          APK_NAME: ${{ steps.build-id.outputs.apk-name }}
+          LABEL: ${{ steps.build-id.outputs.label }}
+          VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "$STATUS" in
+            success) verdict="PASSED" ;;
+            *) verdict="FAILED ($STATUS)" ;;
+          esac
+          {
+            echo "## TEST BUILD - NOT AN OFFICIAL RELEASE"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Result | **${verdict}** |"
+            echo "| Build | \`${LABEL}\` |"
+            echo "| versionName stamped | \`${VERSION_NAME}\` |"
+            echo "| Pull request | #${PR_NUMBER} from \`${SOURCE_BRANCH}\` |"
+            echo "| Head commit | \`${HEAD_SHA}\` |"
+            echo "| Base commit | \`${BASE_SHA}\` |"
+            echo "| Build number | \`${LABEL##*-}\` |"
+            echo
+            if [[ "$STATUS" == success ]]; then
+              echo "### Download and install on a phone"
+              echo
+              echo "APK: [\`${APK_NAME}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}#artifacts)"
+              echo
+              echo '```bash'
+              echo "# or, with the GitHub CLI:"
+              echo "gh run download ${RUN_ID} -n ${APK_NAME} -R ${GITHUB_REPOSITORY}"
+              echo "adb install -r ${APK_NAME}"
+              echo '```'
+              echo
+              echo "Debug-signed, so it cannot be installed over an official Vinz. Uninstall Vinz first,"
+              echo "or build a side-by-side copy with \`-PsideBySide\`."
+              echo
+              echo "Find it in the app under Settings -> About as \`${VERSION_NAME}\`."
+            else
+              echo "The test APK was not published because the build did not succeed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
