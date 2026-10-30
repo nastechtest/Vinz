@@ -26,8 +26,6 @@ env:
   # Stamped into BuildConfig: an installed build can name the exact commit it came from.
   VINZ_GIT_SHA: ${{ github.event.pull_request.head.sha }}
   VINZ_BUILD_CHANNEL: pr
-  # Which PR this is, so the build reads its own update feed (/releases/tags/pr-<n>) and no other PR's.
-  PR_NUMBER: ${{ github.event.pull_request.number }}
 
 jobs:
   wrapper:
@@ -181,6 +179,7 @@ jobs:
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
             -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
             -Pchannel=pr \
+            -PprNumber="${{ github.event.pull_request.number }}" \
             --no-daemon --stacktrace
 
       - name: Verify the APK
