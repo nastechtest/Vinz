@@ -1213,6 +1213,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val titleSize = stringPreferencesKey("title_size")
         val cardSize = stringPreferencesKey("card_size")
         val reduceMotion = booleanPreferencesKey("reduce_motion")
+        /** The first-run splash (1.8) has played. A fact about this install, so it is not in [AppSettings]. */
+        val splashSeen = booleanPreferencesKey("splash_seen")
         val navStyle = stringPreferencesKey("nav_style")
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
@@ -1733,6 +1735,13 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         scope, SharingStarted.Eagerly, read(raw).effective()
     )
 
+    /**
+     * Whether the first-run splash (1.8) has already played on this install. Deliberately outside [AppSettings]: it is
+     * not a preference, and AppSettings is already at the JVM's limit of a method's arguments.
+     */
+    val splashSeen: StateFlow<Boolean> = context.dataStore.data.map { it[K.splashSeen] ?: false }
+        .stateIn(scope, SharingStarted.Eagerly, raw[K.splashSeen] ?: false)
+
     val current: AppSettings get() = flow.value
 
     /** The settings as the listener set them (Settings shows these: Performance mode doesn't change a switch). */
@@ -1995,6 +2004,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setTitleSize(v: TitleSize) = edit { it[K.titleSize] = v.name }
     fun setCardSize(v: CardSize) = edit { it[K.cardSize] = v.name }
     fun setReduceMotion(v: Boolean) = edit { it[K.reduceMotion] = v }
+    /** Played: the splash must not come back on this install (clearing Vinz's data brings it back with the rest). */
+    fun setSplashSeen() = edit { it[K.splashSeen] = true }
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
