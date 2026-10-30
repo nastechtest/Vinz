@@ -76,6 +76,12 @@ expect_eq "patch on a four-part version" "1.7.7.2" "$("$ci/version.sh" bump-name
 expect_eq "minor on a four-part version" "1.8.0.0" "$("$ci/version.sh" bump-name minor)"
 expect_eq "major on a four-part version" "2.0.0.0" "$("$ci/version.sh" bump-name major)"
 
+# VinzM and VinzP are separate packages, so their versionCodes only have to rise within their own app; a band
+# 1000 above the stable code keeps that true as the stable number moves.
+expect_eq "channel code sits in the stable band"     "47015" "$("$ci/version.sh" build-code 15)"
+expect_eq "channel code rises with the build number" "47016" "$("$ci/version.sh" build-code 16)"
+expect_fail "rejects a non-numeric channel build" "$ci/version.sh" build-code abc
+
 expect_fail "rejects a non-numeric PR number" "$ci/version.sh" pr abc 1
 expect_fail "rejects a non-numeric build number" "$ci/version.sh" pr 1 abc
 expect_fail "rejects an unknown subcommand" "$ci/version.sh" nonsense

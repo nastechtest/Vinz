@@ -21,7 +21,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_PACKAGE: com.vinz.music
+  # VinzM: its own package id, so it installs beside Vinz (stable) and VinzP (a PR build) instead of over them.
+  APP_PACKAGE: com.vinz.music.main
   JAVA_VERSION: "17"
   VINZ_GIT_SHA: ${{ github.sha }}
   VINZ_BUILD_CHANNEL: main
@@ -36,6 +37,7 @@ jobs:
     outputs:
       label: ${{ steps.build-id.outputs.label }}
       version-name: ${{ steps.build-id.outputs.version-name }}
+      version-code: ${{ steps.build-id.outputs.version-code }}
       apk-name: ${{ steps.build-id.outputs.apk-name }}
     steps:
       # fetch-depth 0: the build number is the commit count on main, which a shallow clone cannot report.
@@ -67,14 +69,18 @@ jobs:
           build_number=${label##*.}
           short_sha=$(git rev-parse --short=7 HEAD)
           stamped="${base}-main.${build_number}"
+          # Android only installs an APK whose versionCode is higher than the installed one, and the in-app
+          # updater refuses anything else -- so each build of VinzM needs a rising code of its own.
+          version_code=$(./scripts/ci/version.sh build-code "$build_number")
           {
             echo "label=$label"
             echo "number=$build_number"
             echo "version-name=$stamped"
+            echo "version-code=$version_code"
             echo "short-sha=$short_sha"
             echo "apk-name=Vinz-main-${base}-build-${build_number}.apk"
           } >> "$GITHUB_OUTPUT"
-          echo "Development build: $label ($short_sha)"
+          echo "Development build: $label ($short_sha, versionCode $version_code)"
 
       - name: Run deterministic unit tests
         run: ./scripts/ci/run-unit-tests.sh
@@ -87,12 +93,15 @@ jobs:
           set -euo pipefail
           ./gradlew :app:assembleDebug :baselineprofile:assemble \
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
+            -Pchannel=main \
             --no-daemon --stacktrace
 
       - name: Verify the APK
         env:
           ALLOW_DEBUG_SIGNATURE: "true"
           EXPECTED_VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          EXPECTED_VERSION_CODE: ${{ steps.build-id.outputs.version-code }}
         run: ./scripts/ci/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk "$APP_PACKAGE"
 
       - name: Stage the development build
@@ -229,8 +238,10 @@ jobs:
           adb install -r ${APK_NAME}
           \`\`\`
 
-          Debug-signed: uninstall an official Vinz first, since Android will not apply an update signed with
-          a different key. Settings -> About shows \`${VERSION_NAME}\`.
+          This is **VinzM** (\`com.vinz.music.main\`), a separate app from Vinz and VinzP: it installs beside
+          them rather than over them. It is debug-signed, and it updates itself from this release, so a later
+          build of \`main\` reaches a phone that already has it (Settings -> About -> Check for updates).
+          Settings -> About shows \`${VERSION_NAME}\`.
           EOF
 
           # Recreated rather than edited so the release always targets the newest commit (a moved tag does
