@@ -71,7 +71,7 @@ expect_eq "an older tag without a record cannot hide a recorded one" "91" "$("$c
 # Four-part versions keep their shape.
 printf 'versionName=1.7.7.1\nversionCode=47\n' > version.properties
 git commit -qam "four-part version"
-git tag -d $(git tag -l "v*") >/dev/null 2>&1 || true
+while IFS= read -r old_tag; do git tag -d "$old_tag" >/dev/null 2>&1 || true; done < <(git tag -l 'v*')
 expect_eq "patch on a four-part version" "1.7.7.2" "$("$ci/version.sh" bump-name patch)"
 expect_eq "minor on a four-part version" "1.8.0.0" "$("$ci/version.sh" bump-name minor)"
 expect_eq "major on a four-part version" "2.0.0.0" "$("$ci/version.sh" bump-name major)"

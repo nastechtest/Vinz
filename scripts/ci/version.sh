@@ -124,9 +124,9 @@ cmd_bump_name() {
   IFS=. read -ra parts <<< "$base"
   local last=$(( ${#parts[@]} - 1 ))
   case "$kind" in
-    patch) parts[$last]=$(( parts[$last] + 1 )) ;;
-    minor) parts[1]=$(( parts[1] + 1 )); for ((i=2; i<=last; i++)); do parts[$i]=0; done ;;
-    major) parts[0]=$(( parts[0] + 1 )); for ((i=1; i<=last; i++)); do parts[$i]=0; done ;;
+    patch) parts[last]=$(( parts[last] + 1 )) ;;
+    minor) parts[1]=$(( parts[1] + 1 )); for ((i=2; i<=last; i++)); do parts[i]=0; done ;;
+    major) parts[0]=$(( parts[0] + 1 )); for ((i=1; i<=last; i++)); do parts[i]=0; done ;;
   esac
   local out
   out=$(IFS=.; printf '%s' "${parts[*]}")
