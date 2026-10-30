@@ -20,11 +20,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_PACKAGE: com.vinz.music
+  # VinzP: its own package id, so it installs beside Vinz (stable) and VinzM (main) instead of over them.
+  APP_PACKAGE: com.vinz.music.pr
   JAVA_VERSION: "17"
   # Stamped into BuildConfig: an installed build can name the exact commit it came from.
   VINZ_GIT_SHA: ${{ github.event.pull_request.head.sha }}
   VINZ_BUILD_CHANNEL: pr
+  # Which PR this is, so the build reads its own update feed (/releases/tags/pr-<n>) and no other PR's.
+  PR_NUMBER: ${{ github.event.pull_request.number }}
 
 jobs:
   wrapper:
@@ -116,6 +119,11 @@ jobs:
     name: Unit tests and debug build
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      label: ${{ steps.build-id.outputs.label }}
+      version-name: ${{ steps.build-id.outputs.version-name }}
+      version-code: ${{ steps.build-id.outputs.version-code }}
+      apk-name: ${{ steps.build-id.outputs.apk-name }}
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -149,13 +157,17 @@ jobs:
           base=$(./scripts/ci/version.sh name)
           # Stamped into Settings -> About so an installed test build identifies itself.
           stamped="${base}-pr${PR_NUMBER}.${build_number}"
+          # Android only installs an APK whose versionCode is higher than the installed one, and the in-app
+          # updater refuses anything else -- so each build of VinzP needs a rising code of its own.
+          version_code=$(./scripts/ci/version.sh build-code "$build_number")
           {
             echo "number=$build_number"
             echo "label=$label"
             echo "version-name=$stamped"
+            echo "version-code=$version_code"
             echo "apk-name=Vinz-PR-${PR_NUMBER}-build-${build_number}.apk"
           } >> "$GITHUB_OUTPUT"
-          echo "PR build: $label (versionName $stamped)"
+          echo "PR build: $label (versionName $stamped, versionCode $version_code)"
 
       - name: Run deterministic unit tests
         run: ./scripts/ci/run-unit-tests.sh
@@ -167,12 +179,15 @@ jobs:
           set -euo pipefail
           ./gradlew :app:assembleDebug :baselineprofile:assemble \
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
+            -Pchannel=pr \
             --no-daemon --stacktrace
 
       - name: Verify the APK
         env:
           ALLOW_DEBUG_SIGNATURE: "true"
           EXPECTED_VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          EXPECTED_VERSION_CODE: ${{ steps.build-id.outputs.version-code }}
         run: ./scripts/ci/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk "$APP_PACKAGE"
 
       - name: Stage the test build
@@ -196,8 +211,8 @@ jobs:
             echo "sha256:   $(cat "dist/${APK_NAME}.sha256")"
             echo
             echo "Install: adb install -r ${APK_NAME}"
-            echo "This build uses the Android debug key and cannot update an official Vinz install:"
-            echo "uninstall Vinz (or build with -PsideBySide) before installing it."
+            echo "This is VinzP (com.vinz.music.pr): it installs beside Vinz and VinzM, uses the Android"
+            echo "debug key, and updates itself from the rolling release pr-${PR_NUMBER}."
           } > dist/BUILD-INFO.txt
           cat dist/BUILD-INFO.txt
 
@@ -262,11 +277,98 @@ jobs:
               echo "adb install -r ${APK_NAME}"
               echo '```'
               echo
-              echo "Debug-signed, so it cannot be installed over an official Vinz. Uninstall Vinz first,"
-              echo "or build a side-by-side copy with \`-PsideBySide\`."
+              echo "This is **VinzP** (\`com.vinz.music.pr\`), a separate app from Vinz and VinzM: it installs"
+              echo "beside them and updates itself from the rolling release \`pr-${PR_NUMBER}\`, so the next push"
+              echo "to this PR reaches a phone that has it installed (Settings -> About -> Check for updates)."
               echo
               echo "Find it in the app under Settings -> About as \`${VERSION_NAME}\`."
             else
               echo "The test APK was not published because the build did not succeed."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # VinzP updates itself from this release. An Actions artifact is not a feed: downloading one needs the GitHub
+  # CLI and it expires, neither of which an app on a phone can do. The tag is per PR, so two open PRs installed at
+  # once can never be offered each other's build -- VinzP reads /releases/tags/pr-<n> and nothing else.
+  publish:
+    name: Publish VinzP
+    needs: build
+    # A fork's build is not ours to publish, and a fork must never be handed a write token.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Write access is confined to this job; the build above runs with contents: read only.
+    permissions:
+      contents: write
+    steps:
+      - name: Download the test APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.build.outputs.apk-name }}
+          path: dist
+
+      - name: Move this PR's rolling tag and refresh its prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No working copy in this job (it only downloads the APK), so gh cannot find the repo from a remote.
+          GH_REPO: ${{ github.repository }}
+          APK_NAME: ${{ needs.build.outputs.apk-name }}
+          LABEL: ${{ needs.build.outputs.label }}
+          VERSION_NAME: ${{ needs.build.outputs.version-name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          apk="dist/${APK_NAME}"
+          tag="pr-${PR_NUMBER}"
+
+          # Mutable on purpose, like main-latest: a pointer at the newest build of this PR. It never matches
+          # "v*", so it cannot collide with a version tag, and no version tag is ever moved.
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" \
+              -f sha="$HEAD_SHA" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${tag}" -f sha="$HEAD_SHA" >/dev/null
+          fi
+          echo "${tag} -> $HEAD_SHA"
+
+          checksum=$(cat "dist/${APK_NAME}.sha256")
+          cat > release-notes.md <<EOF
+          **PULL REQUEST BUILD — NOT A STABLE RELEASE**
+
+          VinzP, built from this pull request. It installs beside Vinz and VinzM, and updates itself from this
+          release, so a new push to the PR reaches a phone that already has it.
+
+          | | |
+          | --- | --- |
+          | Build | \`${LABEL}\` |
+          | versionName | \`${VERSION_NAME}\` |
+          | PR | #${PR_NUMBER} |
+          | Commit | \`${HEAD_SHA}\` |
+          | APK | \`${APK_NAME}\` |
+          | SHA-256 | \`${checksum}\` |
+          | Built | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
+
+          ### Install
+
+          \`\`\`bash
+          adb install -r ${APK_NAME}
+          \`\`\`
+
+          Debug-signed and published under its own package id, so it coexists with an official Vinz instead of
+          replacing it. Settings -> About shows \`${VERSION_NAME}\`.
+          EOF
+
+          # Recreated rather than edited so the release always targets the newest commit (a moved tag does not
+          # update a release's target on its own). --cleanup-tag=false keeps the tag we just moved.
+          gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag=false >/dev/null 2>&1 || true
+          gh release create "$tag" \
+            "$apk#${APK_NAME}" \
+            "dist/${APK_NAME}.sha256#${APK_NAME}.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "VinzP — PR #${PR_NUMBER} (latest build)" \
+            --notes-file release-notes.md \
+            --prerelease
+
+          echo "::notice::Latest VinzP build for PR #${PR_NUMBER}: ${LABEL} (${HEAD_SHA})"

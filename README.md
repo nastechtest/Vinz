@@ -265,11 +265,26 @@ The 20 test classes whose names contain `Live` or `ApiTest` call real YouTube Mu
 excluded from CI because they fail whenever a remote service is slow or changes its output. The remaining 91 test
 classes run on the JVM and do gate a merge.
 
-### Testing a pull request on a phone
+### Three apps, one per channel
 
-Every successful pull request build attaches an installable APK named `Vinz-PR-<number>-build-<n>.apk` to the
-workflow run, linked from the job summary. It is signed with the debug key, so it cannot be installed over an
-official Vinz:
+Vinz builds as three separate apps that install side by side, each updating itself from its own channel — so a pull
+request, `main` and a stable release can all be on the same phone at once:
+
+| App | Package | Built from | Updates from |
+| --- | --- | --- | --- |
+| **Vinz** | `com.vinz.music` | a stable release | `/releases/latest` |
+| **VinzM** | `com.vinz.music.main` | every push to `main` | the rolling `main-latest` prerelease |
+| **VinzP** | `com.vinz.music.pr` | every push to a pull request | that PR's rolling `pr-<number>` prerelease |
+
+Each app offers its own updates in Settings → About and in the banner on Home, and never offers another channel's
+APK: a VinzP built from PR #16 only ever sees PR #16's builds, and Vinz only ever sees stable releases. They do not
+share data — three installs mean three libraries.
+
+`-Pchannel=pr|main|stable` decides which app a build is; the workflows pass it, and a local build without it is a
+plain Vinz. Each channel build is stamped with its own rising `versionCode` (the stable code × 1000 plus the build
+number), because Android refuses an APK whose code does not increase.
+
+A pull request build also attaches the same APK to its workflow run:
 
 ```bash
 gh run download <run-id> -n Vinz-PR-42-build-3 -R nastechtest/Vinz
@@ -278,9 +293,9 @@ adb install -r Vinz-PR-42-build-3.apk
 
 ### Development builds
 
-Every push to `main` produces `Vinz-main-<version>-build-<n>.apk`, where `n` is the number of commits on `main`, and
-refreshes the *Main — Latest* prerelease. These are development builds: they are not tested beyond CI and are not
-stable releases.
+Every push to `main` produces `Vinz-main-<version>-build-<n>.apk`, where `n` is the number of commits on `main`,
+and refreshes the *Main — Latest* prerelease that VinzM updates from. These are development builds: they are not
+tested beyond CI and are not stable releases.
 
 ---
 

@@ -216,7 +216,7 @@ jobs:
           # Stamped rather than written into version.properties: the same tree produces either channel,
           # and nothing has to be committed to get the right version into Settings -> About.
           ./gradlew :app:assembleRelease --no-daemon --stacktrace \
-            -PciVersionName="$VERSION" -PciVersionCode="$VERSION_CODE"
+            -PciVersionName="$VERSION" -PciVersionCode="$VERSION_CODE" -Pchannel=stable
 
       - name: Verify the APK identity and signature
         env:

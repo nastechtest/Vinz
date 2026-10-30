@@ -34,6 +34,27 @@ val gitSha = (providers.environmentVariable("VINZ_GIT_SHA").orNull ?: "local")
 val buildChannel = (providers.environmentVariable("VINZ_BUILD_CHANNEL").orNull ?: "local")
     .filter { it.isLetterOrDigit() || it == '-' }.ifEmpty { "local" }
 
+// Which installed app this is. The three channels live side by side on one phone and each updates from its own
+// feed, so they need different package ids and launcher names: Vinz (stable), VinzM (main), VinzP (a pull
+// request's build). CI passes -Pchannel; a local build has no suffix and follows the stable feed, as before.
+val channel = (providers.gradleProperty("channel").orNull ?: buildChannel)
+    .filter { it.isLetterOrDigit() || it == '-' }.ifEmpty { "stable" }.lowercase()
+val appIdSuffix = when (channel) {
+    "main" -> ".main"
+    "pr" -> ".pr"
+    else -> ""
+}
+val appLabel = when (channel) {
+    "main" -> "VinzM"
+    "pr" -> "VinzP"
+    else -> null // "@string/app_name"
+}
+// The pull request a VinzP was built from: it updates from that PR's own rolling release, so two open PRs
+// installed at once never offer each other's code.
+val prNumber = (providers.environmentVariable("PR_NUMBER").orNull
+    ?: providers.gradleProperty("prNumber").orNull)
+    ?.filter(Char::isDigit)?.toIntOrNull() ?: 0
+
 // Room writes each database version's schema here (checked in); MigrationTest builds old versions from them.
 room {
     schemaDirectory("$projectDir/schemas")
@@ -50,10 +71,15 @@ android {
         versionCode = ciVersionCode ?: appVersion.getProperty("versionCode").toInt()
         versionName = ciVersionName ?: appVersion.getProperty("versionName")
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
-        buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
+        buildConfigField("String", "BUILD_CHANNEL", "\"$channel\"")
+        // Which feed this build updates itself from, and (VinzP only) which pull request it came from.
+        buildConfigField("String", "UPDATE_CHANNEL", "\"$channel\"")
+        buildConfigField("Int", "PR_NUMBER", prNumber.toString())
         vectorDrawables { useSupportLibrary = true }
-        // The name under the launcher icon; a side-by-side build (below) is called "Vinz Dev" so it can't be mistaken for Vinz.
-        manifestPlaceholders["appLabel"] = "@string/app_name"
+        // The name under the launcher icon. VinzM and VinzP say so in the launcher, because three copies of Vinz
+        // that all claim to be "Vinz" is exactly the confusion this is meant to avoid; a side-by-side build
+        // (below) is called "Vinz Dev" for the same reason.
+        manifestPlaceholders["appLabel"] = appLabel ?: "@string/app_name"
         // Only the side-by-side test copy can be profiled from adb (simpleperf / Perfetto), for chasing jank (1.7.4).
         manifestPlaceholders["profileable"] = "false"
         // Optional: `lastfm.apiKey=…` in local.properties lets genre detection ask Last.fm too.
@@ -80,6 +106,8 @@ android {
 
     buildTypes {
         debug {
+            // VinzM/VinzP: a separate package, so it installs beside Vinz instead of over it.
+            if (appIdSuffix.isNotEmpty()) applicationIdSuffix = appIdSuffix
             // `-PsideBySide`: a debug Vinz that installs next to the real one (for trying changes on your own phone), as
             // "Vinz Dev". `-PsideBySide=name` installs as com.vinz.music.name instead of .dev, beside an older dev copy.
             if (project.hasProperty("sideBySide")) {
@@ -88,6 +116,8 @@ android {
             }
         }
         release {
+            // VinzM/VinzP: a separate package, so it installs beside Vinz instead of over it.
+            if (appIdSuffix.isNotEmpty()) applicationIdSuffix = appIdSuffix
             // Kept unminified: NewPipeExtractor + Rhino rely on reflection.
             isMinifyEnabled = false
             // `-Pr8` (1.7.4 trial, not for releases yet): R8 optimizes Vinz's, Compose's and Kotlin's own code and keeps

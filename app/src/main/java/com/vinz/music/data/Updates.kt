@@ -59,8 +59,15 @@ private class SignatureChanged : Exception()
  * Settings → About), and can update
  * Vinz in place: the APK is downloaded inside the app and passed to Android's installer, which
  * asks the listener to confirm (Android never lets an app install silently the first time). Only
- * the public release info and file are fetched; nothing about the listener is sent. Pre-releases
- * are never offered, and Android itself refuses an APK that isn't signed like the installed Vinz.
+ * the public release info and file are fetched; nothing about the listener is sent. Android itself
+ * refuses an APK that isn't signed like the installed Vinz.
+ *
+ * Which release it reads depends on which app this is (BuildConfig.UPDATE_CHANNEL), because all three
+ * channels can be installed at once and each must update only itself:
+ *
+ *   Vinz  (stable)  /releases/latest             -- GitHub points this at stable releases only
+ *   VinzM (main)    /releases/tags/main-latest   -- main's rolling development prerelease
+ *   VinzP (pr)      /releases/tags/pr-<n>        -- the rolling prerelease of the PR this build came from
  */
 class UpdateChecker(private val context: Context, private val http: OkHttpClient, private val scope: CoroutineScope) {
     private val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
@@ -78,6 +85,22 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
         if (_available.value == null) scope.launch(Dispatchers.IO) { dir.deleteRecursively() }
     }
 
+    /**
+     * The release this build reads. Stable asks for "latest", which GitHub only ever points at a non-prerelease;
+     * VinzM and VinzP read their own rolling prerelease tag instead. A VinzP built from PR 16 therefore only ever
+     * sees PR 16's builds, and never offers another open PR's code to a phone that installed it.
+     */
+    private val releaseApi: String
+        get() = when (BuildConfig.UPDATE_CHANNEL) {
+            "main" -> "https://api.github.com/repos/$REPO/releases/tags/main-latest"
+            "pr" -> "https://api.github.com/repos/$REPO/releases/tags/pr-${BuildConfig.PR_NUMBER}"
+            else -> "https://api.github.com/repos/$REPO/releases/latest"
+        }
+
+    /** A VinzP built outside CI has no pull request, so there is no feed it could read. */
+    private val hasFeed: Boolean
+        get() = BuildConfig.UPDATE_CHANNEL != "pr" || BuildConfig.PR_NUMBER > 0
+
     private fun saved(): AppUpdate? {
         val v = prefs.getString("latest_version", null) ?: return null
         val url = prefs.getString("latest_url", null) ?: return null
@@ -86,7 +109,7 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
 
     /** The background check Home runs; does nothing if GitHub was asked in the last six hours. */
     fun check() {
-        if (checking || System.currentTimeMillis() - prefs.getLong("checked_at", 0) < 6 * 3_600_000L) return
+        if (!hasFeed || checking || System.currentTimeMillis() - prefs.getLong("checked_at", 0) < 6 * 3_600_000L) return
         checking = true
         scope.launch(Dispatchers.IO) {
             runCatching { fetch() }
@@ -99,13 +122,14 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
      * Home is offered again. Returns the newer version, null when Vinz is current, or throws.
      */
     suspend fun checkNow(): String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        if (!hasFeed) return@withContext null
         prefs.edit().remove("dismissed").apply()
         fetch()
         _available.value?.version
     }
 
     private fun fetch() {
-        val req = Request.Builder().url("https://api.github.com/repos/$REPO/releases/latest")
+        val req = Request.Builder().url(releaseApi)
             .header("Accept", "application/vnd.github+json").header("User-Agent", "Vinz/${BuildConfig.VERSION_NAME}").build()
         http.newCall(req).execute().use { r ->
             if (!r.isSuccessful) error("GitHub answered ${r.code}")
@@ -337,7 +361,12 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
     companion object {
         const val REPO = "nastechtest/Vinz"
 
-        /** "1.10.0" is newer than "1.9.2"; anything after a dash ("-beta") is ignored. */
+        /**
+         * Whether [candidate] is newer than [current]. "1.10.0" is newer than "1.9.2"; when the version part is
+         * the same, the build number after the dash decides, because VinzM and VinzP share their version part
+         * with the release they were cut from -- "1.7.7.1-main.15" against "1.7.7.1-main.16". Ignoring the
+         * suffix meant a development build could never see its own newer builds.
+         */
         fun isNewer(candidate: String, current: String): Boolean {
             fun parts(v: String) = v.substringBefore('-').split('.').map { it.filter(Char::isDigit).toIntOrNull() ?: 0 }
             val a = parts(candidate); val b = parts(current)
@@ -345,7 +374,8 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
                 val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
                 if (x != y) return x > y
             }
-            return false
+            fun build(v: String) = v.substringAfter('-', "").substringAfterLast('.').filter(Char::isDigit).toIntOrNull() ?: 0
+            return build(candidate) > build(current)
         }
     }
 }

@@ -13,6 +13,7 @@
 #   version.sh latest-stable-version   the version part of that tag (1.7.7), empty if none
 #   version.sh bump-name <kind>        next versionName for patch|minor|major
 #   version.sh bump-code               next versionCode (always higher than anything published)
+#   version.sh build-code <build>      versionCode for a channel build: VinzM's or VinzP's own counter
 #
 # Exit codes: 0 success, 1 usage/environment error.
 set -euo pipefail
@@ -162,6 +163,18 @@ cmd_bump_code() {
   printf '%s' $(( high + 1 ))
 }
 
+# versionCodes for the side-by-side channels. VinzM and VinzP are separate packages (com.vinz.music.main and
+# com.vinz.music.pr), so their codes only have to increase within their own app -- but they do have to increase,
+# or Android refuses the update and the in-app updater rejects the APK as "not newer". Multiplying the stable
+# code by 1000 leaves room for 1000 builds per release to bump it, and keeps a development build's code in a
+# band of its own instead of colliding with the stable numbering.
+cmd_build_code() {
+  [[ $# -eq 1 ]] || die "usage: version.sh build-code <build-number>"
+  local build=$1
+  [[ $build =~ ^[0-9]+$ ]] || die "build number must be numeric, got '$build'"
+  printf '%s' $(( $(cmd_code) * 1000 + build ))
+}
+
 sub=${1:-}
 shift || true
 case "$sub" in
@@ -176,6 +189,7 @@ case "$sub" in
   latest-stable-version) cmd_latest_stable_version ;;
   bump-name) cmd_bump_name "$@" ;;
   bump-code) cmd_bump_code ;;
+  build-code) cmd_build_code "$@" ;;
   ""|-h|--help|help) sed -nE 's/^# ?//p' "$0" | sed -n '1,20p' ;;
   *) die "unknown subcommand '$sub' (try: version.sh help)" ;;
 esac
