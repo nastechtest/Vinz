@@ -34,7 +34,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -66,6 +65,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.vinz.music.R
 import com.vinz.music.ui.theme.Haptics
@@ -110,14 +111,20 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
         onDispose { sound.stop() }
     }
 
-    // One frame loop for the whole experience: it carries the clock the scene reads and the ring the finger fills.
+    // One clock for the whole experience: it carries the timeline the scene reads and the ring the finger fills.
+    //
+    // A 16 ms timer, not withFrameNanos. This loop used to await the composition's frame clock, and on device it never
+    // resumed: the entrance sat at t = 0 -- which is pure black by design -- until a tap forced the clock to its resting
+    // frame. A timer cannot be starved that way, and a frame still invalidates drawing only, because the clock and the
+    // ring are read inside graphicsLayer and draw lambdas.
     LaunchedEffect(Unit) {
-        var last = withFrameNanos { it }
-        val start = last
+        val start = System.nanoTime()
+        var last = start
         var ticks = 0
-        while (true) {
-            val now = withFrameNanos { it }
-            // Clamped: a frame that arrives late (a stall, or the app coming back from the background) must not jump the
+        while (isActive) {
+            delay(16)
+            val now = System.nanoTime()
+            // Clamped: a tick that arrives late (a stall, or the app coming back from the background) must not jump the
             // ring a third of the way round under a finger that did nothing.
             val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
             last = now
