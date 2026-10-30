@@ -40,4 +40,14 @@
     <string name="widget_next">Next</string>
     <string name="widget_previous">Previous</string>
     <string name="widget_like">Like</string>
+    <!-- The first launch's entrance (1.8). Sentence case above the fold, capitals where the design asks for them. -->
+    <string name="intro_powered_by">POWERED BY</string>
+    <string name="intro_nastech">NASTECH RESEARCH</string>
+    <string name="intro_line_one">Your music. Your universe.</string>
+    <string name="intro_line_two">Every song is a star.</string>
+    <string name="intro_line_three">Hold the sky, and it is yours.</string>
+    <string name="intro_hold">HOLD TO CONTINUE</string>
+    <string name="intro_holding">KEEP HOLDING</string>
+    <string name="intro_almost">ALMOST</string>
+    <string name="intro_welcome">Welcome to Vinz</string>
 </resources>

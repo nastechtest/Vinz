@@ -789,10 +789,11 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                     com.vinz.music.ui.tour.TourOverlay(plan, onOpen = { r -> playerOpen = false; navigator.go(r) }, onDone = { tour = null })
                 }
 
-                // The first launch (1.8): the whole screen, once per install. Tapping it, or its own ending, hands the
-                // screen over; the flag is written then, so it can never play twice on the same install.
+                // The first launch (1.8): the whole screen, once per install - the planet, the sky, the name, and then
+                // the hold that ends it. Tapping the cinematic lands on the hold; the hold is what opens the app, and
+                // the flag is written when it does, so the entrance can never play twice on the same install.
                 if (!splashSeen) {
-                    com.vinz.music.ui.splash.VinzSplash(
+                    com.vinz.music.ui.intro.VinzIntro(
                         reduceMotion = settings.reduceMotion,
                         onDone = { c.settings.setSplashSeen() },
                     )
