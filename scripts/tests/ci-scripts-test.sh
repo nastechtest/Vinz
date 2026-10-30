@@ -48,6 +48,34 @@ git tag -a v2.3.9-rc.1 -m "prerelease"
 expect_eq "ignores prerelease tags" "v2.3.0" "$("$ci/version.sh" previous-stable-tag)"
 expect_eq "reads versionCode at a tag" "77" "$("$ci/version.sh" code-at v2.3.0)"
 
+# Bump rules: patch moves the last number, minor and major move their position and reset the rest.
+# version.properties is 2.3.4 and the newest stable tag is v2.3.0, so the file is the higher of the two.
+expect_eq "patch bumps the last number"      "2.3.5" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor resets everything after it" "2.4.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major resets everything after it" "3.0.0" "$("$ci/version.sh" bump-name major)"
+expect_eq "latest stable version"            "2.3.0" "$("$ci/version.sh" latest-stable-version)"
+expect_eq "versionCode is one above the file" "78"   "$("$ci/version.sh" bump-code)"
+expect_fail "rejects an unknown bump kind" "$ci/version.sh" bump-name sideways
+
+# A released tag records its versionCode, because the APK is stamped rather than committed: the file still
+# says 77, but the next release must not reuse 78.
+git tag -a v2.4.0 -m "Vinz 2.4.0" -m "versionCode: 90"
+expect_eq "versionCode continues past the recorded one" "91" "$("$ci/version.sh" bump-code)"
+expect_eq "the tag is now the highest version"        "2.4.1" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor from a released tag"                 "2.5.0" "$("$ci/version.sh" bump-name minor)"
+
+# A tag made before versionCode was recorded falls back to the file at that tag.
+git tag -a v2.6.0 -m "legacy release"
+expect_eq "an older tag without a record cannot hide a recorded one" "91" "$("$ci/version.sh" bump-code)"
+
+# Four-part versions keep their shape.
+printf 'versionName=1.7.7.1\nversionCode=47\n' > version.properties
+git commit -qam "four-part version"
+while IFS= read -r old_tag; do git tag -d "$old_tag" >/dev/null 2>&1 || true; done < <(git tag -l 'v*')
+expect_eq "patch on a four-part version" "1.7.7.2" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor on a four-part version" "1.8.0.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major on a four-part version" "2.0.0.0" "$("$ci/version.sh" bump-name major)"
+
 expect_fail "rejects a non-numeric PR number" "$ci/version.sh" pr abc 1
 expect_fail "rejects a non-numeric build number" "$ci/version.sh" pr 1 abc
 expect_fail "rejects an unknown subcommand" "$ci/version.sh" nonsense

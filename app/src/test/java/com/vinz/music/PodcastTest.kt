@@ -1,26 +1,15 @@
 package com.vinz.music
 
-import com.vinz.music.data.innertube.InnerTube
-import com.vinz.music.data.innertube.SearchFilter
-import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.Lrc
-import com.vinz.music.data.model.PodcastItem
-import com.vinz.music.data.model.SongItem
 import com.vinz.music.data.model.parseDuration
-import com.vinz.music.data.prefs.AppSettings
-import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.concurrent.TimeUnit
 
-/** Podcasts (live against YouTube Music, signed out) and the parsing they and the lyric timing fixes rely on. */
+/**
+ * The podcast and lyric parsing that the timing fixes rely on. Offline only: the tests that call
+ * YouTube Music live in PodcastLiveTest, because they fail on network hiccups and must not gate CI.
+ */
 class PodcastTest {
-    private val http = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
-    private var settings = AppSettings()
-    private val ytm = YouTubeMusic(InnerTube(http, { settings }, { settings = settings.copy(visitorData = it) }))
-
     @Test
     fun episodeLengthsInWords() {
         assertEquals(2 * 3600 + 54 * 60, parseDuration("2 hr 54 min"))
@@ -37,42 +26,5 @@ class PodcastTest {
         assertEquals(12_000L, lines[1].timeMs)
         val later = Lrc.parse("[offset:-250]\n[00:10.00]first").filter { !it.isGap }
         assertEquals(10_250L, later[0].timeMs)
-    }
-
-    @Test
-    fun podcastsPageHasShowsAndEpisodes() = runBlocking {
-        val shelves = ytm.podcastsHome()
-        shelves.take(4).forEach { s -> println("${s.title}: ${s.items.take(3).joinToString { it.title }}") }
-        val items = shelves.flatMap { it.items }
-        assertTrue("no shows", items.any { it is PodcastItem })
-        assertTrue("no episodes", items.any { it is SongItem && it.song.isEpisode && !it.song.isVideo })
-    }
-
-    @Test
-    fun showPageListsEpisodesAndMore() = runBlocking {
-        val show = ytm.search("joe rogan experience", SearchFilter.PODCASTS).items.filterIsInstance<PodcastItem>().first()
-        println("show ${show.id} ${show.title} — ${show.subtitle}")
-        assertTrue(show.id.startsWith("MPSP"))
-        val page = ytm.podcast(show.id)
-        page.episodes.take(3).forEach { println("${it.song.id}  ${it.song.title}  ${it.date}  ${it.song.durationSec}s") }
-        assertTrue("no episodes", page.episodes.isNotEmpty())
-        assertTrue(page.episodes.all { it.song.isEpisode && it.song.podcastId == page.id })
-        assertTrue("no lengths", page.episodes.any { it.song.durationSec > 600 })
-        val token = page.continuation
-        if (token != null) {
-            val (more, _) = ytm.podcastEpisodes(token, show)
-            println("next page: ${more.size} episodes")
-            assertTrue(more.isNotEmpty())
-            assertTrue(more.none { m -> page.episodes.any { it.song.id == m.song.id } })
-        }
-    }
-
-    @Test
-    fun episodeSearchFindsEpisodesWithTheirShow() = runBlocking {
-        val eps = ytm.search("joe rogan", SearchFilter.EPISODES).items.filterIsInstance<SongItem>().map { it.song }
-        eps.take(3).forEach { println("${it.id}  ${it.title} — ${it.artistText} (${it.podcastId})") }
-        assertTrue(eps.isNotEmpty())
-        assertTrue(eps.all { it.isEpisode })
-        assertTrue(eps.any { it.podcastId?.startsWith("MPSP") == true })
     }
 }

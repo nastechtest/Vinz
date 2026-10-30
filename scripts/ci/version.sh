@@ -10,6 +10,9 @@
 #   version.sh name-at <git-ref>       versionName at a ref
 #   version.sh code-at <git-ref>       versionCode at a ref
 #   version.sh previous-stable-tag     highest non-prerelease v* tag, empty if none
+#   version.sh latest-stable-version   the version part of that tag (1.7.7), empty if none
+#   version.sh bump-name <kind>        next versionName for patch|minor|major
+#   version.sh bump-code               next versionCode (always higher than anything published)
 #
 # Exit codes: 0 success, 1 usage/environment error.
 set -euo pipefail
@@ -88,6 +91,77 @@ cmd_previous_stable_tag() {
   git -C "$repo_root" tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1 || true
 }
 
+
+# The highest version anyone has claimed: what version.properties says, and what the newest stable tag
+# says. Normally these agree. When a release pushed a bump that never reached main, they don't, and the
+# newer of the two wins so a version is never handed out twice.
+highest_version() {
+  local file tag
+  file=$(cmd_name)
+  tag=$(cmd_latest_stable_version) || tag=""
+  if [[ -z $tag ]]; then printf '%s' "$file"; return; fi
+  printf '%s\n%s\n' "$file" "$tag" | sort -V | tail -1
+}
+
+cmd_latest_stable_version() {
+  local tag
+  tag=$(cmd_previous_stable_tag)
+  [[ -n $tag ]] || return 1
+  printf '%s' "${tag#v}"
+}
+
+# patch bumps the last number (1.7.7.1 -> 1.7.7.2; 1.7.8 -> 1.7.9); minor and major bump their position
+# and reset everything after it (1.7.7.1 -> 1.8.0.0 -> 2.0.0.0). The number of parts never changes.
+cmd_bump_name() {
+  [[ $# -eq 1 ]] || die "usage: version.sh bump-name <patch|minor|major>"
+  local kind=$1 base i
+  case "$kind" in
+    patch|minor|major) ;;
+    *) die "bump must be patch, minor or major, got '$kind'" ;;
+  esac
+  base=$(highest_version)
+  [[ $base =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "cannot bump '$base': not a dotted numeric version"
+  IFS=. read -ra parts <<< "$base"
+  local last=$(( ${#parts[@]} - 1 ))
+  case "$kind" in
+    patch) parts[last]=$(( parts[last] + 1 )) ;;
+    minor) parts[1]=$(( parts[1] + 1 )); for ((i=2; i<=last; i++)); do parts[i]=0; done ;;
+    major) parts[0]=$(( parts[0] + 1 )); for ((i=1; i<=last; i++)); do parts[i]=0; done ;;
+  esac
+  local out
+  out=$(IFS=.; printf '%s' "${parts[*]}")
+  printf '%s' "$out"
+}
+
+# The versionCode a stable tag was released with. Release tags are annotated and carry it in their
+# message ("versionCode: 48"), so it survives even though the APK is stamped rather than committed and
+# version.properties therefore still says whatever it said before. Falls back to the file at that tag for
+# tags made before this was recorded.
+stable_tag_code() {
+  local tag=$1 recorded=""
+  recorded=$(git -C "$repo_root" tag -l --format='%(contents)' "$tag" 2>/dev/null |
+    sed -nE 's/^[[:space:]]*versionCode:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' | head -1)
+  if [[ -n $recorded ]]; then printf '%s' "$recorded"; return 0; fi
+  cmd_code_at "$tag"
+}
+
+# Always one more than the highest versionCode ever released, which is the file's or the newest stable
+# tag's recorded one: Android refuses an APK whose versionCode does not increase.
+cmd_bump_code() {
+  local file high tag recorded
+  file=$(cmd_code)
+  high=$file
+  # Every stable tag, not just the newest: a tag made before versionCodes were recorded must not hide a
+  # higher one recorded beside it.
+  while IFS= read -r tag; do
+    [[ -n $tag ]] || continue
+    recorded=$(stable_tag_code "$tag" 2>/dev/null || true)
+    [[ $recorded =~ ^[0-9]+$ ]] || continue
+    if [[ $recorded -gt $high ]]; then high=$recorded; fi
+  done <<< "$(git -C "$repo_root" tag -l 'v[0-9]*' | grep -v -- '-' || true)"
+  printf '%s' $(( high + 1 ))
+}
+
 sub=${1:-}
 shift || true
 case "$sub" in
@@ -99,6 +173,9 @@ case "$sub" in
   name-at) cmd_name_at "$@" ;;
   code-at) cmd_code_at "$@" ;;
   previous-stable-tag) cmd_previous_stable_tag ;;
+  latest-stable-version) cmd_latest_stable_version ;;
+  bump-name) cmd_bump_name "$@" ;;
+  bump-code) cmd_bump_code ;;
   ""|-h|--help|help) sed -nE 's/^# ?//p' "$0" | sed -n '1,20p' ;;
   *) die "unknown subcommand '$sub' (try: version.sh help)" ;;
 esac

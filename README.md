@@ -254,7 +254,7 @@ Three pipelines cover the three kinds of build. Full details, including recovery
 |:--|:--|
 | Pull request opened or updated | Android Lint, the deterministic unit tests, a debug APK, and an uploaded test build |
 | Push to `main` | The same checks, then a development build numbered from the commit count |
-| Manual *Stable release* run | Validation, a human approval, then a signed release and an immutable tag |
+| *Release* run (`patch` / `minor` / `major`, `preview` / `stable`) | The version is worked out, the build signed and tagged, and the release published after one approval |
 
 The checks that gate a merge are **Validate Gradle wrapper**, **Lint**, **Unit tests and debug build**, and
 **Analyze (java-kotlin)**.
@@ -286,16 +286,18 @@ stable releases.
 
 ## 📦 Releases and APK signing
 
-Stable releases are never published automatically. A maintainer starts the **Stable release** workflow with a version
-and an approved commit on the `stable` branch; the workflow verifies that the commit is on `stable`, that
-[`version.properties`](version.properties) agrees with the requested version, that the version has not been released,
-and that the commit passed CI — then waits for a reviewer to approve the protected `stable-production` environment.
+Stable releases are never published automatically. A maintainer starts the **Release** workflow, chooses the bump and
+the channel, and the workflow works out the version, builds it, signs it, tags it and publishes it. The signing key
+is read only after the protected `stable-production` environment is approved, so an unapproved run publishes nothing
+and creates no tag.
 
 ### Version source of truth
 
-[`version.properties`](version.properties) holds `versionName` and `versionCode`. A release is prepared by a pull
-request that bumps both; the workflow refuses to publish if the file and the requested version disagree, or if
-`versionCode` does not increase.
+[`version.properties`](version.properties) holds `versionName` and `versionCode`, and is the floor a release is
+computed from. Cutting a release is one dispatch — pick `patch`, `minor` or `major` and whether it is a `preview`
+or a `stable` release — and the workflow works out the version, stamps the build, tags it and publishes it. The
+released version and its `versionCode` are recorded on the tag, so a released version can never be handed out
+twice.
 
 ### Release signing requirements
 
