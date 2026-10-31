@@ -103,7 +103,9 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     // Animations switched off in the phone's developer options, or "Reduce motion" in Vinz: the same frame, held still.
     val still = reduceMotion || !introAnimationsOn(context)
 
-    val clock = remember { mutableStateOf(if (still) Intro.STILL_AT else 0f) }
+    // Starts at the first light, not at zero: 0.00-0.15 is black by design, and on a cold start that is the frame
+    // people judge the whole app by.
+    val clock = remember { mutableStateOf(if (still) Intro.STILL_AT else Intro.SPARK) }
     val hold = remember { mutableStateOf(0f) }
     val holding = remember { mutableStateOf(false) }
     // Tapped through the cinematic: everything is pinned at its resting frame, and the dock is what is left to do.
@@ -146,7 +148,9 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     // frame. A timer cannot be starved that way, and a frame still invalidates drawing only, because the clock and the
     // ring are read inside graphicsLayer and draw lambdas.
     LaunchedEffect(Unit) {
-        val start = System.nanoTime()
+        // The clock starts where the picture does: the timeline is unchanged, it has simply already run for the
+        // quarter of a second that used to be black.
+        val start = System.nanoTime() - (Intro.SPARK * 1_000_000_000f).toLong()
         var last = start
         var ticks = 0
         while (isActive) {
@@ -169,6 +173,18 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
                 hold.value = (hold.value - dt / Intro.RELEASE).coerceAtLeast(0f)
                 ticks = (hold.value * 13f).toInt()
             }
+        }
+    }
+
+    // A net under the clock. If the timer never ticks - a device that starves it, a coroutine that never resumes - the
+    // entrance would sit on its first frame and the app would look dead, which is precisely the report this screen
+    // keeps getting. A second and a half of nothing is not a slow start, it is a stopped clock: the resting frame goes
+    // up instead, ring and all, so the entrance can still be finished or skipped.
+    LaunchedEffect(Unit) {
+        delay(1_500)
+        if (clock.value <= Intro.SPARK + 0.02f) {
+            skipped = true
+            clock.value = Intro.STILL_AT
         }
     }
 
