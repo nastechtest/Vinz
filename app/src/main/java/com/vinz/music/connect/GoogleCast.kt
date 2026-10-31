@@ -471,13 +471,7 @@ class GoogleCastLink(
         /** The track a device reports once another app has it: not one of Vinz's. */
         const val OTHER = "googlecast://other"
 
-        /**
-         * TLS to a Cast device, which presents a self-signed certificate.
-         *
-         * The handshake gets its own, much shorter deadline than the connection does, and one retry. A device that has
-         * only just woken answers the first handshake late or not at all, and a read that never comes back used to hold
-         * the whole connect for the full 20 s read timeout - which is what turned into "casts to nothing, forever".
-         */
+        /** TLS to a Cast device, which presents a self-signed certificate. */
         fun tlsSocket(host: String, port: Int): Socket {
             val trustAny = object : X509TrustManager {
                 override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
@@ -485,22 +479,12 @@ class GoogleCastLink(
                 override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
             }
             val ctx = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustAny), SecureRandom()) }
-            var last: Exception? = null
-            repeat(2) {
-                val s = ctx.socketFactory.createSocket() as SSLSocket
-                try {
-                    s.connect(InetSocketAddress(host, port), 5_000)
-                    s.soTimeout = 8_000
-                    s.startHandshake()
-                    // The device pings every 5 s: nothing for 20 s means it's gone.
-                    s.soTimeout = 20_000
-                    return s
-                } catch (e: Exception) {
-                    last = e
-                    runCatching { s.close() }
-                }
-            }
-            throw last ?: IOException("no TLS socket to $host:$port")
+            val s = ctx.socketFactory.createSocket() as SSLSocket
+            s.connect(InetSocketAddress(host, port), 5_000)
+            // The device pings every 5 s: nothing for 20 s means it's gone.
+            s.soTimeout = 20_000
+            s.startHandshake()
+            return s
         }
 
         private fun JsonObject.str(key: String): String? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
