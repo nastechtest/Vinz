@@ -378,8 +378,8 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .graphicsLayer { alpha = fade.value },
+                .graphicsLayer { alpha = fade.value }
+                .background(Color.Black),
         )
     }
 }
@@ -715,8 +715,8 @@ private fun Ending(finish: Animatable<Float, AnimationVector1D>, still: Boolean,
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .graphicsLayer { alpha = if (still) ramp(finish.value, 0.15f, 1f) else ramp(finish.value, 0.52f, 1f) },
+            .graphicsLayer { alpha = if (still) ramp(finish.value, 0.15f, 1f) else ramp(finish.value, 0.52f, 1f) }
+            .background(Color.Black),
     )
 }
 
