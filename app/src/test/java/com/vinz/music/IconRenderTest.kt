@@ -276,8 +276,8 @@ class IconRenderTest {
             // Themed icons: Android draws the monochrome layer in a dark tint on a pale one.
             val y = gap * 4 + px * 3
             c.save(); c.translate(x.toFloat(), y.toFloat()); c.drawPath(circle, android.graphics.Paint().apply { color = 0xFFDCE3F5.toInt(); isAntiAlias = true }); c.restore()
-            val mono = if (icon == com.vinz.music.ui.theme.AppIcon.WAVE) R.drawable.ic_launcher_fg_wave else R.drawable.ic_launcher_fg_white
-            layer(mono, x, y, circle, tint = 0xFF2B3A67.toInt())
+            // 1.8: every icon draws the same mark, so they share one monochrome layer (the tint is the launcher's).
+            layer(R.drawable.ic_launcher_monochrome, x, y, circle, tint = 0xFF2B3A67.toInt())
         }
         // The notification icon at 24 dp on a phone (×2.6 and ×3.5), white on the status bar's dark grey.
         listOf(62, 84).forEachIndexed { k, s ->

@@ -367,6 +367,9 @@ private fun SettingsPage(
                     Item("Your data stays here", "Vinz has no server", info = "Your history, Replay and settings live only on this phone.", onClick = {})
                     CheckForUpdates()
                     Item("Take the tour", "A minute's walk through Vinz", onClick = { c.tourRequests.tryEmit(Unit) }) { Chevron() }
+                    // Replays the first launch's entrance over the app, sound and all: the quickest way to show what
+                    // Vinz opens as without clearing its data.
+                    Item("Play the entrance again", "The first launch's cinematic, with its welcome", onClick = { c.settings.setSplashSeen(false) }) { Chevron() }
                     Item("Open-source licenses", "GPL-3.0-or-later, and what it's built with", onClick = { nav.go(Routes.settings(SettingsSection.LICENSES.key)) }) { Chevron() }
                     // Debug builds only, so it's left out of Settings search (named title: SettingsIndexTest skips it).
                     if (com.vinz.music.BuildConfig.DEBUG) Item(

@@ -1,0 +1,104 @@
+# The entrance
+
+What plays once per install, before the welcome screen, on pure black. It is not a splash that waits on a network or a
+first frame: it is an intro, and it is the app's own first frame.
+
+`ui/intro/VinzIntro.kt` is the experience (layout, type, the hold, the sound, the way out). `ui/intro/IntroScene.kt` is
+the picture (light, planet, sky, orbits, spark, ring) — a function of one clock, drawn, never composed.
+
+It can be skipped, and it can be replayed: **Settings → About → Play the entrance again** puts the flag back and runs it
+over the app, so the entrance doubles as a preview of what Vinz opens as.
+
+## The beats
+
+All times are seconds from the first frame. They live in `Intro`, and the tests check they stay in order — and that the
+spoken lines still fit between them.
+
+| Time | What happens |
+|---|---|
+| 0.00 | Pure black. The window the system shows before the first frame is `#000000` too, so nothing flips. |
+| 0.15 | **The first light.** A point of light opens out of nothing, with four thin rays — the frame is never empty. |
+| 0.45 | "Skip" appears in the corner. From here on, one tap ends the entrance. |
+| 0.55 | *"Welcome to Vinz."* — the voice, out of the dark. |
+| 0.85 | The planet blooms out of that light, filling the frame — more than a screen wide, so it reads as a surface you are standing on rather than a sticker. |
+| 1.90 | The camera pulls back: an exponential, so the planet leaves fast and then hangs as a disc. The sky fades in behind it. |
+| 2.90 | Three orbits draw themselves on, each by a travelling head. |
+| 5.30 | What is left of the world becomes a four-point spark. |
+| 6.60 | **Vinz** comes up out of the spark: 1.10 → 1.00 scale, one breath of overshoot. |
+| 7.05 | One pass of light across the name — `SrcAtop` over an offscreen layer, so it only exists where the letters are. |
+| 7.40 | `POWERED BY` · `NASTECH RESEARCH`, the second half in the brand's own gradient. |
+| 7.95 | *Your music. Your universe.* — on screen and in the voice, together. |
+| 9.90 | *Every song is a star.* |
+| 11.40 | *Hold the sky, and it is yours.* |
+| 13.60 | The ring arrives, the last line says *"Hold to begin."*, and everything stops: the entrance waits for a hand. |
+
+**The clock stops at 13.60.** It used to keep counting after the ring arrived, so the sky went on drifting and the near
+stars went on growing behind a screen the documentation said was still. It is now clamped at `Intro.DOCK`: holding the
+ring up is a still frame.
+
+## Getting past it
+
+There are three ways, and none of them is hidden:
+
+- **Hold the ring.** It fills in 1.7 s under a finger and drains in 0.45 s when let go, so a hand that slips loses the
+  progress slowly enough to feel fair. Each of the 924 points has its own moment (`collectAt`) and falls into the ring
+  along a bent path, near stars first — the sky empties from the front, and the last one is away *before* the ring
+  closes, so the ending lands on black rather than on stars still in flight. The haptics tick thirteen times as it fills.
+- **Skip.** A real button in the top corner from 0.45 s, with its own action label for TalkBack. It fades the picture to
+  black over a quarter of a second and opens the app. Before this the only way out of the cinematic was a tap that
+  landed on the ring, and the only way past the ring was a 1.7 s press nobody had asked for — which is exactly what a
+  frozen app looks like.
+- **Tap the cinematic** (or Back): jumps to the ring rather than past it, for someone who has seen the first half before.
+
+When the ring closes: the ring collapses, the screen flares from the button, **Vinz** slashes once at 124 sp with light
+across it, the sting plays, and it goes back to black. Then the app is handed the screen and the flag is written, so the
+entrance is once per install — clearing Vinz's data brings it back, and so does Settings → About.
+
+## 4K and 8K
+
+There is not a bitmap in the scene. The planet is a radius, the stars are circles, the glow is a radial gradient, and
+every length is measured from the frame it is drawn into and the frame's own density — so 2160 × 3840 and 3840 × 2160
+are the same drawing at different resolutions rather than the same dp at different scales, and 7680 × 4320 is that
+drawing again with four times the pixels. Type is sized from the screen's height (clamped by its width), so the name
+takes the same share of a phone, a tablet, a television and an 8K panel.
+
+`IntroRenderTest` draws twelve frames at 2160 × 3840, four at 3840 × 2160, and one at **7680 × 4320**, into
+`app/build/intro-previews/`. It fails if a frame comes back black, and it measures "black" by colour rather than by
+`getPixel() != 0` — a frame painted `#000000` is `0xFF000000`, which is not zero, so the old check passed on a picture of
+nothing. The 8K frame is 132 MB of bitmap, which is why `app/build.gradle.kts` gives the unit tests 2 GB.
+
+## The sound
+
+Two of the three files are synthesised and one is spoken. All three are generated by scripts in the repository, so
+nothing is opaque and nothing third-party is sampled into the APK.
+
+| File | What | Size |
+|---|---|---|
+| `res/raw/vinz_intro_space.ogg` | 16 s bed: sub sweep 112 → 33 Hz with an octave-up body so a phone speaker still hears it, air opening to ~3 kHz, a low impact as the planet lands, a glass chord (E, G♯, B) as the name does, one bell as the ring arrives, and a convolution reverb made from decaying noise. Sits 4 dB under the voice. | 185 KB |
+| `res/raw/vinz_intro_voice.ogg` | 15.5 s, the spoken welcome: *"Welcome to Vinz."* at 0.55, then the three lines on their captions, then *"Hold to begin."* as the ring lands. | 83 KB |
+| `res/raw/vinz_intro_welcome.ogg` | 2.4 s sting: reverse swell, the same chord an octave up, three rising notes, a sub drop under the hit. | 29 KB |
+
+- `scripts/brand/make_intro_audio.py` rebuilds the bed and the sting from the numbers in it.
+- `scripts/brand/make_intro_voice.py` renders the voice and **places each line on its beat**, so the words and the
+  captions arrive together and skipping needs no cue sheet: one file, one player. It is the one file that comes from a
+  speech service (a neural text-to-speech render) rather than from oscillators; the rendered audio is committed, so the
+  build needs no network.
+
+A phone in silent mode, or with its media stream muted, gets silence; any failure to make a player means a quiet
+entrance, never a failed one. Skipping ducks the bed and the voice out over a quarter of a second rather than cutting
+them, so the app's first page arrives out of a room going quiet.
+
+## When motion is off
+
+`Reduce motion`, or animator duration scale 0, draws the resting frame — sky still, no travel, the name and the ring up —
+and a tap stands in for the hold. The ring is one merged semantics node with a button action labelled *Welcome to Vinz*,
+so TalkBack can open the app without a finger; the picture — the wordmark, `POWERED BY`, `NASTECH RESEARCH` and the
+taglines — is one decorative node that says nothing. Before that, TalkBack read all five of them before it reached
+anything it could use.
+
+## Frames
+
+`./gradlew :app:testDebugUnitTest --tests "com.vinz.music.IntroRenderTest"` writes the contact frames to
+`app/build/intro-previews/`. `IntroSceneTest` covers the arithmetic — the beats in order, the pull-back never growing the
+planet, the sky emptying completely, the first light arriving inside the first second, and the spoken lines fitting
+between their beats.

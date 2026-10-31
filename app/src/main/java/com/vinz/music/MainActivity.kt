@@ -368,6 +368,8 @@ private fun rememberArtworkColor(song: Song?, settings: com.vinz.music.data.pref
 private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
     val c = LocalContainer.current
     val settings by c.settings.flow.collectAsState()
+    // The first-run splash (1.8) plays once per install, above everything else, before the welcome screen.
+    val splashSeen by c.settings.splashSeen.collectAsState()
     val song by c.player.currentSong.collectAsState()
     val artColor = rememberArtworkColor(song, settings)
     val context = LocalContext.current
@@ -774,8 +776,10 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 // The tour (1.7): the whole of it after setting up a new install or the first time a release with tours
                 // runs; later releases show only what's new since the last one seen. Settings → About takes it again.
                 var tour by remember { mutableStateOf<com.vinz.music.ui.tour.TourPlan?>(null) }
-                LaunchedEffect(showChrome) {
-                    if (showChrome && tour == null) {
+                // Held back until the splash has gone (1.8): a tour that ran underneath it would be half over before
+                // it was ever seen.
+                LaunchedEffect(showChrome, splashSeen) {
+                    if (showChrome && splashSeen && tour == null) {
                         kotlinx.coroutines.delay(600) // after the first page has drawn
                         tour = com.vinz.music.ui.tour.pendingTour(context, c.returningUser == true)
                     }
@@ -783,6 +787,16 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 LaunchedEffect(Unit) { c.tourRequests.collect { playerOpen = false; tour = com.vinz.music.ui.tour.fullTour(c.returningUser == true) } }
                 tour?.let { plan ->
                     com.vinz.music.ui.tour.TourOverlay(plan, onOpen = { r -> playerOpen = false; navigator.go(r) }, onDone = { tour = null })
+                }
+
+                // The first launch (1.8): the whole screen, once per install - the planet, the sky, the name, and then
+                // the hold that ends it. Tapping the cinematic lands on the hold; the hold is what opens the app, and
+                // the flag is written when it does, so the entrance can never play twice on the same install.
+                if (!splashSeen) {
+                    com.vinz.music.ui.intro.VinzIntro(
+                        reduceMotion = settings.reduceMotion,
+                        onDone = { c.settings.setSplashSeen() },
+                    )
                 }
             }
         }
