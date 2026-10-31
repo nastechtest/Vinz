@@ -179,6 +179,14 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     }
 
     val ready by remember(still) { derivedStateOf { still || clock.value >= Intro.DOCK } }
+    // A hand that has done nothing for six seconds at the ring is a hand that has not worked out that the ring is a
+    // hold. The label says so, and says what else is available - the entrance is the hold, but it is not the only door.
+    var idleAtRing by remember { mutableStateOf(false) }
+    LaunchedEffect(ready) {
+        if (!ready) { idleAtRing = false; return@LaunchedEffect }
+        delay(6_000)
+        idleAtRing = true
+    }
     // The Skip button appears once the first light is on screen, so the very first frame stays clean but nobody is ever
     // a prisoner of the cinematic. Read through a derived state so the picture still only recomposes the once.
     val canSkip by remember(still) { derivedStateOf { still || clock.value >= 0.45f } }
@@ -192,6 +200,7 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     // Skip: past the entrance altogether. Nothing is asked of a hand that does not want to hold anything.
     fun leave() {
         if (leaving || finishing) return
+        haptics.click()
         leaving = true
     }
     BackHandler(enabled = !leaving && !finishing) { if (ready) leave() else skipCinematic() }
@@ -246,6 +255,7 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
             radius = dockRadius,
             scale = scale,
             haptics = haptics,
+            hint = idleAtRing,
             holding = holding,
             onComplete = { if (!finishing && !leaving) { finishing = true; holding.value = false } },
             modifier = Modifier
@@ -506,15 +516,18 @@ private fun Dock(
     radius: Dp,
     scale: Float,
     haptics: Haptics,
+    /** Nothing has happened for a while: say what the ring wants, and what else there is. */
+    hint: Boolean,
     holding: androidx.compose.runtime.MutableState<Boolean>,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val labelRes by remember(still) {
+    val labelRes by remember(still, hint) {
         derivedStateOf {
             when {
                 hold.value >= 0.82f -> R.string.intro_almost
                 hold.value > 0.02f -> R.string.intro_holding
+                hint -> R.string.intro_hold_hint
                 else -> R.string.intro_hold
             }
         }

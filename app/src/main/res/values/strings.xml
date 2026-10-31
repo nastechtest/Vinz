@@ -49,6 +49,7 @@
     <string name="intro_hold">HOLD TO CONTINUE</string>
     <string name="intro_holding">KEEP HOLDING</string>
     <string name="intro_almost">ALMOST</string>
+    <string name="intro_hold_hint">HOLD THE RING — OR TAP SKIP</string>
     <string name="intro_welcome">Welcome to Vinz</string>
     <string name="intro_skip">SKIP</string>
     <string name="intro_skip_action">Skip the entrance</string>
