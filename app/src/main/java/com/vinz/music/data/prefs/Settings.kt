@@ -2006,7 +2006,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setCardSize(v: CardSize) = edit { it[K.cardSize] = v.name }
     fun setReduceMotion(v: Boolean) = edit { it[K.reduceMotion] = v }
     /** Played: the splash must not come back on this install (clearing Vinz's data brings it back with the rest). */
-    fun setSplashSeen() = edit { it[K.splashSeen] = true }
+    /** Once per install. Set back to false, the entrance plays again - which is how Settings -> About replays it. */
+    fun setSplashSeen(seen: Boolean = true) = edit { it[K.splashSeen] = seen }
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }

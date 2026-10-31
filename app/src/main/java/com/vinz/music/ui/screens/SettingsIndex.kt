@@ -365,6 +365,7 @@ object SettingsIndex {
         SettingEntry(B, "About", "Your data stays here", "privacy"),
         SettingEntry(B, "About", "Check for updates", "update new version"),
         SettingEntry(B, "About", "Take the tour", "tutorial walkthrough help guide what's new how to"),
+        SettingEntry(B, "About", "Play the entrance again", "intro splash opening cinematic first launch brand animation replay"),
         SettingEntry(B, "About", "Open-source licenses", "license gpl"),
         SettingEntry(B, "Diagnostics", "Playback diagnostics", "stutter judder skip glitch lag bluetooth airpods log debug"),
         SettingEntry(B, "Diagnostics", "Share diagnostics", "log send report"),

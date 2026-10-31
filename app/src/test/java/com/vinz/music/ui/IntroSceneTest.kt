@@ -65,6 +65,21 @@ class IntroSceneTest {
         assertTrue(skyAt(0.95f).life(0f) < 0.2f)
     }
 
+    @Test fun theEntranceIsNeverABlackScreen() {
+        // 0.15 s is the first light. It used to be a constant the scene declared and never read, so the entrance opened
+        // on black and only showed anything at 0.85 s - long enough to look like an app that had not started.
+        assertTrue("the first light must be well inside the first second", Intro.SPARK < 0.25f)
+        assertTrue("it comes before the planet that grows out of it", Intro.SPARK < Intro.PLANET)
+    }
+
+    @Test fun theWordsAreTimedForTheVoiceThatSaysThem() {
+        // scripts/brand/make_intro_voice.py places each line on these beats. Every line needs room for itself: at the
+        // pace it was rendered the longest is a shade over two seconds, so a beat moved closer than that would clip it.
+        assertTrue("the second line starts before the first has finished", Intro.LINE_TWO - Intro.LINE_ONE >= 1.80f)
+        assertTrue("the third line starts before the second has finished", Intro.LINE_THREE - Intro.LINE_TWO >= 1.40f)
+        assertTrue("the ring arrives before the last line has finished", Intro.DOCK - Intro.LINE_THREE >= 2.10f)
+    }
+
     @Test fun theDockSitsAtTheBottomOfTheFrame() {
         val centre = dockCentre(Size(1080f, 2160f), dockRadius = 240f, inset = 260f)
         assertEquals(Offset(540f, 2160f - 260f - 240f), centre)

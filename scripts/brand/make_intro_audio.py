@@ -128,8 +128,8 @@ def encode(x, name, quality=2):
 
 
 def bed():
-    """15 s: the room opening, the planet arriving, the name landing, the ring waiting."""
-    seconds = 13.5
+    """16 s: the room opening, the planet arriving, the name landing, the ring waiting."""
+    seconds = 16.0
     n = int(seconds * SR)
     out = np.zeros(n)
 
@@ -147,16 +147,16 @@ def bed():
     body = (0.55 * sweep(72, 27, body_n, curve=0.7) + 0.18 * air(body_n, seed=5, lo=90, hi=900)) * env_ad(body_n, 0.02, 3.4)
     out[hit:] += body
 
-    # The name lands at 6.1 s: a glass chord, E major, wide and bright.
-    chord_n = n - int(6.1 * SR)
+    # The name lands at 6.6 s: a glass chord, E major, wide and bright.
+    chord_n = n - int(6.55 * SR)
     chord = glass(chord_n, [164.8, 207.7, 246.9, 329.6, 493.9], seed=3, bright=0.9)
     chord *= np.concatenate([np.linspace(0, 1, int(0.5 * SR)) ** 2, np.ones(max(0, chord_n - int(0.5 * SR)))])[:chord_n]
-    out[int(6.1 * SR):] += 0.22 * chord
+    out[int(6.55 * SR):] += 0.22 * chord
 
-    # The ring arrives at 10.6 s: one soft bell, so the eye is told where to go.
-    bell_n = n - int(10.6 * SR)
+    # The ring arrives at 13.6 s: one soft bell, so the eye is told where to go.
+    bell_n = n - int(13.6 * SR)
     bell = (sine(1320, bell_n) + 0.5 * sine(1980, bell_n) + 0.25 * sine(2640, bell_n)) * env_ad(bell_n, 0.004, 0.55)
-    out[int(10.6 * SR):] += 0.075 * bell
+    out[int(13.6 * SR):] += 0.075 * bell
 
     # Shimmer: the far, high dust of the scene.
     sh = air(n, seed=23, lo=3800, hi=9000)
@@ -164,7 +164,8 @@ def bed():
     out += 0.035 * sh * (0.55 + 0.45 * np.sin(2 * np.pi * 0.11 * t)) * np.clip((t - 1.0) / 3.0, 0, 1)
 
     out = reverb(out, seconds=2.1, seed=9, wet=0.42)
-    return finish(stereo(out, seed=17), fade_out=1.6)
+    # Sits under the spoken welcome: -4 dB under the voice, so the words are never competing with the pad.
+    return finish(stereo(out, seed=17), peak=0.56, fade_out=1.6)
 
 
 def sting():

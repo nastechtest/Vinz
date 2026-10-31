@@ -15,7 +15,9 @@ import com.vinz.music.ui.intro.Intro
 import com.vinz.music.ui.intro.dockCentre
 import com.vinz.music.ui.intro.drawIntro
 import com.vinz.music.ui.intro.introStars
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -40,17 +42,18 @@ class IntroRenderTest {
 
     /** The moments worth looking at: the spark, the planet arriving, the pull-back, the orbits, the name, the ring. */
     private val beats = listOf(
-        0.45f to 0f,
-        1.05f to 0f,
-        2.60f to 0f,
-        3.90f to 0f,
-        5.10f to 0f,
-        6.90f to 0f,
-        7.80f to 0f,
-        9.60f to 0f,
-        11.45f to 0f,
-        12.30f to 0.55f,
-        12.70f to 0.92f,
+        0.45f to 0f,   // the first light, before the planet
+        1.05f to 0f,   // the planet filling the frame
+        2.60f to 0f,   // the camera pulling back
+        3.90f to 0f,   // the world as a disc
+        5.10f to 0f,   // orbits
+        6.90f to 0f,   // the name
+        7.80f to 0f,   // the name, and POWERED BY under it
+        9.90f to 0f,   // the second line
+        11.40f to 0f,  // the third line
+        13.90f to 0f,  // the ring, arrived
+        14.90f to 0.55f,
+        15.30f to 0.92f,
     )
 
     private val outfit: Typeface? by lazy {
@@ -157,19 +160,55 @@ class IntroRenderTest {
                 .let { it.write(File(out, "phone-%02d-%04d.png".format(i, (t * 100).toInt()))) }
         }
         // One frame of each act at television size, where the scene has to scale up rather than just sharpen.
-        listOf(3.90f to 0f, 6.90f to 0f, 9.60f to 0f, 12.30f to 0.55f).forEach { (t, hold) ->
+        listOf(3.90f to 0f, 6.90f to 0f, 9.90f to 0f, 14.90f to 0.55f).forEach { (t, hold) ->
             frame(tv.first, tv.second, 2f, t, hold, type = true)
                 .let { it.write(File(out, "tv-%04d.png".format((t * 100).toInt()))) }
         }
         val files = out.listFiles { f -> f.name.endsWith(".png") } ?: emptyArray()
         assertTrue("no frames written", files.size >= 10)
         // 4K is a claim about pixels: the frames must be exactly that big, and not empty.
-        val big = frame(3840, 2160, 2f, 9.60f, 0f, type = false)
+        val big = frame(3840, 2160, 2f, 9.90f, 0f, type = false)
         assertTrue(big.width == 3840 && big.height == 2160)
-        var lit = 0
-        for (x in 0 until 3840 step 7) for (yy in 0 until 2160 step 7) if (big.getPixel(x, yy) != 0) lit++
-        assertTrue("the 4K frame is black", lit > 200)
+        assertTrue("the 4K frame is black", big.lit(7) > 200)
     }
+
+    /**
+     * 7680 x 4320, a television's 8K frame. The scene is geometry measured from the frame it is drawn into, so this is
+     * the same drawing at four times the pixels - and the point of checking is that it stays a drawing: nothing here is
+     * a bitmap that would be stretched, and nothing rounds to nothing at that size.
+     *
+     * The frame itself is 132 MB, so the worker needs headroom; `app/build.gradle.kts` gives the unit tests 2 GB.
+     */
+    @Test fun `the entrance draws at 8K`() {
+        Assume.assumeTrue(
+            "a 132 MB frame needs more than the default test heap",
+            Runtime.getRuntime().maxMemory() > 900L * 1024 * 1024,
+        )
+        val (w, h) = 7680 to 4320
+        val big = frame(w, h, 3f, Intro.LINE_TWO, 0f, type = false)
+        assertTrue(big.width == w && big.height == h)
+        assertTrue("the 8K frame is black", big.lit(13) > 300)
+        // The dock is the same fraction of the frame at 8K as at 4K: it is placed from the frame, not from the pixels.
+        val scale = (min(h / 3f / 780f, w / 3f / 400f)).coerceIn(0.85f, 3.4f)
+        val ring = dockCentre(Size(w.toFloat(), h.toFloat()), Intro.DOCK_RADIUS_DP * scale * 3f, Intro.DOCK_INSET_DP * scale * 3f)
+        assertEquals(h - (Intro.DOCK_INSET_DP * scale * 3f) - (Intro.DOCK_RADIUS_DP * scale * 3f), ring.y, 0.5f)
+    }
+
+    /** The first light: the beat that used to be a number the scene declared and never drew. */
+    @Test fun `the first second is not a black screen`() {
+        val early = frame(1080, 1920, 3f, Intro.SPARK + 0.30f, 0f, type = false)
+        assertTrue("the spark beat draws nothing: the entrance opens on black", early.lit(4) > 20)
+    }
+}
+
+/**
+ * How many pixels in the frame are carrying any light at all. It counts colour, not alpha: a frame painted black is
+ * `0xFF000000`, which is not zero, so the old `!= 0` test passed on a picture of nothing.
+ */
+private fun Bitmap.lit(step: Int): Int {
+    var n = 0
+    for (x in 0 until width step step) for (y in 0 until height step step) if (getPixel(x, y) and 0x00FFFFFF != 0) n++
+    return n
 }
 
 private fun Bitmap.write(file: File) {

@@ -29,7 +29,11 @@ import kotlin.random.Random
  * frame invalidates drawing and nothing else.
  */
 internal object Intro {
-    /** The beats, in seconds from the first frame. The words on the screen are timed from these numbers too. */
+    /**
+     * The beats, in seconds from the first frame. The words on the screen are timed from these numbers, and so is the
+     * spoken welcome: `scripts/brand/make_intro_voice.py` places each line on the beat it belongs to, so the voice and
+     * the captions arrive together. Change one and change the other.
+     */
     const val SPARK = 0.15f
     const val PLANET = 0.85f
     const val PULL_FROM = 1.90f
@@ -38,13 +42,13 @@ internal object Intro {
     const val ORBITS_DRAWN = 6.10f
     const val WORD = 6.60f
     const val SWEEP = 7.05f
-    const val POWERED = 7.50f
-    const val LINE_ONE = 8.10f
-    const val LINE_TWO = 9.20f
-    const val LINE_THREE = 10.30f
-    const val DOCK = 11.10f
+    const val POWERED = 7.40f
+    const val LINE_ONE = 7.95f
+    const val LINE_TWO = 9.90f
+    const val LINE_THREE = 11.40f
+    const val DOCK = 13.60f
     /** What "reduce motion" draws: every layer at the end of its entrance, nothing travelling. */
-    const val STILL_AT = 12.90f
+    const val STILL_AT = 15.20f
 
     /** How long the ring takes to fill under a held finger, and how long it takes to drain when let go. */
     const val HOLD = 1.70f
@@ -156,6 +160,7 @@ internal fun DrawScope.drawIntro(
     if (!still) {
         drawOrbits(t, centre, min)
         drawPlanet(t, centre, min)
+        drawBirth(t, centre, min)
     }
     if (still || t > Intro.PULL_TO - 0.30f) drawSpark(t, centre, min, hold, still)
     // Edges fall away, so the words sit in the middle of the dark rather than on a picture.
@@ -244,6 +249,33 @@ private fun DrawScope.drawNebulae(t: Float, centre: Offset, min: Float) {
         Brand.cyan.copy(alpha = 0.08f),
     )
     drawGlow(centre, min * 0.55f, Brand.blue.copy(alpha = 0.05f))
+}
+
+/**
+ * The first light. `Intro.SPARK` used to be a number the scene declared and never drew, so the entrance was a black
+ * screen for the best part of a second before the planet appeared; this is that beat, drawn: a point of light that
+ * opens out of nothing at 0.15 s, holds the middle of the frame while the planet is still off it, and is taken over by
+ * the planet's own light as it fills the frame. There is never a frame with nothing on it.
+ */
+private fun DrawScope.drawBirth(t: Float, centre: Offset, min: Float) {
+    val born = smooth(ramp(t, Intro.SPARK, Intro.SPARK + 0.45f))
+    if (born <= 0.01f) return
+    // Hand over to the planet: by the time the surface fills the frame, this is the planet's light, not a dot's.
+    val handover = 1f - smooth(ramp(t, Intro.PLANET + 0.10f, Intro.PLANET + 0.80f))
+    val a = born * handover
+    if (a <= 0.01f) return
+    val pulse = 0.92f + 0.08f * sin(t * 3.1f)
+    // It opens out of nothing: smallest at the beat, widest a third of a second later.
+    val r = min * 0.010f * pulse * (0.35f + 0.65f * born)
+    drawGlow(centre, r * 16f, Brand.violet.copy(alpha = 0.20f * a))
+    drawGlow(centre, r * 7f, Brand.cyan.copy(alpha = 0.30f * a))
+    drawGlow(centre, r * 2.6f, Color.White.copy(alpha = 0.75f * a))
+    drawCircle(Color.White.copy(alpha = a), radius = r, center = centre)
+    // Four thin rays, so a single point reads as a light rather than a dead pixel on a black screen.
+    val ray = r * 7f
+    val w = 1.1f.dp.toPx()
+    drawLine(Color.White.copy(alpha = a * 0.45f), Offset(centre.x - ray, centre.y), Offset(centre.x + ray, centre.y), w, StrokeCap.Round)
+    drawLine(Color.White.copy(alpha = a * 0.45f), Offset(centre.x, centre.y - ray), Offset(centre.x, centre.y + ray), w, StrokeCap.Round)
 }
 
 /**

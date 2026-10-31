@@ -9,6 +9,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -20,8 +21,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -54,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -100,14 +106,24 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     // Tapped through the cinematic: everything is pinned at its resting frame, and the dock is what is left to do.
     var skipped by remember { mutableStateOf(false) }
     var finishing by remember { mutableStateOf(false) }
+    // Skipped outright: the entrance fades to black and the app takes the screen, rather than cutting mid-frame.
+    var leaving by remember { mutableStateOf(false) }
+    // The entrance is once per install, and it must be once: two endings racing each other would write the flag twice
+    // and, worse, hand the screen over twice.
+    var done by remember { mutableStateOf(false) }
     val finish = remember { Animatable(0f) }
+    val fade = remember { Animatable(0f) }
     val stars = remember { introStars() }
     var dock by remember { mutableStateOf(Offset.Unspecified) }
 
     val sound = remember { IntroSound(context) }
+    // The entrance's own sound switch. It exists because an intro is also something you demonstrate, and a room with
+    // other people in it is not always a room that wants the bed and the voice.
+    var muted by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     DisposableEffect(Unit) {
         sound.bed()
+        sound.voice()
         onDispose { sound.stop() }
     }
 
@@ -128,7 +144,10 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
             // ring a third of the way round under a finger that did nothing.
             val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
             last = now
-            if (!skipped && !still) clock.value = (now - start) / 1_000_000_000f
+            // Held at the dock, not left running: with the ring up, nothing is supposed to move until a hand does.
+            // Before this the clock kept counting, so the sky went on drifting and the floats went on growing while
+            // the entrance waited -- and after a long wait `spin * t` was large enough to lose its precision.
+            if (!skipped && !still) clock.value = min((now - start) / 1_000_000_000f, Intro.DOCK)
             if (holding.value) {
                 hold.value = (hold.value + dt / Intro.HOLD).coerceAtMost(1f)
                 val tick = (hold.value * 13f).toInt()
@@ -147,18 +166,35 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
         sound.sting()
         haptics.click()
         finish.animateTo(1f, tween(if (still) 240 else 1600, easing = LinearEasing))
-        onDone()
+        if (!done) { done = true; onDone() }
+    }
+
+    // Skipped: the picture goes out under a short fade and the app takes the screen. The bed and the voice are ducked
+    // rather than cut, so the first page of Vinz arrives out of a room going quiet instead of out of a chopped chord.
+    LaunchedEffect(leaving) {
+        if (!leaving) return@LaunchedEffect
+        scope.launch { sound.quiet() }
+        fade.animateTo(1f, tween(if (still) 120 else 280, easing = LinearEasing))
+        if (!done) { done = true; onDone() }
     }
 
     val ready by remember(still) { derivedStateOf { still || clock.value >= Intro.DOCK } }
+    // The Skip button appears once the first light is on screen, so the very first frame stays clean but nobody is ever
+    // a prisoner of the cinematic. Read through a derived state so the picture still only recomposes the once.
+    val canSkip by remember(still) { derivedStateOf { still || clock.value >= 0.45f } }
     // Tapping the scene is a way through the cinematic, never through the entrance: it lands on the dock, not past it.
     fun skipCinematic() {
-        if (skipped || ready) return
+        if (skipped || ready || leaving) return
         skipped = true
         clock.value = Intro.STILL_AT
         scope.launch { sound.quiet() }
     }
-    BackHandler(enabled = !ready) { skipCinematic() }
+    // Skip: past the entrance altogether. Nothing is asked of a hand that does not want to hold anything.
+    fun leave() {
+        if (leaving || finishing) return
+        leaving = true
+    }
+    BackHandler(enabled = !leaving && !finishing) { if (ready) leave() else skipCinematic() }
 
     BoxWithConstraints(
         modifier
@@ -187,6 +223,9 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
         Column(
             Modifier
                 .align(Alignment.Center)
+                // Decorative: "Vinz", "POWERED BY", "NASTECH RESEARCH" and the taglines are the picture, not controls.
+                // Without this TalkBack walked all five of them before it reached either thing it can actually use.
+                .clearAndSetSemantics { }
                 .graphicsLayer { translationY = -20.dp.toPx() * ramp(clock.value, Intro.DOCK - 0.7f, Intro.DOCK + 0.2f) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -203,14 +242,17 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
             hold = hold,
             clock = clock,
             still = still,
-            enabled = ready && !finishing,
+            enabled = ready && !finishing && !leaving,
             radius = dockRadius,
             scale = scale,
             haptics = haptics,
             holding = holding,
-            onComplete = { if (!finishing) { finishing = true; holding.value = false } },
+            onComplete = { if (!finishing && !leaving) { finishing = true; holding.value = false } },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                // Vinz draws edge to edge, so the 44 dp the ring wants above the bottom of the frame is on top of
+                // whatever the system keeps for itself: on a phone with three buttons the ring used to sit under them.
+                .navigationBarsPadding()
                 .padding(bottom = inset)
                 .onGloballyPositioned { c ->
                     val b = c.boundsInParent()
@@ -219,6 +261,68 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
         )
 
         Ending(finish, still, scale, dock)
+
+        // Skip. Not hidden behind the hold and not only on a gesture: from half a second in, one tap is enough to get
+        // into the app, and it is a real control (its own label, its own action) rather than something on the picture.
+        if (canSkip && !finishing && !leaving) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 10.dp, end = 14.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.07f))
+                    .clickable(onClickLabel = stringResource(R.string.intro_skip_action)) { leave() }
+                    .padding(horizontal = (16 * scale).dp, vertical = (8 * scale).dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.intro_skip),
+                    color = Color.White.copy(alpha = 0.66f),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = (11 * scale).sp,
+                        letterSpacing = (2.2f * scale).sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+            }
+        }
+
+        // Sound on / off, beside Skip: quiet for a demo, or a phone whose ringer is up in a meeting.
+        if (canSkip && !finishing && !leaving) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(top = 10.dp, start = 14.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.07f))
+                    .clickable(onClickLabel = stringResource(R.string.intro_sound_action)) {
+                        muted = !muted
+                        sound.mute(muted)
+                    }
+                    .padding(horizontal = (16 * scale).dp, vertical = (8 * scale).dp),
+            ) {
+                Text(
+                    text = stringResource(if (muted) R.string.intro_sound_off else R.string.intro_sound_on),
+                    color = Color.White.copy(alpha = 0.66f),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = (11 * scale).sp,
+                        letterSpacing = (2.2f * scale).sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+            }
+        }
+
+        // The way out, over everything: skipping fades the entrance to black before the app's first page is shown.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .graphicsLayer { alpha = fade.value },
+        )
     }
 }
 

@@ -50,4 +50,9 @@
     <string name="intro_holding">KEEP HOLDING</string>
     <string name="intro_almost">ALMOST</string>
     <string name="intro_welcome">Welcome to Vinz</string>
+    <string name="intro_skip">SKIP</string>
+    <string name="intro_skip_action">Skip the entrance</string>
+    <string name="intro_sound_on">SOUND ON</string>
+    <string name="intro_sound_off">SOUND OFF</string>
+    <string name="intro_sound_action">Turn the entrance's sound on or off</string>
 </resources>
