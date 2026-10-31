@@ -101,7 +101,7 @@ internal class IntroSound(private val context: Context) {
     private fun start(track: Track, id: Int, volume: Float) {
         val afd = runCatching { context.resources.openRawResourceFd(id) }.getOrNull() ?: return
         val player = MediaPlayer()
-        val made = runCatching {
+        runCatching {
             player.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -111,18 +111,21 @@ internal class IntroSound(private val context: Context) {
             player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
             player.isLooping = false
             player.setVolume(volume * level, volume * level)
-            player.setOnPreparedListener { it.start() }
+            // The callback only starts the player this track is still holding: a player released while it was
+            // preparing (skipped, ended, replaced) would otherwise throw from a listener that has no caller to catch it.
+            player.setOnPreparedListener { p -> runCatching { if (track.player === p) p.start() } }
             player.setOnCompletionListener { p -> runCatching { p.release() } }
+            // Before prepareAsync, not after: the callback must find the track already holding this player.
+            track.player = player
+            track.source = afd
             player.prepareAsync()
-            player
-        }.getOrNull()
-        if (made == null) {
+        }.onFailure {
+            // One place that lets go of both: the player this method built, and the descriptor it opened.
             runCatching { player.release() }
             runCatching { afd.close() }
-            return
+            track.player = null
+            track.source = null
         }
-        track.player = made
-        track.source = afd
     }
 
     private fun stop(track: Track) {
