@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -56,12 +57,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -115,6 +118,15 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     val fade = remember { Animatable(0f) }
     val stars = remember { introStars() }
     var dock by remember { mutableStateOf(Offset.Unspecified) }
+
+    // The entrance is the one thing in Vinz that must not be interrupted by a screen timeout: a phone that sleeps
+    // halfway through it looks exactly like a phone that crashed on launch.
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val window = (view.context as? android.app.Activity)?.window
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
 
     val sound = remember { IntroSound(context) }
     // The entrance's own sound switch. It exists because an intro is also something you demonstrate, and a room with
@@ -205,10 +217,13 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     }
     BackHandler(enabled = !leaving && !finishing) { if (ready) leave() else skipCinematic() }
 
+    val named = stringResource(R.string.intro_welcome)
     BoxWithConstraints(
         modifier
             .fillMaxSize()
             .background(Color.Black)
+            // One name for the whole overlay, so TalkBack says what this is instead of reading the screen out.
+            .semantics { paneTitle = named }
             .pointerInput(ready) { if (!ready) detectTapGestures { skipCinematic() } },
     ) {
         // Sized from the height and then kept in by the width, so the words take the same share of the screen on a
@@ -269,6 +284,23 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
                     dock = b.center
                 },
         )
+
+        // How far through the cinematic this is: a hairline of the brand's light along the bottom edge. It is the
+        // answer to "how long is this", and it fills from the left, so it also reads as something that ends.
+        if (!ready) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(1.5.dp)
+                    .graphicsLayer {
+                        scaleX = if (still) 1f else (clock.value / Intro.DOCK).coerceIn(0f, 1f)
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                        alpha = 0.55f
+                    }
+                    .background(Brush.horizontalGradient(listOf(Brand.violet, Brand.blue, Brand.cyan))),
+            )
+        }
 
         Ending(finish, still, scale, dock)
 
