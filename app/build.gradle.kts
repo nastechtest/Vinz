@@ -74,7 +74,7 @@ android {
         buildConfigField("String", "BUILD_CHANNEL", "\"$channel\"")
         // Which feed this build updates itself from, and (VinzP only) which pull request it came from.
         buildConfigField("String", "UPDATE_CHANNEL", "\"$channel\"")
-        buildConfigField("Int", "PR_NUMBER", prNumber.toString())
+        buildConfigField("int", "PR_NUMBER", prNumber.toString())
         vectorDrawables { useSupportLibrary = true }
         // The name under the launcher icon. VinzM and VinzP say so in the launcher, because three copies of Vinz
         // that all claim to be "Vinz" is exactly the confusion this is meant to avoid; a side-by-side build
