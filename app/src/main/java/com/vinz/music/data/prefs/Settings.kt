@@ -1213,6 +1213,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val titleSize = stringPreferencesKey("title_size")
         val cardSize = stringPreferencesKey("card_size")
         val reduceMotion = booleanPreferencesKey("reduce_motion")
+        /** The first-run splash (1.8) has played. A fact about this install, so it is not in [AppSettings]. */
+        val splashSeen = booleanPreferencesKey("splash_seen")
         val navStyle = stringPreferencesKey("nav_style")
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
@@ -1373,7 +1375,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             setOf(
                 "performance_mode", "performance_offered", "share_youtube_links",
                 "merge_liked_videos", "volume_control", "app_volume", "speed_dial_youtube_only", "swipe_tabs",
-                "onboarded", "cookie", "visitor_data", "data_sync_id", "auth_user", "discord_presence", "account_name", "account_email",
+                // splash_seen (1.8) is a fact about the install, like onboarded: nothing to save in a Look.
+                "onboarded", "splash_seen", "cookie", "visitor_data", "data_sync_id", "auth_user", "discord_presence", "account_name", "account_email",
                 "account_avatar", "haptics", "immersive_player", "preload", "preload_cellular", "canvas_enabled", "canvas_on_cellular",
                 "soft_spatial", "soft_spatial_amount", "lyrics_on_player", "lyrics_order", "lyrics_off", "prefer_synced", "skip_censored",
                 "lyrics_translate", "lyrics_translate_to", "romanize_lyrics", "romanize_all", "sing_cellular", "sing_always_ready",
@@ -1733,6 +1736,13 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         scope, SharingStarted.Eagerly, read(raw).effective()
     )
 
+    /**
+     * Whether the first-run splash (1.8) has already played on this install. Deliberately outside [AppSettings]: it is
+     * not a preference, and AppSettings is already at the JVM's limit of a method's arguments.
+     */
+    val splashSeen: StateFlow<Boolean> = context.dataStore.data.map { it[K.splashSeen] ?: false }
+        .stateIn(scope, SharingStarted.Eagerly, raw[K.splashSeen] ?: false)
+
     val current: AppSettings get() = flow.value
 
     /** The settings as the listener set them (Settings shows these: Performance mode doesn't change a switch). */
@@ -1995,6 +2005,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setTitleSize(v: TitleSize) = edit { it[K.titleSize] = v.name }
     fun setCardSize(v: CardSize) = edit { it[K.cardSize] = v.name }
     fun setReduceMotion(v: Boolean) = edit { it[K.reduceMotion] = v }
+    /** Played: the splash must not come back on this install (clearing Vinz's data brings it back with the rest). */
+    /** Once per install. Set back to false, the entrance plays again - which is how Settings -> About replays it. */
+    fun setSplashSeen(seen: Boolean = true) = edit { it[K.splashSeen] = seen }
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }

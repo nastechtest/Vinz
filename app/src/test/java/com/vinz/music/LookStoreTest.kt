@@ -18,6 +18,14 @@ import org.junit.Test
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [34], application = android.app.Application::class)
 class LookStoreTest {
+    /**
+     * The "before" snapshot, once the store has actually written it. `apply` returns before `mine` has emitted, so
+     * reading `.value` straight afterwards is a race: it passed on an idle machine and failed under load.
+     */
+    private suspend fun LookStore.before() =
+        withTimeout(5_000) { mine.first { list -> list.any { it.id == LookStore.BEFORE_ID } } }
+            .single { it.id == LookStore.BEFORE_ID }
+
     @Test
     fun historyNamesEachChangeForWhatItWas(): Unit = runBlocking {
         val app = org.robolectric.RuntimeEnvironment.getApplication()
@@ -49,13 +57,13 @@ class LookStoreTest {
         val paper = BuiltInLooks.of("paper")!!
         assertEquals(true, looks.changes(paper)?.startsWith("Changes your theme, colors, type, backgrounds and layout"))
         looks.apply(paper)
-        val before = looks.mine.value.single { it.id == LookStore.BEFORE_ID }
+        val before = looks.before()
         assertEquals("Before Paper", before.name)
         assertEquals("s:EXTRA", before.values["corners"])
         assertEquals("s:MONO", before.values["font_choice"])
         // Switching from a Look (Paper) to another keeps nothing new.
         looks.apply(neon)
-        assertEquals("Before Paper", looks.mine.value.single { it.id == LookStore.BEFORE_ID }.name)
+        assertEquals("Before Paper", looks.before().name)
         looks.delete(LookStore.BEFORE_ID)
     }
 
@@ -113,7 +121,7 @@ class LookStoreTest {
         val midnight = BuiltInLooks.of("midnight")!!
         looks.apply(midnight, "Midnight for the night", scheduled = true)
         assertEquals("Midnight", looks.keptBySchedule.value)
-        val before = looks.mine.value.single { it.id == LookStore.BEFORE_ID }
+        val before = looks.before()
         assertEquals("Before Midnight", before.name)
         assertEquals(true, before.note.contains("Day and night"))
 

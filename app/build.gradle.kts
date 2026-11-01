@@ -136,6 +136,9 @@ android {
         unitTests.isReturnDefaultValues = true
         // Robolectric tests can read the app's own resources (strings, the widgets' layouts).
         unitTests.isIncludeAndroidResources = true
+        // IntroRenderTest draws an 8K frame to prove the entrance holds there: 7680 x 4320 x 4 bytes is 132 MB of
+        // bitmap on top of Robolectric's own footprint, which does not fit the 512 MB a test worker gets by default.
+        unitTests.all { it.maxHeapSize = "2g" }
     }
 
     packaging {
