@@ -103,6 +103,9 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
     // Animations switched off in the phone's developer options, or "Reduce motion" in Vinz: the same frame, held still.
     val still = reduceMotion || !introAnimationsOn(context)
 
+    // Debug builds only: whether this screen is allowed to explain itself. See DebugHud.
+    val debuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
     // Starts at the first light, not at zero: 0.00-0.15 is black by design, and on a cold start that is the frame
     // people judge the whole app by.
     val clock = remember { mutableStateOf(if (still) Intro.STILL_AT else Intro.SPARK) }
@@ -380,6 +383,40 @@ fun VinzIntro(reduceMotion: Boolean, onDone: () -> Unit, modifier: Modifier = Mo
                 .fillMaxSize()
                 .graphicsLayer { alpha = fade.value }
                 .background(Color.Black),
+        )
+
+        // Debug builds only, above everything including the fade: the clock, and a heartbeat that only moves while the
+        // coroutines are running.
+        if (debuggable) {
+            DebugHud(clock, still, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 56.dp))
+        }
+    }
+}
+
+/**
+ * Debug builds only: a magenta bar with the animation clock and a heartbeat, drawn on top of the entrance.
+ *
+ * "Black with sound" is one of three things, and this tells them apart without a cable: no bar (not this build, or
+ * nothing is being drawn at all), a bar with the clock frozen at 0.15 (the timeline never started), or a bar with the
+ * clock running (the scene is drawing and something else is covering it). Release builds never compose this.
+ */
+@Composable
+private fun DebugHud(clock: State<Float>, still: Boolean, modifier: Modifier = Modifier) {
+    var beats by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(200)
+            beats += 1
+        }
+    }
+    val t = clock.value
+    Box(modifier.background(Color.Magenta)) {
+        Text(
+            text = "t=" + "%.2f".format(t) + "  beats=" + beats + "  still=" + still,
+            color = Color.Black,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
 }
