@@ -4,6 +4,10 @@ import com.vinz.music.tr
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.widget.ImageView
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
 import com.vinz.music.R
 
 /** The app icons to pick from (#20): each is a launcher activity-alias in the manifest, with its two layers. */
@@ -49,4 +53,19 @@ object AppIcons {
             pm.setComponentEnabledSetting(component(context, it), PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
         }
     }
+}
+
+/** Android launcher layers can be XML layer-lists, which Compose painterResource doesn't support. */
+@Composable
+fun AppIconLayer(resource: Int, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { context -> ImageView(context).apply { setImageResource(resource); tag = resource } },
+        update = { view ->
+            if (view.tag != resource) {
+                view.setImageResource(resource)
+                view.tag = resource
+            }
+        },
+        modifier = modifier,
+    )
 }

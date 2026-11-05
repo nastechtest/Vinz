@@ -1105,8 +1105,8 @@ private fun AppIconSettings() {
                                         .padding(if (on) 4.dp else 0.dp).clip(RoundedCornerShape(15.dp)),
                                 ) {
                                     // An adaptive icon's layers are 108 units with the visible 72 in the middle: draw them 1.5× and crop.
-                                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.background), null, Modifier.fillMaxSize().scale(1.5f))
-                                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.foreground), null, Modifier.fillMaxSize().scale(1.5f))
+                                    com.vinz.music.ui.theme.AppIconLayer(icon.background, Modifier.fillMaxSize().scale(1.5f))
+                                    com.vinz.music.ui.theme.AppIconLayer(icon.foreground, Modifier.fillMaxSize().scale(1.5f))
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 WholeWords(icon.label, MaterialTheme.typography.labelMedium, if (on) scheme.onSurface else scheme.onSurfaceVariant, maxLines = 1)
