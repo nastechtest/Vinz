@@ -1,14 +1,19 @@
 package com.vinz.music.ui.theme
 
-import com.vinz.music.tr
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
-import android.widget.ImageView
+import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.core.content.ContextCompat
 import com.vinz.music.R
+import com.vinz.music.tr
 
 /** The app icons to pick from (#20): each is a launcher activity-alias in the manifest, with its two layers. */
 enum class AppIcon(val label: String, val alias: String, val background: Int, val foreground: Int) {
@@ -55,17 +60,39 @@ object AppIcons {
     }
 }
 
-/** Android launcher layers can be XML layer-lists, which Compose painterResource doesn't support. */
+/**
+ * Draws the actual adaptive-icon background and foreground resources in a single Compose Canvas. Using the existing
+ * Android Drawables preserves vector and layer-list artwork without creating child Views for each gallery layer.
+ */
 @Composable
-fun AppIconLayer(resource: Int, modifier: Modifier = Modifier) {
-    AndroidView(
-        factory = { context -> ImageView(context).apply { setImageResource(resource); tag = resource } },
-        update = { view ->
-            if (view.tag != resource) {
-                view.setImageResource(resource)
-                view.tag = resource
+fun AppIconPreview(icon: AppIcon, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val background = remember(context, icon.background) {
+        ContextCompat.getDrawable(context, icon.background)?.mutate()
+    }
+    val foreground = remember(context, icon.foreground) {
+        ContextCompat.getDrawable(context, icon.foreground)?.mutate()
+    }
+
+    Canvas(modifier) {
+        val side = size.minDimension * 1.5f
+        val left = ((size.width - side) / 2f).toInt()
+        val top = ((size.height - side) / 2f).toInt()
+        val bounds = IntOffset(left, top)
+        val iconSize = IntSize(side.toInt(), side.toInt())
+        val canvas = drawContext.canvas.nativeCanvas
+        val saveCount = canvas.save()
+        try {
+            background?.let { drawable ->
+                drawable.setBounds(bounds.x, bounds.y, bounds.x + iconSize.width, bounds.y + iconSize.height)
+                drawable.draw(canvas)
             }
-        },
-        modifier = modifier,
-    )
+            foreground?.let { drawable ->
+                drawable.setBounds(bounds.x, bounds.y, bounds.x + iconSize.width, bounds.y + iconSize.height)
+                drawable.draw(canvas)
+            }
+        } finally {
+            canvas.restoreToCount(saveCount)
+        }
+    }
 }

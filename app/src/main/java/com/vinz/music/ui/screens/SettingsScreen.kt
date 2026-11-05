@@ -1104,9 +1104,8 @@ private fun AppIconSettings() {
                                     Modifier.size(60.dp).then(if (on) Modifier.border(2.dp, com.vinz.music.ui.theme.VinzTokens.spectrum, RoundedCornerShape(18.dp)) else Modifier)
                                         .padding(if (on) 4.dp else 0.dp).clip(RoundedCornerShape(15.dp)),
                                 ) {
-                                    // An adaptive icon's layers are 108 units with the visible 72 in the middle: draw them 1.5× and crop.
-                                    com.vinz.music.ui.theme.AppIconLayer(icon.background, Modifier.fillMaxSize().scale(1.5f))
-                                    com.vinz.music.ui.theme.AppIconLayer(icon.foreground, Modifier.fillMaxSize().scale(1.5f))
+                                    // An adaptive icon's layers are 108 units with the visible 72 in the middle.
+                                    com.vinz.music.ui.theme.AppIconPreview(icon, Modifier.fillMaxSize())
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 WholeWords(icon.label, MaterialTheme.typography.labelMedium, if (on) scheme.onSurface else scheme.onSurfaceVariant, maxLines = 1)
