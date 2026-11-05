@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.runtime.State
@@ -136,13 +137,15 @@ private fun sampleAxis(): androidx.compose.ui.text.font.FontFamily? {
 @Composable
 private fun currentLook(): LyricsLook {
     val s = LocalAppSettings.current
-    return rememberLyricsLook(s, LocalContainer.current.player.currentSong.value?.thumbnail)
+    val currentSong by LocalContainer.current.player.currentSong.collectAsState()
+    return rememberLyricsLook(s, currentSong?.thumbnail)
 }
 
 /** The look [p] would draw, for the song playing: how each choice's example shows it, with the rest of your settings. */
 @Composable
 private fun lookFor(p: LyricsLookPrefs): LyricsLook {
-    val cover = LocalContainer.current.player.currentSong.value?.thumbnail
+    val currentSong by LocalContainer.current.player.currentSong.collectAsState()
+    val cover = currentSong?.thumbnail
     val sung = lyricsFill(p.sungColor, p.sungCustom, cover)
     val others = lyricsFill(p.otherColor, p.otherCustom, cover).solid()
     val extra = lyricsFill(p.extraColor, p.otherCustom, cover).solid()
@@ -320,7 +323,8 @@ fun LyricsTextGroup() {
 /** Round swatches for a lyrics color, each showing what it is; Your color opens the picker ([onCustom]). */
 @Composable
 private fun LyricsColorSwatches(selected: LyricsColor, custom: Int, onSelect: (LyricsColor) -> Unit, spectrum: Boolean = true, onCustom: () -> Unit) {
-    val cover = LocalContainer.current.player.currentSong.value?.thumbnail
+    val currentSong by LocalContainer.current.player.currentSong.collectAsState()
+    val cover = currentSong?.thumbnail
     val options = LyricsColor.entries.filter { spectrum || it != LyricsColor.SPECTRUM }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         options.forEach { o ->
@@ -465,7 +469,8 @@ private fun ColorDot(label: String, color: Color?, onClick: () -> Unit) {
 @Composable
 private fun backgroundSample(kind: LyricsBackground, immersive: Boolean = false): Brush {
     val s = LocalAppSettings.current
-    val cover = LocalContainer.current.player.currentSong.value?.thumbnail
+    val currentSong by LocalContainer.current.player.currentSong.collectAsState()
+    val cover = currentSong?.thumbnail
     val palette = com.vinz.music.ui.components.rememberArtPalette(cover)
     val a = palette?.vibrant ?: Color(0xFF8A6BFF)
     val b = palette?.dominant ?: Color(0xFFFF7A59)

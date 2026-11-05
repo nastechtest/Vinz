@@ -192,6 +192,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     // Where each YouTube section's More button goes, by its key: the section is found again under another language's title.
     val shelfIds = remember { c.app.getSharedPreferences("home_shelf_ids", android.content.Context.MODE_PRIVATE) }
     fun knownShelves(): Map<String, String> = shelfIds.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+    val cachedHome by homeShelfCache.collectAsState()
     val home = rememberLoad("home") {
         // YouTube's personalised feed reshuffles per load, so pinned shelves (e.g. "Mixed for you")
         // can land on a later page or drop out entirely. Page further for them, and keep the last
@@ -229,8 +230,8 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
         (fresh + kept).also { homeShelfCache.value = it }
     }
     // The last Home (from this session, else kept on the phone) shows until the new one is in: no spinner at start.
-    val lastHome by produceState(homeShelfCache.value.ifEmpty { null }) {
-        if (value == null) value = c.homeCache.read()?.also { if (homeShelfCache.value.isEmpty()) homeShelfCache.value = it }
+    val lastHome by produceState(cachedHome.ifEmpty { null }, cachedHome) {
+        if (value == null) value = c.homeCache.read()?.also { if (cachedHome.isEmpty()) homeShelfCache.value = it }
     }
     val moods = rememberLoad("moods") { c.taste.rank(runCatching { c.ytm.moodsAndGenres() }.getOrDefault(emptyList())) }
     val recent by c.library.recent.collectAsState()
@@ -262,16 +263,18 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     // Kept across tab switches, so the session's Quick picks aren't made again on the way back to Home.
     var refreshes by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
     val seed = recent.firstOrNull()?.takeIf { picks == null && home.state is Load.Ok }
-    val standIn by produceState(standInPicks.value, seed?.id, refreshes) {
+    val cachedStandIn by standInPicks.collectAsState()
+    val standIn by produceState(cachedStandIn, seed?.id, refreshes, cachedStandIn) {
         // One stand-in per session (a pull to refresh asks again): each new play swapped the whole section before.
-        if (seed == null || standInPicks.value.isNotEmpty()) return@produceState
+        if (seed == null || cachedStandIn.isNotEmpty()) return@produceState
         val heard = recent.take(50).map { it.id }.toSet()
         value = runCatching { c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }.getOrDefault(emptyList())
             .filter { it.id !in heard && !it.isVideo }.distinctBy { it.id }.take(20)
             .also { standInPicks.value = it }
     }
     val lastPlayed = recent.firstOrNull()?.id
-    val dialMine by produceState(speedDialMine.value, lastPlayed, dialOn) {
+    val cachedSpeedDialMine by speedDialMine.collectAsState()
+    val dialMine by produceState(cachedSpeedDialMine, lastPlayed, dialOn, cachedSpeedDialMine) {
         if (!dialOn) return@produceState
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { speedDialFromHistory(c) }.getOrDefault(emptyList()) }
             .also { speedDialMine.value = it }
@@ -289,8 +292,11 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     // #297 / #277 (1.7.9.3): the section showed the kept Home's picks, then the fresh feed's, then these. Now they're
     // made once, from the fresh feed (not the copy kept from last time), and the section waits for them.
     val homeSettled = home.state !is Load.Loading
-    val curated by produceState(curatedPicks.value, homeSettled, refreshes, onlineNow) {
-        if (!onlineNow || (curatedPicks.value.isNotEmpty() && curatedAt.value == refreshes)) return@produceState
+    val cachedCurated by curatedPicks.collectAsState()
+    val madeFor by curatedAt.collectAsState()
+    val tried by picksTried.collectAsState()
+    val curated by produceState(cachedCurated, homeSettled, refreshes, onlineNow, cachedCurated, madeFor) {
+        if (!onlineNow || (cachedCurated.isNotEmpty() && madeFor == refreshes)) return@produceState
         if (!homeSettled) return@produceState
         val made = if (youtubePicks.isEmpty() && recent.isEmpty()) emptyList() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching { c.yourMusic.quickPicks(youtubePicks, radioOf = { seed: Song -> c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }) }.getOrDefault(youtubePicks)
@@ -300,12 +306,10 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     }
     // Never waiting for long: after a few seconds YouTube's own show. Kept as the pull to refresh it waited for:
     // produceState keeps its value when the keys change, so a plain "waited" stayed true after a refresh.
-    val waitedFor by produceState(if (picksTried.value == refreshes) refreshes else -1, refreshes) {
-        if (picksTried.value != refreshes) kotlinx.coroutines.delay(QUICK_PICKS_WAIT_MS)
+    val waitedFor by produceState(if (tried == refreshes) refreshes else -1, refreshes, tried) {
+        if (tried != refreshes) kotlinx.coroutines.delay(QUICK_PICKS_WAIT_MS)
         value = refreshes
     }
-    val tried by picksTried.collectAsState()
-    val madeFor by curatedAt.collectAsState()
     val picksReady = waitedFor == refreshes || tried == refreshes
     // Songs already on a Speed dial tile aren't repeated in Quick picks. Once shown, the set stays for the session
     // (until pull to refresh), whatever loads after it.
@@ -320,7 +324,8 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     LaunchedEffect(online) { if (online && home.state is Load.Err) { home.reload(false); moods.reload(false) } }
     val offline: (Song) -> Boolean = { online || c.availableOffline(it.id) }
     val wantsYours = !online || layout.any { it.key in YOURS_KEYS }
-    val yours by produceState(lastYours.value, recent.firstOrNull()?.id, online, refreshes, wantsYours) {
+    val cachedYours by lastYours.collectAsState()
+    val yours by produceState(cachedYours, recent.firstOrNull()?.id, online, refreshes, wantsYours, cachedYours) {
         if (!wantsYours) return@produceState
         value = runCatching { c.yourMusic.sections(offlineOnly = !online) }.getOrNull()?.also { lastYours.value = it }
     }
@@ -1098,8 +1103,9 @@ private fun ReplayTeaser(cfg: HomeSectionConfig) {
     val nav = LocalNavigator.current
     val graph = LocalAppSettings.current.view.replayGraph
     val counted by c.imports.counted.collectAsState()
-    val kept by produceState(yearSoFar.value?.takeIf { it.graph == graph && it.counted == counted }, graph, counted) {
-        val have = yearSoFar.value?.takeIf { it.graph == graph && it.counted == counted }
+    val cachedYearSoFar by yearSoFar.collectAsState()
+    val kept by produceState(cachedYearSoFar?.takeIf { it.graph == graph && it.counted == counted }, graph, counted) {
+        val have = cachedYearSoFar?.takeIf { it.graph == graph && it.counted == counted }
         if (have != null && System.currentTimeMillis() - have.at < 5 * 60_000L) { value = have; return@produceState }
         value = runCatching { loadYearSoFar(c, graph, counted) }.getOrNull()?.also { yearSoFar.value = it } ?: have
     }

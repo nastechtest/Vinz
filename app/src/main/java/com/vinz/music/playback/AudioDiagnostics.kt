@@ -48,6 +48,7 @@ object AudioDiagnostics {
     }
 
     /** One line in the log ([kind] is a short tag: "track", "underrun", "device", "route", "scan", "mark"…). */
+    @android.annotation.SuppressLint("LogTagMismatch") // VinzDiag is the documented tag consumed by the release logcat workflow.
     fun log(kind: String, message: String) {
         if (!enabled) return
         // The release check's night hunt reads these from logcat (a release build's files can't be read over adb):

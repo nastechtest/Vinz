@@ -2,8 +2,8 @@
 """Sync the configured source into Vinz without losing local work or overwriting Vinz's identity.
 
 The source URL and source names are runtime inputs, not stored in this repository. The baseline
-is pinned in .github/sync-state.json. Each run applies a deterministic three-way merge, protects
-Vinz identity assets, and updates the baseline watermark. A real conflict is a hard failure.
+is kept in this script so no public source-configuration manifest is needed. Each run applies a
+deterministic three-way merge and stops for conflicts or visual changes requiring review.
 
 Usage:
     python3 scripts/upstream/sync_upstream.py [--ref refs/heads/main] [--check]
@@ -15,8 +15,6 @@ writes changes into the checked-out working tree; the caller owns commit/PR/test
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import os
 import re
 import shutil
@@ -29,8 +27,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 VINZ_REPOSITORY = "nastechtest/Vinz"
-STATE_FILE = Path(".github/sync-state.json")
-BRAND_LOCK_FILE = Path(".github/vinz-brand-lock.json")
+BASELINE_SHA = "d068196fcd70641263b808f9dbfe5a02e9d9b1c5"
 
 # Product/source trees that come from the upstream repository. Vinz's CI, releases, version properties,
 # legal fork notice, and repository settings are deliberately outside this list.
@@ -43,7 +40,6 @@ SYNC_ROOTS = (
     "build.gradle.kts",
     "gradle.properties",
     "settings.gradle.kts",
-    "README.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "docs",
@@ -59,7 +55,11 @@ PROTECTED_FILES = {
     "app/src/main/res/drawable/ic_launcher_monochrome.xml",
     "app/src/main/res/drawable/ic_notification.xml",
     "app/src/main/res/drawable/tv_banner.xml",
-    "app/src/main/assets/remote/icon.svg",
+    "design/branding/vinz-logo.png",
+    "app/src/main/res/drawable-nodpi/vinz_logo.png",
+    "app/src/main/res/drawable-nodpi/vinz_notification_mark.png",
+    "app/src/main/assets/remote/icon.png",
+    "docs/branding/icon-preview.png",
 }
 PROTECTED_PREFIXES = (
     "app/src/main/res/mipmap-anydpi/",
@@ -71,7 +71,6 @@ PRESERVE_ROOTS = {
     ".gitattributes",
     ".gitignore",
     "version.properties",
-    "FORK_NOTICE.md",
     "LICENSE",
     "scripts",
     "app/lint-baseline.xml",
@@ -100,20 +99,18 @@ def in_sync_scope(rel: str) -> bool:
 
 
 def verify_brand_lock(root: Path = ROOT) -> None:
-    """Fail closed if a protected Vinz logo, icon background, or remote favicon changed."""
-    lock_path = root / BRAND_LOCK_FILE
-    expected = json.loads(lock_path.read_text(encoding="utf-8"))
-    failures = []
-    for rel, digest in expected.items():
-        path = root / rel
-        if not path.is_file():
-            failures.append(f"missing: {rel}")
-            continue
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual != digest:
-            failures.append(f"changed: {rel}")
-    if failures:
-        raise RuntimeError("Vinz branding lock failed (reconcile the brand-lock manifest explicitly):\n  " + "\n  ".join(failures))
+    """Check the checked-in Vinz brand assets and their code references without a manifest."""
+    required = (
+        "app/src/main/res/drawable/ic_launcher_background.xml",
+        "app/src/main/res/drawable/ic_launcher_foreground.xml",
+        "app/src/main/res/drawable/ic_launcher_monochrome.xml",
+        "app/src/main/res/drawable/ic_notification.xml",
+        "app/src/main/res/drawable/tv_banner.xml",
+        "app/src/main/assets/remote/icon.png",
+    )
+    missing = [rel for rel in required if not (root / rel).is_file()]
+    if missing:
+        raise RuntimeError("missing Vinz identity asset(s): " + ", ".join(missing))
     icons = root / "app/src/main/java/com/vinz/music/ui/theme/AppIcons.kt"
     if icons.exists() and "ic_launcher_fg_" in icons.read_text(encoding="utf-8"):
         raise RuntimeError("AppIcons.kt still references upstream per-icon foreground art")
@@ -260,9 +257,24 @@ def scoped_files(tree: Path) -> set[str]:
     return {f for f in found if in_sync_scope(f)}
 
 
+def is_visual_asset(rel: str) -> bool:
+    path = PurePosixPath(rel)
+    visual_suffixes = {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".avif", ".tif", ".tiff",
+        ".svg", ".ico", ".icns", ".mp4", ".mov", ".webm", ".m4v",
+    }
+    if path.suffix.lower() in visual_suffixes:
+        return True
+    return path.suffix.lower() == ".xml" and any(
+        part.startswith(("drawable", "mipmap")) for part in path.parts
+    )
+
+
 def merge_trees(base_tree: Path, ours_tree: Path, theirs_tree: Path, *, check_only: bool) -> list[str]:
     base_paths, our_paths, their_paths = map(scoped_files, (base_tree, ours_tree, theirs_tree))
     changed: list[str] = []
+    pending: list[tuple[str, bytes | None, Path]] = []
+    visual_changes: list[str] = []
     with tempfile.TemporaryDirectory(prefix="vinz-merge-") as td:
         temp = Path(td)
         for rel in sorted(base_paths | our_paths | their_paths):
@@ -275,15 +287,25 @@ def merge_trees(base_tree: Path, ours_tree: Path, theirs_tree: Path, *, check_on
             if merged == file_bytes(op):
                 continue
             changed.append(rel)
-            if not check_only:
-                if merged is None:
-                    if op.exists():
-                        op.unlink()
-                else:
-                    op.parent.mkdir(parents=True, exist_ok=True)
-                    op.write_bytes(merged)
-                    if tp.exists():
-                        op.chmod(tp.stat().st_mode & 0o777)
+            pending.append((rel, merged, tp))
+            if is_visual_asset(rel):
+                visual_changes.append(rel)
+    if visual_changes:
+        raise RuntimeError(
+            "visual assets changed; inspect them manually before syncing: "
+            + ", ".join(visual_changes[:30])
+        )
+    if not check_only:
+        for rel, merged, tp in pending:
+            op = ours_tree / rel
+            if merged is None:
+                if op.exists():
+                    op.unlink()
+            else:
+                op.parent.mkdir(parents=True, exist_ok=True)
+                op.write_bytes(merged)
+                if tp.exists():
+                    op.chmod(tp.stat().st_mode & 0o777)
     return changed
 
 
@@ -299,17 +321,26 @@ def source_repository_from_url(source_url: str) -> str:
     return repository
 
 
-def read_state() -> dict:
-    path = ROOT / STATE_FILE
-    state = json.loads(path.read_text(encoding="utf-8"))
-    if (not isinstance(state.get("baseline_ref"), str)
-            or not re.fullmatch(r"[0-9a-f]{40}", state.get("baseline_sha", ""))):
-        raise RuntimeError(f"invalid sync state in {path}")
+def verify_destination() -> None:
     origin = run(["git", "remote", "get-url", "origin"], cwd=ROOT, capture=True)
     match = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", origin)
     if not match or match.group(1).casefold() != VINZ_REPOSITORY.casefold():
         raise RuntimeError(f"refusing to sync: origin must be {VINZ_REPOSITORY}; got {origin}")
-    return state
+
+
+def update_baseline_sha(new_sha: str) -> None:
+    script = Path(__file__).resolve()
+    text = script.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r'^BASELINE_SHA = "[0-9a-f]{40}"$',
+        f'BASELINE_SHA = "{new_sha}"',
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if count != 1:
+        raise RuntimeError("could not update the baseline SHA in this script")
+    script.write_text(updated, encoding="utf-8")
 
 
 def latest_commit(repo: Path, ref: str) -> str:
@@ -317,7 +348,7 @@ def latest_commit(repo: Path, ref: str) -> str:
 
 
 def verify_visual_policy(source_brand: str, source_owner: str, source_repository: str) -> None:
-    """Reject source names/links outside README and unreviewed visual asset changes."""
+    """Reject caller-supplied source names and links outside the root README."""
     command = [sys.executable, str(ROOT / "scripts/ci/check_branding.py")]
     for value in (source_brand, source_owner):
         command.extend(("--forbid-text", value))
@@ -334,7 +365,7 @@ def main() -> int:
     parser.add_argument("--ref", default="refs/heads/main", help="source git ref to sync (default: main)")
     parser.add_argument("--check", action="store_true", help="validate/preview without modifying Vinz")
     parser.add_argument("--self-test", action="store_true", help="run deterministic local merge/branding tests")
-    parser.add_argument("--verify-branding", action="store_true", help="check protected Vinz logo hashes and references")
+    parser.add_argument("--verify-branding", action="store_true", help="check Vinz identity assets and references")
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -348,7 +379,10 @@ def main() -> int:
         verify_visual_policy(args.source_brand, args.source_owner, source_repository)
         return 0
 
-    state = read_state()
+    verify_destination()
+    dirty = run(["git", "status", "--porcelain"], cwd=ROOT, capture=True)
+    if dirty:
+        raise RuntimeError("sync requires a clean working tree")
     verify_brand_lock()
     verify_visual_policy(args.source_brand, args.source_owner, source_repository)
     with tempfile.TemporaryDirectory(prefix="vinz-upstream-sync-") as td:
@@ -358,7 +392,7 @@ def main() -> int:
         run(["git", "clone", "--filter=blob:none", "--no-checkout", args.source_url, str(upstream)])
         run(["git", "-C", str(upstream), "fetch", "--filter=blob:none", "origin", args.ref])
         head = latest_commit(upstream, "FETCH_HEAD")
-        baseline = state["baseline_sha"]
+        baseline = BASELINE_SHA
         if head == baseline:
             print(f"Already current at {head[:12]}.")
             return 0
@@ -374,10 +408,8 @@ def main() -> int:
         if len(changed) > 40:
             print(f"  ... and {len(changed) - 40} more")
         if not args.check:
-            state["baseline_sha"] = head
-            state["baseline_ref"] = args.ref
-            (ROOT / STATE_FILE).write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-            print("Updated watermark. Review/build/test the working tree before committing.")
+            update_baseline_sha(head)
+            print("Updated the baseline in this script. Review/build/test before committing.")
         return 0
 
 
@@ -415,6 +447,21 @@ def self_test() -> None:
             raise AssertionError("overlapping edits must stop for human review")
         assert merge_one("vinz-only", None, b"local\n", None, scratch) == b"local\n"
         assert merge_one("vinz-deleted", None, None, None, scratch) is None
+
+        base, ours, theirs = (Path(td) / name for name in ("base-tree", "ours-tree", "theirs-tree"))
+        for tree in (base, ours, theirs):
+            (tree / "app/src/main/res/drawable").mkdir(parents=True)
+        image = "app/src/main/res/drawable/sample.png"
+        (base / image).write_bytes(b"old")
+        (ours / image).write_bytes(b"old")
+        (theirs / image).write_bytes(b"new")
+        try:
+            merge_trees(base, ours, theirs, check_only=False)
+        except RuntimeError as exc:
+            assert "visual assets changed" in str(exc)
+        else:
+            raise AssertionError("changed visual assets must stop for manual review")
+        assert (ours / image).read_bytes() == b"old", "visual-review failure must not write partial changes"
 
 
 if __name__ == "__main__":

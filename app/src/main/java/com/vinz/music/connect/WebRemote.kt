@@ -79,10 +79,7 @@ class WebRemote(private val app: Application, private val c: AppContainer) : Rem
     })
     // The page's files; its font is Vinz's own Outfit, straight from the app (nothing is fetched from the internet).
     private val server = RemoteServer(auth, this, { name ->
-        runCatching {
-            if (name == "outfit.ttf") app.resources.openRawResource(com.vinz.music.R.font.outfit).use { it.readBytes() }
-            else app.assets.open("remote/$name").use { it.readBytes() }
-        }.getOrNull()
+        runCatching { app.assets.open("remote/$name").use { it.readBytes() } }.getOrNull()
     })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }

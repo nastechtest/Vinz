@@ -19,7 +19,7 @@ class BlendExchangeTest {
     @Test
     fun theScannersCodeComesBack() = runBlocking {
         val got = mutableListOf<Pair<String, String?>>()
-        val a = BlendExchange({ code, mine -> got += code to mine; Blends.Import.Added("whoB", "Bee", false) }, { "Ay" })
+        val a = BlendExchange({ code, mine -> got += code to mine; Blends.Import.Added("whoB", "Bee", false) }, { "Ay" }, { listOf("127.0.0.1") })
         val b = BlendExchange({ _, _ -> Blends.Import.NotACode }, { "Bee" })
         a.open(codeA)
         val port = a.listeningPort!!

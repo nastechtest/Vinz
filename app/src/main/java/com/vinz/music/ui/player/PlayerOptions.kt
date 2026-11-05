@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package com.vinz.music.ui.player
 
 import com.vinz.music.R
@@ -25,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -91,8 +94,10 @@ fun PlayerOptionsSheet(
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     val liked by c.library.likedIds.collectAsState()
     val downloads by c.downloadState.collectAsState()
+    val savedDownloads by c.downloads.downloads.collectAsState()
     val videos by c.videoState.collectAsState()
     val hidden by c.canvas.hidden.collectAsState()
     val saved by c.canvas.saved.collectAsState()
@@ -172,7 +177,7 @@ fun PlayerOptionsSheet(
     val translating = settings.lyricsTranslate
     // Says which language, so turning it on for a song already in it explains itself.
     val translateInto = settings.lyricsTranslateTo.ifBlank { defaultTranslateTarget() }.let { tag ->
-        java.util.Locale.forLanguageTag(tag).getDisplayLanguage(java.util.Locale.getDefault()).ifBlank { tag }
+        java.util.Locale.forLanguageTag(tag).getDisplayLanguage(locale).ifBlank { tag }
     }
     val singOn = c.sing.on.collectAsState().value
     val djOn = c.dj.on.collectAsState().value
@@ -227,7 +232,7 @@ fun PlayerOptionsSheet(
     }
     put(MenuAction.LYRICS_AGAIN, ActionItem(VinzIcons.Refresh, tr(R.string.download_lyrics_again)) { onRedownloadLyrics(); toast(tr(R.string.downloading_lyrics_again)) })
     // Into your own FLAC / MP3 file, for other players (#16).
-    if (local || c.downloads.downloads.value[song.id]?.lossless == true) put(MenuAction.LYRICS_INTO_FILE, ActionItem(VinzIcons.Download, tr(R.string.save_lyrics_into_the_file)) { c.lyricsToFiles.request(listOf(song)) })
+    if (local || savedDownloads[song.id]?.lossless == true) put(MenuAction.LYRICS_INTO_FILE, ActionItem(VinzIcons.Download, tr(R.string.save_lyrics_into_the_file)) { c.lyricsToFiles.request(listOf(song)) })
     // Playing: first what the player's hidden parts did.
     if (MenuAction.OPEN_LYRICS in fromPlayer) put(MenuAction.OPEN_LYRICS, ActionItem(VinzIcons.Lyrics, tr(R.string.show_lyrics), onClick = onOpenLyrics))
     if (MenuAction.OPEN_QUEUE in fromPlayer) put(MenuAction.OPEN_QUEUE, ActionItem(VinzIcons.Queue, tr(R.string.up_next), onClick = onOpenQueue))

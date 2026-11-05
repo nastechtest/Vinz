@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package com.vinz.music.ui.components
 
 import com.vinz.music.R
@@ -625,6 +627,7 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
     val dl = downloads.forRow(song.id, standIns)
     val downloaded = dl?.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
     val together by c.together.state.collectAsState()
+    val playedEpisodes by c.episodes.played.collectAsState()
     // A file on the phone isn't on YouTube: no radio, download, sharing, YouTube playlists, or sending it to a session.
     val local = song.isLocal
     val guest = (together as? com.vinz.music.playback.together.TogetherState.Guest)?.takeIf { !local }
@@ -659,7 +662,7 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
         // Straight to its most replayed stretch (or its chorus).
         if (song.isEpisode || song.isLive || guest != null) null else ActionItem(VinzIcons.FlameFilled, tr(R.string.play_from_the_best_part)) { c.player.playFromBestPart(song) },
         song.podcastId?.let { id -> ActionItem(VinzIcons.Podcasts, tr(R.string.go_to_podcast)) { nav.go(Routes.podcast(id)) } },
-        if (song.isEpisode && song.id in c.episodes.played.value) ActionItem(VinzIcons.Refresh, tr(R.string.mark_as_unplayed)) { c.episodes.forget(song.id); c.episodes.unmarkPlayed(song.id) }
+        if (song.isEpisode && song.id in playedEpisodes) ActionItem(VinzIcons.Refresh, tr(R.string.mark_as_unplayed)) { c.episodes.forget(song.id); c.episodes.unmarkPlayed(song.id) }
         else if (song.isEpisode) ActionItem(VinzIcons.DoneAll, tr(R.string.mark_as_played)) { c.episodes.markPlayed(song.id) } else null,
         ActionItem(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) { pickPlaylist = true },
         // A picked version's album and artists (#328): it plays as that recording.

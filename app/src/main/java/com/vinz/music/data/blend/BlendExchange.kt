@@ -32,6 +32,8 @@ class BlendExchange(
     private val receive: suspend (code: String, mine: String?) -> Blends.Import,
     /** The name this phone shows in Blends. */
     private val myName: () -> String,
+    /** Injectable for loopback tests; production uses this phone's real private IPv4 addresses. */
+    private val addressProvider: () -> List<String> = { BlendExchange.localAddresses() },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var server: ServerSocket? = null
@@ -51,7 +53,7 @@ class BlendExchange(
     @Synchronized
     fun open(myCode: String): String {
         shown = myCode
-        val addresses = localAddresses()
+        val addresses = addressProvider()
         if (addresses.isEmpty()) return myCode
         val s = server ?: runCatching { ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(PORT)) } }
             .recoverCatching { ServerSocket(0) }.getOrNull()?.also { server = it; accepting = scope.launch { acceptLoop(it) } }

@@ -580,8 +580,9 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             // The tab whose pages are showing: the first tab page above the root, else the root's own.
             val tabRoutes = tabs.map { it.route }.toSet()
             // Optional arguments aside ("liked?genre={genre}" is the Liked songs tab).
-            val stack = navController.currentBackStack.value.mapNotNull { it.destination.route?.substringBefore('?') }
-            val currentTab = stack.drop(1).firstOrNull { it in tabRoutes } ?: root
+            val currentTab = tabRoutes.firstOrNull { route ->
+                route != root && runCatching { navController.getBackStackEntry(route) }.isSuccess
+            } ?: root
             when {
                 // The root tab always means its top, from anywhere.
                 r == root -> if (!navController.popBackStack(root, inclusive = false, saveState = true)) goRoot()

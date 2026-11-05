@@ -69,7 +69,9 @@ class LookTest {
         val r = repo()
         r.applyLook(mapOf("cookie" to "s:SAPISID=stolen", "pure_black" to "s:yes", "corners" to "s:SHARP"))
         val now = withTimeout(5_000) { r.lookValues.first { it.isNotEmpty() } }
-        assertEquals(mapOf("corners" to "s:SHARP"), now)
+        assertEquals("s:SHARP", now["corners"])
+        assertEquals(null, now["cookie"])
+        assertEquals(null, now["pure_black"])
         assertEquals("", r.current.cookie)
         assertEquals(false, r.current.pureBlack)
     }

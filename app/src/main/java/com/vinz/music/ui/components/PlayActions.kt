@@ -102,6 +102,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
     val c = LocalContainer.current
     val context = LocalContext.current
     val liked by c.library.likedShown.collectAsState()
+    val libraryAlbums by c.library.albums.collectAsState()
     var sharing by remember { mutableStateOf<ShareTarget?>(null) }
     sharing?.let { t -> ShareSheet(t) { sharing = null; onDismiss() }; return }
     // Its songs, on their way into a playlist (Reddit R8).
@@ -176,7 +177,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
         QuickActions(quick) { runAction(it, close) }
         // An album in the library can be taken out from here, by the library's own entry (a remaster or other edition
         // opens as another album page, whose bookmark didn't reach this one).
-        val inLibrary = item is AlbumItem && c.settings.current.isLoggedIn && c.library.albums.value.any { it.id == item.id }
+        val inLibrary = item is AlbumItem && c.settings.current.isLoggedIn && libraryAlbums.any { it.id == item.id }
         // Saved on the phone (no account): taken out of the phone's library.
         val savedHere = !c.settings.current.isLoggedIn && when (item) {
             is AlbumItem -> c.vinzLibrary.isSaved(item.id)

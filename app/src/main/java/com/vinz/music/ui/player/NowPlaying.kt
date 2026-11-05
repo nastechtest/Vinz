@@ -905,8 +905,10 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             onSing = { showSing = true },
             onSingNeedsDownload = { showSing = true },
             onButton = onButton,
-        ) else
-        Column(Modifier.fillMaxSize().windowInsetsPadding(statusBarRoom()).navigationBarsPadding().then(skipGesture), horizontalAlignment = Alignment.CenterHorizontally) {
+        ) else Column(
+            Modifier.fillMaxSize().windowInsetsPadding(statusBarRoom()).navigationBarsPadding().then(skipGesture),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             // ------------------------------------------------ Handle + caption
             Box(Modifier.fillMaxWidth().height(DISMISS_STRIP).then(dismissGesture).inked()) {
                 // Settings → Player → Show on the player → Handle at the top (Reddit, 1.7.9.1): off, the strip still

@@ -66,6 +66,7 @@ class TvActivity : ComponentActivity() {
      * The remote's media keys, on every screen (plan §3): handled here before the screens see them, so a focused button
      * never swallows Play/Pause, and they don't depend on Android passing them on to the media session.
      */
+    @android.annotation.SuppressLint("RestrictedApi") // Required to handle media keys first and delegate unrelated keys to AndroidX.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // The key that woke the ambient screen: its repeats and its key-up go too (buttons click on key-up, and Back
         // would close the page), however soon the ambient screen has gone.

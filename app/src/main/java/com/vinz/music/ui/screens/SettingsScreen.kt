@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -452,8 +453,8 @@ private fun countryName(code: String): String =
 private fun ContentCountrySetting() {
     val c = LocalContainer.current
     val s = LocalAppSettings.current
+    val phone = LocalConfiguration.current.locales[0].country
     var picking by remember { mutableStateOf(false) }
-    val phone = java.util.Locale.getDefault().country
     Group(tr(R.string.region)) {
         Item(
             tr(R.string.content_country),
@@ -2057,6 +2058,7 @@ private fun LyricsLookPage() {
 /** Settings → Lyrics & Sing: where lyrics come from, their language, Sing, and your files (their look is in Customize). */
 @Composable
 private fun LyricsSettings() {
+    val locale = LocalConfiguration.current.locales[0]
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -2079,7 +2081,7 @@ private fun LyricsSettings() {
             Label(tr(R.string.romanize_lyrics), info = tr(R.string.other_scripts_in_latin_letters_to))
             Chips(com.vinz.music.data.prefs.RomanizeMode.entries, s.romanize, { it.label }) { prefs.setRomanize(it) }
             if (s.romanize != com.vinz.music.data.prefs.RomanizeMode.OFF) Toggle(
-                tr(R.string.romanize_my_own_language_too), tr(R.string.lyrics_too, java.util.Locale.getDefault().displayLanguage), s.romanizeAll,
+                tr(R.string.romanize_my_own_language_too), tr(R.string.lyrics_too, locale.displayLanguage), s.romanizeAll,
                 info = tr(R.string.korean_japanese_russian_and_greek_are),
             ) { prefs.setRomanizeAll(it) }
             JapaneseReadingData()

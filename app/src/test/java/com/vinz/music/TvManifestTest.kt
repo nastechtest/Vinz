@@ -44,7 +44,7 @@ class TvManifestTest {
             val cats = a.getElementsByTagName("category").let { l -> (0 until l.length).map { (l.item(it) as Element).getAttributeNS(ns, "name") } }
             if ("android.intent.category.LEANBACK_LAUNCHER" in cats) assertEquals(".TvActivity", a.getAttributeNS(ns, "name"))
         }
-        assertTrue(File("src/main/res/drawable-xhdpi/tv_banner.png").isFile)
+        assertTrue(File("src/main/res/drawable/tv_banner.xml").isFile)
     }
 
     @Test fun vinzIsAScreensaverOnlySystemCanBind() {

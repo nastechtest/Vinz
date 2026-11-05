@@ -41,7 +41,7 @@ fun TvWelcomeScreen(onPhone: () -> Unit, onSkip: () -> Unit, modifier: Modifier 
     val scheme = MaterialTheme.colorScheme
     Box(modifier.fillMaxSize().testTag(TAG_WELCOME), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.size(180.dp))
+            Image(painterResource(R.drawable.vinz_logo), null, Modifier.size(180.dp))
             Text(tr(R.string.welcome_to_vinz), style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.SemiBold), color = scheme.onBackground)
             Spacer(Modifier.height(10.dp))
             Text(tr(R.string.tv_welcome_line), style = MaterialTheme.typography.titleLarge, color = scheme.onSurfaceVariant, textAlign = TextAlign.Center)

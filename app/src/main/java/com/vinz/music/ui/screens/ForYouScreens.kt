@@ -208,6 +208,9 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
 
 private fun ReleaseEntity.asItem() = AlbumItem(id, title, "$kind · $artistName", thumbnail, playlistId)
 
+private fun recentReleases(source: kotlinx.coroutines.flow.Flow<List<ReleaseEntity>>, today: LocalDate, days: Int) =
+    source.map { list -> list.filter { ReleaseRadar.isRecent(it, today, days) } }
+
 private fun ReleaseEntity.dateText(today: LocalDate): String {
     val date = releaseDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return year.toString()
     val days = ChronoUnit.DAYS.between(date, today)
@@ -226,12 +229,14 @@ fun NewReleasesSection(cfg: HomeSectionConfig) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val today = remember { LocalDate.now() }
-    val recent by remember { c.db.releases().freshFlow(today.year - 1).map { list -> list.filter { ReleaseRadar.isRecent(it, today, 30) } } }
-        .collectAsState(initial = emptyList())
+    val freshReleases = remember(c, today) { c.db.releases().freshFlow(today.year - 1) }
+    val recentFlow = remember(freshReleases, today) { recentReleases(freshReleases, today, 30) }
+    val recent by recentFlow.collectAsState(initial = emptyList())
     // #311: with the page's "Favorite artists only" on, Home's section keeps to them too.
     val favorites by c.artistPrefs.favorites.collectAsState()
     val starredOnly = remember { c.library.sortOf(ReleaseRadar.STARRED_ONLY) != null }
-    val releases = if (starredOnly) ReleaseRadar.fromFavorites(recent, favorites.map { it.id }.toSet()) else recent
+    val favoriteIds = remember(favorites) { buildSet { favorites.forEach { add(it.id) } } }
+    val releases = if (starredOnly) ReleaseRadar.fromFavorites(recent, favoriteIds) else recent
     if (releases.isEmpty()) return
     SectionHeader(cfg.title, strapline = tr(R.string.from_artists_you_listen_to), onMore = { nav.go(Routes.NEW_RELEASES) })
     StyledItems(cfg.style, releases.take(15).map { it.asItem() }) { nav.go(Routes.album(it.id)) }
@@ -245,8 +250,9 @@ fun NewReleasesScreen(bottomPadding: Dp) {
     val scope = rememberCoroutineScope()
     val today = remember { LocalDate.now() }
     val running by c.releaseRadar.running.collectAsState()
-    val releases by remember { c.db.releases().freshFlow(today.year - 1).map { list -> list.filter { ReleaseRadar.isRecent(it, today, 90) } } }
-        .collectAsState(initial = null)
+    val freshReleases = remember(c, today) { c.db.releases().freshFlow(today.year - 1) }
+    val releasesFlow = remember(freshReleases, today) { recentReleases(freshReleases, today, 90) }
+    val releases by releasesFlow.collectAsState(initial = null)
     fun age(r: ReleaseEntity): Long {
         val d = r.releaseDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             ?: java.time.Instant.ofEpochMilli(r.firstSeenAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
