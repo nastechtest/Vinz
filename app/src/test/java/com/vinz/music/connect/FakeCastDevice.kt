@@ -67,6 +67,18 @@ class FakeCastDevice(
         Thread({
             while (!closed) {
                 val s = runCatching { server.accept() }.getOrNull() ?: break
+                // Start TLS before handing the socket to a second thread; otherwise the client can wait on the
+                // handshake while the lazily-started protocol reader is delayed under the full test suite.
+                if (s is javax.net.ssl.SSLSocket) {
+                    s.soTimeout = 20_000
+                    try {
+                        s.useClientMode = false
+                        s.startHandshake()
+                    } catch (_: Exception) {
+                        runCatching { s.close() }
+                        continue
+                    }
+                }
                 Thread({ serve(s) }, "fake-cast-client").apply { isDaemon = true; start() }
             }
         }, "fake-cast").apply { isDaemon = true; start() }
