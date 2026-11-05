@@ -4685,4 +4685,8 @@
     <string name="glass_kinds_info">Sticlă mată: o estompare ușoară în spatele barelor și al comenzilor. Sticlă lichidă: acestea îndoaie ce se află în spatele lor, ca sticla adevărată (Android 12 și mai nou; telefoanele mai vechi primesc Sticlă mată). Normal estompează ce se află în spate, ca sticla mată. Transparent păstrează totul clar, doar cu o nuanță ușoară.</string>
     <string name="smart_downloads_offer_title">Descarci melodii înainte să ai nevoie de ele?</string>
     <string name="smart_downloads_offer_body">Descărcările inteligente țin pregătite offline melodiile pe care probabil le vei asculta: până la 1 GB, pe Wi-Fi. Schimbă oricând în Descărcări, stocare și date.</string>
+    <string name="show_next_track_preview">Arată melodia următoare</string>
+    <string name="show_next_track_preview_detail">Urmează ordinea de redare, inclusiv redarea aleatorie și repetarea. Atinge pentru a deschide coada.</string>
+    <string name="next_track_preview_label">Urmează</string>
+    <string name="next_track_preview_open_queue">Deschide coada</string>
 </resources>

@@ -4871,4 +4871,8 @@
     <string name="glass_kinds_info">الزجاج المصنفر: تمويه ناعم خلف الأشرطة وعناصر التحكم. الزجاج السائل: تنثني الخلفية خلفها كالزجاج الحقيقي (Android 12 وما بعده؛ الهواتف الأقدم تحصل على المصنفر). عادي يموّه ما خلفه كما يفعل الزجاج المصنفر. شفاف يُبقيه واضحًا مع لمسة لون خفيفة فقط.</string>
     <string name="smart_downloads_offer_title">هل تريد تنزيل الأغاني قبل أن تحتاج إليها؟</string>
     <string name="smart_downloads_offer_body">تُبقي التنزيلات الذكية الأغاني التي ستشغّلها غالبًا جاهزة دون اتصال: حتى 1 GB، عبر Wi-Fi. غيّر ذلك في أي وقت من «التنزيلات والتخزين والبيانات».</string>
+    <string name="show_next_track_preview">عرض الأغنية التالية</string>
+    <string name="show_next_track_preview_detail">يتبع ترتيب التشغيل، بما في ذلك التشغيل العشوائي والتكرار. اضغط لفتح قائمة الانتظار.</string>
+    <string name="next_track_preview_label">التالي</string>
+    <string name="next_track_preview_open_queue">فتح قائمة الانتظار</string>
 </resources>

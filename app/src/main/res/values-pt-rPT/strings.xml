@@ -4685,4 +4685,8 @@
     <string name="glass_kinds_info">Vidro fosco: um desfoque suave atrás das barras e dos controlos. Liquid Glass: dobram o que está atrás, como vidro a sério (Android 12 ou posterior; os telemóveis mais antigos recebem Vidro fosco). Normal desfoca o que está atrás, tal como o vidro fosco. Transparente mantém tudo nítido, só com uma tonalidade leve.</string>
     <string name="smart_downloads_offer_title">Transferir músicas antes de precisares delas?</string>
     <string name="smart_downloads_offer_body">As Transferências inteligentes deixam prontas offline as músicas que provavelmente vais ouvir: até 1 GB, por Wi-Fi. Altera quando quiseres em Transferências, armazenamento e dados.</string>
+    <string name="show_next_track_preview">Mostrar próxima música</string>
+    <string name="show_next_track_preview_detail">Segue a ordem de reprodução, incluindo o modo aleatório e a repetição. Toque para abrir a fila.</string>
+    <string name="next_track_preview_label">A seguir</string>
+    <string name="next_track_preview_open_queue">Abrir fila</string>
 </resources>

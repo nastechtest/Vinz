@@ -4685,4 +4685,8 @@
     <string name="glass_kinds_info">Vetro smerigliato: una sfocatura morbida dietro barre e controlli. Vetro liquido: piegano ciò che hanno dietro come vero vetro (Android 12 e successivi; i telefoni più vecchi usano il Vetro smerigliato). Normale sfoca ciò che sta dietro, come il vetro smerigliato. Trasparente lo lascia nitido, con solo una leggera tinta.</string>
     <string name="smart_downloads_offer_title">Scaricare i brani prima che ti servano?</string>
     <string name="smart_downloads_offer_body">I Download intelligenti tengono pronti offline i brani che ascolterai più probabilmente: fino a 1 GB, con Wi-Fi. Cambialo quando vuoi in Download, spazio e dati.</string>
+    <string name="show_next_track_preview">Mostra il brano successivo</string>
+    <string name="show_next_track_preview_detail">Segue l’ordine di riproduzione, inclusi riproduzione casuale e ripetizione. Tocca per aprire la coda.</string>
+    <string name="next_track_preview_label">A seguire</string>
+    <string name="next_track_preview_open_queue">Apri coda</string>
 </resources>

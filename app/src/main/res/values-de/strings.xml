@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">Milchglas: ein weicher Blur hinter Leisten und Bedienelementen. Liquid Glass: Sie verbiegen, was dahinter liegt, wie echtes Glas (Android 12 und neuer; ältere Handys bekommen Milchglas). Normal verwischt, was dahinter liegt, wie Milchglas. Klar lässt es scharf, nur mit einem leichten Farbton.</string>
     <string name="smart_downloads_offer_title">Songs herunterladen, bevor du sie brauchst?</string>
     <string name="smart_downloads_offer_body">Smart Downloads hält die Songs, die du wahrscheinlich hörst, offline bereit: bis zu 1 GB, über Wi-Fi. Ändere das jederzeit unter Downloads, Speicher &amp; Daten.</string>
+    <string name="show_next_track_preview">Nächsten Titel anzeigen</string>
+    <string name="show_next_track_preview_detail">Folgt der Wiedergabereihenfolge, einschließlich Zufallswiedergabe und Wiederholung. Tippen öffnet die Warteschlange.</string>
+    <string name="next_track_preview_label">Als Nächstes</string>
+    <string name="next_track_preview_open_queue">Warteschlange öffnen</string>
 </resources>

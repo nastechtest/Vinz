@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">반투명 유리: 바와 컨트롤 뒤를 부드럽게 흐려 줘요. 리퀴드 글래스: 뒤에 있는 것을 진짜 유리처럼 휘어 보이게 해요(Android 12 이상, 이전 휴대전화는 반투명 유리 적용). 보통은 뒤에 있는 것을 반투명 유리처럼 흐리게 해요. 투명은 뒤를 선명하게 두고 옅은 색조만 더해요.</string>
     <string name="smart_downloads_offer_title">필요하기 전에 곡을 다운로드해 둘까요?</string>
     <string name="smart_downloads_offer_body">스마트 다운로드는 들을 가능성이 높은 곡을 오프라인용으로 준비해 둬요: 최대 1 GB, Wi-Fi에서요. 다운로드, 저장공간, 데이터에서 언제든 바꿀 수 있어요.</string>
+    <string name="show_next_track_preview">다음 곡 표시</string>
+    <string name="show_next_track_preview_detail">셔플과 반복을 포함한 재생 순서를 따릅니다. 탭하여 대기열을 엽니다.</string>
+    <string name="next_track_preview_label">다음 곡</string>
+    <string name="next_track_preview_open_queue">대기열 열기</string>
 </resources>

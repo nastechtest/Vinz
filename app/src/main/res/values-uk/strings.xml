@@ -4747,4 +4747,8 @@
     <string name="glass_kinds_info">Матове скло: м\'яке розмиття за панелями й кнопками. Рідке скло: вони заломлюють те, що за ними, як справжнє скло (Android 12 і новіші; на старих телефонах буде Матове скло). «Звичайна» розмиває те, що за нею, як матове скло. «Прозоре» залишає тло чітким, лише з легким відтінком.</string>
     <string name="smart_downloads_offer_title">Завантажити пісні заздалегідь?</string>
     <string name="smart_downloads_offer_body">«Розумні завантаження» тримають готовими офлайн пісні, які ти, імовірно, увімкнеш: до 1 GB, через Wi-Fi. Змінюй будь-коли в розділі «Завантаження, сховище й дані».</string>
+    <string name="show_next_track_preview">Показувати наступний трек</string>
+    <string name="show_next_track_preview_detail">Дотримується порядку відтворення, зокрема перемішування й повторення. Натисніть, щоб відкрити чергу.</string>
+    <string name="next_track_preview_label">Далі</string>
+    <string name="next_track_preview_open_queue">Відкрити чергу</string>
 </resources>

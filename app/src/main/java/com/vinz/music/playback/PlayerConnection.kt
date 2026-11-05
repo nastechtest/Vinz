@@ -74,6 +74,9 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** Queue indices in the order they'll actually play after the current one (follows shuffle). */
     private val _upNext = MutableStateFlow<List<Int>>(emptyList())
     val upNext: StateFlow<List<Int>> = _upNext
+    private val _nextPreviewSong = MutableStateFlow<Song?>(null)
+    /** Natural playback target, including repeat and shuffle; presentation only. */
+    val nextPreviewSong: StateFlow<Song?> = _nextPreviewSong
     private val _played = MutableStateFlow<List<Int>>(emptyList())
     /** Queue indices already played (before the current song in play order), oldest first. */
     val played: StateFlow<List<Int>> = _played
@@ -899,6 +902,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             var i = tl.getNextWindowIndex(p.currentMediaItemIndex, Player.REPEAT_MODE_OFF, p.shuffleModeEnabled)
             while (i != C.INDEX_UNSET && size < tl.windowCount) { add(i); i = tl.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, p.shuffleModeEnabled) }
         }
+        val nextPreviewIndex = nextPreviewWindow(p.currentTimeline, p.currentMediaItemIndex, p.repeatMode, p.shuffleModeEnabled)
+        _nextPreviewSong.value = _queue.value.firstOrNull { it.index == nextPreviewIndex }?.song
         // Before the current song in play order, oldest first (#68: the queue only went forward).
         _played.value = buildList {
             val tl = p.currentTimeline

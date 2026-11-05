@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">Buzlu Cam: çubukların ve kontrollerin arkasında yumuşak bir bulanıklık. Sıvı Cam: arkalarındakini gerçek cam gibi büker (Android 12 ve üstü; eski telefonlarda Buzlu Cam olur). Normal, arkasındakini buzlu cam gibi bulanıklaştırır. Şeffaf, yalnızca hafif bir tonla net tutar.</string>
     <string name="smart_downloads_offer_title">Şarkıları ihtiyacın olmadan önce indirelim mi?</string>
     <string name="smart_downloads_offer_body">Akıllı İndirmeler, çalma ihtimalin yüksek şarkıları çevrimdışı hazır tutar: 1 GB\'a kadar, Wi-Fi\'da. İstediğin zaman İndirmeler, depolama ve veri bölümünden değiştir.</string>
+    <string name="show_next_track_preview">Sonraki şarkıyı göster</string>
+    <string name="show_next_track_preview_detail">Karıştırma ve tekrar dahil oynatma sırasını izler. Kuyruğu açmak için dokunun.</string>
+    <string name="next_track_preview_label">Sıradaki</string>
+    <string name="next_track_preview_open_queue">Kuyruğu aç</string>
 </resources>

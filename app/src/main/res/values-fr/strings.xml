@@ -4685,4 +4685,8 @@
     <string name="glass_kinds_info">Verre dépoli : un flou doux derrière les barres et les commandes. Liquid Glass : elles déforment ce qui est derrière comme du vrai verre (Android 12 et ultérieur ; les téléphones plus anciens ont le verre dépoli). Normale floute ce qui est derrière, comme le verre dépoli. Transparent le garde net, avec seulement une légère teinte.</string>
     <string name="smart_downloads_offer_title">Télécharger des titres avant d’en avoir besoin ?</string>
     <string name="smart_downloads_offer_body">Les Téléchargements intelligents gardent prêts hors ligne les titres que vous écouterez probablement : jusqu’à 1 GB, en Wi-Fi. Modifiez cela à tout moment dans Téléchargements, stockage et données.</string>
+    <string name="show_next_track_preview">Afficher le titre suivant</string>
+    <string name="show_next_track_preview_detail">Suit l’ordre de lecture, y compris la lecture aléatoire et la répétition. Appuyez pour ouvrir la file d’attente.</string>
+    <string name="next_track_preview_label">À suivre</string>
+    <string name="next_track_preview_open_queue">Ouvrir la file d’attente</string>
 </resources>

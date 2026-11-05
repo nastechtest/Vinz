@@ -4656,4 +4656,8 @@
     <string name="imp_live_no_plays">On. No plays yet</string>
     <string name="smart_downloads_offer_title">Download songs before you need them?</string>
     <string name="smart_downloads_offer_body">Smart Downloads keeps the songs you\'re likely to play ready offline: up to 1 GB, on Wi-Fi. Change it any time in Downloads, storage &amp; data.</string>
+    <string name="show_next_track_preview">Show next track</string>
+    <string name="show_next_track_preview_detail">A compact preview in the portrait player. Follows shuffle and repeat; tap to open the queue.</string>
+    <string name="next_track_preview_label">Next track</string>
+    <string name="next_track_preview_open_queue">Open queue</string>
 </resources>

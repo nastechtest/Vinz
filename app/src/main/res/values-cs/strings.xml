@@ -4747,4 +4747,8 @@
     <string name="glass_kinds_info">Matné sklo: jemné rozostření za lištami a ovládacími prvky. Tekuté sklo: ohýbají to, co je za nimi, jako skutečné sklo (Android 12 a novější; starší telefony dostanou matné). Normální rozostří to, co je za ním, stejně jako matné sklo. Průhledné to nechá ostré, jen s lehkým zabarvením.</string>
     <string name="smart_downloads_offer_title">Stáhnout písně dřív, než je budeš potřebovat?</string>
     <string name="smart_downloads_offer_body">Chytré stahování připraví offline písně, které budeš nejspíš přehrávat: až 1 GB, přes Wi-Fi. Kdykoli to změníš ve Stahování, úložiště a data.</string>
+    <string name="show_next_track_preview">Zobrazit další skladbu</string>
+    <string name="show_next_track_preview_detail">Respektuje pořadí přehrávání včetně náhodného přehrávání a opakování. Klepnutím otevřete frontu.</string>
+    <string name="next_track_preview_label">Následuje</string>
+    <string name="next_track_preview_open_queue">Otevřít frontu</string>
 </resources>

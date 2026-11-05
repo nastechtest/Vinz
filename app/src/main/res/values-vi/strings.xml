@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">Kính mờ: làm mờ nhẹ phía sau các thanh và nút điều khiển. Kính lỏng: chúng bẻ cong những gì ở phía sau như kính thật (Android 12 trở lên; điện thoại cũ hơn dùng Kính mờ). Thường làm mờ những gì ở phía sau, giống kính mờ. Trong giữ mọi thứ sắc nét, chỉ phủ một lớp màu nhẹ.</string>
     <string name="smart_downloads_offer_title">Tải nhạc xuống trước khi bạn cần?</string>
     <string name="smart_downloads_offer_body">Tải xuống thông minh giữ sẵn các bài bạn có thể sẽ nghe để dùng ngoại tuyến: tối đa 1 GB, qua Wi-Fi. Đổi bất cứ lúc nào trong Tải xuống, bộ nhớ &amp; dữ liệu.</string>
+    <string name="show_next_track_preview">Hiện bài hát tiếp theo</string>
+    <string name="show_next_track_preview_detail">Theo thứ tự phát, bao gồm phát ngẫu nhiên và lặp lại. Nhấn để mở hàng đợi.</string>
+    <string name="next_track_preview_label">Tiếp theo</string>
+    <string name="next_track_preview_open_queue">Mở hàng đợi</string>
 </resources>

@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">ঝাপসা কাচ: বার ও কন্ট্রোলের পেছনে হালকা ব্লার। লিকুইড গ্লাস: এগুলো পেছনের জিনিসকে আসল কাচের মতো বাঁকিয়ে দেখায় (Android 12 ও পরের সংস্করণ; পুরনো ফোনে ঝাপসা কাচ পাবেন)। সাধারণ পেছনের অংশ ঝাপসা করে, ঝাপসা কাচ যেমন করে। স্বচ্ছ পেছনের অংশ পরিষ্কার রাখে, শুধু হালকা রঙের ছোঁয়া থাকে।</string>
     <string name="smart_downloads_offer_title">দরকারের আগেই গান ডাউনলোড করে রাখবেন?</string>
     <string name="smart_downloads_offer_body">স্মার্ট ডাউনলোড আপনি যে গানগুলো চালাতে পারেন সেগুলো অফলাইনের জন্য তৈরি রাখে: 1 GB পর্যন্ত, Wi-Fi-তে। যখন খুশি \"ডাউনলোড, স্টোরেজ ও ডেটা\"-তে বদলাতে পারবেন।</string>
+    <string name="show_next_track_preview">পরের গান দেখান</string>
+    <string name="show_next_track_preview_detail">শাফল ও পুনরাবৃত্তিসহ প্লেব্যাকের ক্রম অনুসরণ করে। সারি খুলতে ট্যাপ করুন।</string>
+    <string name="next_track_preview_label">পরের গান</string>
+    <string name="next_track_preview_open_queue">সারি খুলুন</string>
 </resources>

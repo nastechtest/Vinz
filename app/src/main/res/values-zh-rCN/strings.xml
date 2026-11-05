@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">磨砂玻璃：栏和控件后面的柔和模糊。液态玻璃：它们像真玻璃一样折射后面的内容（Android 12 及更高版本；较旧的手机使用磨砂玻璃）。常规会模糊后面的内容，就像磨砂玻璃一样。透明则保持清晰，仅带淡淡的色调。</string>
     <string name="smart_downloads_offer_title">在需要之前先下载歌曲？</string>
     <string name="smart_downloads_offer_body">智能下载会把你可能会播放的歌曲准备好供离线使用：最多 1 GB，通过 Wi-Fi。随时可在“下载、存储和流量”中更改。</string>
+    <string name="show_next_track_preview">显示下一首歌曲</string>
+    <string name="show_next_track_preview_detail">遵循播放顺序，包括随机播放和重复播放。点按可打开队列。</string>
+    <string name="next_track_preview_label">下一首</string>
+    <string name="next_track_preview_open_queue">打开队列</string>
 </resources>

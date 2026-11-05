@@ -1176,6 +1176,8 @@ data class AppSettings(
     val hideVolumeBar: Boolean = true,
     /** "Playing from …" above the artwork in the player. */
     val showPlayingFrom: Boolean = true,
+    /** Optional next-track card; existing installs keep their player unchanged. */
+    val showNextTrack: Boolean = false,
     val lyricsBlur: Boolean = true,
     /** The thin line of split light under the line being sung (lyrics page and immersive). */
     val lyricsProgressLine: Boolean = true,
@@ -1652,6 +1654,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val canvasOnCellular = booleanPreferencesKey("canvas_on_cellular")
         val hideVolumeBar = booleanPreferencesKey("hide_volume_bar")
         val showPlayingFrom = booleanPreferencesKey("show_playing_from")
+        val showNextTrack = booleanPreferencesKey("show_next_track")
         val spatial = booleanPreferencesKey("soft_spatial")
         val spatialAmount = floatPreferencesKey("soft_spatial_amount")
         val lyricsBlur = booleanPreferencesKey("lyrics_blur")
@@ -1969,7 +1972,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
                 playerLayout, vinylTonearm, playerDeck, playerButtons, scrubberColor, playerTitleAlign, playerTitleSize, playerTitleScroll,
-                playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground,
+                playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground, showNextTrack,
                 scrubberThickness, scrubberThumb, volumeMatchesProgress, playerHandle, playerNavBand, visualizer, visualizerColor,
                 lyricsBlur, lyricsScale, lyricsProgressLine, lyricsSourceButton, hideStatusBar, hideStatusBarPlayer,
                 tabNames, navBarSize, navBarFill, miniPlayerJoined, libraryViews, libraryColumns, librarySubtitles,
@@ -2002,7 +2005,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 miniPlayerStyle to 's', miniSkipButtons to 'b', miniPrevButton to 'b', miniPlayButton to 'b', miniProgress to 's', miniProgressColor to 's', miniFillStrength to 'f', playRing to 'b', playingInPageColor to 'b',
                 playerBackground to 's', playerBackdropShow to 'f', playerArtCorners to 'i', transportStyle to 's', coverSize to 's',
                 scrubberStyle to 's', artShrinkOnPause to 'b', showOutputDevice to 'b', fullBleedArtwork to 'b', videoFullBleed to 'b', hideVolumeBar to 'b',
-                showPlayingFrom to 'b', playerShuffleRepeat to 'b', immersiveArt to 's', immersiveLyrics to 's', immersiveControls to 'b',
+                showNextTrack to 'b', showPlayingFrom to 'b', playerShuffleRepeat to 'b', immersiveArt to 's', immersiveLyrics to 's', immersiveControls to 'b',
                 playerLayout to 's', vinylTonearm to 'b', playerDeck to 's', playerButtons to 's', scrubberColor to 's', playerTitleAlign to 's',
                 playerTitleSize to 's', playerTitleScroll to 'b', playerTimes to 's', meshSpeed to 'f', meshIntensity to 'f', playerBlur to 'f',
                 canvasFillsBackground to 'b', scrubberThickness to 'f', scrubberThumb to 's', visualizer to 's', visualizerColor to 's',
@@ -2152,6 +2155,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             canvasOnCellular = p[K.canvasOnCellular] ?: d.canvasOnCellular,
             hideVolumeBar = p[K.hideVolumeBar] ?: d.hideVolumeBar,
             showPlayingFrom = p[K.showPlayingFrom] ?: d.showPlayingFrom,
+            showNextTrack = p[K.showNextTrack] ?: d.showNextTrack,
             spatial = p[K.spatial] ?: d.spatial,
             spatialAmount = p[K.spatialAmount] ?: d.spatialAmount,
             lyricsBlur = p[K.lyricsBlur] ?: d.lyricsBlur,
@@ -2687,6 +2691,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setCanvasOnCellular(v: Boolean) = edit { it[K.canvasOnCellular] = v }
     fun setHideVolumeBar(v: Boolean) = edit { it[K.hideVolumeBar] = v }
     fun setShowPlayingFrom(v: Boolean) = edit { it[K.showPlayingFrom] = v }
+    fun setShowNextTrack(v: Boolean) = edit { it[K.showNextTrack] = v }
     fun setSpatial(v: Boolean) = edit { it[K.spatial] = v }
     fun setSpatialAmount(v: Float) = edit { it[K.spatialAmount] = v }
     fun setLyricsBlur(v: Boolean) = edit { it[K.lyricsBlur] = v }

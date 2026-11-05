@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">กระจกฝ้า: เบลอนุ่ม ๆ หลังแถบและปุ่มควบคุม กระจกเหลว: สิ่งเหล่านี้หักเหสิ่งที่อยู่ด้านหลังเหมือนกระจกจริง (Android 12 ขึ้นไป โทรศัพท์รุ่นเก่าจะได้กระจกฝ้า) ปกติ เบลอสิ่งที่อยู่ด้านหลังเหมือนกระจกฝ้า ใส ทำให้คมชัด มีเพียงสีจาง ๆ</string>
     <string name="smart_downloads_offer_title">ดาวน์โหลดเพลงไว้ก่อนที่จะต้องใช้ไหม</string>
     <string name="smart_downloads_offer_body">ดาวน์โหลดอัจฉริยะจะเตรียมเพลงที่คุณน่าจะฟังไว้ใช้แบบออฟไลน์ สูงสุด 1 GB ผ่าน Wi-Fi เปลี่ยนได้ทุกเมื่อใน ดาวน์โหลด พื้นที่เก็บข้อมูล และอินเทอร์เน็ต</string>
+    <string name="show_next_track_preview">แสดงเพลงถัดไป</string>
+    <string name="show_next_track_preview_detail">ตามลำดับการเล่น รวมถึงการสุ่มและการเล่นซ้ำ แตะเพื่อเปิดคิว</string>
+    <string name="next_track_preview_label">เพลงถัดไป</string>
+    <string name="next_track_preview_open_queue">เปิดคิว</string>
 </resources>

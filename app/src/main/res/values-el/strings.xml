@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">Θαμπό γυαλί: απαλό θάμπωμα πίσω από τις μπάρες και τα χειριστήρια. Υγρό γυαλί: λυγίζουν ό,τι βρίσκεται πίσω τους σαν πραγματικό γυαλί (Android 12 και νεότερο· τα παλαιότερα κινητά παίρνουν Θαμπό γυαλί). Κανονικό θολώνει ό,τι βρίσκεται πίσω του, όπως το θαμπό γυαλί. Διάφανο το κρατά καθαρό, με ελαφριά μόνο απόχρωση.</string>
     <string name="smart_downloads_offer_title">Λήψη τραγουδιών πριν τα χρειαστείς;</string>
     <string name="smart_downloads_offer_body">Οι Έξυπνες λήψεις κρατούν έτοιμα εκτός σύνδεσης τα τραγούδια που πιθανώς θα παίξεις: έως 1 GB, μέσω Wi-Fi. Άλλαξέ το όποτε θέλεις στις Λήψεις, αποθηκευτικός χώρος &amp; δεδομένα.</string>
+    <string name="show_next_track_preview">Εμφάνιση επόμενου τραγουδιού</string>
+    <string name="show_next_track_preview_detail">Ακολουθεί τη σειρά αναπαραγωγής, με τυχαία αναπαραγωγή και επανάληψη. Πατήστε για άνοιγμα της ουράς.</string>
+    <string name="next_track_preview_label">Ακολουθεί</string>
+    <string name="next_track_preview_open_queue">Άνοιγμα ουράς</string>
 </resources>
