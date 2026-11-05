@@ -13,7 +13,17 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
+import java.io.File
 import java.net.Socket
+import java.net.URLClassLoader
+import java.nio.file.Files
+import java.security.AlgorithmParameters
+import java.security.Provider
+import java.security.Security
+import java.util.concurrent.TimeUnit
+import java.util.jar.Attributes
+import java.util.jar.JarOutputStream
+import java.util.jar.Manifest
 
 /** Google Cast without Google's SDK: the wire format, devices from mDNS, and a whole session with a pretend device. */
 class GoogleCastTest {
@@ -127,16 +137,80 @@ class GoogleCastTest {
 
     /** The way the app connects: TLS to a device with a self-signed certificate. */
     @Test
-    fun overTlsLikeARealDevice() = runBlocking {
+    fun overTlsLikeARealDevice() = runInIsolatedJvm(TLS_PROBE_ARG, TLS_PROBE_SUCCESS)
+
+    @Test
+    fun tlsStillWorksAfterRobolectricChangesProviders() = runInIsolatedJvm(CONTAMINATED_PARENT_ARG, CONTAMINATED_PARENT_SUCCESS)
+
+    private fun runInIsolatedJvm(argument: String, success: String) {
+        // Robolectric installs Conscrypt globally. SunJSSE can then select it for EC parameters and fail during
+        // static initialization, even when its SSLContext is pinned. A fresh JVM keeps this real TLS test independent
+        // of test order without changing providers underneath other tests (or changing production's TLS provider).
+        val tempDir = Files.createTempDirectory("vinz cast tls ").toFile()
+        val classpathJar = File(tempDir, "classpath.jar")
+        val output = File(tempDir, "output.log")
+        try {
+            // Gradle's test classpath can exceed Windows' command-line limit. A manifest classpath also supports
+            // paths with spaces; include URL classloaders for IDEs that do not put tests on java.class.path.
+            val entries = linkedSetOf<String>()
+            System.getProperty("java.class.path").orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
+                .forEach { entries += File(it).absoluteFile.toURI().toASCIIString() }
+            listOf(javaClass.classLoader, Thread.currentThread().contextClassLoader).forEach { first ->
+                generateSequence(first) { it.parent }.filterIsInstance<URLClassLoader>().forEach { loader ->
+                    loader.urLs.filter { it.protocol == "file" }.forEach { entries += it.toURI().toASCIIString() }
+                }
+            }
+            val manifest = Manifest().apply {
+                mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
+                mainAttributes[Attributes.Name.CLASS_PATH] = entries.joinToString(" ")
+            }
+            JarOutputStream(classpathJar.outputStream(), manifest).use { }
+            val java = File(System.getProperty("java.home"), "bin/java" + if (File.separatorChar == '\\') ".exe" else "")
+            val process = ProcessBuilder(java.path, "-Djava.io.tmpdir=${tempDir.absolutePath}", "-cp", classpathJar.path, javaClass.name, argument)
+                .redirectErrorStream(true).redirectOutput(output).start()
+            try {
+                // The contaminated parent itself starts a child with a 60-second timeout; allow time for its cleanup.
+                val completed = process.waitFor(if (argument == CONTAMINATED_PARENT_ARG) 90 else 60, TimeUnit.SECONDS)
+                if (!completed) stopProcessTree(process)
+                val result = output.readText()
+                assertTrue("Cast TLS child JVM timed out:\n$result", completed)
+                assertEquals("Cast TLS child JVM failed:\n$result", 0, process.exitValue())
+                if (argument == CONTAMINATED_PARENT_ARG && CONSCRYPT_UNAVAILABLE in result) {
+                    assumeTrue("Conscrypt has no native library for this platform", false)
+                }
+                assertTrue("Cast TLS child JVM did not complete its session:\n$result", success in result)
+            } finally {
+                if (process.isAlive) stopProcessTree(process)
+            }
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    private fun stopProcessTree(process: Process) {
+        // Android's compile stubs omit ProcessHandle, although the JDK 17 running these tests provides it.
+        runCatching {
+            val type = Class.forName("java.lang.ProcessHandle")
+            val handle = Process::class.java.getMethod("toHandle").invoke(process)
+            val children = type.getMethod("descendants").invoke(handle) as java.util.stream.Stream<*>
+            children.use { it.forEach { child -> type.getMethod("destroyForcibly").invoke(child) } }
+        }
+        process.destroyForcibly()
+        runCatching { process.waitFor(5, TimeUnit.SECONDS) }
+    }
+
+    private fun exerciseTlsSession() = runBlocking {
         FakeCastDevice(fetch = false, tls = true).use { fake ->
-            // Robolectric can change the JVM default TLS provider earlier in the suite. Pin both test endpoints to
-            // JSSE so this test checks Cast TLS behavior rather than provider-order-dependent interop.
-            val link = GoogleCastLink(fake.renderer()) { host, port -> GoogleCastLink.tlsSocket(host, port, "SunJSSE") }
+            val link = GoogleCastLink(fake.renderer())
             try {
                 assertEquals("NO_MEDIA_PRESENT", link.transport().state)
                 link.load(url, "", media)
                 link.play()
                 assertTrue(link.transport().playing)
+                assertTrue("CONNECT" in fake.types(CastNs.CONNECTION))
+                assertTrue("LAUNCH" in fake.types(CastNs.RECEIVER))
+                assertTrue("LOAD" in fake.types(CastNs.MEDIA))
+                assertTrue("PLAY" in fake.types(CastNs.MEDIA))
             } finally {
                 link.close()
             }
@@ -223,6 +297,39 @@ class GoogleCastTest {
         val audible = System.getenv("VINZ_FAKE_CAST_AUDIBLE") == "1"
         FakeCastDevice(bind = "0.0.0.0", port = 8009, audible = audible, rewriteHost = "127.0.0.1:47322", tls = true, log = { println("[cast] $it") }).use {
             Thread.sleep(minutes!! * 60_000L)
+        }
+    }
+
+    companion object {
+        private const val TLS_PROBE_ARG = "--tls-probe"
+        private const val TLS_PROBE_SUCCESS = "Cast TLS session passed"
+        private const val CONTAMINATED_PARENT_ARG = "--tls-contaminated-parent"
+        private const val CONTAMINATED_PARENT_SUCCESS = "Cast TLS survived Conscrypt in parent"
+        private const val CONSCRYPT_UNAVAILABLE = "Conscrypt native library unavailable"
+
+        /** Entry points for the isolated TLS session and its provider-order regression test. */
+        @JvmStatic
+        fun main(args: Array<String>) {
+            when (args.single()) {
+                TLS_PROBE_ARG -> {
+                    GoogleCastTest().exerciseTlsSession()
+                    println(TLS_PROBE_SUCCESS)
+                }
+                CONTAMINATED_PARENT_ARG -> {
+                    // Only this disposable parent is changed; the Gradle test worker and its other tests are untouched.
+                    val conscrypt = Class.forName("org.conscrypt.Conscrypt")
+                    if (conscrypt.getMethod("isAvailable").invoke(null) != true) {
+                        println(CONSCRYPT_UNAVAILABLE)
+                        return
+                    }
+                    val provider = Class.forName("org.conscrypt.OpenSSLProvider").getConstructor().newInstance() as Provider
+                    check(Security.insertProviderAt(provider, 1) == 1)
+                    check(AlgorithmParameters.getInstance("EC").provider.name == "Conscrypt")
+                    GoogleCastTest().overTlsLikeARealDevice()
+                    println(CONTAMINATED_PARENT_SUCCESS)
+                }
+                else -> error("Unknown Cast TLS probe")
+            }
         }
     }
 }
