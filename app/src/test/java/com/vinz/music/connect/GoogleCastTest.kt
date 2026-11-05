@@ -128,33 +128,17 @@ class GoogleCastTest {
     /** The way the app connects: TLS to a device with a self-signed certificate. */
     @Test
     fun overTlsLikeARealDevice() = runBlocking {
-        // Over TLS, as a phone does it: a self-signed certificate on the device, the trust manager that accepts it, and
-        // Cast v2 spoken through it. Repeated, because the handshake is the one thing here that depends on the machine
-        // rather than on the code - on a loaded runner both ends can sit in it past any timeout worth waiting for, and
-        // that is not a statement about the client.
-        var last: Exception? = null
-        repeat(3) {
+        FakeCastDevice(fetch = false, tls = true).use { fake ->
+            val link = GoogleCastLink(fake.renderer())
             try {
-                FakeCastDevice(fetch = false, tls = true).use { fake ->
-                    val link = GoogleCastLink(fake.renderer())
-                    try {
-                        assertEquals("NO_MEDIA_PRESENT", link.transport().state)
-                        link.load(url, "", media)
-                        link.play()
-                        assertTrue(link.transport().playing)
-                    } finally {
-                        link.close()
-                    }
-                }
-                return@runBlocking
-            } catch (e: java.net.SocketTimeoutException) {
-                last = e
-                delay(500)
+                assertEquals("NO_MEDIA_PRESENT", link.transport().state)
+                link.load(url, "", media)
+                link.play()
+                assertTrue(link.transport().playing)
+            } finally {
+                link.close()
             }
         }
-        // Three timeouts on loopback, and it is the fake device or the runner that never spoke: skipped, with the
-        // reason, so a real TLS regression still fails here and a slow machine does not.
-        org.junit.Assume.assumeNoException("the fake device never completed a TLS handshake", last)
     }
 
     @Test

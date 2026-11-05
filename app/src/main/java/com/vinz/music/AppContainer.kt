@@ -12,6 +12,7 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.ContentMetadata
+import androidx.media3.datasource.cache.ContentMetadataMutations
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -74,8 +75,23 @@ class VinzApp : Application(), coil3.SingletonImageLoader.Factory {
             }
             .build()
 
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLanguage.wrap(base))
+
+    /** The language Vinz started in: a change of it from outside Vinz restarts Vinz ([onConfigurationChanged]). */
+    private var language = ""
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Menus' labels and other text read once would stay in the old language (seen after a change in the phone's
+        // Settings → Apps → Vinz → Language): Vinz starts again in the new one, as its own Language page does.
+        if (AppLanguage.changed(this, language, newConfig)) AppLanguage.restart(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
+        // Before anything shows a word: Vinz's text in the listener's language (Strings.kt).
+        Strings.resources = resources
+        language = AppLanguage.shown(this)
         // A crash's details kept on the phone (Settings → About → Diagnostics), from the very start.
         CrashLog.install(this)
         // A restore from a backup goes in before anything opens the files it replaces.
@@ -84,6 +100,18 @@ class VinzApp : Application(), coil3.SingletonImageLoader.Factory {
         com.vinz.music.ui.theme.IconStyle.load(this)
         com.vinz.music.ui.theme.AppFonts.init(this)
         container = AppContainer(this)
+        // Android's own backup restored onto another install: its sign-ins aren't this phone's (RestoredInstall).
+        runCatching {
+            com.vinz.music.data.RestoredInstall.check(this) {
+                // Signed out as Settings does: the account's library and Home kept for offline, and the sign-in page's
+                // cookies (Android's backup leaves those out now, but an older backup may have brought them).
+                container.settings.logout()
+                runCatching { container.library.forgetAccount() }
+                runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
+                runCatching { container.lastFm.signOut() }
+                runCatching { container.discord.signOut() }
+            }
+        }
         // Whether any of Vinz's screens is showing: what Android 12+ allows depends on it (DownloadRepository).
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             private var started = 0
@@ -109,14 +137,37 @@ class VinzApp : Application(), coil3.SingletonImageLoader.Factory {
             runCatching { com.vinz.music.data.Rewinds.schedule(this@VinzApp) }
             // DJ mode: the songs played most and liked get their key read once a day, on Wi-Fi while charging.
             runCatching { com.vinz.music.playback.DjPrescanWorker.schedule(this@VinzApp) }
+            // Bring your history: the daily look at whether a fresh Spotify or Takeout download is due (only once one
+            // was imported; a restored backup brings the dates with it).
+            runCatching { com.vinz.music.data.imports.ImportReminders.schedule(this@VinzApp) }
+        }
+        // YouTube Music (live), 1.8.1: its job only while signed in and turned on; signing out stops it (read from its
+        // preferences, so nothing is built for the many who never turn it on).
+        container.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            var was: Boolean? = null
+            container.settings.flow.map { it.isLoggedIn }.distinctUntilChanged().collect { signedIn ->
+                runCatching {
+                    com.vinz.music.data.imports.YouTubeLive.signInChanged(
+                        this@VinzApp, signedIn, was, com.vinz.music.data.imports.YouTubeLiveWorker.Jobs(this@VinzApp),
+                    )
+                }
+                was = signedIn
+            }
         }
         container.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             kotlinx.coroutines.delay(45_000)
             container.quietNetwork()
             runCatching { container.rewind.freezeLastYear() }
         }
-        // Downloads a restore left waiting carry on once the first screen is up (the download manager stays on the
-        // main thread, where it was made).
+        // Scrobbles made offline go to Last.fm once the phone is back online (#133).
+        container.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (!container.lastFm.available) return@launch
+            container.network.online.collect { online -> if (online && container.lastFm.user.value != null) runCatching { container.lastFm.flush() } }
+        }
+        // A restored backup's settings (since 1.7.8 kept as values beside the store) go in at once, before Home shows.
+        container.scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { container.backup.applyRestoredSettings() } }
+        // Downloads a restore left waiting carry on once the first screen is up (the download manager's calls go on the
+        // main thread).
         container.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
             kotlinx.coroutines.delay(1_500)
             runCatching { container.backup.resumeDownloads() }
@@ -223,6 +274,7 @@ class AppContainer(val app: Application) {
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .apply { TestHooks.network?.let(::addInterceptor) }
         .build()
     private val streamHttp: OkHttpClient = http.newBuilder()
         .addInterceptor(YouTubeStreamInterceptor(http))
@@ -235,8 +287,10 @@ class AppContainer(val app: Application) {
         onPairs = { queue.counterparts.putAll(it) },
     )
     val db = VinzDatabase.build(app)
-    val streams by lazy { StreamResolver(app, http, settings, innerTube) }
-    val translator = com.vinz.music.data.lyrics.LyricsTranslator(http)
+    /** Versions of songs the listener picked to hear instead (1.7.9, "Play a different version"). */
+    val versions = com.vinz.music.data.SongVersions(app.getSharedPreferences("song_versions", android.content.Context.MODE_PRIVATE))
+    val streams by lazy { StreamResolver(app, http, settings, innerTube).apply { versionOf = versions::of } }
+    val translator = com.vinz.music.data.lyrics.LyricsTranslator(http, File(app.filesDir, "translations"))
     val network = com.vinz.music.data.NetworkState(app)
     /** Covers kept on the phone for downloads and the library, so they show offline. */
     val artwork = com.vinz.music.data.ArtworkStore(app, http) { quietNetwork() }
@@ -244,9 +298,14 @@ class AppContainer(val app: Application) {
     val offline = com.vinz.music.data.OfflineLibrary(app)
     /** The last Home, shown at once at the next start while the new one loads (#126). */
     val homeCache = com.vinz.music.data.HomeCache(app.filesDir)
+    /** Albums and playlists played lately (Home's Recently played, #196). */
+    val recentCollections by lazy { com.vinz.music.data.RecentCollections(app) }
+    /** Last.fm scrobbling, when the listener connects their account (#133). */
+    val lastFm by lazy { com.vinz.music.data.lastfm.LastFm(app, http, scope) }
     val lyrics = LyricsRepository(http, db.lyrics(), ytm) { settings.current }.apply {
         choices = app.getSharedPreferences("lyrics_choice", android.content.Context.MODE_PRIVATE)
         searchNames = app.getSharedPreferences("lyrics_search_as", android.content.Context.MODE_PRIVATE)
+        wordShifts = app.getSharedPreferences("lyrics_word_shift", android.content.Context.MODE_PRIVATE)
     }
     /** Search by a line of the lyrics, from the box itself (1.7.6). */
     val lyricSearch = com.vinz.music.data.lyrics.LyricSearch(http, ytm, db.lyricsSearch(), db.songs(), lyrics::textLines)
@@ -258,7 +317,12 @@ class AppContainer(val app: Application) {
     }
     val videoSync by lazy { com.vinz.music.playback.VideoSync(app, streamHttp, streams, scope) }
     /** Songs' tempo and edges, for Mix, and their loudness, for normalization. */
-    val mixTempo by lazy { com.vinz.music.playback.MixTempo(app, streamHttp, streams, ::audioOnPhone, { yieldToPlaying(null) }, { player.isPlaying.value }, waves) }
+    val mixTempo by lazy {
+        // Phones with few cores (or little memory, or Performance mode on): scans make way while the listener scrolls (#343).
+        val slow = com.vinz.music.playback.MixTempo.isSlowPhone(Runtime.getRuntime().availableProcessors(), com.vinz.music.data.DevicePower.mayBeSlow(app), false)
+        com.vinz.music.playback.MixTempo.slowPhone = { slow || settings.current.performanceMode }
+        com.vinz.music.playback.MixTempo(app, streamHttp, streams, ::audioOnPhone, { yieldToPlaying(null) }, { player.isPlaying.value }, waves)
+    }
     /** Songs' loudness outlines, for the waveform progress bar (made by the song scan). */
     val waves by lazy { com.vinz.music.data.SongWaves(app) }
 
@@ -268,11 +332,11 @@ class AppContainer(val app: Application) {
      */
     internal fun audioOnPhone(id: String, scratch: File): android.net.Uri? {
         if (id.startsWith(com.vinz.music.data.model.Song.LOCAL_PREFIX)) return localMusic.uriFor(id)
-        for (cache in listOf(downloadCache, playerCache)) {
-            if (!cache.fullyCached(id, 0, C.LENGTH_UNSET.toLong())) continue
+        for ((cache, key) in listOf(downloadCache to id, playerCache to songCacheKey(id))) {
+            if (!cache.fullyCached(key, 0, C.LENGTH_UNSET.toLong())) continue
             val ok = runCatching {
                 val source = CacheDataSource(cache, null)
-                source.open(DataSpec.Builder().setUri("vinz://audio/$id").setKey(id).build())
+                source.open(DataSpec.Builder().setUri("vinz://audio/$id").setKey(key).build())
                 try {
                     scratch.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
@@ -395,7 +459,19 @@ class AppContainer(val app: Application) {
         }
     }
     val downloads by lazy { DownloadRepository(app, this, scope) }
+
+    /**
+     * What's downloaded, for screens: empty until [downloads] has started, then kept in step by it. Screens read these
+     * rather than [downloads] itself, which reads the download index and cache from disk when first touched (1.7.8's
+     * check: Home's first frame waited 3.4 s for it on a slow phone). [downloads] starts in the background at launch.
+     */
+    val downloadState = kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.vinz.music.download.DownloadInfo>>(emptyMap())
+    val videoState = kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.vinz.music.download.VideoDownload>>(emptyMap())
+    /** Music videos downloaded as their song, video id -> song id ([com.vinz.music.download.forRow], #315). */
+    val downloadStandIns = kotlinx.coroutines.flow.MutableStateFlow<Map<String, String>>(emptyMap())
     val covers by lazy { com.vinz.music.data.PlaylistCovers(app) }
+    // Read at start, so the songs' own covers (#305) are there for the media session and Android Auto from the first song.
+    init { covers }
     /** Saves lyrics into your own music files' tags (#16). */
     val lyricsToFiles by lazy { com.vinz.music.data.local.LyricsToFiles(app, this) }
     val updates by lazy { com.vinz.music.data.UpdateChecker(app, http, scope) }
@@ -420,15 +496,23 @@ class AppContainer(val app: Application) {
     val dj = com.vinz.music.playback.DjMode()
     val exclusions by lazy { com.vinz.music.data.foryou.Exclusions(app) }
     val forYou by lazy { com.vinz.music.data.foryou.ForYou(this) }
+    /** What the listener made of Vinz's recommendations: served, skipped, heard through (1.7.9). */
+    val recFeedback by lazy { com.vinz.music.data.foryou.RecFeedback(app) }
     val releaseRadar by lazy { com.vinz.music.data.foryou.ReleaseRadar(this) }
     val blends by lazy { com.vinz.music.data.blend.Blends(this) }
     /** Vinz's radio and Home's lists and mixes, from the listener's own music on the phone. */
     val yourMusic by lazy { com.vinz.music.data.foryou.YourMusic(this) }
+    /** Vinz's holiday mixes, Thanksgiving and Christmas (1.8.0), made when first opened in their season, or ahead on Wi-Fi. */
+    val seasonal by lazy { com.vinz.music.data.seasonal.SeasonalMixes(this) }
     /** Sends a Blend's other half back over Wi-Fi, so both phones have it ([com.vinz.music.data.blend.BlendExchange]). */
     val blendExchange by lazy { com.vinz.music.data.blend.BlendExchange({ code, mine -> blends.import(code, mine) }, { blends.myName }) }
     val recognizer by lazy { com.vinz.music.data.recognize.Recognizer(this) }
 
     /** Headphone correction (AutoEq profiles per headphones). */
+    /** Crossfade's plan and progress, for the player's mark and blended covers (1.7.8, A6). */
+    val mixState = com.vinz.music.playback.MixState()
+    /** Your own equalizer presets, and the one picked for each output (1.7.8, A3). */
+    val eqPresets by lazy { com.vinz.music.data.prefs.EqPresetStore(app) }
     val headphoneEq by lazy { com.vinz.music.data.HeadphoneEq(app, http, scope, player.preferredOutput) }
 
     /** "Listening to Vinz" on the listener's Discord profile, when they've turned it on (Settings → Discord). */
@@ -447,10 +531,23 @@ class AppContainer(val app: Application) {
     private val webRemoteMade = lazy { com.vinz.music.connect.WebRemote(app, this) }
     /** Vinz Connect: Vinz played from a browser on the same Wi-Fi (Settings → Vinz Connect). */
     val webRemote by webRemoteMade
+    /** Vinz on a TV: this phone's own copy handed to a TV on the Wi-Fi while its settings group is switched on. */
+    val tvInstall by lazy { com.vinz.music.connect.TvInstall { com.vinz.music.connect.TvInstall.installedApk(app.applicationInfo) } }
     /** Rewind: each year in music (Replay → a year). */
     val rewind by lazy { com.vinz.music.data.Rewinds(this) }
     /** A year's Rewind to open (Home's Rewind card, the 1 December notification): Replay shows it and clears this. */
     val rewindRequest = MutableStateFlow<Int?>(null)
+    /**
+     * Bring your history (1.8.1): plays and libraries from Spotify, Google Takeout and Last.fm. Replay counts its
+     * plays through [com.vinz.music.data.imports.HistoryImports.replay], the mixes through its `taste`.
+     */
+    val imports by lazy { com.vinz.music.data.imports.HistoryImports(this) }
+
+    /**
+     * The optional Spotify connection (1.8.1): Spotify's official Web API through the listener's own developer app.
+     * Made when first asked (Settings, the mixes' taste); never connected, it only reads its own preferences.
+     */
+    val spotify by lazy { com.vinz.music.data.spotify.Spotify(this) }
 
     /** Vinz Connect: playback moving between Vinz devices on the same Wi-Fi. */
     val handoff by lazy { com.vinz.music.connect.Handoff(app, this) }
@@ -461,7 +558,9 @@ class AppContainer(val app: Application) {
             }
         }
         scope.launch {
-            settings.flow.map { it.handoffAvailable }.distinctUntilChanged().collect { on -> if (on) handoff.setAvailable(true) else handoff.setAvailable(false) }
+            // A TV is always reachable for the phones paired with it (1.8.0: the phone as its remote); it takes new
+            // pairings only while its pairing screen is open.
+            settings.flow.map { it.handoffAvailable }.distinctUntilChanged().collect { on -> handoff.setAvailable(on || handoff.isTv) }
         }
         // White light / Spectrum: the home-screen widgets are drawn again to match.
         scope.launch {
@@ -479,7 +578,7 @@ class AppContainer(val app: Application) {
     /** Whether a song plays without the network: a file on the phone, a finished download, or a song cached whole. */
     fun availableOffline(id: String): Boolean =
         id.startsWith(com.vinz.music.data.model.Song.LOCAL_PREFIX) || downloads.isDownloaded(id) ||
-            runCatching { playerCache.fullyCached(id, 0, C.LENGTH_UNSET.toLong()) }.getOrDefault(false)
+            runCatching { playerCache.fullyCached(songCacheKey(id), 0, C.LENGTH_UNSET.toLong()) }.getOrDefault(false)
 
     private fun Cache.fullyCached(key: String, position: Long, length: Long): Boolean {
         val total = ContentMetadata.getContentLength(getContentMetadata(key))
@@ -494,41 +593,80 @@ class AppContainer(val app: Application) {
      */
     val soundFrom = ConcurrentHashMap<String, String>()
 
+    /**
+     * The song cache's key for song [id]'s sound: a picked version ([versions]) is kept under that recording's own id, so
+     * the two recordings' bytes never mix. They shared the song's key before, cleared at each pick while the player was
+     * still saving the one it had been playing: what it saved after went in under the song, and back on its own
+     * recording the song couldn't be read and stopped playing (1.7.9's check, "Woke Up Older").
+     */
+    fun songCacheKey(id: String): String = versions.of(id) ?: id
+
+    /**
+     * Plays [pick] in [song]'s place from now on (null: its own sound again). The version's measurements go, and a
+     * download comes down again as the new one (each recording keeps its own cached part, [songCacheKey]). Playing now,
+     * the song starts again where it was.
+     */
+    fun pickVersion(song: com.vinz.music.data.model.Song, pick: com.vinz.music.data.SongVersions.Pick?) {
+        if (versions.of(song.id) == pick?.id?.takeIf { it != song.id }) return
+        versions.set(song.id, pick)
+        soundFrom.remove(song.id)
+        com.vinz.music.playback.AudioDiagnostics.log("song", "${song.id} plays as ${pick?.id ?: "itself"} from now on (picked by the listener)")
+        scope.launch(Dispatchers.Main) {
+            // #328: the queue's copies of it show the version (or the song again) in the notification, the car and widgets.
+            player.refreshCovers { it.id == song.id }
+            player.reloadIfCurrent(song.id) {
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    mixTempo.forget(song.id)
+                    waves.forget(song.id)
+                    downloads.redownload(song.id, unfinished = true)
+                }
+            }
+        }
+    }
+
     private fun resolveAudio(spec: DataSpec, useCaches: Boolean): DataSpec {
         val uri = spec.uri
         if (uri.scheme != "vinz") return spec
         val song = uri.lastPathSegment ?: return spec
         // Played (and cached) as the video it plays from, so its bytes never mix with the song's own. Downloads keep
         // the song's own key, so they aren't swapped.
-        val id = (if (useCaches) soundFrom[song] else null) ?: song
+        val sound = if (useCaches) soundFrom[song] else null
+        // A picked version is cached under its own id too ([songCacheKey]); its download is the song's (fetched again
+        // as the version when it was picked).
+        val id = sound ?: if (useCaches) songCacheKey(song) else song
         if (useCaches) {
-            if (downloadCache.fullyCached(id, spec.position, spec.length)) {
+            val saved = sound ?: song
+            if (downloadCache.fullyCached(saved, spec.position, spec.length)) {
                 streamDetails[song] = "Downloaded" to streamDetails[song]?.second
                 onStreamResolved?.invoke(song)
-                return spec.buildUpon().setKey(id).build()
+                return spec.buildUpon().setKey(saved).build()
             }
             if (playerCache.fullyCached(id, spec.position, spec.length)) {
                 streamDetails[song] = "Cached" to streamDetails[song]?.second
                 onStreamResolved?.invoke(song)
-                return spec.buildUpon().setKey(id).build()
+                return spec.buildUpon().setKey(STREAMED + id).build()
             }
         }
         // The listener's own upload (#101): only their account may play it, so it's asked for that way at once instead of
         // after two refusals.
-        if (uri.getQueryParameter("upload") == "1") streams.forAccount(id)
+        if (uri.getQueryParameter("upload") == "1") streams.forAccount(sound ?: song)
         val s = try {
-            streams.resolve(id)
+            // The song's id, not its version's: the resolver plays the version for it.
+            streams.resolve(sound ?: song)
         } catch (e: Exception) {
-            throw IOException(e.message ?: "Couldn't resolve stream", e)
+            throw IOException(e.message ?: tr(R.string.couldn_t_resolve_stream), e)
         }
         // The song's start was saved ahead from another format (the network changed since, so another quality
         // was picked): bytes of two formats can't be stitched together, so that start goes.
         prebuffered.remove(id)?.let { itag -> if (itag != s.itag) runCatching { playerCache.removeResource(id) } }
-        if (!useCaches) downloadFormat(id, s.itag, spec.position)
+        if (useCaches) cacheFormat(id, s.itag) else downloadFormat(id, s.itag, spec.position)
         streamDetails[song] = (if (useCaches) "Streaming" else "Downloading") to s
         if (useCaches) onStreamResolved?.invoke(song)
-        return spec.buildUpon().setUri(s.audioUrl).setKey(id).build()
+        return spec.buildUpon().setUri(s.audioUrl).setKey(if (useCaches) STREAMED + id else id).build()
     }
+
+    /** [id] is downloaded whole, so the player reads it from Downloads ([resolveAudio]). */
+    fun downloadedWhole(id: String): Boolean = runCatching { downloadCache.fullyCached(id, 0, C.LENGTH_UNSET.toLong()) }.getOrDefault(false)
 
     /** The format (itag) each download's bytes are in so far, kept so a later part never comes from another one. */
     private val downloadFormats = app.getSharedPreferences("download_formats", android.content.Context.MODE_PRIVATE)
@@ -545,13 +683,77 @@ class AppContainer(val app: Application) {
             runCatching { downloadCache.removeResource(id) }
             downloadFormats.edit().putInt(id, itag).apply()
             com.vinz.music.playback.AudioDiagnostics.log("download", "$id came as format $itag, not $before as before: starting it over")
-            throw IOException("The song's format changed part-way; starting the download over")
+            throw IOException(tr(R.string.the_song_s_format_changed_part))
         }
         if (before != itag) downloadFormats.edit().putInt(id, itag).apply()
     }
 
+    /** The format (itag) each song's cached part came in (1.7.8), so a later part never comes from another one. */
+    private val cacheFormats = app.getSharedPreferences("cache_formats", android.content.Context.MODE_PRIVATE)
+
+    /**
+     * The song cache's side of [downloadFormat] (Reddit, 1.7.7: "Element 134 must be in a TrackEntry" on one song every
+     * time): what's cached of [id] from another format goes before today's stream adds to it. Before 1.7.8 nothing was
+     * recorded; such a song is caught when it can't be read ([forgetCachedAudio] from the player).
+     */
+    private fun cacheFormat(id: String, itag: Int) {
+        val before = cacheFormats.getInt(id, 0)
+        if (before == itag) return
+        if (before != 0 && playerCache.getCachedBytes(id, 0, Long.MAX_VALUE) > 0) {
+            runCatching { playerCache.removeResource(id) }
+            com.vinz.music.playback.AudioDiagnostics.log("stream", "$id came as format $itag, not $before as cached: its cached part goes")
+        }
+        cacheFormats.edit().putInt(id, itag).apply()
+    }
+
+    /**
+     * [itag] may be saved under [key]: nothing of it is cached yet, or what is came in that format (recorded for it, as
+     * the player's stream does). Blocking (the cache's own lock).
+     */
+    private fun sameFormat(key: String, itag: Int): Boolean {
+        val before = cacheFormats.getInt(key, 0)
+        val cached = playerCache.getCachedBytes(key, 0, Long.MAX_VALUE) > 0
+        if (!mayAddFormat(before, itag, cached)) {
+            com.vinz.music.playback.AudioDiagnostics.log("stream", "$key: not saved ahead as format $itag, its cached part is format $before")
+            return false
+        }
+        if (before != itag) cacheFormats.edit().putInt(key, itag).apply()
+        return true
+    }
+
+    /** [id]'s cached part can't be read: it goes, with its format. Blocking (the cache's own lock). */
+    fun forgetCachedAudio(id: String) {
+        val key = songCacheKey(id)
+        runCatching { playerCache.removeResource(key) }
+        cacheFormats.edit().remove(key).apply()
+    }
+
     /** A download was removed (or is being fetched again): its format no longer binds the next one. */
     fun forgetDownloadFormat(id: String) = downloadFormats.edit().remove(id).apply()
+
+    /** The format (itag) a download came down in, when it's known (recorded since 1.7.7.1). */
+    fun downloadedItag(id: String): Int? = downloadFormats.getInt(id, 0).takeIf { it != 0 }
+
+    companion object {
+        /** The mark on a streamed song's key: Downloads holds no such key ([playbackDataSourceFactory]). */
+        private const val STREAMED = "streamed:"
+
+        /**
+         * Records [id]'s full length in [cache] once all of it is saved there. The cache only learns a length from a
+         * request without one (a song played through); Load ahead's request names its length, so a song it saved whole
+         * didn't count as whole, and offline Vinz asked the network for it and skipped it (#213).
+         */
+        /**
+         * Bytes in format [itag] may join what's cached of a song: nothing is ([cached] false), or it came in the same
+         * format ([before]; 0 when it wasn't recorded, which isn't taken on trust).
+         */
+        internal fun mayAddFormat(before: Int, itag: Int, cached: Boolean): Boolean = !cached || before == itag
+
+        fun markWhole(cache: Cache, id: String, length: Long) {
+            if (length <= 0 || !cache.isCached(id, 0, length)) return
+            runCatching { cache.applyContentMetadataMutations(id, ContentMetadataMutations().also { ContentMetadataMutations.setContentLength(it, length) }) }
+        }
+    }
 
     /** Songs whose first seconds [warmUp] saved into the song cache, and the stream (itag) they came from. */
     private val prebuffered = ConcurrentHashMap<String, Int>()
@@ -561,23 +763,39 @@ class AppContainer(val app: Application) {
      * NewPipe) and, on Wi-Fi, its first ~10 seconds are saved into the song cache, so playback opens on bytes
      * already here instead of waiting on googlevideo. Blocking; call it off the main thread.
      */
-    fun warmUp(id: String, whole: Boolean = false, cellular: Boolean = false) {
+    fun warmUp(
+        id: String, whole: Boolean = false, cellular: Boolean = false,
+        /** For Sing: waits while the player loads even the song itself, so the two never fetch it side by side. */
+        forSing: Boolean = false,
+        /** Handed the download as it starts (Sing stops it when it lets go of the song). */
+        writer: ((androidx.media3.datasource.cache.CacheWriter) -> Unit)? = null,
+    ) {
         if (id.startsWith(com.vinz.music.data.model.Song.LOCAL_PREFIX)) return // a file on the phone is ready already
         if (downloadCache.fullyCached(id, 0, C.LENGTH_UNSET.toLong())) return
-        yieldToPlaying(id)
+        yieldToPlaying(if (forSing) null else id)
         val s = runCatching { streams.resolve(id) }.getOrNull() ?: return // live streams and failures: nothing to save
         val metered = app.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered != false
         // On mobile data only when allowed (Settings → Load ahead on mobile data).
         if (metered && !cellular) return
         // [whole] (Settings → Load ahead): the whole song, so it plays without buffering; it needs the stream's size.
         if (whole && s.contentLength <= 0) return
-        if (!whole && prebuffered.containsKey(id)) return
+        // Saved under the key the player reads it by (a picked version's own, [songCacheKey]).
+        val key = songCacheKey(id)
+        if (!whole && prebuffered.containsKey(key)) return
         val bytes = if (whole) s.contentLength else PREBUFFER_BYTES.let { if (s.contentLength > 0) minOf(it, s.contentLength) else it }
-        if (playerCache.isCached(id, 0, bytes)) return
-        val spec = DataSpec.Builder().setUri(s.audioUrl).setKey(id).setPosition(0).setLength(bytes).build()
+        if (playerCache.isCached(key, 0, bytes)) return
+        // Never added to a part cached in another format (1.8.1): the player's own stream keeps to the format it began
+        // in ([cacheFormat]); saving the rest from another one joined two files into one nothing could read, kept till the
+        // cache was cleared (Sing on a TV, Reddit: "I have to uninstall and reinstall the app to restore playback").
+        if (!sameFormat(key, s.itag)) return
+        val spec = DataSpec.Builder().setUri(s.audioUrl).setKey(key).setPosition(0).setLength(bytes).build()
         val source = CacheDataSource(playerCache, OkHttpDataSource.Factory(streamHttp).createDataSource())
-        runCatching { androidx.media3.datasource.cache.CacheWriter(source, spec, null, null).cache() }
-            .onSuccess { prebuffered[id] = s.itag }
+        runCatching { androidx.media3.datasource.cache.CacheWriter(source, spec, null, null).also { writer?.invoke(it) }.cache() }
+            .onSuccess {
+                prebuffered[key] = s.itag
+                // Saved whole: say so, so it plays from here offline too (#213).
+                if (whole) markWhole(playerCache, key, s.contentLength)
+            }
             .onFailure { android.util.Log.w("VinzStream", "Couldn't save the start of $id ahead: $it") }
     }
 
@@ -597,11 +815,18 @@ class AppContainer(val app: Application) {
         }
     }
 
-    /** Download cache → song cache → network, with vinz:// URIs resolved lazily. */
+    /**
+     * Download cache → song cache → network, with vinz:// URIs resolved lazily. Only a whole download is read from
+     * Downloads: a song that streams (or plays from the song cache) has its key marked [STREAMED], which Downloads never
+     * holds, and the song cache reads it without the mark. Before, a download still coming down was read as far as it
+     * had got, and the stream went on from there: another version's (1.7.9's check, "Woke Up Older"), or another
+     * format's, and the two couldn't be read as one.
+     */
     fun playbackDataSourceFactory(): DataSource.Factory {
         val upstream = OkHttpDataSource.Factory(streamHttp)
         val songCache = CacheDataSource.Factory()
             .setCache(playerCache)
+            .setCacheKeyFactory { it.key?.removePrefix(STREAMED) ?: it.uri.toString() }
             .setUpstreamDataSourceFactory(upstream)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val downloadsFirst = CacheDataSource.Factory()
@@ -642,7 +867,7 @@ class AppContainer(val app: Application) {
         ResolvingDataSource.Factory(OkHttpDataSource.Factory(http).setUserAgent(com.vinz.music.data.stream.DESKTOP_UA)) { spec ->
             val id = spec.uri.lastPathSegment
             if (spec.uri.scheme != "vinz" || id == null) spec else {
-                val url = try { streams.liveManifest(id) } catch (e: Exception) { throw IOException(e.message ?: "Couldn't load the live stream", e) }
+                val url = try { streams.liveManifest(id) } catch (e: Exception) { throw IOException(e.message ?: tr(R.string.couldn_t_load_the_live_stream), e) }
                 streamDetails[id] = "Live" to streamDetails[id]?.second
                 onStreamResolved?.invoke(id)
                 spec.buildUpon().setUri(url).build()

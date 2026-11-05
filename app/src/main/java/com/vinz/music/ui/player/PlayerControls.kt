@@ -1,5 +1,8 @@
 package com.vinz.music.ui.player
 
+import com.vinz.music.R
+import com.vinz.music.tr
+import com.vinz.music.trp
 import androidx.compose.foundation.layout.ColumnScope
 import android.content.Context
 import android.media.AudioDeviceInfo
@@ -84,10 +87,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -147,15 +152,25 @@ fun ThinSlider(
     pulse: (() -> Float)? = null,
     /** Ribbons (#151): strands flowing over the played part, at this phase (seconds, read while drawing). */
     ribbons: (() -> Float)? = null,
+    /**
+     * The bar shaped by the crossfade (1.8.1): its height follows the fade-out at the end and the fade-in at the start,
+     * and the knob rides it. Null (and with [wave]): the bar as 1.8.0 drew it.
+     */
+    shape: BlendShape? = null,
+    /** Points (0–1) that give a haptic step when dragged across without a tick drawn (the shaped bar's start of the blend). */
+    quietMarks: List<Float> = emptyList(),
 ) {
     var dragging by remember { mutableStateOf(false) }
+    // The shaped bar's outline, kept between frames; only made once a shape is there.
+    val outline = remember(shape != null) { if (shape != null) BlendBarPath() else null }
     // The strands' paths, rebuilt in place each frame rather than made anew.
     val strands = remember { List(RIBBON_STRANDS.size) { androidx.compose.ui.graphics.Path() } }
     val haptics = rememberHaptics()
     val marksNow by androidx.compose.runtime.rememberUpdatedState(marks)
+    val quietNow by androidx.compose.runtime.rememberUpdatedState(quietMarks)
     var last by remember { mutableFloatStateOf(-1f) }
     fun crossed(v: Float) {
-        if (last >= 0f && marksNow.any { m -> (last < m) != (v < m) }) haptics.tick()
+        if (last >= 0f && (marksNow.any { m -> (last < m) != (v < m) } || quietNow.any { m -> (last < m) != (v < m) })) haptics.tick()
         last = v
     }
     // The gesture below runs for the slider's whole life; without these it kept the first callbacks, which
@@ -212,6 +227,23 @@ fun ThinSlider(
                         if (brush != null) drawRoundRect(brush, top, bar, bars) else drawRoundRect(Color.White.copy(alpha = 0.92f), top, bar, bars)
                     } else drawRoundRect(Color.White.copy(alpha = 0.22f), top, bar, bars)
                 }
+            } else if (shape != null && outline != null) {
+                // Shaped by the crossfade (1.8.1, as the owner's mockup): the bar's outline, the played part of it in the
+                // fill up to the playhead, the rest in the track's grey.
+                val path = outline.outline(shape, size.width, size.height)
+                drawPath(path, Color.White.copy(alpha = 0.20f))
+                if (secondary > 0f) clipRect(right = size.width * secondary.coerceIn(0f, 1f)) { drawPath(path, Color.White.copy(alpha = 0.12f)) }
+                if (filled > 0f) {
+                    val beat = pulse?.invoke()?.coerceIn(0f, 1f) ?: 0f
+                    if (beat > 0.02f) {
+                        val grow = size.height * 1.6f * beat
+                        val glow = brush ?: androidx.compose.ui.graphics.SolidColor(Color.White)
+                        drawRoundRect(glow, Offset(0f, -grow), Size(filled, size.height + 2 * grow), CornerRadius(size.height / 2 + grow), alpha = 0.22f * beat)
+                    }
+                    clipRect(right = filled) {
+                        if (brush != null) drawPath(path, brush) else drawPath(path, Color.White.copy(alpha = 0.92f))
+                    }
+                }
             } else {
                 drawRoundRect(Color.White.copy(alpha = 0.20f), cornerRadius = r)
                 if (secondary > 0f) drawRoundRect(Color.White.copy(alpha = 0.12f), size = Size(size.width * secondary.coerceIn(0f, 1f), size.height), cornerRadius = r)
@@ -235,13 +267,16 @@ fun ThinSlider(
                 drawLine(Color.White.copy(alpha = 0.34f), Offset(x, -1.5.dp.toPx()), Offset(x, size.height + 1.5.dp.toPx()), 1.dp.toPx(), StrokeCap.Round)
             }
             if (thumb) {
-                val knob = (if (dragging) 9.dp else 7.dp).toPx()
+                // On the shaped bar the knob rides the shape: as small as the bar is thin there (1.8.1).
+                val ride = if (shape != null && outline != null && wave == null) BlendShape.knobScale(shape.height(value.coerceIn(0f, 1f))) else 1f
+                val base = (if (dragging) 9.dp else 7.dp).toPx()
+                val knob = base * ride
                 val x = filled.coerceIn(knob, size.width - knob)
                 val y = size.height / 2
                 when (thumbShape) {
                     com.vinz.music.data.prefs.ScrubberThumb.LINE -> {
                         // An upright tick standing past the bar.
-                        val half = maxOf(size.height / 2 + 5.dp.toPx(), knob)
+                        val half = maxOf(size.height / 2 + 5.dp.toPx(), base) * ride
                         val w = (if (dragging) 4.dp else 3.dp).toPx()
                         drawLine(Color.Black.copy(alpha = 0.18f), Offset(x, y - half + 1f), Offset(x, y + half + 1f), w + 1.5f, StrokeCap.Round)
                         drawLine(Color.White, Offset(x, y - half), Offset(x, y + half), w, StrokeCap.Round)
@@ -366,9 +401,17 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
     val shift by pc.lyricShift.collectAsState()
     val bestMark = best?.takeIf { it.songId == current?.id && LocalAppSettings.current.bestPartButton }
         ?.startMs?.let { ((it - shift).toFloat() / duration).takeIf { f -> f in 0.01f..0.99f } }
-    val times = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+    // Where the crossfade into the next song starts (A6, an option): once it's known, while Crossfade is on.
+    val blend by c.mixState.mark.collectAsState()
     val settings = LocalAppSettings.current
-    val fill = scrubberFill(settings.scrubberColor, current?.thumbnail)
+    // The bar shaped by the crossfade (1.8.1, an option; the lines only: the waveform and Ribbons keep the mark). Its
+    // own start of the blend needs no tick, but dragging across it still gives the step.
+    val shaped = settings.view.crossfadeShape && style != ScrubberStyle.WAVE && style != ScrubberStyle.RIBBONS
+    val blendShape = if (shaped) rememberBlendShape(current?.id, durationMs, blend) else null
+    val blendMark = blend?.takeIf { settings.view.crossfadeMark && it.songId == current?.id && blendShape?.fadesOut != true }
+        ?.let { (it.startMs.toFloat() / duration).takeIf { f -> f in 0.01f..0.99f } }
+    val times = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+    val fill = scrubberFill(settings.scrubberColor, current?.let { com.vinz.music.data.PlaylistCovers.artOf(it) })
     // Waveform: the song's outline from its scan (a plain bar until there is one).
     val waveStamp by c.waves.stamp.collectAsState()
     val wave by androidx.compose.runtime.produceState<FloatArray?>(null, style, current?.id, waveStamp) {
@@ -397,18 +440,23 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
         // Spectrum: a thin line, the played part in the split light (or the color picked for it).
         ThinSlider(
             value = shown,
+            modifier = Modifier.testTag("progressBar").then(
+                if (blendShape != null) Modifier.semantics { this[CrossfadeShapeKey] = blendShape.semanticsValue() } else Modifier,
+            ),
             onValueChange = { scrub = it },
             onValueChangeFinished = { scrub?.let { pc.seekTo((it * duration).toLong()) }; scrub = null },
-            idleHeight = if (waved) 22.dp else when (style) { ScrubberStyle.HAIRLINE -> 5.dp; ScrubberStyle.BOLD, ScrubberStyle.WAVE -> 9.dp; ScrubberStyle.THUMB -> 4.dp; ScrubberStyle.RIBBONS -> 6.dp } * thick,
-            activeHeight = if (waved) 26.dp else when (style) { ScrubberStyle.HAIRLINE -> 10.dp; ScrubberStyle.BOLD, ScrubberStyle.WAVE -> 14.dp; ScrubberStyle.THUMB -> 6.dp; ScrubberStyle.RIBBONS -> 9.dp } * thick,
+            idleHeight = if (waved) 22.dp else barHeights(style, thick).first,
+            activeHeight = if (waved) 26.dp else barHeights(style, thick).second,
             thumb = knob != com.vinz.music.data.prefs.ScrubberThumb.NONE,
             thumbShape = knob,
             spectrum = true,
-            marks = listOfNotNull(bestMark),
+            marks = listOfNotNull(bestMark, blendMark),
             fill = fill,
             wave = wave,
             pulse = pulse?.let { level -> { level.floatValue } },
             ribbons = if (style == ScrubberStyle.RIBBONS && !waved) ({ ribbonPhase.floatValue }) else null,
+            shape = blendShape,
+            quietMarks = if (blendShape?.fadesOut == true) remember(blendShape) { listOf(blendShape.outFrom) } else emptyList(),
         )
         Box(Modifier.fillMaxWidth().offset(y = (-9).dp).heightIn(min = 16.dp)) {
             val elapsed = settings.playerTimes == com.vinz.music.data.prefs.PlayerTimes.BOTH || settings.playerTimes == com.vinz.music.data.prefs.PlayerTimes.ELAPSED
@@ -420,12 +468,23 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
                     style = times, color = Color.White.copy(alpha = 0.55f),
                     modifier = Modifier
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                        .clickable(onClickLabel = if (showLength) "Show time left" else "Show song length") { c.settings.setShowTrackLength(!showLength) },
+                        .clickable(onClickLabel = if (showLength) tr(R.string.show_time_left) else tr(R.string.show_song_length)) { c.settings.setShowTrackLength(!showLength) },
                 )
             }
             centerLabel()
         }
     }
+}
+
+/**
+ * The playing song's bar shape from the crossfade (1.8.1): its end from the blend after it ([ending], once its length is
+ * known) and its start from how it came in. Worked out again only when one of them changes, not as the song plays.
+ */
+@Composable
+private fun rememberBlendShape(songId: String?, durationMs: Long, ending: com.vinz.music.playback.BlendMark?): BlendShape? {
+    val into by LocalContainer.current.mixState.into.collectAsState()
+    val curve = LocalAppSettings.current.sound.crossfadeCurve
+    return remember(songId, durationMs, ending, into, curve) { BlendShape.of(songId, durationMs, ending, into, curve) }
 }
 
 /**
@@ -468,7 +527,7 @@ fun BoxScope.BestPartChip(): Boolean {
         Modifier.align(Alignment.Center).clip(tag).background(Color.White.copy(alpha = 0.08f))
             .border(1.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), tag)
             .combinedClickable(
-                onClickLabel = "Skip to the best part", onLongClickLabel = "Set your own best part",
+                onClickLabel = tr(R.string.skip_to_the_best_part), onLongClickLabel = tr(R.string.set_your_own_best_part),
                 onLongClick = { haptics.tick(); BestPartEditor.open = true },
             ) { haptics.tick(); pc.seekToLyric(start) }
             .padding(horizontal = 10.dp, vertical = 3.dp),
@@ -476,7 +535,7 @@ fun BoxScope.BestPartChip(): Boolean {
     ) {
         Icon(if (now.mine) VinzIcons.FlameFilled else VinzIcons.Flame, null, tint = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(5.dp))
-        Text(if (now.mine) "Your best part" else "Best part", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.92f))
+        Text(if (now.mine) tr(R.string.your_best_part) else tr(R.string.best_part), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.92f))
     }
     return true
 }
@@ -502,7 +561,11 @@ object BestPartButton {
 
 /** Previous, play/pause, next — oversized glyphs, no circles. */
 @Composable
-fun TransportRow(isPlaying: Boolean, isLoading: Boolean, previousEnabled: Boolean, nextEnabled: Boolean, compact: Boolean = false, episode: Boolean = false) {
+fun TransportRow(
+    isPlaying: Boolean, isLoading: Boolean, previousEnabled: Boolean, nextEnabled: Boolean, compact: Boolean = false, episode: Boolean = false,
+    /** Previous and next on the player: What's on the player can hide them (1.8.0). An episode keeps its back / ahead skips. */
+    skips: Boolean = true,
+) {
     val pc = LocalContainer.current.player
     val style = LocalAppSettings.current.transportStyle
     val playSize = if (compact) 58.dp else 74.dp
@@ -517,7 +580,7 @@ fun TransportRow(isPlaying: Boolean, isLoading: Boolean, previousEnabled: Boolea
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
         if (modes) ModeGlyph(
             if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle,
-            if (smart) "Smart Shuffle on" else if (shuffle) "Shuffle on" else "Shuffle off", shuffle,
+            if (smart) tr(R.string.smart_shuffle_on) else if (shuffle) tr(R.string.shuffle_on) else tr(R.string.shuffle_off), shuffle,
         ) { pc.toggleShuffle() }
         val prevIcon = if (style == TransportStyle.GLYPHS) VinzIcons.Backward else VinzIcons.Previous
         val nextIcon = if (style == TransportStyle.GLYPHS) VinzIcons.Forward else VinzIcons.Next
@@ -527,24 +590,28 @@ fun TransportRow(isPlaying: Boolean, isLoading: Boolean, previousEnabled: Boolea
         val back = if (holdMs > 0) ({ pc.seekBy(-holdMs) }) else null
         val ahead = if (holdMs > 0) ({ pc.seekBy(holdMs) }) else null
         // A podcast episode skips within itself, as podcast players do: back 15 s, ahead 30 s.
-        if (episode) SkipGlyph(EPISODE_BACK_S, ahead = false, touch = 53.dp) { pc.seekBy(-EPISODE_BACK_S * 1000L) }
-        else TransportGlyph(prevIcon, "Previous", skip, 53.dp, if (style == TransportStyle.GLYPHS) 0.85f else 1f, previousEnabled, onHold = back) { pc.previous() }
+        if (skips || episode) {
+            if (episode) SkipGlyph(EPISODE_BACK_S, ahead = false, touch = 53.dp) { pc.seekBy(-EPISODE_BACK_S * 1000L) }
+            else TransportGlyph(prevIcon, tr(R.string.widget_previous), skip, 53.dp, if (style == TransportStyle.GLYPHS) 0.85f else 1f, previousEnabled, onHold = back) { pc.previous() }
+        }
         if (style == TransportStyle.GLYPHS) {
             if (isLoading) {
                 Box(Modifier.size(playTouch), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(if (compact) 30.dp else 38.dp))
                 }
             } else {
-                TransportGlyph(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, if (isPlaying) "Pause" else "Play", playSize, playTouch) { pc.togglePlay() }
+                TransportGlyph(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play), playSize, playTouch) { pc.togglePlay() }
             }
         } else {
             PlayDisc(isPlaying, isLoading, filled = style == TransportStyle.BUTTON, size = if (compact) 64.dp else 78.dp) { pc.togglePlay() }
         }
-        if (episode) SkipGlyph(EPISODE_AHEAD_S, ahead = true, touch = 53.dp) { pc.seekBy(EPISODE_AHEAD_S * 1000L) }
-        else TransportGlyph(nextIcon, "Next", skip, 53.dp, if (style == TransportStyle.GLYPHS) 0.85f else 1f, nextEnabled, onHold = ahead) { pc.next() }
+        if (skips || episode) {
+            if (episode) SkipGlyph(EPISODE_AHEAD_S, ahead = true, touch = 53.dp) { pc.seekBy(EPISODE_AHEAD_S * 1000L) }
+            else TransportGlyph(nextIcon, tr(R.string.widget_next), skip, 53.dp, if (style == TransportStyle.GLYPHS) 0.85f else 1f, nextEnabled, onHold = ahead) { pc.next() }
+        }
         if (modes) ModeGlyph(
             VinzIcons.Repeat,
-            when (repeat) { Player.REPEAT_MODE_ALL -> "Repeat all"; Player.REPEAT_MODE_ONE -> "Repeat one"; else -> "Repeat off" },
+            when (repeat) { Player.REPEAT_MODE_ALL -> tr(R.string.repeat_all); Player.REPEAT_MODE_ONE -> tr(R.string.repeat_one); else -> tr(R.string.repeat_off) },
             repeat != Player.REPEAT_MODE_OFF,
             badge = if (repeat == Player.REPEAT_MODE_ONE) "1" else null,
         ) { pc.cycleRepeat() }
@@ -559,7 +626,7 @@ fun MinimalPlay(isPlaying: Boolean, isLoading: Boolean) {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         if (style == TransportStyle.GLYPHS) {
             if (isLoading) CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.padding(26.dp).size(40.dp))
-            else TransportGlyph(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, if (isPlaying) "Pause" else "Play", 84.dp, 100.dp) { pc.togglePlay() }
+            else TransportGlyph(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play), 84.dp, 100.dp) { pc.togglePlay() }
         } else PlayDisc(isPlaying, isLoading, filled = style == TransportStyle.BUTTON, size = 88.dp) { pc.togglePlay() }
     }
 }
@@ -591,19 +658,19 @@ private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, si
     val haptics = rememberHaptics()
     val pressed = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(size + 14.dp).clickable(pressed, indication = null) { haptics.click(); onClick() },
+        Modifier.size(size + 14.dp).testTag("playDisc").clickable(pressed, indication = null) { haptics.click(); onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier.size(size).clip(CircleShape)
                 .background(if (filled) Color.White else Color.White.copy(alpha = 0.10f))
-                .border(2.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), CircleShape),
+                .then(if (com.vinz.music.ui.theme.LocalAppSettings.current.view.playRing) Modifier.border(2.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             val tint = if (filled) Color.Black else Color.White
             if (isLoading) CircularProgressIndicator(color = tint, strokeWidth = 1.5.dp, modifier = Modifier.size(size * 0.42f))
             else Crossfade(isPlaying, animationSpec = tween(160), label = "playDisc") { p ->
-                Icon(if (p) VinzIcons.Pause else VinzIcons.Play, if (p) "Pause" else "Play", tint = tint, modifier = Modifier.size(size * (if (filled) 0.56f else 0.46f)))
+                Icon(if (p) VinzIcons.Pause else VinzIcons.Play, if (p) tr(R.string.widget_pause) else tr(R.string.widget_play), tint = tint, modifier = Modifier.size(size * (if (filled) 0.56f else 0.46f)))
             }
         }
     }
@@ -660,7 +727,7 @@ private fun TransportGlyph(
 @Composable
 private fun SkipGlyph(seconds: Int, ahead: Boolean, touch: Dp, onClick: () -> Unit) {
     val haptics = rememberHaptics()
-    val label = if (ahead) "Ahead $seconds seconds" else "Back $seconds seconds"
+    val label = if (ahead) trp(R.plurals.ahead_n_seconds, seconds.toInt()) else trp(R.plurals.back_n_seconds, seconds.toInt())
     Box(
         Modifier.size(touch).clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = label) { haptics.click(); onClick() }
             .semantics { contentDescription = label },
@@ -751,12 +818,23 @@ fun rememberPlayerVolume(): PlayerVolume {
 
 val VOLUME_ROW_HEIGHT = 32.dp
 
+/** The progress bar's line at rest and while held, for its [style] and thickness [thick] (the waveform aside). */
+fun barHeights(style: ScrubberStyle, thick: Float): Pair<Dp, Dp> = when (style) {
+    ScrubberStyle.HAIRLINE -> 5.dp to 10.dp
+    ScrubberStyle.BOLD, ScrubberStyle.WAVE -> 9.dp to 14.dp
+    ScrubberStyle.THUMB -> 4.dp to 6.dp
+    ScrubberStyle.RIBBONS -> 6.dp to 9.dp
+}.let { (idle, held) -> idle * thick to held * thick }
+
 @Composable
 fun VolumeRow(volume: PlayerVolume) {
+    val s = LocalAppSettings.current
+    // Reddit, 1.7.9.1: "Volume bar like the progress bar" takes its style's height and thickness; else its own, as before.
+    val (idle, held) = if (s.volumeMatchesProgress) barHeights(s.scrubberStyle, s.scrubberThickness) else 6.dp to 10.dp
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(VinzIcons.VolumeDown, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        ThinSlider(volume.level, volume::drag, Modifier.weight(1f), volume::release, idleHeight = 6.dp, activeHeight = 10.dp)
+        ThinSlider(volume.level, volume::drag, Modifier.weight(1f).testTag("volumeBar"), volume::release, idleHeight = idle, activeHeight = held)
         Spacer(Modifier.width(10.dp))
         Icon(VinzIcons.VolumeUp, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
     }
@@ -792,10 +870,13 @@ fun PlayerActionRow(
     val chosen = settings.playerButtons.filter { it != PlayerButton.VIDEO || settings.showVideoSwitch }
     // Six to a row still fits a small phone: the buttons narrow a little past four.
     val glyph = when { chosen.size >= 6 -> 46.dp; chosen.size == 5 -> 50.dp; else -> 56.dp }
+    // In one glass capsule (1.7), or (1.7.8, #155) as separate buttons spread across the row, as Vinz 1.6 had them.
+    val pill = settings.view.buttonsPill
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Row(
-            Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(5.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically,
+            if (pill) Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(5.dp)
+            else Modifier.fillMaxWidth(),
+            horizontalArrangement = if (pill) Arrangement.spacedBy(4.dp) else Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
         ) {
             AnimatedContent(
                 queueOpen,
@@ -805,22 +886,25 @@ fun PlayerActionRow(
                 label = "pill",
             ) { modes ->
                 if (modes) Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (PlayerButton.LYRICS in chosen) BottomGlyph(VinzIcons.Lyrics, "Lyrics", false, onToggleLyrics)
+                    if (PlayerButton.LYRICS in chosen) BottomGlyph(VinzIcons.Lyrics, tr(R.string.lyrics), false, onToggleLyrics)
                     Pill {
                         PillSegment(
-                            if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle, if (smart) "Smart Shuffle" else "Shuffle", shuffle,
+                            if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle, if (smart) tr(R.string.smart_shuffle) else tr(R.string.shuffle), shuffle,
                             width = PILL_SEGMENT_WIDTH_TRIPLE,
                         ) { pc.toggleShuffle() }
                         PillDivider()
                         PillSegment(
-                            if (repeat == Player.REPEAT_MODE_ONE) null else VinzIcons.Repeat, "Repeat",
+                            if (repeat == Player.REPEAT_MODE_ONE) null else VinzIcons.Repeat, tr(R.string.repeat),
                             repeat != Player.REPEAT_MODE_OFF, label = if (repeat == Player.REPEAT_MODE_ONE) "1" else null, width = PILL_SEGMENT_WIDTH_TRIPLE,
                         ) { pc.cycleRepeat() }
                         PillDivider()
-                        PillSegment(VinzIcons.Autoplay, "Autoplay", settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
+                        PillSegment(VinzIcons.Autoplay, tr(R.string.autoplay), settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
                     }
-                    BottomGlyph(VinzIcons.Queue, "Up next", true, onToggleQueue)
-                } else Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BottomGlyph(VinzIcons.Queue, tr(R.string.up_next), true, onToggleQueue)
+                } else Row(
+                    if (pill) Modifier else Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (pill) Arrangement.spacedBy(4.dp) else Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
+                ) {
                     for (b in chosen) PlayerButtonGlyph(b, glyph, lyricsOpen, videoMode, videoAvailable, videoLoading, onToggleLyrics, onToggleQueue, onVideoMode, onButton)
                 }
             }
@@ -847,47 +931,47 @@ private fun PlayerButtonGlyph(
     val song by pc.currentSong.collectAsState()
     val s = song ?: return
     when (b) {
-        PlayerButton.LYRICS -> BottomGlyph(if (lyricsOpen) VinzIcons.LyricsFilled else VinzIcons.Lyrics, if (lyricsOpen) "Close lyrics" else "Lyrics", lyricsOpen, onToggleLyrics, width)
+        PlayerButton.LYRICS -> BottomGlyph(if (lyricsOpen) VinzIcons.LyricsFilled else VinzIcons.Lyrics, if (lyricsOpen) tr(R.string.close_lyrics) else tr(R.string.lyrics), lyricsOpen, onToggleLyrics, width)
         // One Video toggle: on (marked) plays the music video; tapping again goes back to the song.
         PlayerButton.VIDEO -> PillSegment(
             VinzIcons.Video,
-            when { videoMode -> "Back to the song"; videoAvailable -> "Music video"; else -> "No music video for this song" },
+            when { videoMode -> tr(R.string.back_to_the_song); videoAvailable -> tr(R.string.music_video_3); else -> tr(R.string.no_music_video_for_this_song) },
             videoMode || videoLoading, enabled = videoAvailable || videoMode, loading = videoLoading, width = width,
         ) { onVideoMode(!(videoMode || videoLoading)) }
-        PlayerButton.QUEUE -> BottomGlyph(VinzIcons.Queue, "Up next", false, onToggleQueue, width)
+        PlayerButton.QUEUE -> BottomGlyph(VinzIcons.Queue, tr(R.string.up_next), false, onToggleQueue, width)
         PlayerButton.LIKE -> {
             val liked by c.library.likedIds.collectAsState()
             val on = s.id in liked
-            BottomGlyph(if (on) VinzIcons.HeartFilled else VinzIcons.Heart, if (on) "Remove from liked" else "Like", on, { c.library.toggleLike(s) }, width)
+            BottomGlyph(if (on) VinzIcons.HeartFilled else VinzIcons.Heart, if (on) tr(R.string.remove_from_liked) else tr(R.string.widget_like), on, { c.library.toggleLike(s) }, width)
         }
         PlayerButton.DISLIKE -> {
             val disliked by c.library.dislikedIds.collectAsState()
             val on = s.id in disliked
-            BottomGlyph(if (on) VinzIcons.ThumbDownFilled else VinzIcons.ThumbDown, "Not for me", on, {
+            BottomGlyph(if (on) VinzIcons.ThumbDownFilled else VinzIcons.ThumbDown, tr(R.string.not_for_me), on, {
                 c.library.setDisliked(s, !on)
                 if (!on && pc.hasNext.value) pc.next()
             }, width)
         }
         PlayerButton.DOWNLOAD -> {
-            val downloads by c.downloads.downloads.collectAsState()
+            val downloads by c.downloadState.collectAsState()
             val d = downloads[s.id]
             val done = d?.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
             BottomGlyph(
                 if (done) VinzIcons.DownloadDone else VinzIcons.Download,
-                when { done -> "Downloaded"; d != null -> "Downloading"; else -> "Download" }, done || d != null,
+                when { done -> tr(R.string.downloaded); d != null -> tr(R.string.downloading_2); else -> tr(R.string.download) }, done || d != null,
                 { if (d != null) c.downloads.remove(s.id) else c.downloads.download(s) }, width, enabled = !s.isLocal && !s.isLive,
             )
         }
-        PlayerButton.RADIO -> BottomGlyph(VinzIcons.Radio, "Start radio", false, { pc.playRadio(s) }, width, enabled = !s.isLocal)
-        // Songs a little faster or slower (1.7.4): each tap the next speed; the speed itself shows while it isn't 1×.
+        PlayerButton.RADIO -> BottomGlyph(VinzIcons.Radio, tr(R.string.start_radio), false, { pc.playRadio(s) }, width, enabled = !s.isLocal)
+        // Songs faster or slower (1.7.4), and higher or lower (1.7.8): a tap opens Speed & pitch; the speed shows while it isn't 1×.
         PlayerButton.SPEED -> {
             val speed by pc.musicSpeed.collectAsState()
-            val next = MUSIC_SPEEDS[(MUSIC_SPEEDS.indexOf(speed) + 1).mod(MUSIC_SPEEDS.size)]
+            val pitch by pc.musicPitch.collectAsState()
             val haptics = rememberHaptics()
-            if (speed == 1f) BottomGlyph(VinzIcons.Speed, "Playback speed 1×", false, { pc.setMusicSpeed(next) }, width, enabled = !s.isLive)
+            if (speed == 1f) BottomGlyph(VinzIcons.Speed, if (pitch == 0) tr(R.string.speed_pitch_2) else tr(R.string.speed_pitch_pitch_moved), pitch != 0, { onButton(b) }, width, enabled = !s.isLive)
             else Box(
                 Modifier.size(width = width, height = BOTTOM_ACTION_SIZE).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
-                    .clickable(onClickLabel = "Playback speed ${speedText(speed)}") { haptics.tick(); pc.setMusicSpeed(next) },
+                    .clickable(onClickLabel = tr(R.string.speed_pitch, speedText(speed))) { haptics.tick(); onButton(b) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(speedText(speed), style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"), color = Color.White)
@@ -896,21 +980,21 @@ private fun PlayerButtonGlyph(
         }
         PlayerButton.DJ -> {
             val on by c.dj.on.collectAsState()
-            BottomGlyph(if (on) VinzIcons.TurntableFilled else VinzIcons.Turntable, if (on) "DJ mode off" else "DJ mode", on, { c.dj.setOn(!on) }, width)
+            BottomGlyph(if (on) VinzIcons.TurntableFilled else VinzIcons.Turntable, if (on) tr(R.string.dj_mode_off) else tr(R.string.dj_mode), on, { c.dj.setOn(!on) }, width)
         }
         PlayerButton.SLEEP -> {
             val at by pc.sleepAt.collectAsState()
             val end by pc.sleepEndOfSong.collectAsState()
-            BottomGlyph(VinzIcons.Moon, "Sleep timer", at > 0 || end, { onButton(b) }, width)
+            BottomGlyph(VinzIcons.Moon, tr(R.string.sleep_timer), at > 0 || end, { onButton(b) }, width)
         }
         PlayerButton.SING -> {
             val on by c.sing.on.collectAsState()
-            BottomGlyph(VinzIcons.Mic, "Sing", on, { onButton(b) }, width, enabled = !s.isEpisode)
+            BottomGlyph(VinzIcons.Mic, tr(R.string.sing), on, { onButton(b) }, width, enabled = !s.isEpisode)
         }
-        PlayerButton.OUTPUT -> BottomGlyph(VinzIcons.Cast, "Play on", false, { onButton(b) }, width)
-        PlayerButton.ADD_TO_PLAYLIST -> BottomGlyph(VinzIcons.PlaylistAdd, "Add to playlist", false, { onButton(b) }, width)
-        PlayerButton.SHARE -> BottomGlyph(VinzIcons.Share, "Share", false, { onButton(b) }, width, enabled = !s.isLocal)
-        PlayerButton.EQUALIZER -> BottomGlyph(VinzIcons.Equalizer, "Equalizer", false, { onButton(b) }, width)
+        PlayerButton.OUTPUT -> BottomGlyph(VinzIcons.Cast, tr(R.string.play_on), false, { onButton(b) }, width)
+        PlayerButton.ADD_TO_PLAYLIST -> BottomGlyph(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), false, { onButton(b) }, width)
+        PlayerButton.SHARE -> BottomGlyph(VinzIcons.Share, tr(R.string.share), false, { onButton(b) }, width, enabled = !s.isLocal)
+        PlayerButton.EQUALIZER -> BottomGlyph(VinzIcons.Equalizer, tr(R.string.equalizer), false, { onButton(b) }, width)
     }
 }
 
@@ -932,7 +1016,7 @@ private fun EpisodeActionRow(queueOpen: Boolean, onToggleQueue: () -> Unit) {
             Box(
                 Modifier.height(BOTTOM_ACTION_SIZE).clip(CircleShape)
                     .background(if (speed != 1f) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-                    .clickable(onClickLabel = "Playback speed $label") {
+                    .clickable(onClickLabel = tr(R.string.playback_speed, label)) {
                         haptics.tick()
                         pc.setEpisodeSpeed(EPISODE_SPEEDS[(EPISODE_SPEEDS.indexOf(speed) + 1).mod(EPISODE_SPEEDS.size)])
                     }
@@ -941,7 +1025,7 @@ private fun EpisodeActionRow(queueOpen: Boolean, onToggleQueue: () -> Unit) {
             ) {
                 Text(label, color = Color.White, style = MaterialTheme.typography.labelLarge)
             }
-            BottomGlyph(VinzIcons.Queue, "Up next", queueOpen, onToggleQueue)
+            BottomGlyph(VinzIcons.Queue, tr(R.string.up_next), queueOpen, onToggleQueue)
         }
     }
 }
@@ -1044,7 +1128,7 @@ fun OutputCaption() {
     val settings by c.settings.flow.collectAsState()
     val preferred by c.player.preferredOutput.collectAsState()
     val profile by c.account.profile.collectAsState()
-    val phoneName = (profile?.name ?: settings.accountName).trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() }?.let { "$it's Phone" } ?: "This Phone"
+    val phoneName = (profile?.name ?: settings.accountName).trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() }?.let { tr(R.string.s_phone, it) } ?: tr(R.string.this_phone)
     var current by remember { mutableStateOf(currentOutput(context, preferred)) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(preferred, lifecycle) {
@@ -1053,8 +1137,8 @@ fun OutputCaption() {
     var picking by remember { mutableStateOf(false) }
     val castState by c.cast.state.collectAsState()
     val castLabel = when (val cs = castState) {
-        is com.vinz.music.connect.CastState.Casting -> "Playing on ${cs.renderer.name}"
-        is com.vinz.music.connect.CastState.Connecting -> "Connecting to ${cs.renderer.name}…"
+        is com.vinz.music.connect.CastState.Casting -> tr(R.string.playing_on, cs.renderer.name)
+        is com.vinz.music.connect.CastState.Connecting -> tr(R.string.connecting_to, cs.renderer.name)
         else -> null
     }
     // Where the sound goes, after a dot of split light; while casting, a glass pill with the cast mark, so it's plain
@@ -1077,10 +1161,11 @@ fun OutputCaption() {
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
-        // The cast mark says the line opens speakers and TVs (Reddit 1.7: "where's the cast button?").
+        // The cast mark says the line opens speakers and TVs (Reddit 1.7: "where's the cast button?"). 1.8.0: no longer a
+        // choice of its own (#149's switch is gone): the line itself can be hidden in What's on the player.
         if (!away) {
             Spacer(Modifier.width(7.dp))
-            Icon(VinzIcons.Cast, "Play on a speaker or TV", Modifier.size(14.dp), tint = Color.White.copy(alpha = 0.62f))
+            Icon(VinzIcons.Cast, tr(R.string.play_on_a_speaker_or_tv), Modifier.size(14.dp), tint = Color.White.copy(alpha = 0.62f))
         }
     }
     if (picking) OutputPickerSheet(phoneName) { picking = false }
@@ -1099,12 +1184,12 @@ fun SleepBadge(modifier: Modifier = Modifier) {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(sleepAt, lifecycle) { if (sleepAt > 0) lifecycle.tickWhileShown(15_000) { now = System.currentTimeMillis() } }
-    val left = if (endOfSong) "Song end" else "${((sleepAt - now) / 60_000).coerceAtLeast(0) + 1} min"
+    val left = if (endOfSong) tr(R.string.song_end) else tr(R.string.min, ((sleepAt - now) / 60_000).coerceAtLeast(0) + 1)
     var open by remember { mutableStateOf(false) }
     Row(
         modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).clickable { open = true }
             .padding(horizontal = 9.dp, vertical = 3.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "Sleep timer: $left. Tap to change it." },
+            .semantics(mergeDescendants = true) { contentDescription = tr(R.string.sleep_timer_tap_to_change_it, left) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(VinzIcons.Moon, null, Modifier.size(13.dp), tint = Color.White.copy(alpha = 0.85f))
@@ -1153,10 +1238,10 @@ fun currentOutput(context: Context, preferred: AudioDeviceInfo?): AudioDeviceInf
 
 fun outputLabel(d: AudioDeviceInfo, phoneName: String): String = when (d.type) {
     AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> phoneName
-    AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Headphones"
+    AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET -> tr(R.string.headphones)
     AudioDeviceInfo.TYPE_HDMI -> "HDMI"
     else -> d.productName?.toString()?.takeIf { it.isNotBlank() && it != android.os.Build.MODEL }
-        ?: if (isBluetooth(d.type)) "Bluetooth device" else "USB audio"
+        ?: if (isBluetooth(d.type)) tr(R.string.bluetooth_device) else tr(R.string.usb_audio)
 }
 
 private fun outputIcon(d: AudioDeviceInfo): ImageVector = when {
@@ -1195,35 +1280,36 @@ fun OutputPickerSheet(phoneName: String, onDismiss: () -> Unit) {
     val castingName = (castState as? com.vinz.music.connect.CastState.Casting)?.renderer?.name
     com.vinz.music.ui.components.ActionSheet(song?.thumbnail, onDismiss) { _ ->
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 4.dp)) {
-            Text("Play on", style = MaterialTheme.typography.titleLarge)
+            Text(tr(R.string.play_on), style = MaterialTheme.typography.titleLarge)
             Text(
-                castingName?.let { "Playing on $it" } ?: current?.let { "Playing on ${outputLabel(it, phoneName)}" } ?: "Pick where the music plays",
+                castingName?.let { tr(R.string.playing_on, it) } ?: current?.let { tr(R.string.playing_on, outputLabel(it, phoneName)) } ?: tr(R.string.pick_where_the_music_plays),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         // No scroll of its own: the sheet already scrolls (a scroller inside a scroller is measured with no height
         // limit, and Compose crashes on it).
         Column(Modifier.padding(bottom = 24.dp)) {
-            OutputGroup("This phone") {
+            OutputGroup(tr(R.string.this_phone_2)) {
                 options.forEach { d ->
                     val selected = castingTo == null && current?.id == d.id
                     DeviceRow(
                         outputIcon(d), outputLabel(d, phoneName),
                         when {
-                            d.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone speaker"
-                            isBluetooth(d.type) -> "Bluetooth"
+                            d.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> tr(R.string.phone_speaker)
+                            isBluetooth(d.type) -> tr(R.string.bluetooth)
                             d.type == AudioDeviceInfo.TYPE_USB_DEVICE || d.type == AudioDeviceInfo.TYPE_USB_HEADSET -> "USB"
-                            else -> "Wired"
+                            else -> tr(R.string.wired)
                         },
                         selected = selected,
                     ) { pc.setOutput(d) }
                 }
-                if (android.os.Build.VERSION.SDK_INT >= 34) DeviceRow(VinzIcons.Headphones, "Other Bluetooth devices", "Ones that aren't connected yet") {
+                if (android.os.Build.VERSION.SDK_INT >= 34) DeviceRow(VinzIcons.Headphones, tr(R.string.other_bluetooth_devices), tr(R.string.ones_that_aren_t_connected_yet)) {
                     if (MediaRouter2.getInstance(context).showSystemOutputSwitcher()) onDismiss()
                 }
             }
-            SpeakersAndTvs(castState, castingTo)
+            // Vinz devices first: a TV with Vinz on it plays there in the app, rather than in its own Cast player.
             VinzDevices()
+            SpeakersAndTvs(castState, castingTo)
         }
     }
 }
@@ -1271,7 +1357,7 @@ internal fun DeviceRow(
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                subtitle + if (selected) " · Playing" else "",
+                subtitle + if (selected) tr(R.string.playing) else "",
                 style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -1283,22 +1369,44 @@ internal fun DeviceRow(
 @Composable
 private fun VinzDevices() {
     val handoff = LocalContainer.current.handoff
+    val cast = LocalContainer.current.cast
     val devices by handoff.devices.collectAsState()
     val busy by handoff.busy.collectAsState()
+    val castState by cast.state.collectAsState()
+    val unreachable by handoff.unreachable.collectAsState()
+    // A Vinz TV the music plays on now (or is going to): it shows as playing, as a speaker cast to does.
+    val tvNow = ((castState as? com.vinz.music.connect.CastState.Casting)?.renderer ?: (castState as? com.vinz.music.connect.CastState.Connecting)?.renderer)
+        ?.takeIf { it.kind == com.vinz.music.connect.RendererKind.VINZ_TV }
     DisposableEffect(Unit) {
         handoff.startDiscovery()
         onDispose { handoff.stopDiscovery() }
     }
+    // A TV running Vinz (1.8.0) gets its remote here (with its sign-in and the look), beside moving the music there.
+    var remoteFor by remember { mutableStateOf<com.vinz.music.connect.VinzDevice?>(null) }
+    remoteFor?.let { tv -> com.vinz.music.ui.components.TvRemoteSheet(tv) { remoteFor = null } }
     if (devices.isEmpty() && busy == null) return
-    OutputGroup("Vinz devices") {
-        busy?.let { label -> DeviceRow(VinzIcons.Handoff, label, "One moment…", busy = true, enabled = false) {} }
+    OutputGroup(tr(R.string.vinz_devices)) {
+        busy?.let { label -> DeviceRow(VinzIcons.Handoff, label, tr(R.string.one_moment), busy = true, enabled = false) {} }
         devices.forEach { d ->
+            // A TV plays along with this phone (1.8.0), the phone staying its remote; another phone takes the music over.
+            val thisTv = d.tv && tvNow != null && tvNow.id == "vinz:${d.id ?: d.key}"
+            val connecting = thisTv && castState is com.vinz.music.connect.CastState.Connecting
             DeviceRow(
-                VinzIcons.Handoff, d.name, "Move the music there" + if (d.paired) "" else " · pairs the first time", enabled = busy == null,
-                trailing = {
-                    com.vinz.music.ui.components.VinzTextButton(onClick = { handoff.bringFrom(d) }, enabled = busy == null) { Text("Bring here") }
+                if (d.tv) VinzIcons.Tv else VinzIcons.Handoff, d.name,
+                when {
+                    connecting -> tvNow!!.detail + tr(R.string.connecting)
+                    thisTv -> tvNow!!.detail
+                    // It didn't answer last time (1.8.1): said on its row, and a tap tries again (afresh: its addresses
+                    // are looked up again if the ones known don't answer).
+                    d.key in unreachable -> tr(R.string.link_tap_to_try_again)
+                    else -> tr(R.string.move_the_music_there) + if (d.paired) "" else tr(R.string.pairs_the_first_time)
                 },
-            ) { handoff.moveTo(d) }
+                selected = thisTv && !connecting, busy = connecting, enabled = busy == null,
+                trailing = {
+                    if (d.tv) com.vinz.music.ui.components.VinzTextButton(onClick = { remoteFor = d }, enabled = busy == null) { Text(tr(R.string.tv_remote)) }
+                    else com.vinz.music.ui.components.VinzTextButton(onClick = { handoff.bringFrom(d) }, enabled = busy == null) { Text(tr(R.string.bring_here)) }
+                },
+            ) { if (d.tv) { if (!thisTv) cast.connectTv(d) } else handoff.moveTo(d) }
         }
     }
 }
@@ -1309,7 +1417,9 @@ private val speakerWords = listOf("speaker", "sonos", "receiver", "avr", "denon"
 @Composable
 private fun SpeakersAndTvs(castState: com.vinz.music.connect.CastState, castingTo: String?) {
     val cast = LocalContainer.current.cast
+    val handoff = LocalContainer.current.handoff
     val renderers by cast.renderers.collectAsState()
+    val vinzTvs by handoff.devices.collectAsState()
     var lookedLong by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         cast.startDiscovery()
@@ -1319,32 +1429,49 @@ private fun SpeakersAndTvs(castState: com.vinz.music.connect.CastState, castingT
     val shown = renderers.let { list ->
         // The one being cast to stays listed even if it's stopped answering searches.
         val playing = (castState as? com.vinz.music.connect.CastState.Casting)?.renderer ?: (castState as? com.vinz.music.connect.CastState.Connecting)?.renderer
-        if (playing != null && list.none { it.id == playing.id }) listOf(playing) + list else list
+        val all = if (playing != null && playing.kind != com.vinz.music.connect.RendererKind.VINZ_TV && list.none { it.id == playing.id }) listOf(playing) + list else list
+        // A TV whose Vinz is listed under Vinz devices isn't listed again as its own Cast or DLNA player.
+        all.filter { r -> r.id == castingTo || vinzTvs.none { it.tv && rendererHost(r) in it.hosts } }
     }
-    OutputGroup("Speakers & TVs") {
+    // A TV that had Vinz on it, not open now: the TV's own player still works, and Vinz plays there once opened.
+    val closedVinzTv = shown.firstNotNullOfOrNull { r -> handoff.vinzTvAt(rendererHost(r)) }
+    OutputGroup(tr(R.string.speakers_tvs)) {
         shown.forEach { r ->
             val selected = r.id == castingTo
             val connecting = castState is com.vinz.music.connect.CastState.Connecting && selected
             val speaker = speakerWords.any { w -> "${r.name} ${r.manufacturer} ${r.model}".lowercase().contains(w) }
             DeviceRow(
                 if (speaker) VinzIcons.Speaker else VinzIcons.Tv, r.name,
-                r.detail + if (connecting) " · Connecting…" else "",
+                r.detail + if (connecting) tr(R.string.connecting) else "",
                 selected = selected && !connecting, busy = connecting,
             ) { if (!selected) cast.connect(r) }
         }
-        if (castingTo != null) DeviceRow(VinzIcons.Close, "Stop casting", "The music pauses; pick this phone to carry on here") {
+        // A Vinz TV's music comes back to this phone, playing; a speaker's pauses.
+        if (castingTo != null) DeviceRow(VinzIcons.Close, tr(R.string.stop_casting), tr(if (cast.toVinzTv) R.string.tv_stop_comes_back else R.string.the_music_pauses_pick_this_phone)) {
             cast.disconnect(keepPlaying = false)
         }
         if (shown.isEmpty()) {
-            if (!lookedLong) DeviceRow(VinzIcons.Cast, "Looking on this Wi-Fi…", "Speakers, TVs and receivers", busy = true, enabled = false) {}
+            if (!lookedLong) DeviceRow(VinzIcons.Cast, tr(R.string.looking_on_this_wi_fi), tr(R.string.speakers_tvs_and_receivers), busy = true, enabled = false) {}
             else Text(
-                "None found. They show here when they're on this Wi-Fi with Google Cast (Chromecast, Google TV) or DLNA / UPnP (often called media sharing).",
+                tr(R.string.none_found_they_show_here_when),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
             )
         }
+        closedVinzTv?.let { name ->
+            Text(
+                tr(R.string.open_vinz_on_first_android_only, name),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp).testTag("output/open_vinz_on_tv"),
+            )
+        }
     }
 }
+
+/** The address a Cast or DLNA player answers on (its location's host), to tell when it's a TV with Vinz on it. */
+internal fun rendererHost(r: com.vinz.music.connect.Renderer): String? =
+    runCatching { java.net.URI(r.location.replace("googlecast://", "http://")).host }.getOrNull()
+
 @Composable
 fun PlaybackOriginCaption(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Text(
@@ -1360,7 +1487,39 @@ fun PlaybackOriginCaption(text: String, modifier: Modifier = Modifier, onClick: 
 
 /** Title / artist line that scrolls only when it doesn't fit, after a rest. */
 @Composable
-fun PlayerMarquee(text: String, style: TextStyle, color: Color, enabled: Boolean, modifier: Modifier = Modifier, delayMs: Int = 2500) {
+fun PlayerMarquee(text: String, style: TextStyle, color: Color, enabled: Boolean, modifier: Modifier = Modifier, delayMs: Int = 2500) =
+    PlayerMarquee(androidx.compose.ui.text.AnnotatedString(text), style, color, enabled, modifier, delayMs)
+
+/**
+ * The artists' line under the player's title (#289, 1.8.1): with [separate] on and more than one artist, each name is its
+ * own link to [open]; otherwise (or when a name can't be found in [text]) plain words, the line itself asking which.
+ */
+@Composable
+fun artistLinkText(
+    text: String,
+    linked: List<com.vinz.music.data.model.ArtistRef>,
+    separate: Boolean,
+    open: (com.vinz.music.data.model.ArtistRef) -> Unit,
+): androidx.compose.ui.text.AnnotatedString {
+    val go by androidx.compose.runtime.rememberUpdatedState(open)
+    return remember(text, linked, separate) {
+        val spans = if (separate) com.vinz.music.ui.components.artistSpans(text, linked) else null
+        if (spans == null) androidx.compose.ui.text.AnnotatedString(text)
+        else androidx.compose.ui.text.buildAnnotatedString {
+            append(text)
+            spans.forEach { (range, a) ->
+                addLink(
+                    androidx.compose.ui.text.LinkAnnotation.Clickable("artist:${a.id ?: a.name}") { go(a) },
+                    range.first, range.last + 1,
+                )
+            }
+        }
+    }
+}
+
+/** [PlayerMarquee] for words that carry links (#289: each artist's name opens their page). */
+@Composable
+fun PlayerMarquee(text: androidx.compose.ui.text.AnnotatedString, style: TextStyle, color: Color, enabled: Boolean, modifier: Modifier = Modifier, delayMs: Int = 2500) {
     Text(
         text,
         style = style,
@@ -1383,17 +1542,20 @@ fun qualityText(stats: com.vinz.music.playback.NerdStats): String {
     val lossless = stats.source.startsWith("Lossless") ||
         listOf("flac", "alac", "wav", "pcm", "aiff", "raw").any { stats.codec.contains(it, true) }
     return when {
-        stats.source == "Downloaded" -> "Downloaded"
+        stats.source == "Downloaded" -> tr(R.string.downloaded)
+        // One of your own files (#314): "MP3 · 320 kbps, from your file".
+        stats.source.startsWith(com.vinz.music.data.local.OwnFiles.SOURCE + " · ") ->
+            tr(R.string.x_from_your_file, stats.source.removePrefix(com.vinz.music.data.local.OwnFiles.SOURCE + " · "))
         lossless -> {
             // The file's own format when Vinz knows it ("On this phone · WAV", "Lossless · FLAC on this phone").
             val named = Regex("\\b(WAV|AIFF|FLAC|ALAC)\\b").find(stats.source)?.value
             listOfNotNull(
-                named ?: codec.takeIf { it != "PCM" && it.isNotBlank() } ?: "Lossless",
+                named ?: codec.takeIf { it != "PCM" && it.isNotBlank() } ?: tr(R.string.lossless),
                 stats.bitDepth.takeIf { it > 0 }?.let { "$it-bit" },
                 stats.sampleRate.takeIf { it > 0 }?.let(::sampleRateText),
             ).joinToString(" · ")
         }
-        stats.streamBitrateKbps > 0 -> "$codec ${stats.streamBitrateKbps} kbps".trim()
+        stats.streamBitrateKbps > 0 -> tr(R.string.kbps, codec, stats.streamBitrateKbps).trim()
         else -> codec
     }
 }

@@ -1,5 +1,6 @@
 package com.vinz.music
 
+import com.vinz.music.ui.components.quietGraphicsLayers
 import com.vinz.music.ui.components.tabTint
 import android.Manifest
 import android.content.Intent
@@ -17,13 +18,15 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,6 +34,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -156,6 +161,14 @@ private const val VOLUME_KEY_STEP = 4
 private const val LOOK_MIME = "application/zip"
 
 open class MainActivity : ComponentActivity() {
+    // Vinz's language, when picked in Vinz (below Android 13; AppLanguage).
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(com.vinz.music.AppLanguage.wrap(base))
+
+    // Each time Vinz comes to the front (at most hourly): it can stay alive for days, with Home never built again (1.8.1.1).
+    override fun onResume() {
+        super.onResume()
+        container.updates.check()
+    }
     private val deepLink = MutableStateFlow<Uri?>(null)
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -163,8 +176,20 @@ open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Vinz TV (1.8.0): on a TV, Vinz's screens are TvActivity's (made for a remote); whatever opened this one (a
+        // link, the media notification, an old shortcut) opens that instead.
+        if (com.vinz.music.ui.tv.TvDevice.isTv(this)) {
+            // Added to its flags, not in their place: a shared file's or link's read permission comes with them.
+            startActivity(Intent(intent).setComponent(android.content.ComponentName(this, TvActivity::class.java)).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+            return
+        }
         val c = container
         c.player.connect()
+        // The downloads start in the background (their index and cache come off the disk) while the first frame draws;
+        // screens read c.downloadState meanwhile, so they never wait for them (1.7.9.3: Home's first frame waited 3.4 s
+        // on a slow phone). Media3's download manager still answers on the main thread.
+        c.scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { c.downloads } }
         // Not asked here any more (a prompt before the welcome screen, with no reason given): the tour or the first
         // download asks, through this.
         if (c.returningUser == null) c.returningUser = c.settings.current.let { it.onboarded || it.isLoggedIn }
@@ -190,6 +215,7 @@ open class MainActivity : ComponentActivity() {
                 VinzRoot(deepLink)
             }
         }
+        quietGraphicsLayers()
     }
 
     // ---------------------------------------------------------------- Picture-in-picture
@@ -202,9 +228,12 @@ open class MainActivity : ComponentActivity() {
 
     private val pipSupported by lazy { packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE) }
 
+    /** Settings → Controls & gestures → Picture-in-picture: "Only with its button" (#167) never floats the video by itself. */
+    private val pipOnLeave: Boolean get() = container.settings.current.behavior.pip == com.vinz.music.data.prefs.PipMode.AUTO
+
     private fun pipParams(): android.app.PictureInPictureParams = android.app.PictureInPictureParams.Builder()
         .setAspectRatio(pipAspect)
-        .apply { if (Build.VERSION.SDK_INT >= 31) { setAutoEnterEnabled(pipEligible); setSeamlessResizeEnabled(true) } }
+        .apply { if (Build.VERSION.SDK_INT >= 31) { setAutoEnterEnabled(pipEligible && pipOnLeave); setSeamlessResizeEnabled(true) } }
         .build()
 
     /** The player says whether a music video is playing on it, and its shape ([width] × [height], 0 if unknown). */
@@ -226,10 +255,22 @@ open class MainActivity : ComponentActivity() {
     /** Floats the music video now (the player's PiP button). False if Android or the listener's settings won't allow it. */
     fun enterPip(): Boolean = pipSupported && runCatching { enterPictureInPictureMode(pipParams()) }.getOrDefault(false)
 
+    /** A touch or key: the listener is here (desk mode's ambient screen waits, or goes). */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        com.vinz.music.ui.tv.Idle.touched()
+    }
+
+    /** Every touch: on slow phones background song scans wait while the listener scrolls (#343). */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        com.vinz.music.playback.MixTempo.touched(ev.actionMasked)
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // Before Android 12 there's no auto-enter: going Home with a video playing floats it here.
-        if (Build.VERSION.SDK_INT < 31 && pipEligible) enterPip()
+        if (Build.VERSION.SDK_INT < 31 && pipEligible && pipOnLeave) enterPip()
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
@@ -269,14 +310,14 @@ open class MainActivity : ComponentActivity() {
         val lookCode = if (intent?.action == Intent.ACTION_SEND) com.vinz.music.data.looks.LookCode.findIn(intent.getStringExtra(Intent.EXTRA_TEXT)) else null
         if (lookCode != null) {
             container.looks.decode(lookCode)?.let { container.looks.pending.value = it }
-                ?: Toast.makeText(this, "That Look code couldn't be read", Toast.LENGTH_SHORT).show()
+                ?: Toast.makeText(this, tr(R.string.that_look_code_couldn_t_be), Toast.LENGTH_SHORT).show()
             return Uri.parse("vinz://looks")
         }
         lookFile(intent)?.let { file ->
             container.scope.launch(Dispatchers.Main) {
                 val look = runCatching { contentResolver.openInputStream(file)?.use { container.looks.readFile(it) } }
                 look.getOrNull()?.let { container.looks.pending.value = it }
-                    ?: Toast.makeText(this@MainActivity, look.exceptionOrNull()?.message ?: "That file isn't a Vinz Look", Toast.LENGTH_SHORT).show()
+                    ?: Toast.makeText(this@MainActivity, look.exceptionOrNull()?.message ?: tr(R.string.that_file_isn_t_a_vinz), Toast.LENGTH_SHORT).show()
             }
             return Uri.parse("vinz://looks")
         }
@@ -299,7 +340,7 @@ open class MainActivity : ComponentActivity() {
 
     private fun linkOf(intent: Intent?): Uri? = when (intent?.action) {
         Intent.ACTION_SEND -> com.vinz.music.data.ShareLinks.findIn(intent.getStringExtra(Intent.EXTRA_TEXT))?.let(Uri::parse).also {
-            if (it == null) Toast.makeText(this, "That isn't a YouTube or YouTube Music link", Toast.LENGTH_SHORT).show()
+            if (it == null) Toast.makeText(this, tr(R.string.that_isn_t_a_youtube_or), Toast.LENGTH_SHORT).show()
         }
         else -> intent?.data
     }
@@ -330,6 +371,19 @@ private fun navHeight(style: NavBarStyle, size: com.vinz.music.data.prefs.NavBar
     NavBarStyle.MINIMAL -> size.minimal.dp
 }
 
+/**
+ * The pages' transitions with "Slide between screens" (#208): all null when it's off, and the fades apply. [rtl]
+ * mirrors them, so a page always comes in from where reading goes.
+ */
+internal class PageSlides(on: Boolean, rtl: Boolean) {
+    private val side = if (rtl) -1 else 1
+    private val ms = 360
+    val enter: EnterTransition? = if (!on) null else slideInHorizontally(tween(ms)) { it * side } + fadeIn(tween(ms / 2))
+    val exit: ExitTransition? = if (!on) null else slideOutHorizontally(tween(ms)) { -it * side / 4 } + fadeOut(tween(ms))
+    val popEnter: EnterTransition? = if (!on) null else slideInHorizontally(tween(ms)) { -it * side / 4 } + fadeIn(tween(ms))
+    val popExit: ExitTransition? = if (!on) null else slideOutHorizontally(tween(ms)) { it * side } + fadeOut(tween(ms / 2, delayMillis = ms / 2))
+}
+
 private fun miniHeight(style: MiniPlayerStyle): Dp = when (style) {
     MiniPlayerStyle.CARD -> 64.dp
     MiniPlayerStyle.SLIM -> 54.dp
@@ -343,23 +397,42 @@ private fun rememberArtworkColor(song: Song?, settings: com.vinz.music.data.pref
     val swatch = settings.artworkSwatch
     val vivid = settings.artworkVivid
     // "New albums only" (1.7.2): songs from the same album keep the color; otherwise every cover is looked at.
-    val key = if (settings.artworkChange == com.vinz.music.data.prefs.ArtworkChange.ALBUM) song?.album?.id ?: song?.album?.title ?: song?.thumbnail else song?.thumbnail
+    // The cover picked for the song or its album (#305) gives the colors too.
+    val art = song?.let { com.vinz.music.data.PlaylistCovers.artOf(it) }
+    val picked = song?.let { com.vinz.music.data.PlaylistCovers.shared?.picked(it) }
+    val key = if (settings.artworkChange == com.vinz.music.data.prefs.ArtworkChange.ALBUM) (song?.album?.id ?: song?.album?.title ?: art) to picked else art
     LaunchedEffect(key, swatch, vivid) {
-        val url = song?.thumbnail ?: return@LaunchedEffect
+        val url = art ?: return@LaunchedEffect
         // One palette for both: the accent's swatch, and the light "From the cover" (#123; also what its tile in Color shows).
         val made = withContext(Dispatchers.IO) {
             runCatching {
                 val req = ImageRequest.Builder(context).data(hiRes(url, 160)).allowHardware(false).build()
                 val bmp = (context.imageLoader.execute(req) as? SuccessResult)?.image?.toBitmap() ?: return@runCatching null
                 val p = Palette.from(bmp).generate()
+                // A tint on a speck of the picture isn't the cover's color (#236): swatches under 2% of it are left out.
+                val total = p.swatches.sumOf { it.population }.coerceAtLeast(1)
                 val stops = com.vinz.music.ui.theme.SpectrumPresets.fromCover(
-                    listOfNotNull(p.vibrantSwatch, p.lightVibrantSwatch, p.darkVibrantSwatch, p.mutedSwatch, p.lightMutedSwatch, p.dominantSwatch).map { it.rgb or (0xFF shl 24) },
+                    listOfNotNull(p.vibrantSwatch, p.lightVibrantSwatch, p.darkVibrantSwatch, p.mutedSwatch, p.lightMutedSwatch, p.dominantSwatch)
+                        .filter { it.population * 50 >= total }.map { it.rgb or (0xFF shl 24) },
                 )
                 com.vinz.music.ui.theme.pickSwatch(p, swatch, vivid)?.let { Color(it) } to stops
             }.getOrNull()
         } ?: return@LaunchedEffect
         made.first?.let { color = it }
-        com.vinz.music.ui.theme.SpectrumPresets.coverStops = made.second ?: emptyList()
+        // The cover light fades as the accent does (#254), unless motion is reduced (Performance mode too) or "At once".
+        val stops = com.vinz.music.ui.theme.SpectrumPresets
+        val old = stops.coverStops
+        val ms = if (settings.reduceMotion) 0 else settings.artworkChange.ms
+        if (ms <= 0 || old.size < 2 || settings.spectrumPreset != stops.COVER) { stops.coverStops = made.second; return@LaunchedEffect }
+        val start = androidx.compose.runtime.withFrameMillis { it }
+        while (true) {
+            val t = ((androidx.compose.runtime.withFrameMillis { it } - start) / ms.toFloat()).coerceIn(0f, 1f)
+            stops.coverStops = stops.fadeStops(old, made.second, androidx.compose.animation.core.FastOutSlowInEasing.transform(t))
+            if (t >= 1f) break
+            // About 25 a second, not every frame: everything drawn in the light redraws with each step.
+            kotlinx.coroutines.delay(40)
+        }
+        stops.coverStops = made.second
     }
     return color
 }
@@ -386,13 +459,22 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
         }
         // Settings → Layout & navigation → "Hide the status bar" (#115), and again each time Vinz comes back to the front.
         val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-        androidx.compose.runtime.DisposableEffect(settings.hideStatusBar, lifecycle) {
-            com.vinz.music.ui.components.SystemBars.apply(rootView, settings.hideStatusBar)
+        androidx.compose.runtime.DisposableEffect(settings.hideStatusBar, settings.hideStatusBarPlayer, lifecycle) {
+            val bars = com.vinz.music.ui.components.SystemBars
+            bars.apply(rootView, bars.hidden(settings))
             val watcher = androidx.lifecycle.LifecycleEventObserver { _, e ->
-                if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) com.vinz.music.ui.components.SystemBars.apply(rootView, c.settings.current.hideStatusBar)
+                if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) bars.apply(rootView, bars.hidden(c.settings.current))
             }
             lifecycle.addObserver(watcher)
             onDispose { lifecycle.removeObserver(watcher) }
+        }
+        // Settings → Controls & gestures → "Lock to portrait" (#190): phones stay upright; tablets keep their own layouts.
+        // A full-screen video still turns sideways (it sets its own and puts this back after).
+        val tablet = androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
+        androidx.compose.runtime.LaunchedEffect(settings.behavior.lockPortrait, tablet) {
+            (rootView.context as? android.app.Activity)?.requestedOrientation =
+                if (settings.behavior.lockPortrait && !tablet) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         val navController = rememberNavController()
         var playerOpen by rememberSaveable { mutableStateOf(false) }
@@ -401,7 +483,7 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
                     val r = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { c.radio(mix.seedVideoId, mix.id, mix.params, keepFirst = true) } }.getOrNull()
                     if (r == null || r.songs.isEmpty()) {
-                        Toast.makeText(context, "Couldn't start ${mix.title}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, tr(R.string.couldn_t_start, mix.title), Toast.LENGTH_SHORT).show()
                         return@launch
                     }
                     // Stations like "Listen together" open on a live stream: found out now (the stream is resolved anyway), it starts as one.
@@ -432,7 +514,8 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
         val inSession = together is com.vinz.music.playback.together.TogetherState.Hosting || together is com.vinz.music.playback.together.TogetherState.Guest
         // Wide windows (tablets, foldables, a phone on its side) put the tabs in a rail down the start edge.
         val window = com.vinz.music.ui.theme.LocalWindowLayout.current
-        val useRail = window.rail && showChrome
+        // #264 (1.8.0): on a tablet the listener picks bottom or side; phones (compact) always have the tabs at the bottom.
+        val useRail = showChrome && window.rail && settings.behavior.tabBarPosition != com.vinz.music.data.prefs.TabBarPosition.BOTTOM
         val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
         val cutoutStart = WindowInsets.displayCutout.union(WindowInsets.navigationBars).asPaddingValues().calculateStartPadding(layoutDirection)
         val railInset = if (useRail) cutoutStart + RAIL_MARGIN + RAIL_WIDTH + 4.dp else 0.dp
@@ -487,6 +570,8 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             c.handoff.events.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
         }
         com.vinz.music.ui.components.HandoffDialogs()
+        // Desk mode (#265, 1.8.0, off unless switched on): the ambient screen while charging and playing.
+        com.vinz.music.ui.tv.AmbientHost(onTv = false)
         LaunchedEffect(Unit) {
             deepLink.collect { uri -> if (uri != null) { handleDeepLink(uri, navigator, c); deepLink.value = null } }
         }
@@ -516,8 +601,15 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
         // What's under the full player holds its purely visual motion still while the player hides it.
         val playerCover = remember { com.vinz.music.ui.components.PlayerCover() }
         val hiddenByPlayer = remember(playerCover) { { playerCover.hides } }
+        // The playing bars stand still while the song is paused (#302); read where they're drawn.
+        val musicPlaying = c.player.isPlaying.collectAsState()
+        val playingNow = remember(musicPlaying) { { musicPlaying.value } }
+        // What the song rows mark (liked, downloaded, video saved): collected here once, not by every row in view.
+        val rowMarks = com.vinz.music.ui.components.rememberRowMarks(c.library.likedIds, c.downloadState, c.downloadStandIns, c.videoState)
         CompositionLocalProvider(
+            com.vinz.music.ui.components.LocalRowMarks provides rowMarks,
             com.vinz.music.ui.components.LocalPlayerCover provides playerCover,
+            com.vinz.music.ui.components.LocalMusicPlaying provides playingNow,
             LocalNavigator provides navigator,
             LocalHazeState provides haze,
             com.vinz.music.ui.theme.LocalChromeStart provides railInset,
@@ -527,22 +619,35 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             // mini player under it (they're only drawn, not hidden, to keep the player's slide smooth).
             val covered = playerOpen && song != null
             val underPlayer = if (covered) Modifier.semantics { hideFromAccessibility() } else Modifier
+            // "Hide it on the player" (Reddit, 1.7.9.1): the status bar goes as the player opens and comes back as it closes.
+            LaunchedEffect(covered, settings.hideStatusBarPlayer) {
+                val bars = com.vinz.music.ui.components.SystemBars
+                bars.playerUp = covered
+                if (settings.hideStatusBarPlayer) bars.apply(rootView, bars.hidden(c.settings.current))
+            }
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 Box(
-                    Modifier.fillMaxSize().then(underPlayer).nestedScroll(barScroll).hazeSource(haze)
+                    Modifier.fillMaxSize().then(underPlayer).nestedScroll(barScroll)
+                        // The page is copied only when glass will sample it (#343).
+                        .then(if (com.vinz.music.ui.theme.glassSamplesThePage(Build.VERSION.SDK_INT, settings.liquidGlass, settings.frostedGlass)) Modifier.hazeSource(haze) else Modifier)
                         .then(if (settings.swipeTabs && !useRail) swipeBetweenTabs(tabs, route, selectTab) else Modifier),
                 ) {
                   CompositionLocalProvider(com.vinz.music.ui.components.LocalHiddenByPlayer provides hiddenByPlayer) {
                     // The same cross-fade both ways, and for the back gesture too: left to its default,
                     // a predictive back (swipe from the edge) shrinks the page like a card instead.
+                    // "Fades between screens" off (#227): pages swap at once, so a tap can't land on the one fading out.
+                    val fadeMs = if (settings.behavior.screenFades) 700 else 0
+                    // "Slide between screens" (#208, 1.7.9.2): a new page comes in from the side and Back takes it
+                    // away the same way (from the left in right-to-left languages); the page underneath moves a little.
+                    val slides = PageSlides(settings.behavior.screenFades && settings.behavior.pageSlide, androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl)
                     NavHost(
                         navController, startDestination = start,
-                        enterTransition = { fadeIn(tween(700)) },
-                        exitTransition = { fadeOut(tween(700)) },
-                        popEnterTransition = { fadeIn(tween(700)) },
-                        popExitTransition = { fadeOut(tween(700)) },
-                        predictivePopEnterTransition = { fadeIn(tween(700)) },
-                        predictivePopExitTransition = { fadeOut(tween(700)) },
+                        enterTransition = { slides.enter ?: if (fadeMs == 0) EnterTransition.None else fadeIn(tween(fadeMs)) },
+                        exitTransition = { slides.exit ?: if (fadeMs == 0) ExitTransition.None else fadeOut(tween(fadeMs)) },
+                        popEnterTransition = { slides.popEnter ?: if (fadeMs == 0) EnterTransition.None else fadeIn(tween(fadeMs)) },
+                        popExitTransition = { slides.popExit ?: if (fadeMs == 0) ExitTransition.None else fadeOut(tween(fadeMs)) },
+                        predictivePopEnterTransition = { slides.popEnter ?: if (fadeMs == 0) EnterTransition.None else fadeIn(tween(fadeMs)) },
+                        predictivePopExitTransition = { slides.popExit ?: if (fadeMs == 0) ExitTransition.None else fadeOut(tween(fadeMs)) },
                     ) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
@@ -577,6 +682,9 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                         }
                         composable(Routes.NEW_RELEASES) { ScreenBackdrop(BackdropScreen.HOME) { com.vinz.music.ui.screens.NewReleasesScreen(bottomPadding) } }
                         composable(Routes.EXCLUSIONS) { ScreenBackdrop(BackdropScreen.SETTINGS) { com.vinz.music.ui.screens.ExclusionsScreen(bottomPadding) } }
+                        // 1.8.1: Bring your history, and its "Needs a look".
+                        composable(Routes.BRING_HISTORY) { ScreenBackdrop(BackdropScreen.SETTINGS) { com.vinz.music.ui.screens.BringHistoryScreen(bottomPadding) } }
+                        composable(Routes.IMPORT_REVIEW) { ScreenBackdrop(BackdropScreen.SETTINGS) { com.vinz.music.ui.screens.ImportReviewScreen(bottomPadding) } }
                         composable(
                             Routes.RECOGNIZE + "?start={start}",
                             listOf(navArgument("start") { type = NavType.BoolType; defaultValue = false }),
@@ -592,10 +700,10 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                             }
                         }
                         composable(Routes.LOOK_SCAN) {
-                            com.vinz.music.ui.screens.BlendScanScreen("Point at a Vinz Look's code", com.vinz.music.data.looks.LookCode::findIn) { code ->
+                            com.vinz.music.ui.screens.BlendScanScreen(tr(R.string.point_at_a_vinz_look_s), com.vinz.music.data.looks.LookCode::findIn) { code ->
                                 navController.popBackStack()
                                 c.looks.decode(code)?.let { c.looks.pending.value = it }
-                                    ?: Toast.makeText(context, "That Look code couldn't be read", Toast.LENGTH_SHORT).show()
+                                    ?: Toast.makeText(context, tr(R.string.that_look_code_couldn_t_be), Toast.LENGTH_SHORT).show()
                             }
                         }
                         composable("blend/{who}", listOf(navArgument("who") { type = NavType.StringType })) {
@@ -744,9 +852,16 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 }
                 }
 
+                // "Cover flies into place" (#199): the player fades in while the mini player's cover flies to its spot.
+                val flight = settings.view.coverFlight && !settings.reduceMotion
+                LaunchedEffect(playerOpen) {
+                    if (!playerOpen) com.vinz.music.ui.player.CoverFlight.player = null
+                    else if (flight) com.vinz.music.ui.player.CoverFlight.fly()
+                }
                 AnimatedVisibility(
                     playerOpen && song != null,
-                    enter = slideInVertically(tween(if (settings.reduceMotion) 260 else 420)) { it } + fadeIn(tween(200)),
+                    enter = if (flight) fadeIn(tween(com.vinz.music.ui.player.CoverFlight.FLIGHT_MS))
+                        else slideInVertically(tween(if (settings.reduceMotion) 260 else 420)) { it } + fadeIn(tween(200)),
                     exit = slideOutVertically(tween(if (settings.reduceMotion) 240 else 360)) { it } + fadeOut(tween(300)),
                 ) {
                     // Settled once it's done sliding in; no longer the moment it starts to leave.
@@ -756,11 +871,13 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { playerCover.settled = false } }
                     Box(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.PLAYER)) { NowPlayingScreen { playerOpen = false } }
                 }
+                com.vinz.music.ui.player.CoverFlightLayer(song?.let { com.vinz.music.data.PlaylistCovers.artOf(it) })
 
                 // Looks (1.7.3): "Undo" after each change to the look, and "Customize this" while it's on.
+                // Over the player it sits at the top, under "Customize this": lower down it covered the Play button.
                 com.vinz.music.ui.components.LookUndoBar(
-                    Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp)
-                        .padding(bottom = if (playerOpen && song != null) navInset + 120.dp else bottomPadding + 8.dp),
+                    if (playerOpen && song != null) Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp).statusBarsPadding().padding(top = 56.dp)
+                    else Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = bottomPadding + 8.dp),
                 )
                 if (!(playerOpen && song != null)) com.vinz.music.ui.components.ScheduleKeptBar(
                     Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = bottomPadding + 8.dp),
@@ -784,6 +901,30 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 tour?.let { plan ->
                     com.vinz.music.ui.tour.TourOverlay(plan, onOpen = { r -> playerOpen = false; navigator.go(r) }, onDone = { tour = null })
                 }
+
+                // Holiday Mode (1.8.0): once a season, the first time Vinz opens in its month after setting up and the
+                // tour; never over the welcome screen, the tour, the player or another question.
+                var seasonAsk by remember { mutableStateOf<com.vinz.music.data.looks.Season?>(null) }
+                val lookPending by c.looks.pending.collectAsState()
+                val blendPending by c.blends.pending.collectAsState()
+                val clear = showChrome && tour == null && !playerOpen && customizing == null && lookPending == null && blendPending == null
+                LaunchedEffect(clear) {
+                    if (!clear || seasonAsk != null) return@LaunchedEffect
+                    kotlinx.coroutines.delay(1_500) // after the tour would have come up
+                    if (com.vinz.music.ui.tour.pendingTour(context, c.returningUser == true) != null) return@LaunchedEffect
+                    val today = com.vinz.music.data.looks.Seasons.today()
+                    val now = c.settings.current
+                    val onLook = com.vinz.music.data.looks.Seasons.current(today)?.let { com.vinz.music.data.looks.BuiltInLooks.of(it.lookId) }
+                        ?.takeIf { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { c.looks.isOn(it) } }?.id
+                    seasonAsk = com.vinz.music.data.looks.SeasonPrompt.due(today, com.vinz.music.data.looks.SeasonPrompt.asked(context), now.onboarded || now.isLoggedIn, onLook)
+                }
+                seasonAsk?.let { season ->
+                    com.vinz.music.ui.screens.HolidayModeDialog(season) { yes ->
+                        com.vinz.music.data.looks.SeasonPrompt.markAsked(context, season, com.vinz.music.data.looks.Seasons.today())
+                        seasonAsk = null
+                        if (yes) com.vinz.music.data.looks.BuiltInLooks.of(season.lookId)?.let { look -> c.scope.launch { c.looks.apply(look) } }
+                    }
+                }
             }
         }
     }
@@ -794,11 +935,11 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
 private fun TogetherPill(state: com.vinz.music.playback.together.TogetherState, modifier: Modifier, onClick: () -> Unit) {
     val (icon, text) = when (state) {
         is com.vinz.music.playback.together.TogetherState.Hosting ->
-            VinzIcons.Radio to "Hosting · code ${state.code}" + when (state.guests.size) { 0 -> ""; 1 -> " · 1 listening"; else -> " · ${state.guests.size} listening" }
+            VinzIcons.Radio to tr(R.string.hosting_code, state.code) + when (state.guests.size) { 0 -> ""; 1 -> tr(R.string.t_1_listening); else -> tr(R.string.listening_3, state.guests.size) }
         is com.vinz.music.playback.together.TogetherState.Guest ->
-            VinzIcons.Groups to "With ${state.hostName}" + when {
-                !state.listenHere -> " · adding songs"
-                !state.inSync -> " · out of step"
+            VinzIcons.Groups to tr(R.string.with, state.hostName) + when {
+                !state.listenHere -> tr(R.string.adding_songs)
+                !state.inSync -> tr(R.string.out_of_step_2)
                 else -> ""
             }
         else -> return
@@ -806,7 +947,7 @@ private fun TogetherPill(state: com.vinz.music.playback.together.TogetherState, 
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         GlassSurface(Modifier.height(34.dp), shape = RoundedCornerShape(17.dp), elevation = 4.dp) {
             Row(
-                Modifier.fillMaxHeight().clickable(onClickLabel = "Open Listen together", onClick = onClick).padding(horizontal = 14.dp),
+                Modifier.fillMaxHeight().clickable(onClickLabel = tr(R.string.open_listen_together), onClick = onClick).padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(icon, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
@@ -912,7 +1053,7 @@ private fun TabBar(
                     tabs.forEach { tab -> TabItem(tab, isSelected(tab, route), settings.navLabels, compact, Modifier.weight(1f).fillMaxHeight(), line = true) { onSelect(tab.route) } }
                 }
             }
-            if (settings.liquidGlass || settings.frostedGlass) GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(0.dp), elevation = 0.dp, tint = tint) { row() }
+            if (settings.liquidGlass || settings.frostedGlass) GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(0.dp), elevation = 0.dp, tint = tint, refract = false) { row() }
             else Box(
                 Modifier.fillMaxWidth().background(if (tint.isSpecified) tint else scheme.background)
                     .drawBehind { drawLine(scheme.hairline, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx() * 0.75f) },
@@ -989,7 +1130,7 @@ private fun TabItem(tab: Tab, selected: Boolean, labels: NavLabels, compact: Flo
     val c = LocalContainer.current
     val click = Modifier.combinedClickable(
         interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = tab.label,
-        onLongClickLabel = if (tab.route == Routes.SETTINGS) "Customize this" else null,
+        onLongClickLabel = if (tab.route == Routes.SETTINGS) tr(R.string.customize_this) else null,
         onLongClick = if (tab.route == Routes.SETTINGS) ({ c.customizing.value = !c.customizing.value }) else null,
         onClick = onClick,
     ).semantics { this.selected = selected }
@@ -1016,25 +1157,39 @@ private fun TabItem(tab: Tab, selected: Boolean, labels: NavLabels, compact: Flo
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(icon, tab.label, tint = fg, modifier = Modifier.size(24.dp).then(if (selected) Modifier.tabTint(tabTint) else Modifier))
-            if (compact < 0.98f) Text(
-                tab.label, color = fg, style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                modifier = Modifier.padding(top = 2.dp).height(lerp(16.dp, 0.dp, compact)).graphicsLayer { alpha = (1f - compact * 1.6f).coerceIn(0f, 1f) },
-            )
-        }
-        // The picked tab grows into a capsule with its name beside the icon.
-        NavLabels.SELECTED -> Box(modifier.then(spectrumLine).then(click), contentAlignment = Alignment.Center) {
-            Row(
-                Modifier.height(40.dp).clip(CircleShape).background(indicator).padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(icon, tab.label, tint = fg, modifier = Modifier.size(22.dp).then(if (selected) Modifier.tabTint(tabTint) else Modifier))
-                AnimatedVisibility(selected && compact < 0.5f, enter = expandHorizontally() + fadeIn(), exit = shrinkHorizontally() + fadeOut()) {
-                    Row {
-                        Spacer(Modifier.width(6.dp))
-                        Text(tab.label, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
-                    }
+            // #237: a long name ("Liked songs") gets smaller rather than cut off, kept clear of the rounded corners, and
+            // its line keeps its full height with big text; the bar slimming down only hides it.
+            if (compact < 0.98f) {
+                val style = MaterialTheme.typography.labelSmall
+                val lineHeight = with(androidx.compose.ui.platform.LocalDensity.current) { style.lineHeight.toDp() }.coerceAtLeast(16.dp)
+                Box(Modifier.padding(top = 2.dp).height(lerp(lineHeight, 0.dp, compact)).clipToBounds().graphicsLayer { alpha = (1f - compact * 1.6f).coerceIn(0f, 1f) }) {
+                    Text(
+                        tab.label, color = fg, style = style, maxLines = 1, softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = style.fontSize),
+                        modifier = Modifier.padding(horizontal = 6.dp).wrapContentHeight(unbounded = true),
+                    )
                 }
+            }
+        }
+        // The picked tab's name under its icon, as "Always" places it (#291: it grew into a capsule with the name beside
+        // the icon, which a long name pushed off the tab); the other tabs show their icons alone.
+        NavLabels.SELECTED -> Column(
+            modifier.then(spectrumLine).then(click),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Box(Modifier.size(52.dp, 32.dp).clip(CircleShape).background(indicator), contentAlignment = Alignment.Center) {
+                // 24 dp as in the other label styles (#272: 22 here made every icon a little smaller with "Selected").
+                Icon(icon, tab.label, tint = fg, modifier = Modifier.size(24.dp).then(if (selected) Modifier.tabTint(tabTint) else Modifier))
+            }
+            AnimatedVisibility(selected && compact < 0.5f, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Text(
+                    tab.label, color = fg, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = MaterialTheme.typography.labelSmall.fontSize),
+                    modifier = Modifier.padding(top = 2.dp, start = 6.dp, end = 6.dp),
+                )
             }
         }
         NavLabels.NEVER -> Box(modifier.then(spectrumLine).then(click), contentAlignment = Alignment.Center) {
@@ -1075,11 +1230,32 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
     val list = uri.getQueryParameter("list")
     val path = uri.pathSegments
     when {
+        // A Vinz TV's QR code, read by the phone's camera (1.8.0): pairs with that TV (and offers it the sign-in).
+        uri.scheme == "vinz" && uri.host == "pair" -> c.handoff.pairFromLink(uri)
+        // Back from Last.fm's page in the browser, with the token it gave for this listener (#133).
+        uri.scheme == "vinz" && uri.host == "lastfm" -> {
+            // Last.fm's own page (Devices & connections), where its sign-in started (1.8.0: no longer on Recommendations).
+            nav.go(Routes.settings(com.vinz.music.ui.screens.SettingsSection.LASTFM.key))
+            uri.getQueryParameter("token")?.takeIf { it.isNotBlank() }?.let { token ->
+                c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    val ok = c.lastFm.finishSignIn(token)
+                    android.widget.Toast.makeText(
+                        c.app, if (ok) tr(R.string.connected_to_last_fm_as, c.lastFm.user.value) else tr(R.string.last_fm_didn_t_connect_try),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }
+        // Back from Spotify's authorize page (1.8.1): the code already reached Vinz on the phone's loopback address, so
+        // this only brings its page back (where the connection shows).
+        uri.scheme == "vinz" && uri.host == "spotify" -> nav.go(Routes.settings(com.vinz.music.ui.screens.SettingsSection.SPOTIFY.key))
         // A widget's cover or title: the player.
         uri.scheme == "vinz" && uri.host == "player" -> nav.openPlayer()
         // Release Radar's notification.
         uri.scheme == "vinz" && uri.host == "releases" -> nav.go(Routes.NEW_RELEASES)
         uri.scheme == "vinz" && uri.host == "blends" -> nav.go(Routes.BLENDS)
+        // Bring your history's matching notification (1.8.1).
+        uri.scheme == "vinz" && uri.host == "bring" -> nav.go(Routes.BRING_HISTORY)
         // A Look shared to Vinz: Appearance → Looks, which shows it first.
         uri.scheme == "vinz" && uri.host == "looks" -> nav.go(Routes.settings(com.vinz.music.ui.screens.SettingsSection.LOOKS.key))
         // The Quick Settings tile: straight to listening.
@@ -1114,6 +1290,6 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
 
 private fun launchSingle(c: AppContainer, videoId: String) = c.scope.launch {
     val r = runCatching { c.ytm.next(videoId) }.getOrNull()
-    val song = r?.songs?.firstOrNull { it.id == videoId } ?: Song(videoId, "Loading…")
+    val song = r?.songs?.firstOrNull { it.id == videoId } ?: Song(videoId, tr(R.string.loading_2))
     withContext(Dispatchers.Main) { c.player.playSingle(song) }
 }

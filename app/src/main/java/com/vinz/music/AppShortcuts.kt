@@ -16,10 +16,10 @@ object AppShortcuts {
     private class Spec(val id: String, val short: String, val long: String, val link: String, val icon: Int)
 
     private val specs = listOf(
-        Spec("search", "Search", "Search", "vinz://search", R.drawable.ic_shortcut_search),
-        Spec("recognize", "Recognize", "Recognize a song", "vinz://recognize", R.drawable.ic_shortcut_recognize),
-        Spec("liked", "Liked songs", "Liked songs", "vinz://liked", R.drawable.ic_shortcut_liked),
-        Spec("downloads", "Downloads", "Downloads", "vinz://downloads", R.drawable.ic_shortcut_downloads),
+        Spec("search", tr(R.string.search), tr(R.string.search), "vinz://search", R.drawable.ic_shortcut_search),
+        Spec("recognize", tr(R.string.recognize), tr(R.string.widget_recognize_empty), "vinz://recognize", R.drawable.ic_shortcut_recognize),
+        Spec("liked", tr(R.string.liked_songs), tr(R.string.liked_songs), "vinz://liked", R.drawable.ic_shortcut_liked),
+        Spec("downloads", tr(R.string.downloads), tr(R.string.downloads), "vinz://downloads", R.drawable.ic_shortcut_downloads),
     )
 
     fun publish(context: Context) {

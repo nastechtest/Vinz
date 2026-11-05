@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import com.vinz.music.ui.components.VinzButton
 import com.vinz.music.ui.components.VinzOutlinedButton
 import com.vinz.music.ui.components.VinzTextButton
@@ -52,6 +54,8 @@ import com.vinz.music.ui.theme.VinzTheme
  * microphone is only used while this card is on screen; leaving it stops listening.
  */
 class RecognizeActivity : ComponentActivity() {
+    // Vinz's language, when picked in Vinz (below Android 13; AppLanguage).
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(com.vinz.music.AppLanguage.wrap(base))
     private val c by lazy { container }
     private val denied = mutableStateOf(false)
     private val ask = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -122,7 +126,7 @@ private fun RecognizeCard(denied: Boolean, onListen: () -> Unit, onOpen: (String
                         Artwork(r.cover ?: song?.thumbnail, Modifier.size(88.dp), LocalUi.current.art, placeholderIcon = VinzIcons.Song)
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Found it", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Text(tr(R.string.found_it), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                             Text(r.title ?: "", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(r.artist ?: "", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -130,7 +134,7 @@ private fun RecognizeCard(denied: Boolean, onListen: () -> Unit, onOpen: (String
                     Spacer(Modifier.height(20.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (song != null) VinzButton({ close { c.player.playSingle(song) } }, Modifier.weight(1f)) {
-                            Icon(VinzIcons.Play, null); Spacer(Modifier.width(6.dp)); Text("Play")
+                            Icon(VinzIcons.Play, null); Spacer(Modifier.width(6.dp)); Text(tr(R.string.widget_play))
                         }
                         // With a song: it plays and Vinz opens on the player; without one, on the Recognized list.
                         VinzOutlinedButton({
@@ -139,41 +143,41 @@ private fun RecognizeCard(denied: Boolean, onListen: () -> Unit, onOpen: (String
                                 onOpen(if (song != null) "vinz://player" else "vinz://recognized")
                             }
                         }, Modifier.weight(1f)) {
-                            Text(if (song != null) "Open in Vinz" else "See in Vinz")
+                            Text(if (song != null) tr(R.string.open_in_vinz_2) else tr(R.string.see_in_vinz))
                         }
                     }
                     if (song == null) Text(
-                        "Not found in Vinz Music", Modifier.padding(top = 8.dp),
+                        tr(R.string.not_found_in_vinz_music), Modifier.padding(top = 8.dp),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    VinzTextButton({ c.recognizer.reset(); onListen() }) { Text("Listen again") }
+                    VinzTextButton({ c.recognizer.reset(); onListen() }) { Text(tr(R.string.listen_again)) }
                 }
                 else -> {
                     val listening = s as? Recognizer.State.Listening
-                    Text("Recognize", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium)
+                    Text(tr(R.string.recognize), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium)
                     ListenButton(listening != null, listening?.level ?: 0f, size = 190.dp) {
                         if (listening != null) c.recognizer.cancel() else onListen()
                     }
                     Text(
                         when {
-                            listening != null -> "Listening… ${listening.heardMs / 1000} s"
-                            denied -> "Vinz needs the microphone to listen"
-                            s == Recognizer.State.NotFound -> "Couldn't recognize that one"
-                            s == Recognizer.State.Saved -> "Saved, will check when you're online"
-                            s == Recognizer.State.RateLimited -> "Shazam asks to wait a little"
+                            listening != null -> tr(R.string.listening_s, listening.heardMs / 1000)
+                            denied -> tr(R.string.vinz_needs_the_microphone_to_listen)
+                            s == Recognizer.State.NotFound -> tr(R.string.couldn_t_recognize_that_one)
+                            s == Recognizer.State.Saved -> tr(R.string.widget_recognize_waiting)
+                            s == Recognizer.State.RateLimited -> tr(R.string.shazam_asks_to_wait_a_little)
                             s is Recognizer.State.Failed -> s.message
-                            else -> "Tap to listen"
+                            else -> tr(R.string.tap_to_listen)
                         },
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
                     )
                     Text(
                         when {
-                            listening != null -> "Hold your phone near the music"
-                            denied -> "Tap the button to allow it. Only a fingerprint of the sound leaves your phone."
-                            s == Recognizer.State.NotFound -> "Try again closer to the music, or where it's louder."
-                            s == Recognizer.State.Saved -> "You'll get a notification when it's found."
-                            s == Recognizer.State.RateLimited -> "Try again in a minute."
-                            else -> "Vinz listens for up to 12 seconds. Only a fingerprint of the sound goes to Shazam."
+                            listening != null -> tr(R.string.hold_your_phone_near_the_music)
+                            denied -> tr(R.string.tap_the_button_to_allow_it)
+                            s == Recognizer.State.NotFound -> tr(R.string.try_again_closer_to_the_music)
+                            s == Recognizer.State.Saved -> tr(R.string.you_ll_get_a_notification_when)
+                            s == Recognizer.State.RateLimited -> tr(R.string.try_again_in_a_minute)
+                            else -> tr(R.string.vinz_listens_for_up_to_12)
                         },
                         Modifier.padding(top = 4.dp),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,

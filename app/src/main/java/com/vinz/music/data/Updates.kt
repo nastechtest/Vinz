@@ -1,5 +1,7 @@
 package com.vinz.music.data
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -84,9 +86,12 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
         return AppUpdate(v, url).takeIf { isNewer(v, BuildConfig.VERSION_NAME) && v != prefs.getString("dismissed", null) }
     }
 
-    /** The background check Home runs; does nothing if GitHub was asked in the last six hours. */
+    /**
+     * The background check Home runs; does nothing if GitHub was asked in the last hour (#278: six hours until 1.8.1,
+     * so a new release could take most of a day to show; an unchanged answer is a cheap "nothing new" now, see [fetch]).
+     */
     fun check() {
-        if (checking || System.currentTimeMillis() - prefs.getLong("checked_at", 0) < 6 * 3_600_000L) return
+        if (checking || !dueToCheck(System.currentTimeMillis(), prefs.getLong("checked_at", 0))) return
         checking = true
         scope.launch(Dispatchers.IO) {
             runCatching { fetch() }
@@ -106,9 +111,23 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
 
     private fun fetch() {
         val req = Request.Builder().url("https://api.github.com/repos/$REPO/releases/latest")
-            .header("Accept", "application/vnd.github+json").header("User-Agent", "Vinz/${BuildConfig.VERSION_NAME}").build()
-        http.newCall(req).execute().use { r ->
-            if (!r.isSuccessful) error("GitHub answered ${r.code}")
+            .header("Accept", "application/vnd.github+json").header("User-Agent", "Vinz/${BuildConfig.VERSION_NAME}")
+            // GitHub answers "not modified" when the latest release is the one seen last time (and doesn't count it
+            // against its hourly limit), so asking every hour costs next to nothing.
+            .apply { prefs.getString("etag", null)?.takeIf { _available.value != null || prefs.contains("latest_version") }?.let { header("If-None-Match", it) } }
+            .build()
+        val answer = runCatching { http.newCall(req).execute() }
+        // GitHub's API allows 60 requests an hour per address, and carriers and VPNs share addresses: refused or
+        // unreachable, the release page's own redirect says the same thing with no such limit (1.8.1.1).
+        if (answer.getOrNull()?.let { it.code == 304 || it.isSuccessful } != true) {
+            answer.getOrNull()?.close()
+            if (fetchFromReleasePage()) return
+            answer.exceptionOrNull()?.let { throw it }
+            error(tr(R.string.github_answered, answer.getOrNull()?.code ?: 0))
+        }
+        answer.getOrThrow().use { r ->
+            if (r.code == 304) { prefs.edit().putLong("checked_at", System.currentTimeMillis()).apply(); _available.value = saved(); return }
+            r.header("ETag")?.let { prefs.edit().putString("etag", it).apply() }
             val json = InnerTube.json.parseToJsonElement(r.body.string())
             val version = json.str("tag_name")?.removePrefix("v")?.trim() ?: error("GitHub's answer had no version")
             val apk = json.arr("assets")?.firstOrNull { it.str("name")?.endsWith(".apk", true) == true }?.str("browser_download_url")
@@ -117,6 +136,19 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
             _available.value = saved()
         }
     }
+
+    /** The latest version from where github.com/…/releases/latest redirects to. False when it can't tell. */
+    private fun fetchFromReleasePage(): Boolean = runCatching {
+        val req = Request.Builder().url("https://github.com/$REPO/releases/latest").header("User-Agent", "Vinz/${BuildConfig.VERSION_NAME}").build()
+        http.newBuilder().followRedirects(false).followSslRedirects(false).build().newCall(req).execute().use { r ->
+            val version = versionFromLatestRedirect(r.header("Location")) ?: return@use false
+            prefs.edit().putString("latest_version", version)
+                .putString("latest_url", "https://github.com/$REPO/releases/download/v$version/Vinz.apk")
+                .putLong("checked_at", System.currentTimeMillis()).apply()
+            _available.value = saved()
+            true
+        }
+    }.getOrDefault(false)
 
     /** Hides the banner until a version newer than this one comes out. */
     fun dismiss() {
@@ -137,7 +169,13 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
      * missing; [install] is simply called again once the listener comes back with it.
      */
     fun install(update: AppUpdate) {
-        if (job?.isActive == true) return
+        // One update at a time (#278: a second tap could start a second download and a second install): while one is
+        // downloading nothing new starts, and while Android's installer waits for the listener, its screen comes back.
+        when (installStep(_progress.value, job?.isActive == true)) {
+            InstallStep.WAIT -> return
+            InstallStep.REOPEN -> { pendingConfirm?.let { runCatching { context.startActivity(Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }; return }
+            InstallStep.START -> Unit
+        }
         if (!canInstall()) { _progress.value = UpdateProgress.NeedsPermission; return }
         _progress.value = UpdateProgress.Downloading(null)
         job = scope.launch(Dispatchers.IO) {
@@ -150,7 +188,7 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
             result.exceptionOrNull()?.let { e ->
                 if (!isActive) return@let
                 _progress.value = if (e is SignatureChanged) UpdateProgress.NewSignature(update.version, File(dir, "Vinz-${update.version}.apk"))
-                else UpdateProgress.Failed(e.friendlyMessage("The update didn't download"))
+                else UpdateProgress.Failed(e.friendlyMessage(tr(R.string.the_update_didn_t_download)))
             }
         }
     }
@@ -162,7 +200,7 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
         val part = File(dir, file.name + ".part")
         val req = Request.Builder().url(update.url).header("User-Agent", "Vinz/${BuildConfig.VERSION_NAME}").build()
         http.newCall(req).execute().use { r ->
-            if (!r.isSuccessful) error("GitHub answered ${r.code}")
+            if (!r.isSuccessful) error(tr(R.string.github_answered, r.code))
             val body = r.body
             val total = body.contentLength().takeIf { it > 0 }
             var done = 0L
@@ -180,19 +218,19 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
                     }
                 }
             }
-            if (total != null && done != total) error("The download was cut short")
+            if (total != null && done != total) error(tr(R.string.the_download_was_cut_short))
         }
-        if (!part.renameTo(file)) error("Couldn't save the update")
+        if (!part.renameTo(file)) error(tr(R.string.couldn_t_save_the_update))
         return file
     }
 
     /** Only Vinz, and only something newer than what's running, is passed on. */
     @Suppress("DEPRECATION")
     private fun verify(apk: File) {
-        val info = context.packageManager.getPackageArchiveInfo(apk.path, 0) ?: error("The downloaded file isn't an app")
-        if (info.packageName != context.packageName) error("The download isn't Vinz")
+        val info = context.packageManager.getPackageArchiveInfo(apk.path, 0) ?: error(tr(R.string.the_downloaded_file_isn_t_an))
+        if (info.packageName != context.packageName) error(tr(R.string.the_download_isn_t_vinz))
         val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-        if (code <= BuildConfig.VERSION_CODE) error("That's not newer than this Vinz")
+        if (code <= BuildConfig.VERSION_CODE) error(tr(R.string.that_s_not_newer_than_this))
         val theirs = signers(context.packageManager.getPackageArchiveInfo(apk.path, signingFlag()))
         val ours = signers(context.packageManager.getPackageInfo(context.packageName, signingFlag()))
         if (theirs.isNotEmpty() && ours.isNotEmpty() && theirs != ours) throw SignatureChanged()
@@ -213,12 +251,15 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
 
     /** Copies the downloaded new Vinz to [uri] (somewhere that outlives uninstalling this one). */
     suspend fun saveApk(apk: File, uri: Uri) = kotlinx.coroutines.withContext(Dispatchers.IO) {
-        val out = context.contentResolver.openOutputStream(uri, "wt") ?: error("Couldn't open that file")
+        val out = context.contentResolver.openOutputStream(uri, "wt") ?: error(tr(R.string.couldn_t_open_that_file))
         out.use { o -> apk.inputStream().use { it.copyTo(o) } }
     }
 
     /** Android's "uninstall Vinz?" prompt. */
     fun uninstallIntent(): Intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${context.packageName}"))
+
+    /** Android's "install this update?" screen while it waits for the listener (shown again on a tap, #278). */
+    @Volatile private var pendingConfirm: Intent? = null
 
     /** The APK being installed and whether its session carried [dexMetadata], for one try without it. */
     @Volatile private var installing: Pair<File, Boolean>? = null
@@ -227,6 +268,9 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
         val profile = if (withProfile) dexMetadata(apk) else null
         installing = apk to (profile != null)
         val installer = context.packageManager.packageInstaller
+        // An earlier install of Vinz's own that never finished (its confirm screen left open) goes: never two at once.
+        runCatching { installer.mySessions.filter { it.appPackageName == context.packageName }.forEach { installer.abandonSession(it.sessionId) } }
+        pendingConfirm = null
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length() + (profile?.length() ?: 0L))
@@ -302,17 +346,18 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
                 @Suppress("DEPRECATION")
                 val confirm = (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                     else intent.getParcelableExtra(Intent.EXTRA_INTENT)) ?: return
+                pendingConfirm = Intent(confirm)
                 context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
             // On success Android replaces Vinz and closes it; there's nothing left to do here.
-            PackageInstaller.STATUS_SUCCESS -> _progress.value = UpdateProgress.Idle
-            PackageInstaller.STATUS_FAILURE_ABORTED -> _progress.value = UpdateProgress.Idle
+            PackageInstaller.STATUS_SUCCESS -> { pendingConfirm = null; _progress.value = UpdateProgress.Idle }
+            PackageInstaller.STATUS_FAILURE_ABORTED -> { pendingConfirm = null; _progress.value = UpdateProgress.Idle }
             else -> if (!retryWithoutProfile(status)) _progress.value = UpdateProgress.Failed(
                 when (status) {
                     PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-                        "Android wouldn't install it over this Vinz (it's signed differently)"
-                    PackageInstaller.STATUS_FAILURE_STORAGE -> "Not enough space to install the update"
-                    else -> intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "The update didn't install"
+                        tr(R.string.android_wouldn_t_install_it_over)
+                    PackageInstaller.STATUS_FAILURE_STORAGE -> tr(R.string.not_enough_space_to_install_the)
+                    else -> intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: tr(R.string.the_update_didn_t_install)
                 }
             )
         }
@@ -329,13 +374,36 @@ class UpdateChecker(private val context: Context, private val http: OkHttpClient
         installing = null
         scope.launch(Dispatchers.IO) {
             runCatching { startSession(apk, withProfile = false) }
-                .onFailure { _progress.value = UpdateProgress.Failed(it.friendlyMessage("The update didn't install")) }
+                .onFailure { _progress.value = UpdateProgress.Failed(it.friendlyMessage(tr(R.string.the_update_didn_t_install))) }
         }
         return true
     }
 
+    /** What a tap on the update does now ([installStep]). */
+    enum class InstallStep { START, WAIT, REOPEN }
+
     companion object {
         const val REPO = "nastechtest/Vinz"
+
+        /** How long between background checks (#278: was six hours). */
+        const val CHECK_EVERY_MS = 3_600_000L
+
+        fun dueToCheck(now: Long, checkedAt: Long): Boolean = now - checkedAt !in 0 until CHECK_EVERY_MS
+
+        /** "1.8.1" from a redirect to ".../releases/tag/v1.8.1"; null for anywhere else (no release yet, a sign-in page). */
+        fun versionFromLatestRedirect(location: String?): String? =
+            location?.substringAfter("/releases/tag/", "")?.substringBefore('?')?.removePrefix("v")?.trim()
+                ?.takeIf { it.isNotEmpty() && it.first().isDigit() }
+
+        /**
+         * A tap on the update while one is under way (#278): downloading, nothing new starts; handed to Android's
+         * installer, its confirm screen is shown again instead of a second install starting.
+         */
+        fun installStep(progress: UpdateProgress, downloading: Boolean): InstallStep = when {
+            downloading || progress is UpdateProgress.Downloading -> InstallStep.WAIT
+            progress == UpdateProgress.Installing -> InstallStep.REOPEN
+            else -> InstallStep.START
+        }
 
         /** "1.10.0" is newer than "1.9.2"; anything after a dash ("-beta") is ignored. */
         fun isNewer(candidate: String, current: String): Boolean {

@@ -59,9 +59,10 @@
 
 **Vinz** is an unofficial Android client for YouTube Music.
 
-It began as a fork of the open-source Android music client by **Yigder** and has since been developed independently —
-there is no upstream remote, and no upstream sync anywhere in its history. The lineage is kept in the credits and the
-notices, as the GPL requires.
+It began as a fork of the open-source Android music client by **Yigder** and has since been developed independently.
+Vinz tracks selected changes from its source repository through a pinned, deterministic sync that opens a tested pull request;
+the V mark, Vinz app identity, logo artwork, release pipeline and repository-specific work stay Vinz-owned. The lineage
+is kept in the credits and notices, as the GPL requires.
 
 The project keeps what makes a music client good — fast navigation, a player that gets out of the way, lyrics that
 keep up — and puts the *look* of the app in your hands. Vinz's own contribution is its **Looks** system: a whole
@@ -156,7 +157,7 @@ YouTube Music feature is implemented.
 | Kotlin namespace | `com.vinz.music` |
 | Language | Kotlin |
 | Build system | Gradle |
-| Version | [`version.properties`](version.properties) — currently `1.7.7.1` (`versionCode` 47) |
+| Version | [`version.properties`](version.properties) — currently `1.8.1.1` (`versionCode` 57) |
 | License | GNU GPL-3.0-or-later |
 | Upstream attribution | Yigder and original component authors |
 | Repository | [`nastechtest/Vinz`](https://github.com/nastechtest/Vinz) |
