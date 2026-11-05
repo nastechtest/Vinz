@@ -224,6 +224,8 @@ class LyricsPartsTest {
 
         // A backup from 1.7.9 likewise: Bold card on the player's background, its bold type.
         r.setLyricsMotion(LyricsMotion.NONE)
+        // Setters enqueue writes; make sure this one lands before the immediate backup restore clears it.
+        withTimeout(5_000) { r.flow.first { it.lyricsLook.motion == LyricsMotion.NONE } }
         r.fromBackup(mapOf("lyrics_style" to "s:CARD", "lyrics_weight" to "s:LIGHT"), settings = true, accounts = false)
         val card = withTimeout(5_000) { r.flow.first { it.lyricsLook.style == LyricsStyle.CARD && it.lyricsLook.motion == null } }.lyricsLook
         assertTrue(card.onCard)
