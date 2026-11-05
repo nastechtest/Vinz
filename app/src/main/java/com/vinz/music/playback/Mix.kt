@@ -63,6 +63,10 @@ class MixEngine(
     private val onSettled: () -> Unit = {},
     /** The pitch the music plays at (Sing's key, Reddit R6): blends change the speed only, never the key. */
     private val pitch: () -> Float = { 1f },
+    /** How the two volumes cross (1.7.8, A1). */
+    private val curve: () -> com.vinz.music.data.prefs.CrossfadeCurve = { com.vinz.music.data.prefs.CrossfadeCurve.EQUAL_POWER },
+    /** Where the next blend starts and how one under way is going, for the player (A6). */
+    private val state: MixState = MixState(),
 ) {
     /** The main player at [speed], in the music's key. */
     private fun at(speed: Float) = PlaybackParameters(speed, pitch())
@@ -147,12 +151,17 @@ class MixEngine(
     private var rushMs = RUSH_MS
     /** Since when the ending song has been stopped to load mid-blend (0 when it's playing). */
     private var tailStalledAt = 0L
+    /** The fade-in [MixState.into] last looked at, and the furthest the song has played since ([wentBack]). */
+    private var intoSeen: BlendIn? = null
+    private var intoFurthest = 0L
 
     /** One step; returns how long to wait before the next. */
     private fun tick(): Long {
         val length = mixMs()
         if (length == null) {
             if (phase != Phase.IDLE) abort("Mix turned off")
+            state.mark.value = null
+            state.into.value = null
             return 1000
         }
         return when (phase) {
@@ -169,11 +178,23 @@ class MixEngine(
         val length = if (auto()) AUTO_MAX_MS else chosen
         if (!main.isPlaying) return 500
         val item = main.currentMediaItem ?: return 500
+        // How the song playing came in is only its own: another song (skipped to, or the next without a blend) has none.
+        if (state.into.value?.let { it.songId != item.mediaId } == true) state.into.value = null
+        // Nor once the same song starts over (repeat one, Previous) or is taken back into its fade-in: that's not heard again.
+        state.into.value?.let { into ->
+            if (intoSeen !== into) { intoSeen = into; intoFurthest = main.currentPosition }
+            intoFurthest = maxOf(intoFurthest, main.currentPosition)
+            if (wentBack(into, main.currentPosition, intoFurthest)) state.into.value = null
+        }
         val dur = main.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return 500
         // Counted to where the music ends, not the file: a song with a long silent tail blends that much earlier (counted
         // from the file's end, the blend's moment had passed before it was even planned, and the song just stopped).
         val musicEnd = tempo.cached(item.mediaId)?.lastSoundMs?.takeIf { it in dur / 2..dur } ?: dur
         val left = musicEnd - main.currentPosition
+        val planAhead = length + LEAD_MS + PREPARE_MS + 5_000
+        // The player's crossfade mark: where the blend should start, as far as it's known yet (once it's being planned,
+        // the plan's own, below: set once a step, so the bar doesn't flick between the two).
+        if (left > planAhead || noPlanFor == item.mediaId) state.mark.value = if (noPlanFor == item.mediaId) null else predict(item, dur, chosen)
         // Not scanned yet (on mobile data, say): by now the rest of the song is usually buffered, so it's scanned from
         // the song cache, to know where its music really ends (a fade-out or a silent tail would otherwise be blended
         // over, and sound like the song stopping before the next one came in).
@@ -181,17 +202,19 @@ class MixEngine(
             scanAskedFor = item.mediaId
             scanFromPhone(item.mediaId)
         }
-        val planAhead = length + LEAD_MS + PREPARE_MS + 5_000
         if (left > planAhead) return minOf(2000, left - planAhead).coerceAtLeast(250)
         if (noPlanFor == item.mediaId) return 1000
-        val p = makePlan(item, dur, length) ?: run { noPlanFor = item.mediaId; return 1000 }
+        val p = makePlan(item, dur, length) ?: run { noPlanFor = item.mediaId; state.mark.value = null; return 1000 }
         // (The tail can still load while it waits to play along, see [prepared], so only the lead-in itself is needed.)
         if (main.currentPosition > p.startMs - LEAD_MS - 1000) {
             // Too late to get the tail ready in time (a seek near the end): let this one end on its own.
             note("no blend after ${item.mediaId}: too close to the end to get ready (at ${main.currentPosition} ms, blend at ${p.startMs} ms)")
             noPlanFor = item.mediaId
+            state.mark.value = null
             return 1000
         }
+        // Planned: the mark with the blend's length too (an automatic one is only known from here on).
+        state.mark.value = BlendMark(p.fromId, p.startMs, p.lengthMs)
         if (main.currentPosition < p.startMs - LEAD_MS - PREPARE_MS - 3000) return 250
         val shift = ShiftProcessor()
         val t = buildTail(shift)
@@ -203,6 +226,7 @@ class MixEngine(
         t.prepare()
         tail = t
         plan = p
+        state.mark.value = BlendMark(p.fromId, p.startMs, p.lengthMs)
         phase = Phase.PREPARED
         note("planned ${p.fromId} -> ${p.toId}: blend at ${p.startMs} ms for ${p.lengthMs} ms, next from ${p.inMs} ms" +
             if (p.beats) ", tempo ×%.3f, on the beat".format(p.ratio) else "")
@@ -224,6 +248,38 @@ class MixEngine(
         return null
     }
 
+    /**
+     * Where a blend after [item] would start, from what's known now ([makePlan]'s reckoning without the beat, which moves
+     * it by under a beat), or null when there won't be one. Quiet: nothing is logged. Its length is given only when it's
+     * the listener's: an automatic one (and DJ mode's) is only known once the blend is planned.
+     */
+    private fun predict(item: MediaItem, dur: Long, length: Long): BlendMark? {
+        val toIndex = main.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: return null
+        if (main.repeatMode == Player.REPEAT_MODE_ONE) return null
+        val next = main.getMediaItemAt(toIndex)
+        if (next.mediaId.isBlank() || next.mediaId == item.mediaId || !allowed(item, next)) return null
+        val a = tempo.cached(item.mediaId)
+        val nextDur = (next.mediaMetadata.durationMs ?: 0L).takeIf { it > 0 } ?: Long.MAX_VALUE
+        val automatic = auto()
+        val len = minOf(if (automatic) autoLengthMs(a, tempo.cached(next.mediaId)) else length, dur / 3, nextDur / 3)
+        if (len < 1000 || dur < 30_000) return null
+        val start = (a?.lastSoundMs?.takeIf { it in dur / 2..dur } ?: dur) - len
+        return start.takeIf { it >= dur / 2 }?.let { BlendMark(item.mediaId, it, if (automatic) 0L else len) }
+    }
+
+    /** The blend's length before the songs' own lengths cap it: the listener's, or worked out for the pair; DJ mode's keys stretch or cut it. */
+    private fun chosenLength(item: MediaItem, next: MediaItem, a: Tempo?, b: Tempo?, length: Long): Long {
+        var chosen = if (auto()) autoLengthMs(a, b) else length
+        harmonic(item.mediaId, next.mediaId)?.let { clash ->
+            chosen = when {
+                clash <= 0.25 -> maxOf(chosen, HARMONIC_LONG_MS)
+                clash >= 1.0 -> minOf(chosen, HARMONIC_SHORT_MS)
+                else -> chosen
+            }
+        }
+        return chosen
+    }
+
     private fun makePlan(item: MediaItem, dur: Long, length: Long): Plan? {
         val toIndex = main.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: return noBlend(item, "nothing next in the queue")
         if (main.repeatMode == Player.REPEAT_MODE_ONE) return noBlend(item, "repeat one")
@@ -233,15 +289,7 @@ class MixEngine(
         val a = tempo.cached(item.mediaId)
         val b = tempo.cached(next.mediaId)
         val nextDur = (next.mediaMetadata.durationMs ?: 0L).takeIf { it > 0 } ?: Long.MAX_VALUE
-        var chosen = if (auto()) autoLengthMs(a, b) else length
-        harmonic(item.mediaId, next.mediaId)?.let { clash ->
-            chosen = when {
-                clash <= 0.25 -> maxOf(chosen, HARMONIC_LONG_MS)
-                clash >= 1.0 -> minOf(chosen, HARMONIC_SHORT_MS)
-                else -> chosen
-            }
-        }
-        val len = minOf(chosen, dur / 3, nextDur / 3)
+        val len = minOf(chosenLength(item, next, a, b, length), dur / 3, nextDur / 3)
         if (len < 1000 || dur < 30_000) return noBlend(item, "a song too short to blend (${dur / 1000} s, next ${nextDur.takeIf { it != Long.MAX_VALUE }?.let { it / 1000 } ?: "?"} s)")
         val end = (a?.lastSoundMs?.takeIf { it in dur / 2..dur } ?: dur)
         var start = end - len
@@ -348,7 +396,7 @@ class MixEngine(
         // measured, not at all (the song ends as usual).
         if (handoverMs == 0L) {
             handoverMs = when {
-                d == null || !t.isPlaying || abs(d) > 250 -> {
+                outOfStep(d, t.isPlaying, p.beats) -> {
                     // Usually the tail stopped for a moment to load (a slow connection) and fell behind after it was put in
                     // step. Rather than no crossfade at all, the blend is put off a little (it ends where it would have),
                     // the tail shifted, and measured again.
@@ -363,6 +411,7 @@ class MixEngine(
                         p.startMs += by
                         p.lengthMs -= by
                         p.postponed++
+                        state.mark.value = BlendMark(p.fromId, p.startMs, p.lengthMs)
                         note("tail ${d ?: "?"} ms off at the blend: put off by $by ms (now ${p.lengthMs} ms long)")
                         return 10
                     }
@@ -378,7 +427,8 @@ class MixEngine(
                         return abort("out of step")
                     }
                 }
-                abs(d) > 45 -> LONG_HANDOVER_MS
+                // (Measured: [outOfStep] says so otherwise.)
+                abs(d ?: 0L) > IN_STEP_DOUBLING_MS -> LONG_HANDOVER_MS
                 else -> HANDOVER_MS
             }
         }
@@ -394,6 +444,8 @@ class MixEngine(
         main.volume = 0f
         main.seekTo(p.toIndex, p.inMs)
         main.playbackParameters = at(p.ratio)
+        // The next song's bar grows in over the blend, in its own time (faster or slower by the tempo match).
+        state.into.value = BlendIn(p.toId, p.inMs, (p.lengthMs * p.ratio).toLong())
         blendStartedAt = now
         syncActionAt = now
         windowFrom = 0L
@@ -443,8 +495,10 @@ class MixEngine(
                 progress, tailPosition(t), stateName(t), shifter?.quietMs ?: 0L, main.currentPosition, stateName(main),
             ))
         }
-        main.volume = sin(progress * PI / 2).toFloat()
-        t.volume = cos(progress * PI / 2).toFloat()
+        val (incoming, outgoing) = curve().gains(progress)
+        main.volume = incoming
+        t.volume = outgoing
+        state.blend.value = BlendNow(p.fromId, p.toId, progress)
         if (p.beats && t.isPlaying) alignBeats(p, t, progress)
         if (progress >= 1f || ended) {
             t.release()
@@ -464,7 +518,7 @@ class MixEngine(
     /**
      * Beats: the next song started a little late (it had to load), so its beats are off the ending song's. Only the
      * beat matters, not which one, so the gap is taken modulo a beat. It's measured over a window (each player at its
-     * freshest reading, as in [syncing]); a big gap is closed by a seek while the next song is still barely audible,
+     * freshest reading, as in [syncing]); a big gap is closed by a seek on ([beatSeekMs]) while the next song is still barely audible,
      * a small one by playing it a few percent faster or slower for exactly as long as that takes, without steering by
      * the reported position meanwhile (it glides for a while after a speed change).
      */
@@ -492,7 +546,7 @@ class MixEngine(
         when {
             abs(err) <= BEATS_IN_STEP_MS -> syncActionAt = now
             abs(err) > 60 && progress < 0.2f -> {
-                main.seekTo(main.currentPosition - err)
+                main.seekTo(beatSeekMs(main.currentPosition, mainLead + (dt * p.ratio).toLong(), err, p.beatMs))
                 syncActionAt = now
             }
             else -> {
@@ -517,6 +571,8 @@ class MixEngine(
     }
 
     private fun finish() {
+        state.blend.value = null
+        state.mark.value = null
         catchUpUntil = 0L
         phase = Phase.IDLE
         plan = null
@@ -535,6 +591,10 @@ class MixEngine(
     private fun abort(why: String): Long {
         val wasOn = phase != Phase.IDLE
         if (wasOn) note("blend stopped: $why")
+        state.blend.value = null
+        state.mark.value = null
+        // Stopped mid-blend, the next song jumps to full volume: its bar no longer grows in.
+        if (phase == Phase.BLENDING) state.into.value = null
         tail?.let { runCatching { it.release() } }
         tail = null
         shifter = null
@@ -550,6 +610,20 @@ class MixEngine(
 
     companion object {
         private const val TAG = "VinzMix"
+        /** How far back a reading may be from the furthest seen before it counts as the song going back (readings lag). */
+        private const val WENT_BACK_SLACK_MS = 1_000L
+        /** The longest [idle] waits between looks: a song started over may have played this far on by the next one. */
+        private const val IDLE_LOOK_MS = 2_500L
+
+        /**
+         * Whether the song that came in from a crossfade ([into]) is at [positionMs] from before it: behind where its
+         * fade-in began, or taken back (from [furthestMs], the furthest it's played) to about its fade-in's end or before,
+         * as repeat one or Previous starting it over does. A blend brought in early (its ending song went quiet) ends
+         * short of that end without going back, so it keeps its shape.
+         */
+        fun wentBack(into: BlendIn, positionMs: Long, furthestMs: Long): Boolean =
+            positionMs < into.inMs ||
+                (positionMs < furthestMs - WENT_BACK_SLACK_MS && positionMs < into.inMs + into.lengthMs + IDLE_LOOK_MS)
 
         /**
          * Auto crossfade's length for [ending] running into [next] (their scans; null or [Tempo.edgesUnknown] when not
@@ -576,6 +650,30 @@ class MixEngine(
             val by = if (beatMs > 0) (kotlin.math.ceil(POSTPONE_MS / beatMs) * beatMs).toLong() else POSTPONE_MS
             return if (lengthMs - by >= MIN_POSTPONED_MS) by else 0
         }
+
+        /**
+         * Where the next song is moved to bring its beats [err] ms off the ending song's back in line, [beatMs] apart:
+         * [reportedMs] is its reported position, [heardMs] where it really is by the freshest readings (neither is ever
+         * ahead of the sound). #210: only ever on, never back. Back by [err] lines the beats up, and so does on by a beat
+         * less [err]; the move back played again what had just been heard (half a beat, and more from a stale reported
+         * position), heard as a repeat in a tempo-matched crossfade.
+         */
+        fun beatSeekMs(reportedMs: Long, heardMs: Long, err: Long, beatMs: Double): Long {
+            val on = ((-err % beatMs) + beatMs) % beatMs
+            return maxOf(reportedMs, heardMs) + Math.round(on)
+        }
+
+        /**
+         * At the hand-over, the tail [d] ms ahead of the main player (null: not measured) is too far out of step to cross
+         * over to: the blend is put off and the tail set right, or there's no blend. #210: with the beats matched, a tail
+         * more than [IN_STEP_DOUBLING_MS] behind counts too: the slow cross-over to it played that much of the ending
+         * song again, heard as a repeat. (Ahead, the cross-over skips a moment instead; a plain crossfade keeps it.)
+         */
+        fun outOfStep(d: Long?, tailPlaying: Boolean, beats: Boolean): Boolean =
+            d == null || !tailPlaying || abs(d) > 250 || (beats && d < -IN_STEP_DOUBLING_MS)
+
+        /** Two copies of the song this close are heard as one (the quick cross-over's limit). */
+        private const val IN_STEP_DOUBLING_MS = 45L
 
         private const val POSTPONE_MS = 2000L
         private const val MAX_POSTPONES = 2
@@ -631,4 +729,28 @@ class MixEngine(
         /** How long the next song takes to ease back to its own tempo after a tempo-matched blend. */
         private const val SETTLE_MS = 4000L
     }
+}
+
+/**
+ * Where the crossfade after [songId] starts, [startMs] into it (A6's mark on the progress bar), and how long the song
+ * fades out over ([lengthMs], 1.8.1's shaped bar): 0 while that isn't known yet (an automatic length is worked out when
+ * the blend is planned, a few seconds before it).
+ */
+data class BlendMark(val songId: String, val startMs: Long, val lengthMs: Long = 0L)
+
+/**
+ * How [songId] came in from a crossfade (1.8.1's shaped bar): its volume rose from [inMs] into it over [lengthMs] of its
+ * own time (a tempo-matched blend plays it a little faster or slower meanwhile).
+ */
+data class BlendIn(val songId: String, val inMs: Long, val lengthMs: Long)
+
+/** A crossfade under way: [fromId] fading out into [toId], [progress] (0 … 1) of the way (A6's blended covers). */
+data class BlendNow(val fromId: String, val toId: String, val progress: Float)
+
+/** What [MixEngine] tells the player about crossfades (one per app, [com.vinz.music.AppContainer.mixState]). */
+class MixState {
+    val mark = kotlinx.coroutines.flow.MutableStateFlow<BlendMark?>(null)
+    val blend = kotlinx.coroutines.flow.MutableStateFlow<BlendNow?>(null)
+    /** The song playing came in from a crossfade: kept while it plays (its bar's start keeps the fade-in's shape). */
+    val into = kotlinx.coroutines.flow.MutableStateFlow<BlendIn?>(null)
 }

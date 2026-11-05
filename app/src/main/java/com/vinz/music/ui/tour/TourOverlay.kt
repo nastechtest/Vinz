@@ -1,5 +1,8 @@
 package com.vinz.music.ui.tour
 
+import com.vinz.music.R
+import com.vinz.music.tr
+import com.vinz.music.trp
 import android.content.Context
 import com.vinz.music.ui.components.tickWhileShown
 import android.os.Build
@@ -109,10 +112,10 @@ fun TourOverlay(plan: TourPlan, onOpen: (String) -> Unit, onDone: () -> Unit) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (pager.currentPage == 0) "" else "${pager.currentPage} of ${pages - 1}",
+                    if (pager.currentPage == 0) "" else tr(R.string.of_2, pager.currentPage, pages - 1),
                     color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f).padding(start = 12.dp),
                 )
-                VinzTextButton(onClick = ::finish) { Text("Skip tour", color = Color.White.copy(alpha = 0.8f)) }
+                VinzTextButton(onClick = ::finish) { Text(tr(R.string.skip_tour), color = Color.White.copy(alpha = 0.8f)) }
             }
             HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth()) { page ->
                 val offset = ((pager.currentPage - page) + pager.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
@@ -127,14 +130,14 @@ fun TourOverlay(plan: TourPlan, onOpen: (String) -> Unit, onDone: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     if (pager.currentPage > 0) VinzTextButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } }) {
-                        Text("Back", color = Color.White.copy(alpha = 0.8f))
+                        Text(tr(R.string.back), color = Color.White.copy(alpha = 0.8f))
                     }
                 }
                 Dots(pages, pager.currentPage)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                     val last = pager.currentPage == pages - 1
                     VinzButton(onClick = { if (last) finish() else scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) {
-                        Text(if (last) "Done" else if (pager.currentPage == 0) "Start" else "Next")
+                        Text(if (last) tr(R.string.done) else if (pager.currentPage == 0) tr(R.string.start) else tr(R.string.widget_next))
                     }
                 }
             }
@@ -145,10 +148,10 @@ fun TourOverlay(plan: TourPlan, onOpen: (String) -> Unit, onDone: () -> Unit) {
 @Composable
 private fun Opening(plan: TourPlan) {
     val (title, body) = when {
-        !plan.full -> "What's new in Vinz ${BuildConfig.VERSION_NAME}" to
-            "${plan.steps.size} ${if (plan.steps.size == 1) "thing" else "things"} to know since you last looked, in about a minute."
-        plan.freshInstall -> "Welcome to Vinz" to "Your music, refracted. Here's a minute's tour of what it can do: swipe, or tap Start."
-        else -> "Welcome to the new Vinz" to "Vinz ${BuildConfig.VERSION_NAME} is redrawn from the ground up and does more than ever. Here's a minute's tour: swipe, or tap Start."
+        !plan.full -> tr(R.string.what_s_new_in_vinz, BuildConfig.VERSION_NAME) to
+            trp(R.plurals.n_things_to_know, plan.steps.size)
+        plan.freshInstall -> tr(R.string.welcome_to_vinz) to tr(R.string.your_music_refracted_here_s_a)
+        else -> tr(R.string.welcome_to_the_new_vinz) to tr(R.string.vinz_is_redrawn_from_the_ground, BuildConfig.VERSION_NAME)
     }
     PageColumn {
         Halo(VinzIcons.Spatial, big = true)
@@ -157,7 +160,7 @@ private fun Opening(plan: TourPlan) {
         Spacer(Modifier.height(12.dp))
         Text(body, color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
         Spacer(Modifier.height(18.dp))
-        Text("You can take it again from Settings → Backup & about.", color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+        Text(tr(R.string.you_can_take_it_again_from), color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
     }
 }
 
@@ -198,16 +201,16 @@ private fun StepPage(step: TourStep, onShowMe: (String) -> Unit) {
             // After Android's prompt answers, look again (it shows over the app, and Vinz resumes under it).
             val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
             LaunchedEffect(lifecycle) { lifecycle.tickWhileShown(700) { allowed = Notifications.allowed(context) } }
-            if (allowed) Text("Notifications are on.", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
+            if (allowed) Text(tr(R.string.notifications_are_on), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
             else if (Build.VERSION.SDK_INT >= 33) VinzOutlinedButton(onClick = {
                 context.getSharedPreferences("prompts", Context.MODE_PRIVATE).edit().putBoolean("notifications_asked", true).apply()
                 c.notificationPrompt?.invoke()
-            }) { Text("Allow notifications", color = Color.White) }
-            else Text("Turn them on in Android's settings for Vinz.", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
+            }) { Text(tr(R.string.allow_notifications), color = Color.White) }
+            else Text(tr(R.string.turn_them_on_in_android_s), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
         }
         step.showMe?.let { route ->
             Spacer(Modifier.height(18.dp))
-            VinzOutlinedButton(onClick = { onShowMe(route) }) { Text("Show me", color = Color.White) }
+            VinzOutlinedButton(onClick = { onShowMe(route) }) { Text(tr(R.string.show_me), color = Color.White) }
         }
     }
 }

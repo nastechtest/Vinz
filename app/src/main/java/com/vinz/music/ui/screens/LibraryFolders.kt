@@ -1,5 +1,8 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
+import com.vinz.music.trp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,24 +65,24 @@ fun FolderScreen(id: String, bottomPadding: Dp) {
     var renaming by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<BrowseItem?>(null) }
     if (folder == null) {
-        SubPage("Folder", bottomPadding) { item { EmptyState(VinzIcons.Folder, "This folder is gone", "Its playlists are back in Library → Playlists.") } }
+        SubPage(tr(R.string.folder), bottomPadding) { item { EmptyState(VinzIcons.Folder, tr(R.string.this_folder_is_gone), tr(R.string.its_playlists_are_back_in_library)) } }
         return
     }
     val inside = folder.playlists.mapNotNull { pid -> all.firstOrNull { VinzLibrary.samePlaylist(it.id, pid) } }
-    SubPage(folder.name, bottomPadding, subtitle = if (inside.size == 1) "1 playlist" else "${inside.size} playlists", actions = {
-        RoundAction(VinzIcons.Edit, "Rename folder") { renaming = true }
-        RoundAction(VinzIcons.Delete, "Take the folder apart") { c.vinzLibrary.deleteFolder(id); nav.back() }
+    SubPage(folder.name, bottomPadding, subtitle = trp(R.plurals.n_playlists, inside.size), actions = {
+        RoundAction(VinzIcons.Edit, tr(R.string.rename_folder)) { renaming = true }
+        RoundAction(VinzIcons.Delete, tr(R.string.take_the_folder_apart)) { c.vinzLibrary.deleteFolder(id); nav.back() }
     }) {
         if (inside.isEmpty()) item {
-            EmptyState(VinzIcons.Folder, "Nothing in here yet", "Hold a playlist in Library → Playlists and pick \"Move to a folder\".")
+            EmptyState(VinzIcons.Folder, tr(R.string.nothing_in_here_yet), tr(R.string.hold_a_playlist_in_library_playlists))
         }
         items(inside, key = { it.id }) { p -> ResultRow(p, onLongClick = { menuFor = p }) { nav.open(p) {} } }
     }
-    if (renaming) FolderNameDialog("Rename folder", folder.name, { renaming = false }) { c.vinzLibrary.renameFolder(id, it); renaming = false }
+    if (renaming) FolderNameDialog(tr(R.string.rename_folder), folder.name, { renaming = false }) { c.vinzLibrary.renameFolder(id, it); renaming = false }
     menuFor?.let { p ->
         com.vinz.music.ui.components.PlayActionsSheet(
             com.vinz.music.ui.components.Playable.Of(p),
-            extra = listOf(com.vinz.music.ui.components.SheetItem(VinzIcons.Folder, "Take out of \"${folder.name}\"") { c.vinzLibrary.moveToFolder(p.id, null) }),
+            extra = listOf(com.vinz.music.ui.components.SheetItem(VinzIcons.Folder, tr(R.string.take_out_of, folder.name)) { c.vinzLibrary.moveToFolder(p.id, null) }),
         ) { menuFor = null }
     }
 }
@@ -92,19 +95,19 @@ internal fun MoveToFolderSheet(playlist: BrowseItem, onDismiss: () -> Unit) {
     val current = folders.firstOrNull { f -> f.playlists.any { VinzLibrary.samePlaylist(it, playlist.id) } }
     var naming by remember { mutableStateOf(false) }
     if (naming) {
-        FolderNameDialog("New folder", "", { naming = false }) { c.vinzLibrary.createFolder(it, playlist.id); naming = false; onDismiss() }
+        FolderNameDialog(tr(R.string.new_folder), "", { naming = false }) { c.vinzLibrary.createFolder(it, playlist.id); naming = false; onDismiss() }
         return
     }
     com.vinz.music.ui.components.ActionSheet(c.covers.art(playlist), onDismiss) { close ->
-        com.vinz.music.ui.components.ActionHeader(c.covers.art(playlist), playlist.title, current?.let { "In \"${it.name}\"" } ?: "Move to a folder", placeholderIcon = VinzIcons.QueueMusic)
+        com.vinz.music.ui.components.ActionHeader(c.covers.art(playlist), playlist.title, current?.let { tr(R.string.in_text, it.name) } ?: tr(R.string.move_to_a_folder), placeholderIcon = VinzIcons.QueueMusic)
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             folders.filter { it.id != current?.id }.forEach { f ->
-                FolderRow(VinzIcons.Folder, f.name, if (f.playlists.size == 1) "1 playlist" else "${f.playlists.size} playlists") {
+                FolderRow(VinzIcons.Folder, f.name, trp(R.plurals.n_playlists, f.playlists.size)) {
                     c.vinzLibrary.moveToFolder(playlist.id, f.id); close {}
                 }
             }
-            FolderRow(VinzIcons.Add, "New folder", null) { naming = true }
-            if (current != null) FolderRow(VinzIcons.Remove, "Take out of \"${current.name}\"", null) {
+            FolderRow(VinzIcons.Add, tr(R.string.new_folder), null) { naming = true }
+            if (current != null) FolderRow(VinzIcons.Remove, tr(R.string.take_out_of, current.name), null) {
                 c.vinzLibrary.moveToFolder(playlist.id, null); close {}
             }
         }
@@ -134,10 +137,10 @@ internal fun FolderNameDialog(title: String, current: String, onDismiss: () -> U
         title = { Text(title) },
         text = {
             com.vinz.music.ui.components.VinzTextField(
-                text, { text = it.take(60) }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Folder name") },
+                text, { text = it.take(60) }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(tr(R.string.folder_name)) },
             )
         },
-        confirmButton = { VinzTextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text("Save") } },
-        dismissButton = { VinzTextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { VinzTextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text(tr(R.string.save)) } },
+        dismissButton = { VinzTextButton(onClick = onDismiss) { Text(tr(R.string.cancel)) } },
     )
 }

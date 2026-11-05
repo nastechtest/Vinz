@@ -18,14 +18,6 @@ import org.junit.Test
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [34], application = android.app.Application::class)
 class LookStoreTest {
-    /**
-     * The "before" snapshot, once the store has actually written it. `apply` returns before `mine` has emitted, so
-     * reading `.value` straight afterwards is a race: it passed on an idle machine and failed under load.
-     */
-    private suspend fun LookStore.before() =
-        withTimeout(5_000) { mine.first { list -> list.any { it.id == LookStore.BEFORE_ID } } }
-            .single { it.id == LookStore.BEFORE_ID }
-
     @Test
     fun historyNamesEachChangeForWhatItWas(): Unit = runBlocking {
         val app = org.robolectric.RuntimeEnvironment.getApplication()
@@ -57,13 +49,13 @@ class LookStoreTest {
         val paper = BuiltInLooks.of("paper")!!
         assertEquals(true, looks.changes(paper)?.startsWith("Changes your theme, colors, type, backgrounds and layout"))
         looks.apply(paper)
-        val before = looks.before()
+        val before = looks.mine.value.single { it.id == LookStore.BEFORE_ID }
         assertEquals("Before Paper", before.name)
         assertEquals("s:EXTRA", before.values["corners"])
         assertEquals("s:MONO", before.values["font_choice"])
         // Switching from a Look (Paper) to another keeps nothing new.
         looks.apply(neon)
-        assertEquals("Before Paper", looks.before().name)
+        assertEquals("Before Paper", looks.mine.value.single { it.id == LookStore.BEFORE_ID }.name)
         looks.delete(LookStore.BEFORE_ID)
     }
 
@@ -105,6 +97,68 @@ class LookStoreTest {
         looks.delete(LookStore.BEFORE_ID)
     }
 
+    /**
+     * 1.8.0: a seasonal Look goes away with its month. On it at the turn, the Look before it comes back (once: a Look
+     * picked afterwards stays); your own mix comes back through "Before <Look>"; changed since, your changes stay and only
+     * its background goes.
+     */
+    @Test
+    fun theEndOfTheSeasonBringsBackTheLookBefore(): Unit = runBlocking {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        com.vinz.music.data.looks.Seasons.clock = java.time.Clock.fixed(java.time.Instant.parse("2026-11-15T12:00:00Z"), java.time.ZoneId.of("UTC"))
+        try {
+            val settings = SettingsRepository(app, scope)
+            settings.applyLook(emptyMap())
+            withTimeout(5_000) { settings.lookValues.first { it.isEmpty() } }
+            val looks = LookStore(app, settings, scope)
+            looks.mine.value.forEach { looks.delete(it.id) }
+            val harvest = BuiltInLooks.of("harvest")!!
+            val paper = BuiltInLooks.of("paper")!!
+
+            // On Paper, then Harvest in November.
+            looks.apply(paper)
+            withTimeout(5_000) { looks.currentId.first { it == "paper" } }
+            looks.apply(harvest)
+            withTimeout(5_000) { looks.currentId.first { it == "harvest" } }
+            // Still November: nothing ends.
+            assertEquals(false, looks.endSeasons(java.time.LocalDate.of(2026, 11, 30)))
+            assertEquals("harvest", looks.currentId.value)
+            // December 1st: Paper comes back.
+            assertEquals(true, looks.endSeasons(java.time.LocalDate.of(2026, 12, 1)))
+            withTimeout(5_000) { looks.currentId.first { it == "paper" } }
+            withTimeout(5_000) { looks.steps.first { it.firstOrNull()?.label == "Harvest is over: back to Paper" } }
+            // Only once a turn: put back on (by hand) in December, it's left alone the rest of that season.
+            looks.apply(harvest)
+            withTimeout(5_000) { looks.currentId.first { it == "harvest" } }
+            assertEquals(false, looks.endSeasons(java.time.LocalDate.of(2026, 12, 2)))
+
+            // Your own mix (round corners), then Holiday in December: January brings your mix back.
+            settings.applyLook(emptyMap())
+            settings.setCorners(Corners.EXTRA)
+            withTimeout(5_000) { settings.flow.first { it.corners == Corners.EXTRA } }
+            val mix = withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:EXTRA" && it.size == 1 } }
+            delay(300)
+            looks.apply(BuiltInLooks.of("holiday")!!)
+            withTimeout(5_000) { looks.currentId.first { it == "holiday" } }
+            assertEquals(true, looks.endSeasons(java.time.LocalDate.of(2027, 1, 1)))
+            withTimeout(5_000) { settings.lookValues.first { it == mix } }
+
+            // Changed since: Holiday with sharp corners. At the next turn only its background goes; the colors and the
+            // corners are the listener's now.
+            looks.apply(BuiltInLooks.of("holiday")!!)
+            settings.setCorners(Corners.SHARP)
+            withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:SHARP" } }
+            assertEquals(true, looks.endSeasons(java.time.LocalDate.of(2028, 1, 1)))
+            val after = withTimeout(5_000) { settings.lookValues.first { !(it["backdrops"] ?: "").contains("HOLIDAY") } }
+            assertEquals("s:SHARP", after["corners"])
+            assertEquals("s:HOLIDAY", after["spectrum_preset"])
+        } finally {
+            com.vinz.music.data.looks.Seasons.clock = null
+            looks@ run { }
+        }
+    }
+
     /** #174: Day and night switching away from your own settings keeps them, says so once, and can bring them back. */
     @Test
     fun theScheduleSaysWhereYourSettingsWent(): Unit = runBlocking {
@@ -115,13 +169,17 @@ class LookStoreTest {
         withTimeout(5_000) { settings.lookValues.first { it.isEmpty() } }
         val looks = LookStore(app, settings, scope)
         looks.dismissKept()
+        // Own Looks other tests left in the shared store could match these settings, which then aren't "your own".
+        looks.mine.value.forEach { looks.delete(it.id) }
 
         settings.setCorners(Corners.EXTRA)
         withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:EXTRA" } }
+        // apply() reads the settings as Vinz holds them, which can trail the store by a moment.
+        withTimeout(5_000) { settings.flow.first { it.corners == Corners.EXTRA } }
         val midnight = BuiltInLooks.of("midnight")!!
         looks.apply(midnight, "Midnight for the night", scheduled = true)
         assertEquals("Midnight", looks.keptBySchedule.value)
-        val before = looks.before()
+        val before = looks.mine.value.single { it.id == LookStore.BEFORE_ID }
         assertEquals("Before Midnight", before.name)
         assertEquals(true, before.note.contains("Day and night"))
 

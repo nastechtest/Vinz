@@ -1,5 +1,7 @@
 package com.vinz.music.ui.player
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import com.vinz.music.ui.theme.withLyricsFont
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.em
@@ -19,7 +21,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.DragInteraction
@@ -33,6 +38,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -93,6 +101,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.vinz.music.ui.components.pane
@@ -115,11 +125,56 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-private val LYRIC_EASING = CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
-private const val LYRIC_SETTLE_MS = 400
+// Moving from the first frame and easing out (#258, 1.7.9.1): the old curve (0.41, 0, 0.12, 0.99) over 400 ms barely
+// moved for its first ~100 ms and then rushed, so a slower phone (a Moto E7 Plus at ~15 frames a second) drew a line
+// change in about three frames, as a jump. 500 ms that start at once give it seven or eight.
+private val LYRIC_EASING = CubicBezierEasing(0.2f, 0.6f, 0.25f, 1f)
+private const val LYRIC_SETTLE_MS = 500
+/** How long the page's height holds still (the controls done coming or going) before the sung line settles again. */
+private const val LYRIC_RESETTLE_MS = 150L
+/** Where the page's fade at its foot starts (its mask), and where the fade at its head ends, as shares of its height. */
+private const val LYRIC_FOOT = 0.86f
+private const val LYRIC_HEAD = 0.08f
+
+/**
+ * #341: how far (px) the sung line goes above its settling place ([settleAt] down the page, [viewport] tall) so it ends
+ * clear of the page's faded foot, and so of the progress bar under the page however tall the deck is (Ribbons, the
+ * waveform): a long line wrapped over three rows, in the middle of a page the controls leave short, ran down to the bar.
+ * Never further than the page's head allows; 0 when it fits, as before.
+ */
+internal fun lyricLineLift(settleAt: Float, lineHeight: Float, viewport: Float): Float {
+    val over = settleAt + lineHeight - viewport * LYRIC_FOOT
+    return over.coerceIn(0f, (settleAt - viewport * LYRIC_HEAD).coerceAtLeast(0f))
+}
+
+/** Scrolls the sung line ([lead]) to its place: at the page's settling point, lifted when [lifts] as [lyricLineLift] says. */
+private suspend fun LazyListState.settleLine(lead: Int, lifts: Boolean, animate: Boolean) {
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == lead } ?: return
+    val lift = if (lifts) lyricLineLift(info.beforeContentPadding.toFloat(), item.size.toFloat(), info.viewportSize.height.toFloat()) else 0f
+    val by = item.offset + lift
+    if (abs(by) < 1f) return
+    if (animate) animateScrollBy(by, tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING)) else scrollBy(by)
+}
 private val FALLOFF_ALPHA = floatArrayOf(1f, 0.8f, 0.7f, 0.58f, 0.46f)
 private val FALLOFF_BLUR = arrayOf(0.dp, 1.dp, 1.dp, 1.7.dp, 2.4.dp)
 private const val UNSUNG_ALPHA = 0.38f
+/** What the lyric line on the player has beside its words: the arrow after them (gap + icon), the note before. */
+private val STRIP_ARROW = 20.dp
+private val STRIP_NOTE = 22.dp
+/** Times a song's translation is asked for while its lyrics stay open (the waits grow; Google's rest decides them). */
+private const val TRANSLATE_TRIES = 5
+
+/** "Translation unavailable right now", at most once every few minutes rather than on every song. */
+private object TranslateNotice {
+    private var shownAt = 0L
+    fun show(context: android.content.Context) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (shownAt != 0L && now - shownAt < 10 * 60_000L) return
+        shownAt = now
+        android.widget.Toast.makeText(context, tr(R.string.translation_unavailable_right_now_vinz_will), android.widget.Toast.LENGTH_LONG).show()
+    }
+}
 
 enum class ProviderState { UNKNOWN, LOADING, FOUND_KARAOKE, FOUND_SYNCED, FOUND_PLAIN, NONE }
 
@@ -315,7 +370,10 @@ fun rememberLyricClock(active: Boolean = true): State<Long> {
         } else onDispose { }
     }
     val shift by pc.lyricShift.collectAsState()
-    LaunchedEffect(active, shift) {
+    // Every seek starts it again from the new place: a paused song's clock isn't running ([active] is false), so a line
+    // tapped while paused moved the music but not the lyrics (#308; the TV had the same, fixed in 1.8.0).
+    val jumps by pc.jumps.collectAsState()
+    LaunchedEffect(active, shift, jumps) {
         var shown = pc.lyricPosition.toDouble()
         clock.longValue = shown.toLong()
         if (!active) return@LaunchedEffect
@@ -381,10 +439,9 @@ fun CurrentLyricStrip(state: LyricsState, isPlaying: Boolean, onClick: () -> Uni
     // Romanized "instead": the strip sings the Latin spelling too (same timings).
     val roman = rememberRomanized(state)
     val instead = romanizeMode(state.song.id) == com.vinz.music.data.prefs.RomanizeMode.INSTEAD
-    // As the lyrics page draws them (1.7.5, "Same look everywhere"), else as the strip always has.
+    // As the lyrics page draws them (1.8.0: always; "Same look everywhere" is gone).
     val settings = LocalAppSettings.current
-    val pageLook = rememberLyricsLook(settings, state.song.thumbnail)
-    val look = if (settings.lyricsEverywhere) pageLook else LyricsLook.Classic
+    val look = rememberLyricsLook(settings, com.vinz.music.data.PlaylistCovers.artOf(state.song))
     val lines = remember(state.lines, roman, instead, look.uppercase) {
         (if (instead && roman != null) state.lines.mapIndexed { i, l -> roman.getOrNull(i) ?: l } else state.lines).map(look::shown)
     }
@@ -404,7 +461,7 @@ fun CurrentLyricStrip(state: LyricsState, isPlaying: Boolean, onClick: () -> Uni
             // A podcast episode has no lyrics to look for: the line keeps its room, empty.
             state.song.isEpisode -> Text(" ", style = baseStyle, modifier = Modifier.padding(vertical = 4.dp))
             lines.isNotEmpty() && !synced -> StripRow(onClick, note = true, centered = centered) {
-                Text("Open lyrics", style = baseStyle, color = Color.White, maxLines = 1)
+                Text(tr(R.string.open_lyrics), style = baseStyle, color = Color.White, maxLines = 1)
             }
             lines.isNotEmpty() -> {
                 val clock = rememberLyricClock(isPlaying)
@@ -413,8 +470,8 @@ fun CurrentLyricStrip(state: LyricsState, isPlaying: Boolean, onClick: () -> Uni
                 val firstSung = remember(lines) { lines.indexOfFirst { !it.isGap } }
                 val instrumental = current == null || current.isGap
                 val text = when {
-                    instrumental && index < firstSung -> "Intro"
-                    instrumental -> "Instrumental"
+                    instrumental && index < firstSung -> tr(R.string.intro)
+                    instrumental -> tr(R.string.instrumental)
                     else -> current!!.text
                 }
                 // A right-to-left line (Arabic, Hebrew…) runs from the right of the strip, its arrow at its end on the left.
@@ -431,7 +488,7 @@ fun CurrentLyricStrip(state: LyricsState, isPlaying: Boolean, onClick: () -> Uni
                         label = "strip",
                     ) { (i, t) ->
                         val line = lines.getOrNull(i)
-                        if (line != null && !line.isGap && (line.isWordSynced || look.style != com.vinz.music.data.prefs.LyricsStyle.VINZ)) {
+                        if (line != null && !line.isGap && (line.isWordSynced || !look.plainWhenLineTimed)) {
                             SungLine(line, clock, stripStyle.copy(shadow = look.shadow), look, null, maxLines = rows, strip = true)
                         } else {
                             Text(
@@ -443,16 +500,19 @@ fun CurrentLyricStrip(state: LyricsState, isPlaying: Boolean, onClick: () -> Uni
             }
             // On mobile data with "Lyrics on mobile data" off (#95): opening them looks them up.
             state.waiting -> StripRow(onClick, note = false, centered = centered) {
-                Text("Tap to load lyrics", style = baseStyle, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+                Text(tr(R.string.tap_to_load_lyrics), style = baseStyle, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
             }
             state.unavailable -> {
                 var visible by remember(state.song.id) { mutableStateOf(true) }
                 LaunchedEffect(state.song.id) { delay(4000); visible = false }
                 val a by animateFloatAsState(if (visible) 0.55f else 0f, tween(900), label = "na")
-                Text("Lyrics not available", style = baseStyle, color = Color.White, maxLines = 1,
-                    modifier = Modifier.padding(vertical = 4.dp).graphicsLayer { alpha = a })
+                Text(tr(R.string.lyrics_not_available), style = baseStyle, color = Color.White, maxLines = 1, textAlign = if (centered) TextAlign.Center else null,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).graphicsLayer { alpha = a })
             }
-            else -> Text("Looking for lyrics…", style = baseStyle, color = Color.White.copy(alpha = 0.55f), maxLines = 1, modifier = Modifier.padding(vertical = 4.dp))
+            else -> Text(
+                tr(R.string.looking_for_lyrics), style = baseStyle, color = Color.White.copy(alpha = 0.55f), maxLines = 1, textAlign = if (centered) TextAlign.Center else null,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
         }
     }
 }
@@ -467,6 +527,10 @@ private fun StripRow(onClick: () -> Unit, note: Boolean, rtl: Boolean = false, c
             horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Centered, the words sit in the middle on their own (#164: the arrow after them pushed them left): the side
+            // with less beside the words gets the difference as empty room.
+            val before = if (note) STRIP_NOTE else 0.dp
+            if (centered && STRIP_ARROW > before) Spacer(Modifier.width(STRIP_ARROW - before))
             if (note) {
                 Icon(VinzIcons.Song, null, tint = Color.White, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
@@ -474,6 +538,7 @@ private fun StripRow(onClick: () -> Unit, note: Boolean, rtl: Boolean = false, c
             Box(Modifier.weight(1f, fill = false)) { content() }
             Spacer(Modifier.width(6.dp))
             Icon(VinzIcons.ChevronRight, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(14.dp))
+            if (centered && before > STRIP_ARROW) Spacer(Modifier.width(before - STRIP_ARROW))
         }
     }
 }
@@ -516,10 +581,53 @@ fun SweptLine(
     val rtl = remember(line) { isRtl(line.text) }
     // In a right-to-left layout a right-to-left line already starts at the right, so it can keep its own width.
     val ltrLayout = LocalLayoutDirection.current == LayoutDirection.Ltr
+    // Full width, so centred and right-aligned lines (and right-to-left ones) sit where their plain copies do.
+    val wide = if ((rtl && ltrLayout) || style.textAlign == TextAlign.Center || style.textAlign == TextAlign.End) Modifier.fillMaxWidth() else Modifier
+    // 1.8.0 (#253, "choppy"): the sung part is drawn onto the line itself, its edge faded in its own fill, instead of a
+    // second copy in an offscreen layer with what's still to come erased: that redrew a layer and two texts every frame
+    // (~5 ms a frame for Karaoke and Bold card, ~10 for Glow, on the CPU alone). A fill that's a gradient itself (your
+    // light) can only be faded by another gradient on the GPU from Android 9; below that it keeps the layer. So does a
+    // line with a shadow: a text shadow ignores the fill's fade, and would lie under the words still to come too.
+    val dim = dimColor ?: Color.White.copy(alpha = dimAlpha)
+    if ((glow ?: style.shadow) == null && (litBrush == null || litBrush is SolidColor || Build.VERSION.SDK_INT >= 28)) {
+        Box(modifier) {
+            Text(
+                line.text, wide.drawWithContent {
+                    // #303 (1.8.1): the words still to come are drawn only where nothing's sung yet, fading out as the sung
+                    // part fades in. Drawn whole under the sung part, their soft edges showed round its letters as a pale
+                    // fringe (a colored fill over white words still to come, Karaoke's).
+                    val l = layout ?: return@drawWithContent drawContent()
+                    drawSweep(l, line, offsets, clock.value, litBrush ?: SolidColor(Color.White), dim, style, glow ?: style.shadow)
+                },
+                style = style, color = dim, maxLines = maxLines, overflow = TextOverflow.Ellipsis, onTextLayout = { layout = it },
+            )
+        }
+        return
+    }
     Box(modifier) {
-        // Full width, so centred and right-aligned lines (and right-to-left ones) sit where their plain copies do.
-        val wide = if ((rtl && ltrLayout) || style.textAlign == TextAlign.Center || style.textAlign == TextAlign.End) Modifier.fillMaxWidth() else Modifier
-        Text(line.text, wide, style = style, color = dimColor ?: Color.White.copy(alpha = dimAlpha), maxLines = maxLines, overflow = TextOverflow.Ellipsis, onTextLayout = { layout = it })
+        // As above (#303): the words to come are taken away where the line's been sung, so none of them shows round the
+        // sung letters (in a layer of their own, as the sung copy is).
+        Text(
+            line.text,
+            wide.then(
+                if (dim.alpha <= 0f) Modifier else Modifier
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val l = layout ?: return@drawWithContent
+                        val sung = sungChars(line, offsets, clock.value)
+                        if (sung <= 0f) return@drawWithContent
+                        forEachSweptRow(l, line, sung) { top, bottom, part, from, to, rtlLine ->
+                            val rowSize = androidx.compose.ui.geometry.Size(size.width, bottom - top)
+                            when (part) {
+                                ROW_SUNG -> drawRect(Color.Black, Offset(0f, top), rowSize, blendMode = BlendMode.DstOut)
+                                ROW_SINGING -> drawRect(fadedAt(SolidColor(Color.Black), from, to, rtlLine), Offset(0f, top), rowSize, blendMode = BlendMode.DstOut)
+                            }
+                        }
+                    },
+            ),
+            style = style, color = dim, maxLines = maxLines, overflow = TextOverflow.Ellipsis, onTextLayout = { layout = it },
+        )
         Text(
             line.text, style = style.copy(brush = litBrush, shadow = glow ?: style.shadow), color = if (litBrush != null) Color.Unspecified else Color.White,
             maxLines = maxLines, overflow = TextOverflow.Ellipsis,
@@ -528,17 +636,7 @@ fun SweptLine(
                 .drawWithContent {
                     val l = layout ?: return@drawWithContent
                     val now = clock.value
-                    // Characters sung so far, with a fractional part inside the current word.
-                    var sung = 0f
-                    for ((i, w) in line.words.withIndex()) {
-                        val (s, e) = offsets[i]
-                        if (now >= w.endMs) sung = e.toFloat()
-                        else if (now >= w.startMs) {
-                            val f = ((now - w.startMs).toFloat() / (w.endMs - w.startMs).coerceAtLeast(1)).coerceIn(0f, 1f)
-                            sung = s + (w.text.trimEnd().length) * f
-                            break
-                        } else break
-                    }
+                    val sung = sungChars(line, offsets, now)
                     if (sung <= 0f) return@drawWithContent
                     drawContent()
                     // Erase what hasn't been sung yet, with a soft edge so the light glides through the word.
@@ -569,6 +667,96 @@ fun SweptLine(
                     }
                 },
         )
+    }
+}
+
+/** Characters of [line] sung by [now], with a fractional part inside the word being sung ([offsets]: each word's span). */
+private fun sungChars(line: LyricLine, offsets: List<Pair<Int, Int>>, now: Long): Float {
+    var sung = 0f
+    for ((i, w) in line.words.withIndex()) {
+        val (s, e) = offsets[i]
+        if (now >= w.endMs) sung = e.toFloat()
+        else if (now >= w.startMs) {
+            val f = ((now - w.startMs).toFloat() / (w.endMs - w.startMs).coerceAtLeast(1)).coerceIn(0f, 1f)
+            return s + (w.text.trimEnd().length) * f
+        } else break
+    }
+    return sung
+}
+
+/** A row of a swept line: still to come, being sung (its soft edge between from and to), or sung through. */
+private const val ROW_TO_COME = 0
+private const val ROW_SINGING = 1
+private const val ROW_SUNG = 2
+
+/**
+ * Each row of [l] (the swept [line], [sung] characters in): its top and bottom, which part it is ([ROW_TO_COME],
+ * [ROW_SINGING], [ROW_SUNG]), where the singing point's soft edge runs (from → to, only for the row being sung), and
+ * whether the row reads right to left (what's still to come then lies to the left).
+ */
+private inline fun androidx.compose.ui.graphics.drawscope.DrawScope.forEachSweptRow(
+    l: TextLayoutResult, line: LyricLine, sung: Float, row: (top: Float, bottom: Float, part: Int, from: Float, to: Float, rtl: Boolean) -> Unit,
+) {
+    val feather = size.height.coerceAtMost(l.getLineBottom(0) - l.getLineTop(0)) * 0.55f
+    val textLen = line.text.length
+    for (li in 0 until l.lineCount) {
+        val ls = l.getLineStart(li)
+        val le = l.getLineEnd(li, visibleEnd = true)
+        val top = l.getLineTop(li)
+        val bottom = l.getLineBottom(li)
+        when {
+            sung >= le -> row(top, bottom, ROW_SUNG, 0f, 0f, false)
+            sung <= ls -> row(top, bottom, ROW_TO_COME, 0f, 0f, false)
+            else -> {
+                val ci = sung.toInt().coerceIn(0, textLen - 1)
+                val box = l.getBoundingBox(ci)
+                // A right-to-left letter is read from its right edge; what's still to come lies after x (to its left in a
+                // right-to-left line).
+                val rtlChar = l.getBidiRunDirection(ci) == androidx.compose.ui.text.style.ResolvedTextDirection.Rtl
+                val x = if (rtlChar) box.right - box.width * (sung - ci) else box.left + box.width * (sung - ci)
+                val rtlLine = l.getParagraphDirection(ls) == androidx.compose.ui.text.style.ResolvedTextDirection.Rtl
+                row(top, bottom, ROW_SINGING, x - feather / 2, x + feather / 2, rtlLine)
+            }
+        }
+    }
+}
+
+/**
+ * [SweptLine] over the line [l] was laid out as, with no layer: each row sung through drawn in [lit], each row still to
+ * come in [dim], and the row being sung in both, meeting at the singing point with a soft edge: [lit] fading out as
+ * [dim] fades in, so neither lies under the other (#303).
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSweep(
+    l: TextLayoutResult, line: LyricLine, offsets: List<Pair<Int, Int>>, now: Long, lit: Brush, dim: Color, style: TextStyle, shadow: androidx.compose.ui.graphics.Shadow?,
+) {
+    val sung = sungChars(line, offsets, now)
+    val dimFill = SolidColor(dim)
+    forEachSweptRow(l, line, sung) { top, bottom, part, from, to, rtlLine ->
+        val litPart = when (part) { ROW_SUNG -> lit; ROW_SINGING -> fadedAt(lit, from, to, rtlLine); else -> null }
+        val dimPart = when { dim.alpha <= 0f -> null; part == ROW_TO_COME -> dimFill; part == ROW_SINGING -> fadedAt(dimFill, from, to, !rtlLine); else -> null }
+        clipRect(0f, top, size.width, bottom) {
+            // alpha 1: left unset, the paint keeps the dim copy's alpha and the sung words came out half see-through.
+            if (dimPart != null) drawText(l, dimPart, alpha = 1f, shadow = shadow, textDecoration = style.textDecoration, drawStyle = style.drawStyle)
+            if (litPart != null) drawText(l, litPart, alpha = 1f, shadow = shadow, textDecoration = style.textDecoration, drawStyle = style.drawStyle)
+        }
+    }
+}
+
+/** [lit], fully there before [from] and gone after [to] (the other way round when [rtl]). */
+private fun fadedAt(lit: Brush, from: Float, to: Float, rtl: Boolean): Brush {
+    if (lit is SolidColor) {
+        val c = lit.value
+        val stops = if (rtl) arrayOf(0f to c.copy(alpha = 0f), 1f to c) else arrayOf(0f to c, 1f to c.copy(alpha = 0f))
+        return Brush.horizontalGradient(*stops, startX = from, endX = to)
+    }
+    val shaderBrush = lit as androidx.compose.ui.graphics.ShaderBrush
+    return object : androidx.compose.ui.graphics.ShaderBrush() {
+        override fun createShader(size: androidx.compose.ui.geometry.Size): androidx.compose.ui.graphics.Shader {
+            val on = android.graphics.Color.BLACK
+            val off = android.graphics.Color.TRANSPARENT
+            val mask = android.graphics.LinearGradient(from, 0f, to, 0f, if (rtl) off else on, if (rtl) on else off, android.graphics.Shader.TileMode.CLAMP)
+            return android.graphics.ComposeShader(shaderBrush.createShader(size), mask, android.graphics.PorterDuff.Mode.DST_IN)
+        }
     }
 }
 
@@ -681,11 +869,13 @@ fun WeightSweptLine(
 class ControlsOnScroll(private val onHide: () -> Unit, private val onReveal: () -> Unit) : NestedScrollConnection {
     private var acc = 0f
     private var switched = false
+    /** Whether scrolling back up brings the controls (Settings → Player, #214); hiding them on the way down always works. */
+    var reveals = true
 
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         if (source != NestedScrollSource.UserInput || switched) return Offset.Zero
         acc = if ((acc > 0) == (available.y > 0)) acc + available.y else available.y
-        if (acc < -40f) { onHide(); switched = true } else if (acc > 40f) { onReveal(); switched = true }
+        if (acc < -40f) { onHide(); switched = true } else if (acc > 40f) { if (reveals) onReveal(); switched = true }
         return Offset.Zero
     }
 
@@ -697,11 +887,18 @@ class ControlsOnScroll(private val onHide: () -> Unit, private val onReveal: () 
     }
 }
 
+/**
+ * Whether scrolling back up the lyrics or the queue brings the controls: the listener's switch (#214), and never with
+ * "Full screen", whose lyrics and queue keep the screen until a tap or the bar at the bottom.
+ */
+fun scrollReveals(s: com.vinz.music.data.prefs.AppSettings) =
+    s.behavior.scrollShowsControls && s.view.panelPlayer != com.vinz.music.data.prefs.PanelPlayer.HIDDEN
+
 /** The phone's language as Google Translate names it (Chinese by script, old Java codes renamed). */
 fun defaultTranslateTarget(): String {
     val l = java.util.Locale.getDefault()
     return when (l.language) {
-        "zh" -> if (l.script == "Hant" || l.country in setOf("TW", "HK", "MO")) "zh-TW" else "zh-CN"
+        "zh" -> if (l.script == "Hant" || l.country in setOf("TW", "HK", "MO")) tr(R.string.zh_tw) else tr(R.string.zh_cn)
         "iw" -> "he"
         "in" -> "id"
         "" -> "en"
@@ -720,11 +917,13 @@ fun LyricsPanel(
     modifier: Modifier = Modifier,
     /** The lyrics background is drawn behind this panel (the phone's player; a wide player's pane has none of its own). */
     lyricsGround: Boolean = true,
+    /** The line at the end of the lyrics opens the lyrics source sheet (1.7.8, V). */
+    onChangeSource: (() -> Unit)? = null,
 ) {
     val c = LocalContainer.current
     val settings by c.settings.flow.collectAsState()
     // How the lines are drawn (Settings → Lyrics, 1.7.5): style, colors, weight, spacing and the rest.
-    val look = rememberLyricsLook(settings, state.song.thumbnail).let { if (lyricsGround) it else it.withoutCard(settings.lyricsOthersAlpha) }
+    val look = rememberLyricsLook(settings, com.vinz.music.data.PlaylistCovers.artOf(state.song)).let { if (lyricsGround) it else it.withoutCard(settings.lyricsOthersAlpha) }
     val lines = state.lines
     val synced = remember(lines) { lines.any { it.timeMs >= 0 } }
     val clock = rememberLyricClock(isPlaying)
@@ -749,21 +948,38 @@ fun LyricsPanel(
         snapshotFlow { listState.layoutInfo.viewportSize.height }.first { it > 0 }
         val visible = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == lead }
         when {
-            !placed -> { listState.scrollToItem(lead); placed = true }
-            visible != null -> listState.animateScrollBy(visible.offset.toFloat(), tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING))
+            !placed -> { listState.scrollToItem(lead); placed = true; withFrameNanos { }; listState.settleLine(lead, look.position > 0f, animate = false) }
+            visible != null -> listState.settleLine(lead, look.position > 0f, animate = true)
             else -> listState.animateScrollToItem(lead)
         }
     }
     val controlsOnScroll = remember { ControlsOnScroll(onHide = onHideControls, onReveal = onRevealControls) }
+    controlsOnScroll.reveals = scrollReveals(com.vinz.music.ui.theme.LocalAppSettings.current)
 
     // A translation under each line, when it's turned on and the song isn't already in that language.
     val translateTo = settings.lyricsTranslateTo.ifBlank { defaultTranslateTarget() }
     var translation by remember(lines, settings.lyricsTranslate, translateTo) { mutableStateOf<com.vinz.music.data.lyrics.LyricsTranslator.Translation?>(null) }
+    val translateContext = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(lines, settings.lyricsTranslate, translateTo) {
         if (!settings.lyricsTranslate || lines.isEmpty()) return@LaunchedEffect
         val texts = lines.map { l -> if (l.isGap || (l.text.startsWith("[") && l.text.endsWith("]"))) "" else l.text }
-        translation = runCatching { c.translator.translate(texts, translateTo) }
-            .onFailure { android.util.Log.w("VinzLyrics", "Couldn't translate the lyrics: $it") }.getOrNull()
+        // Asked again while the lyrics stay open when Google isn't answering (#198), instead of showing nothing for good.
+        for (attempt in 0 until TRANSLATE_TRIES) {
+            val result = try {
+                c.translator.translate(texts, translateTo)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("VinzLyrics", "Couldn't translate the lyrics: $e")
+                com.vinz.music.playback.AudioDiagnostics.log("translate", "couldn't translate ${state.song.id}: $e")
+                if (e is com.vinz.music.data.lyrics.LyricsTranslator.Unavailable) TranslateNotice.show(translateContext)
+                val wait = (e as? com.vinz.music.data.lyrics.LyricsTranslator.Unavailable)?.retryAtMs?.minus(System.currentTimeMillis())
+                kotlinx.coroutines.delay((wait ?: (20_000L shl attempt)).coerceIn(15_000L, 10 * 60_000L))
+                continue
+            }
+            translation = result
+            break
+        }
     }
     val translations = translation?.takeUnless { it.sameLanguage }?.translations
     // Turned on for a song already in that language, nothing changes: say why, once, right after it's turned on.
@@ -780,7 +996,7 @@ fun LyricsPanel(
         justTurnedOn = false
         if (t.sameLanguage) {
             val name = java.util.Locale.forLanguageTag(t.to).getDisplayLanguage(java.util.Locale.getDefault()).ifBlank { t.to }
-            android.widget.Toast.makeText(context, "These lyrics are already in $name. Translations show for songs in other languages.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(context, tr(R.string.these_lyrics_are_already_in_translations, name), android.widget.Toast.LENGTH_LONG).show()
         }
     }
     // Lyrics in a script the listener can't read, in Latin letters: under each line, or in its place.
@@ -790,7 +1006,7 @@ fun LyricsPanel(
     if (lines.isEmpty()) {
         Box(modifier.pointerInput(Unit) { detectTapGestures { onRevealControls() } }, contentAlignment = Alignment.Center) {
             if (state.loading) CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp)
-            else Text("No lyrics for this track", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.6f))
+            else Text(tr(R.string.no_lyrics_for_this_track), style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.6f))
         }
         return
     }
@@ -807,6 +1023,12 @@ fun LyricsPanel(
     androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
     // Where the sung line settles: near the top (as before), a third down or in the middle.
     val settleAt = maxOf(30.dp, maxHeight * look.position)
+    // #341: the page grows and shrinks as the controls come and go (a taller progress bar, Ribbons or the waveform, takes
+    // more): once it's settled, the sung line finds its place in the room there is now.
+    LaunchedEffect(maxHeight) {
+        delay(LYRIC_RESETTLE_MS)
+        if (synced && !browsing && placed && lead >= 0) listState.settleLine(lead, look.position > 0f, animate = true)
+    }
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -818,7 +1040,8 @@ fun LyricsPanel(
                 drawContent()
                 drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.06f to Color.Black, 0.88f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
             },
-        contentPadding = PaddingValues(top = settleAt, bottom = if (look.position == 0f) 400.dp else maxOf(400.dp, maxHeight - settleAt)),
+        // Lower down, room for the last line to settle (lifted, #341, it needs a little more than the rest of the page).
+        contentPadding = PaddingValues(top = settleAt, bottom = if (look.position == 0f) 400.dp else maxOf(400.dp, maxHeight)),
     ) {
         itemsIndexed(lines) { index, line ->
             if (!synced && line.text.startsWith("[") && line.text.endsWith("]")) {
@@ -845,7 +1068,11 @@ fun LyricsPanel(
                 when { !synced -> 0.95f; isActive -> 1f; hidden -> 0f; browsing -> 0.8f; else -> FALLOFF_ALPHA[step] }, tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING), label = "alpha",
             )
             if (line.isGap) {
-                GapDots(line, lines.getOrNull(index + 1)?.timeMs ?: line.endMs, clock, isActive, alpha) { c.player.seekToLyric(line.timeMs) }
+                GapDots(
+                    line, lines.getOrNull(index + 1)?.timeMs ?: line.endMs, clock, isActive, alpha,
+                    centred = settings.lyricsAlign == com.vinz.music.data.prefs.LyricsAlign.CENTER,
+                    note = settings.lyricsGapMark == com.vinz.music.data.prefs.LyricsGapMark.NOTE,
+                ) { c.player.seekToLyric(line.timeMs) }
                 return@itemsIndexed
             }
             val centred = settings.lyricsAlign == com.vinz.music.data.prefs.LyricsAlign.CENTER
@@ -866,9 +1093,9 @@ fun LyricsPanel(
                     textAlign = when { line.alignEnd -> TextAlign.End; centred -> TextAlign.Center; else -> TextAlign.Start },
                     textDirection = androidx.compose.ui.text.style.TextDirection.Content,
                 )
-            // Calm holds every line at its size; the others breathe back a little.
+            // No animation holds every line at its size; with one, the others breathe back a little.
             val lineScale by animateFloatAsState(
-                if (isActive || !synced || look.style == com.vinz.music.data.prefs.LyricsStyle.CALM) 1f else 0.98f, tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING), label = "scale",
+                if (isActive || !synced || look.motion == com.vinz.music.data.prefs.LyricsMotion.NONE) 1f else 0.98f, tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING), label = "scale",
             )
             Box(
                 Modifier
@@ -881,6 +1108,8 @@ fun LyricsPanel(
                     }
                     .blur(blur, BlurredEdgeTreatment.Unbounded)
                     .clip(RoundedCornerShape(10.dp))
+                    // The line being sung reads as selected (TalkBack, and the tests: #308).
+                    .semantics { selected = isActive }
                     .clickable(enabled = synced && !hidden) { c.player.seekToLyric(line.timeMs); browsing = false }
                     .padding(vertical = 9.dp * look.spacing, horizontal = 2.dp),
             ) {
@@ -934,11 +1163,20 @@ fun LyricsPanel(
             }
         }
         item {
-            Text(
-                "Lyrics from ${state.lyrics?.source?.label ?: "—"}",
-                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.4f),
-                modifier = Modifier.padding(top = 20.dp),
-            )
+            // Where the lyrics come from, where Apple puts the songwriters (1.7.8, V): a tap picks another source.
+            Row(
+                Modifier.padding(top = 20.dp).then(
+                    if (onChangeSource == null) Modifier
+                    else Modifier.clip(CircleShape).clickable(onClickLabel = tr(R.string.change_lyrics_source), onClick = onChangeSource).padding(vertical = 6.dp, horizontal = 2.dp),
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    tr(R.string.lyrics_from, state.lyrics?.source?.label ?: "—") + if (state.lyrics?.wordSynced == true) " " + tr(R.string.karaoke).trimStart() else "",
+                    style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.4f),
+                )
+                if (onChangeSource != null) Icon(VinzIcons.ChevronRight, null, Modifier.padding(start = 2.dp).size(14.dp), tint = Color.White.copy(alpha = 0.3f))
+            }
             // Japanese kanji were spelled out by Google (no reading data yet): offer the proper readings.
             val needsJapanese by c.romanizer.needsJapanese.collectAsState()
             val models by c.models.states.collectAsState()
@@ -947,9 +1185,9 @@ fun LyricsPanel(
                 val scope = rememberCoroutineScope()
                 Text(
                     when (ja) {
-                        is com.vinz.music.data.ModelStore.State.Downloading -> "Downloading Japanese kanji readings… ${(ja.fraction * 100).toInt()}%"
-                        is com.vinz.music.data.ModelStore.State.Failed -> "Couldn't download the Japanese kanji readings. Tap to try again"
-                        else -> "Better romaji for Japanese: tap to download the reading data (13 MB)"
+                        is com.vinz.music.data.ModelStore.State.Downloading -> tr(R.string.downloading_japanese_kanji_readings, (ja.fraction * 100).toInt())
+                        is com.vinz.music.data.ModelStore.State.Failed -> tr(R.string.couldn_t_download_the_japanese_kanji)
+                        else -> tr(R.string.better_romaji_for_japanese_tap_to)
                     },
                     style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp))
@@ -989,24 +1227,34 @@ private fun ControlsReveal(modifier: Modifier, onReveal: () -> Unit) {
 }
 
 @Composable
-private fun GapDots(line: LyricLine, until: Long, clock: State<Long>, active: Boolean, alpha: Float, onClick: () -> Unit) {
+private fun GapDots(
+    line: LyricLine, until: Long, clock: State<Long>, active: Boolean, alpha: Float,
+    centred: Boolean = false, note: Boolean = false, onClick: () -> Unit,
+) {
     val swell by animateFloatAsState(if (active) 1f else 0f, tween(if (active) 400 else 350, easing = LYRIC_EASING), label = "gap")
-    Box(Modifier.height(54.dp * swell), contentAlignment = Alignment.CenterStart) {
+    // Where the lines sit (#158: with centered lyrics the dots stayed on the left), growing from that side.
+    Box(Modifier.fillMaxWidth().height(54.dp * swell), contentAlignment = if (centred) Alignment.Center else Alignment.CenterStart) {
         Box(
             Modifier
                 .clip(RoundedCornerShape(10.dp))
                 .clickable(onClick = onClick)
                 .padding(10.dp)
-                .size(width = 50.dp, height = 12.dp)
+                .size(width = if (note) 22.dp else 50.dp, height = if (note) 22.dp else 12.dp)
                 .graphicsLayer {
                     val g = 0.7f + 0.3f * swell
                     scaleX = g; scaleY = g
-                    transformOrigin = TransformOrigin(0f, 0.5f)
+                    transformOrigin = TransformOrigin(if (centred) 0.5f else 0f, 0.5f)
                     this.alpha = alpha * swell
                 }
                 .drawBehind {
                     val span = (until - line.timeMs).coerceAtLeast(1)
                     val through = ((clock.value - line.timeMs).toFloat() / span).coerceIn(0f, 1f)
+                    if (note) {
+                        // A music note that fills with light from the bottom as the break goes by.
+                        drawNote(Color.White.copy(alpha = 0.35f))
+                        clipRect(top = size.height * (1f - through)) { drawNote(Color.White) }
+                        return@drawBehind
+                    }
                     val r = size.height / 2
                     val stride = (size.width - 2 * r) / 2
                     repeat(3) { d ->
@@ -1018,19 +1266,41 @@ private fun GapDots(line: LyricLine, until: Long, clock: State<Long>, active: Bo
     }
 }
 
+/** A beamed pair of eighth notes, drawn to fill the area (also the Lyrics settings' example). */
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawNote(color: Color) {
+    val w = size.width
+    val h = size.height
+    val head = w * 0.17f
+    val stem = w * 0.075f
+    val left = Offset(w * 0.24f, h * 0.80f)
+    val right = Offset(w * 0.78f, h * 0.70f)
+    drawOval(color, Offset(left.x - head * 1.15f, left.y - head * 0.85f), androidx.compose.ui.geometry.Size(head * 2.3f, head * 1.7f))
+    drawOval(color, Offset(right.x - head * 1.15f, right.y - head * 0.85f), androidx.compose.ui.geometry.Size(head * 2.3f, head * 1.7f))
+    drawRect(color, Offset(left.x + head * 0.95f, h * 0.18f), androidx.compose.ui.geometry.Size(stem, left.y - h * 0.18f))
+    drawRect(color, Offset(right.x + head * 0.95f, h * 0.08f), androidx.compose.ui.geometry.Size(stem, right.y - h * 0.08f))
+    val beam = androidx.compose.ui.graphics.Path().apply {
+        moveTo(left.x + head * 0.95f, h * 0.18f)
+        lineTo(right.x + head * 0.95f + stem, h * 0.08f)
+        lineTo(right.x + head * 0.95f + stem, h * 0.08f + h * 0.16f)
+        lineTo(left.x + head * 0.95f, h * 0.18f + h * 0.16f)
+        close()
+    }
+    drawPath(beam, color)
+}
+
 /** "Lyrics from X  Change" — shown above the scrubber while lyrics are open. */
 @Composable
 fun LyricsStatusWithChange(state: LyricsState, onChange: () -> Unit) {
     val status = when {
-        state.loading -> "Looking for lyrics…"
-        state.lyrics == null -> "No lyrics found"
-        else -> "Lyrics from ${state.lyrics!!.source.label}"
+        state.loading -> tr(R.string.looking_for_lyrics)
+        state.lyrics == null -> tr(R.string.no_lyrics_found)
+        else -> tr(R.string.lyrics_from, state.lyrics!!.source.label)
     }
     Row(Modifier.fillMaxWidth().offset(y = 6.dp).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(status, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         Spacer(Modifier.width(8.dp))
         Text(
-            "Change", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.72f), textDecoration = TextDecoration.Underline,
+            tr(R.string.change), style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.72f), textDecoration = TextDecoration.Underline,
             modifier = Modifier.clickable(remember { MutableInteractionSource() }, indication = null, onClick = onChange),
         )
     }
@@ -1049,15 +1319,15 @@ fun LyricsProviderSheet(state: LyricsState, onDismiss: () -> Unit) {
     // The same frosted sheet as the player's ⋯ menu it opens from.
     com.vinz.music.ui.components.ActionSheet(state.song.thumbnail, onDismiss) { close ->
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Lyrics source", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(tr(R.string.lyrics_source), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             // Up top, where it can't scroll out of reach.
             state.source?.let {
-                com.vinz.music.ui.components.VinzChip(false, { state.redownload(); close {} }, "Re-download", icon = VinzIcons.Refresh)
+                com.vinz.music.ui.components.VinzChip(false, { state.redownload(); close {} }, tr(R.string.re_download), icon = VinzIcons.Refresh)
             }
         }
         state.source?.let { src ->
             Text(
-                "Re-download fetches ${src.label}'s lyrics again and replaces the saved copy",
+                tr(R.string.re_download_fetches_s_lyrics_again, src.label),
                 style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
@@ -1081,17 +1351,17 @@ fun LyricsProviderSheet(state: LyricsState, onDismiss: () -> Unit) {
                         )
                         Text(
                             when (st) {
-                                ProviderState.LOADING, ProviderState.UNKNOWN -> "Checking…"
-                                ProviderState.FOUND_KARAOKE -> "Karaoke · lights up word by word"
-                                ProviderState.FOUND_SYNCED -> "Time-synced lines"
-                                ProviderState.FOUND_PLAIN -> "Plain text"
-                                ProviderState.NONE -> "Not available for this song"
-                            } + if (starred && st != ProviderState.NONE) " · Censored" else "",
+                                ProviderState.LOADING, ProviderState.UNKNOWN -> tr(R.string.checking)
+                                ProviderState.FOUND_KARAOKE -> tr(R.string.karaoke_lights_up_word_by_word)
+                                ProviderState.FOUND_SYNCED -> tr(R.string.time_synced_lines)
+                                ProviderState.FOUND_PLAIN -> tr(R.string.plain_text)
+                                ProviderState.NONE -> tr(R.string.not_available_for_this_song)
+                            } + if (starred && st != ProviderState.NONE) tr(R.string.censored) else "",
                             style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
                         )
                     }
                     when {
-                        chosen -> Icon(VinzIcons.Check, "Selected", tint = scheme.primary)
+                        chosen -> Icon(VinzIcons.Check, tr(R.string.selected), tint = scheme.primary)
                         st == ProviderState.LOADING -> CircularProgressIndicator(Modifier.size(18.dp), color = scheme.onSurfaceVariant, strokeWidth = 2.dp)
                     }
                 }
@@ -1122,10 +1392,10 @@ private fun SearchAsPane(state: LyricsState, sources: List<LyricsSource>, onSear
             Icon(VinzIcons.Search, null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Search with another title", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(tr(R.string.search_with_another_title), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Text(
-                    current?.let { (t, a) -> "Looking up \"$t\"" + if (a.isNotBlank()) " by $a" else "" }
-                        ?: "When the lyrics are listed under a different name",
+                    current?.let { (t, a) -> tr(R.string.looking_up, t) + if (a.isNotBlank()) tr(R.string.by, a) else "" }
+                        ?: tr(R.string.when_the_lyrics_are_listed_under),
                     style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -1133,12 +1403,12 @@ private fun SearchAsPane(state: LyricsState, sources: List<LyricsSource>, onSear
         if (open) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp)) {
             // The keyboard covers the pane's foot: its own key goes on to Artist, then searches.
             com.vinz.music.ui.components.VinzTextField(
-                title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Title") }, singleLine = true,
+                title, { title = it }, Modifier.fillMaxWidth(), label = { Text(tr(R.string.title)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Next),
             )
             Spacer(Modifier.height(8.dp))
             com.vinz.music.ui.components.VinzTextField(
-                artist, { artist = it }, Modifier.fillMaxWidth(), label = { Text("Artist") }, singleLine = true,
+                artist, { artist = it }, Modifier.fillMaxWidth(), label = { Text(tr(R.string.artist)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
                     if (title.isNotBlank()) { state.searchAgainAs(title, artist, sources); onSearched() }
@@ -1148,11 +1418,11 @@ private fun SearchAsPane(state: LyricsState, sources: List<LyricsSource>, onSear
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (current != null) com.vinz.music.ui.components.VinzTextButton(onClick = {
                     state.searchAgainAs("", "", sources); onSearched()
-                }) { Text("Use the song's own") }
+                }) { Text(tr(R.string.use_the_song_s_own)) }
                 Spacer(Modifier.weight(1f))
                 com.vinz.music.ui.components.VinzButton(enabled = title.isNotBlank(), onClick = {
                     state.searchAgainAs(title, artist, sources); onSearched()
-                }) { Text("Search") }
+                }) { Text(tr(R.string.search)) }
             }
         }
     }

@@ -1,5 +1,8 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
+import com.vinz.music.trp
 import com.vinz.music.ui.theme.VinzIcons
 import android.app.Activity
 import androidx.compose.animation.animateContentSize
@@ -206,7 +209,7 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
         }
     }
     val shuffle = { playList(page.shufflePlaylistId, page.name, page.shuffleVideoId, page.shuffleParams) }
-    val mix = { playList(page.radioPlaylistId, "${page.name} Mix", page.radioVideoId, page.radioParams) }
+    val mix = { playList(page.radioPlaylistId, tr(R.string.mix, page.name), page.radioVideoId, page.radioParams) }
     // The page itself only carries five top songs; the list behind "See all" has the rest.
     val quickTop = remember(sections) { sections.topSongs?.items?.filterIsInstance<SongItem>()?.map { it.song }.orEmpty() }
     val fullTop by produceState<List<Song>?>(null, page.id) {
@@ -228,7 +231,7 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
                 withTimeoutOrNull(3_000) { runCatching { c.ytm.playlist(id).songs }.getOrNull() }
             }
             val songs = full?.takeIf { it.size >= quickTop.size } ?: quickTop
-            if (songs.isNotEmpty()) c.player.playQueue(songs, 0, QueueSource(QueueKind.PLAYLIST, "${page.name}: Top songs"))
+            if (songs.isNotEmpty()) c.player.playQueue(songs, 0, QueueSource(QueueKind.PLAYLIST, tr(R.string.top_songs, page.name)))
             else shuffle()
         }
     }
@@ -277,22 +280,22 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
                 }
                 sections.topSongs?.let { shelf ->
                     item("top") {
-                        AppleHeader("Top Songs", more(shelf))
-                        TopSongsGrid(topSongs, "${page.name}: Top songs")
+                        AppleHeader(tr(R.string.top_songs_2), more(shelf))
+                        TopSongsGrid(topSongs, tr(R.string.top_songs, page.name))
                     }
                 }
                 if (streams.isNotEmpty()) item("streams") {
-                    AppleHeader("Livestreams", null)
+                    AppleHeader(tr(R.string.livestreams), null)
                     CardRow(streams, 260.dp, aspect = 16f / 9f, open = open)
                 }
-                sections.albums?.let { s -> item("albums") { AppleHeader("Albums", more(s)); CardRow(s.items, 168.dp, open = open) } }
-                sections.singles?.let { s -> item("singles") { AppleHeader("Singles & EPs", more(s)); CardRow(s.items, 140.dp, open = open) } }
-                sections.videos?.let { s -> item("videos") { AppleHeader("Music Videos", more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open) } }
-                sections.live?.let { s -> item("live") { AppleHeader("Live", more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open) } }
-                sections.featured?.let { s -> item("featured") { AppleHeader("Appears On", more(s)); CardRow(s.items, 150.dp, open = open) } }
-                sections.playlists?.let { s -> item("playlists") { AppleHeader("Artist Playlists", more(s)); CardRow(s.items, 150.dp, open = open) } }
-                sections.others.forEach { shelf -> shelfItems(shelf, open = open) }
-                sections.similar?.let { s -> item("similar") { AppleHeader("Similar Artists", more(s)); CardRow(s.items, 128.dp, round = true, open = open) } }
+                sections.albums?.let { s -> item("albums") { AppleHeader(tr(R.string.albums), more(s)); CardRow(s.items, 168.dp, open = open) } }
+                sections.singles?.let { s -> item("singles") { AppleHeader(tr(R.string.singles_eps), more(s)); CardRow(s.items, 140.dp, open = open) } }
+                sections.videos?.let { s -> item("videos") { AppleHeader(tr(R.string.music_videos), more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open) } }
+                sections.live?.let { s -> item("live") { AppleHeader(tr(R.string.live), more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open) } }
+                sections.featured?.let { s -> item("featured") { AppleHeader(tr(R.string.appears_on), more(s)); CardRow(s.items, 150.dp, open = open) } }
+                sections.playlists?.let { s -> item("playlists") { AppleHeader(tr(R.string.artist_playlists), more(s)); CardRow(s.items, 150.dp, open = open) } }
+                sections.others.forEachIndexed { place, shelf -> shelfItems(shelf, place = place, open = open) }
+                sections.similar?.let { s -> item("similar") { AppleHeader(tr(R.string.similar_artists), more(s)); CardRow(s.items, 128.dp, round = true, open = open) } }
                 item("about") { AboutCard(page, genre) { showInfo = true } }
             }
 
@@ -310,9 +313,9 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
     if (pageColor) {
         val fromPhoto = palette?.accent(dark)
         com.vinz.music.ui.components.ColorPickerSheet(
-            "${page.name}'s color", (ownColor ?: fromPhoto ?: MaterialTheme.colorScheme.primary).toArgb(),
+            tr(R.string.s_color, page.name), (ownColor ?: fromPhoto ?: MaterialTheme.colorScheme.primary).toArgb(),
             onDismiss = { pageColor = false },
-            reset = if (ownColor != null) "Use the photo's color" to { c.artistPrefs.setColor(page.id, null) } else null,
+            reset = if (ownColor != null) tr(R.string.use_the_photo_s_color) to { c.artistPrefs.setColor(page.id, null) } else null,
             preview = { col ->
                 val settings = com.vinz.music.ui.theme.LocalAppSettings.current
                 androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -325,7 +328,7 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
         ) { c.artistPrefs.setColor(page.id, it) }
     }
     if (sharing) ShareSheet(
-        ShareTarget(page.name, page.subscribers.orEmpty(), "Artist", page.thumbnail, ShareLinks.artist(page.id), round = true),
+        ShareTarget(page.name, page.subscribers.orEmpty(), tr(R.string.artist), page.thumbnail, ShareLinks.artist(page.id), round = true),
     ) { sharing = false }
 }
 
@@ -392,11 +395,11 @@ private fun Hero(
         }
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            HeroButton(VinzIcons.Info, "About ${page.name}", onClick = onInfo)
+            HeroButton(VinzIcons.Info, tr(R.string.about, page.name), onClick = onInfo)
             PlayCapsule(onPlay)
-            HeroButton(VinzIcons.Shuffle, "Shuffle ${page.name}", onClick = onShuffle)
+            HeroButton(VinzIcons.Shuffle, tr(R.string.shuffle_2, page.name), onClick = onShuffle)
             HeroButton(
-                if (favorite) VinzIcons.StarFilled else VinzIcons.Star, if (favorite) "Remove from favorites" else "Add to favorites",
+                if (favorite) VinzIcons.StarFilled else VinzIcons.Star, if (favorite) tr(R.string.remove_from_favorites) else tr(R.string.add_to_favorites),
                 tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = onFavorite,
             )
         }
@@ -427,7 +430,7 @@ private fun PlayCapsule(onClick: () -> Unit) {
     ) {
         Icon(VinzIcons.Play, null, Modifier.size(26.dp), tint = fg)
         Spacer(Modifier.width(4.dp))
-        Text("Play", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = fg)
+        Text(tr(R.string.widget_play), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = fg)
     }
 }
 
@@ -457,19 +460,19 @@ private fun TopBar(
                 page.name, Modifier.align(Alignment.Center).padding(horizontal = 112.dp).graphicsLayer { alpha = solid() },
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            com.vinz.music.ui.components.RoundAction(VinzIcons.ArrowBack, "Back", Modifier.align(Alignment.CenterStart).padding(start = 12.dp), glass = true) { nav.back() }
+            com.vinz.music.ui.components.RoundAction(VinzIcons.ArrowBack, tr(R.string.back), Modifier.align(Alignment.CenterStart).padding(start = 12.dp), glass = true) { nav.back() }
             Row(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (hasMix) com.vinz.music.ui.components.RoundAction(VinzIcons.Radio, "Start ${page.name} Mix", glass = true, onClick = onMix)
+                if (hasMix) com.vinz.music.ui.components.RoundAction(VinzIcons.Radio, tr(R.string.start_mix, page.name), glass = true, onClick = onMix)
                 Box {
-                    com.vinz.music.ui.components.RoundAction(VinzIcons.More, "More", glass = true) { menu = true }
+                    com.vinz.music.ui.components.RoundAction(VinzIcons.More, tr(R.string.more), glass = true) { menu = true }
                     DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem({ Text("Share artist") }, { menu = false; onShare() }, leadingIcon = { Icon(VinzIcons.Share, null) })
+                        DropdownMenuItem({ Text(tr(R.string.share_artist)) }, { menu = false; onShare() }, leadingIcon = { Icon(VinzIcons.Share, null) })
                         DropdownMenuItem(
-                            { Text(if (favorite) "Remove from favorites" else "Add to favorites") }, { menu = false; onFavorite() },
+                            { Text(if (favorite) tr(R.string.remove_from_favorites) else tr(R.string.add_to_favorites)) }, { menu = false; onFavorite() },
                             leadingIcon = { Icon(if (favorite) VinzIcons.StarFilled else VinzIcons.Star, null) },
                         )
-                        DropdownMenuItem({ Text("Signature style") }, { menu = false; onSignature() }, leadingIcon = { Icon(VinzIcons.Signature, null) })
-                        DropdownMenuItem({ Text("Page color") }, { menu = false; onColor() }, leadingIcon = { Icon(VinzIcons.Palette, null) })
+                        DropdownMenuItem({ Text(tr(R.string.signature_style)) }, { menu = false; onSignature() }, leadingIcon = { Icon(VinzIcons.Signature, null) })
+                        DropdownMenuItem({ Text(tr(R.string.page_color)) }, { menu = false; onColor() }, leadingIcon = { Icon(VinzIcons.Palette, null) })
                         // Never in radios, autoplay, Smart Shuffle, mixes or Smart Downloads (Settings → Library & Replay → Exclusions).
                         val c = com.vinz.music.ui.theme.LocalContainer.current
                         // A photo of your own for the artist (1.7.6), on their page and in Library.
@@ -479,22 +482,22 @@ private fun TopBar(
                         val context = androidx.compose.ui.platform.LocalContext.current
                         val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
                             if (uri != null) photoScope.launch {
-                                if (!c.covers.usePhoto(photoKey, uri)) android.widget.Toast.makeText(context, "Couldn't use that picture", android.widget.Toast.LENGTH_SHORT).show()
+                                if (!c.covers.usePhoto(photoKey, uri)) android.widget.Toast.makeText(context, tr(R.string.couldn_t_use_that_picture), android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }
                         DropdownMenuItem(
-                            { Text("Use your own photo") },
+                            { Text(tr(R.string.use_your_own_photo)) },
                             { menu = false; picker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             leadingIcon = { Icon(VinzIcons.Photo, null) },
                         )
                         if (ownPhoto) DropdownMenuItem(
-                            { Text("Use YouTube's photo") }, { menu = false; c.covers.reset(photoKey) },
+                            { Text(tr(R.string.use_youtube_s_photo)) }, { menu = false; c.covers.reset(photoKey) },
                             leadingIcon = { Icon(VinzIcons.History, null) },
                         )
                         val excluded by c.exclusions.artists.collectAsState()
                         val out = excluded.any { it.id == page.id || it.name.equals(page.name, true) }
                         DropdownMenuItem(
-                            { Text(if (out) "Play this artist again" else "Don't play this artist") },
+                            { Text(if (out) tr(R.string.play_this_artist_again) else tr(R.string.don_t_play_this_artist)) },
                             { menu = false; c.exclusions.setArtist(com.vinz.music.data.foryou.Excluded(page.id, page.name, page.thumbnail), !out) },
                             leadingIcon = { Icon(VinzIcons.Block, null) },
                         )
@@ -520,9 +523,9 @@ private fun Spotlight(item: AlbumItem, onOpen: () -> Unit) {
     val release by produceState<List<Song>?>(null, item.id) { value = runCatching { c.ytm.album(item.id).songs }.getOrNull() }
     val details = release?.takeIf { it.isNotEmpty() }?.let { songs ->
         val min = (songs.sumOf { it.durationSec } + 30) / 60
-        listOfNotNull(com.vinz.music.data.model.songCount(songs.size), min.takeIf { it > 0 }?.let { "$it min" }).joinToString(" · ")
+        listOfNotNull(com.vinz.music.data.model.songCount(songs.size), min.takeIf { it > 0 }?.let { tr(R.string.min, it) }).joinToString(" · ")
     }
-    val kind = item.subtitle.split(" • ").firstOrNull { it in setOf("Single", "EP", "Album") } ?: "Album"
+    val kind = item.subtitle.split(" • ").firstOrNull { it in setOf("Single", "EP", "Album") }?.let { com.vinz.music.data.model.kindName(it) } ?: tr(R.string.album)
     val year = yearOf(item).takeIf { it > 0 }
     val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
     FrostedPanel(Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp).fillMaxWidth(), onClick = onOpen) {
@@ -530,7 +533,7 @@ private fun Spotlight(item: AlbumItem, onOpen: () -> Unit) {
             Artwork(item.thumbnail, Modifier.size(112.dp), LocalUi.current.albumArt, size = 544)
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Eyebrow(if (year == thisYear) "New release" else "Latest release", color = MaterialTheme.colorScheme.primary)
+                Eyebrow(if (year == thisYear) tr(R.string.new_release) else tr(R.string.latest_release), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(4.dp))
                 Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -542,14 +545,14 @@ private fun Spotlight(item: AlbumItem, onOpen: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface).border(1.5.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), CircleShape)
-                    .clickable(onClickLabel = "Play ${item.title}") {
+                    .clickable(onClickLabel = tr(R.string.play, item.title)) {
                         scope.launch {
                             val songs = release ?: runCatching { c.ytm.album(item.id).songs }.getOrNull().orEmpty()
                             if (songs.isNotEmpty()) c.player.playQueue(songs, 0, QueueSource(QueueKind.ALBUM, item.title))
                         }
                     },
                 contentAlignment = Alignment.Center,
-            ) { Icon(VinzIcons.Play, "Play", tint = MaterialTheme.colorScheme.surface) }
+            ) { Icon(VinzIcons.Play, tr(R.string.widget_play), tint = MaterialTheme.colorScheme.surface) }
         }
     }
 }
@@ -598,7 +601,7 @@ private fun TopSongsGrid(songs: List<Song>, title: String) {
                             )
                         }
                         IconButton(onClick = { menuFor = s }, Modifier.size(36.dp)) {
-                            Icon(VinzIcons.More, "More", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(VinzIcons.More, tr(R.string.more), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if (i < columns[col].lastIndex) HorizontalDivider(Modifier.padding(start = 60.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
@@ -616,7 +619,7 @@ private fun CardRow(items: List<BrowseItem>, width: Dp, aspect: Float = 1f, roun
     val ui = LocalUi.current
     val menu = rememberPlayMenu()
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        items(items, key = { it.id + it.title }) { item ->
+        items(items.distinctBy { it.id + it.title }, key = { it.id + it.title }) { item ->
             Column(
                 Modifier.width(width).clip(ui.shape(10.dp))
                     .combinedClickable(onClick = { open(item) }, onLongClick = item.playable()?.let { p -> { menu(p) } }),
@@ -637,8 +640,8 @@ private fun CardRow(items: List<BrowseItem>, width: Dp, aspect: Float = 1f, roun
                     is AlbumItem -> yearOf(item).takeIf { it > 0 }?.toString() ?: item.subtitle
                     is ArtistItem -> ""
                     is PlaylistItem -> item.subtitle.removePrefix("Playlist • ")
-                    is SongItem -> if (item.song.isLive) "● Live now" else item.subtitle
-                    else -> item.subtitle
+                    is SongItem -> if (item.song.isLive) tr(R.string.live_now) else item.subtitle
+                    else -> com.vinz.music.data.model.shownKinds(item.subtitle)
                 }
                 if (second.isNotBlank()) Text(
                     second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -650,9 +653,9 @@ private fun CardRow(items: List<BrowseItem>, width: Dp, aspect: Float = 1f, roun
 }
 
 private fun facts(page: ArtistPage, genre: String?) = listOfNotNull(
-    genre?.let { "Genre" to it },
-    page.subscribers?.let { "Listeners" to it.replace(" monthly audience", " monthly") },
-    page.views?.let { "Views on YouTube" to it.removeSuffix(" views") },
+    genre?.let { tr(R.string.genre) to com.vinz.music.data.meta.Genres.shown(it) },
+    page.subscribers?.let { tr(R.string.listeners) to it.replace(" monthly audience", " monthly") },
+    page.views?.let { tr(R.string.views_on_youtube) to it.removeSuffix(" views") },
 )
 
 @Composable
@@ -661,7 +664,7 @@ private fun AboutCard(page: ArtistPage, genre: String?, onOpen: () -> Unit) {
     val facts = facts(page, genre)
     if (bio == null && facts.isEmpty()) return
     Text(
-        "About ${page.name}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium,
+        tr(R.string.about, page.name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 10.dp),
     )
     FrostedPanel(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), onClick = onOpen) {
@@ -692,9 +695,9 @@ private fun InfoSheet(page: ArtistPage, genre: String?, favorite: Boolean, onFav
                     page.subscribers?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 IconButton(onClick = onFavorite) {
-                    Icon(if (favorite) VinzIcons.StarFilled else VinzIcons.Star, if (favorite) "Remove from favorites" else "Add to favorites", tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (favorite) VinzIcons.StarFilled else VinzIcons.Star, if (favorite) tr(R.string.remove_from_favorites) else tr(R.string.add_to_favorites), tint = MaterialTheme.colorScheme.primary)
                 }
-                IconButton(onClick = onShare) { Icon(VinzIcons.Share, "Share artist") }
+                IconButton(onClick = onShare) { Icon(VinzIcons.Share, tr(R.string.share_artist)) }
             }
             facts(page, genre).forEach { (k, v) ->
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -718,15 +721,15 @@ private fun SignatureSheet(page: ArtistPage, genre: String?, onDismiss: () -> Un
     val auto = remember(page.id, genre) { ArtistTypography.forArtist(page.id, genre, ArtistTypography.parseAudience(page.subscribers)) }
     VinzSheet(onDismiss = onDismiss) {
         Column(Modifier.padding(horizontal = 22.dp)) {
-            Text("Signature", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium)
+            Text(tr(R.string.signature), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium)
             Text(
-                "How ${page.name}'s name is set on their page. Tip: long-press the name to come back here.",
+                tr(R.string.how_s_name_is_set_on, page.name),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.height(10.dp))
         LazyColumn(Modifier.heightIn(max = 560.dp), contentPadding = PaddingValues(bottom = 28.dp)) {
-            item("auto") { SignatureOption(page.name, "Automatic · ${auto.label}", auto, chosen == null) { c.artistPrefs.setSignature(page.id, null) } }
+            item("auto") { SignatureOption(page.name, tr(R.string.automatic, auto.label), auto, chosen == null) { c.artistPrefs.setSignature(page.id, null) } }
             items(ArtistTypography.all, key = { it.key }) { t ->
                 SignatureOption(page.name, t.label, t, chosen == t.key) { c.artistPrefs.setSignature(page.id, t.key) }
             }
@@ -746,7 +749,7 @@ private fun SignatureOption(name: String, label: String, type: com.vinz.music.ui
             Eyebrow(label)
             SignatureSample(name, type, Modifier.padding(top = 2.dp))
         }
-        if (selected) Icon(VinzIcons.Check, "Chosen", tint = MaterialTheme.colorScheme.primary)
+        if (selected) Icon(VinzIcons.Check, tr(R.string.chosen), tint = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -755,21 +758,24 @@ private fun SignatureOption(name: String, label: String, type: com.vinz.music.ui
  * page), so every song is listed and the page's own title stands for the heading (#69: it showed the first six under
  * an empty heading).
  */
-fun androidx.compose.foundation.lazy.LazyListScope.shelfItems(shelf: Shelf, whole: Boolean = false, open: (BrowseItem) -> Unit) {
+fun androidx.compose.foundation.lazy.LazyListScope.shelfItems(shelf: Shelf, whole: Boolean = false, place: Int = 0, open: (BrowseItem) -> Unit) {
     val songs = shelf.items.filterIsInstance<SongItem>().map { it.song }
+    // Keys carry the shelf's [place] on the page and each row's own: two shelves can share a title, and a shelf can list
+    // a song twice (#346's "Key was already used" crash).
     if (songs.size == shelf.items.size && songs.none { it.isVideo }) {
-        if (!whole) item(key = "h:" + shelf.title) {
+        if (!whole) item(key = "h:$place:" + shelf.title) {
             val nav = LocalNavigator.current
             SectionHeader(shelf.title, onMore = shelf.moreBrowseId?.let { id ->
                 { if (id.startsWith("VL")) nav.go(Routes.playlist(id)) else nav.go(Routes.browse(id, shelf.moreParams, shelf.title)) }
             })
         }
-        items(if (whole) songs else songs.take(6), key = { "s:" + shelf.title + it.id }) { s ->
+        val shown = if (whole) songs else songs.take(6)
+        items(shown.size, key = { i -> "s:$place:$i:" + shown[i].id }) { i ->
             val c = LocalContainer.current
-            SongRow(s) { c.player.playQueue(songs, songs.indexOf(s), QueueSource(QueueKind.OTHER, shelf.title)) }
+            SongRow(shown[i]) { c.player.playQueue(songs, i, QueueSource(QueueKind.OTHER, shelf.title)) }
         }
     } else {
-        item(key = "c:" + shelf.title) {
+        item(key = "c:$place:" + shelf.title) {
             val nav = LocalNavigator.current
             SectionHeader(shelf.title, strapline = shelf.strapline, onMore = shelf.moreBrowseId?.let { id -> { nav.go(Routes.browse(id, shelf.moreParams, shelf.title)) } })
             ItemCarousel(shelf.items, open)
@@ -799,20 +805,20 @@ fun BrowseScreen(id: String, params: String?, title: String, bottomPadding: Dp) 
     }
     val onSong: (SongItem) -> Unit = { c.player.playSingle(it.song) }
     var sort by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(ReleaseSort.NEWEST) }
-    com.vinz.music.ui.components.SubPage(title.ifBlank { "Browse" }, bottomPadding) {
+    com.vinz.music.ui.components.SubPage(title.ifBlank { tr(R.string.browse) }, bottomPadding) {
         when (val s = load.state) {
             Load.Loading -> item { LoadingState() }
             is Load.Err -> item { ErrorState(s.message) { load.reload(false) } }
-            is Load.Ok -> s.value.forEach { shelf ->
+            is Load.Ok -> s.value.forEachIndexed { place, shelf ->
                 when {
                     // An artist's "See all" albums or singles: big covers, two to a row, like YouTube Music's own grid.
                     shelf.grid && shelf.items.count { it is AlbumItem } * 2 > shelf.items.size ->
-                        releaseGrid(shelf, sort, { sort = it }) { nav.open(it, onSong) }
+                        releaseGrid(shelf, place, sort, { sort = it }) { nav.open(it, onSong) }
                     // Any other page of cards ("Mixed for you", a shelf's "See all" playlists): the same big covers
                     // down the page, rather than one sideways carousel.
                     shelf.items.none { it is SongItem } && (shelf.grid || s.value.size == 1) ->
-                        cardGrid(shelf, showTitle = s.value.size > 1) { nav.open(it, onSong) }
-                    else -> shelfItems(shelf, whole = s.value.size == 1) { nav.open(it, onSong) }
+                        cardGrid(shelf, place, showTitle = s.value.size > 1) { nav.open(it, onSong) }
+                    else -> shelfItems(shelf, whole = s.value.size == 1, place = place) { nav.open(it, onSong) }
                 }
             }
         }
@@ -824,11 +830,11 @@ object ShelfPages {
     val opened = java.util.concurrent.ConcurrentHashMap<String, Shelf>()
 }
 
-private enum class ReleaseSort(val label: String) { NEWEST("Newest"), OLDEST("Oldest"), TITLE("A–Z") }
+private enum class ReleaseSort(val label: String) { NEWEST(tr(R.string.newest)), OLDEST(tr(R.string.oldest)), TITLE("A–Z") }
 
 /** A discography as a vertical grid of large covers, with Newest / Oldest / A–Z. */
 private fun androidx.compose.foundation.lazy.LazyListScope.releaseGrid(
-    shelf: Shelf, sort: ReleaseSort, onSort: (ReleaseSort) -> Unit, open: (BrowseItem) -> Unit,
+    shelf: Shelf, place: Int, sort: ReleaseSort, onSort: (ReleaseSort) -> Unit, open: (BrowseItem) -> Unit,
 ) {
     val items = when (sort) {
         ReleaseSort.NEWEST -> Releases.newestFirst(shelf.items)
@@ -838,7 +844,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.releaseGrid(
     // An artist's own discography leaves their name out; a grid of many artists' releases (YouTube's "New releases")
     // needs it, or every card just said "Album".
     val showArtist = shelf.items.mapNotNull { releaseArtist(it) }.distinct().size > 1
-    item(key = "sort:" + shelf.title) {
+    item(key = "sort:$place:" + shelf.title) {
         Row(
             Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
@@ -846,13 +852,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.releaseGrid(
             ReleaseSort.entries.forEach { s -> com.vinz.music.ui.components.VinzChip(sort == s, { onSort(s) }, s.label) }
             Spacer(Modifier.weight(1f))
             Text(
-                if (items.size == 1) "1 release" else "${items.size} releases",
+                trp(R.plurals.n_releases, items.size),
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
     items.chunked(2).forEachIndexed { r, pair ->
-        item(key = "g:${shelf.title}:${sort.name}:$r") {
+        item(key = "g:$place:${shelf.title}:${sort.name}:$r") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 pair.forEach { ReleaseCard(it, Modifier.weight(1f), open, showArtist) }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -864,13 +870,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.releaseGrid(
 /** The artist part of a release's subtitle ("Album • KATSEYE" → "KATSEYE"); null when it only gives kind and year. */
 private fun releaseArtist(item: BrowseItem): String? =
     item.subtitle.split(" • ").map { it.trim() }
-        .firstOrNull { it.isNotBlank() && it !in setOf("Album", "Single", "EP") && !(it.length == 4 && it.all(Char::isDigit)) }
+        // YouTube's kinds as Vinz reads them (English, Parser.canonical), and as shown in Vinz's language (#255's kind
+        // of slip: with only the translated ones, "Album" passed for the artist outside English).
+        .firstOrNull { it.isNotBlank() && it !in com.vinz.music.data.model.RELEASE_KINDS && it != tr(R.string.album) && it != tr(R.string.single) && !(it.length == 4 && it.all(Char::isDigit)) }
 
 /** Playlists, mixes or artists as a vertical grid of large covers, two to a row. */
-private fun androidx.compose.foundation.lazy.LazyListScope.cardGrid(shelf: Shelf, showTitle: Boolean, open: (BrowseItem) -> Unit) {
-    if (showTitle && shelf.title.isNotBlank()) item(key = "gt:" + shelf.title) { SectionHeader(shelf.title, strapline = shelf.strapline) }
+private fun androidx.compose.foundation.lazy.LazyListScope.cardGrid(shelf: Shelf, place: Int, showTitle: Boolean, open: (BrowseItem) -> Unit) {
+    if (showTitle && shelf.title.isNotBlank()) item(key = "gt:$place:" + shelf.title) { SectionHeader(shelf.title, strapline = shelf.strapline) }
     shelf.items.chunked(2).forEachIndexed { r, pair ->
-        item(key = "cg:${shelf.title}:$r") {
+        item(key = "cg:$place:${shelf.title}:$r") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 pair.forEach { ReleaseCard(it, Modifier.weight(1f), open) }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -897,7 +905,7 @@ private fun ReleaseCard(item: BrowseItem, modifier: Modifier, open: (BrowseItem)
             maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
         // "Single • 2024" reads as "2024 · Single"; plain albums just show the year.
-        val kind = item.subtitle.split(" • ").firstOrNull { it in setOf("Album", "Single", "EP") }
+        val kind = item.subtitle.split(" • ").firstOrNull { it in setOf("Album", "Single", "EP") }?.let { com.vinz.music.data.model.kindName(it) }
         val year = yearOf(item).takeIf { it > 0 }?.toString()
         Text(
             (if (showArtist) listOfNotNull(kind, releaseArtist(item), year) else listOfNotNull(year, kind)).joinToString(" · ").ifBlank { item.subtitle },

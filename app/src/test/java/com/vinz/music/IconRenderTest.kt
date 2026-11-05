@@ -68,7 +68,7 @@ class IconRenderTest {
         val now = com.vinz.music.ui.theme.IconStyle.weight.scale
 
         run {
-            val cellW = 300; val cellH = 118; val cols = 6
+            val cellW = 390; val cellH = 118; val cols = 5
             val rows = (named.size + cols - 1) / cols
             val bmp = Bitmap.createBitmap(cols * cellW, rows * cellH + 40, Bitmap.Config.ARGB_8888)
             CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bmp.asImageBitmap()), Size(bmp.width.toFloat(), bmp.height.toFloat())) {
@@ -114,17 +114,17 @@ class IconRenderTest {
     @Test
     fun generatedPacks() {
         val names = com.vinz.music.ui.theme.VinzIconData.names.toList()
-        val packs = listOf(com.vinz.music.ui.theme.IconPack.VINZ, com.vinz.music.ui.theme.IconPack.FACET, com.vinz.music.ui.theme.IconPack.DOTS)
+        val packs = listOf(com.vinz.music.ui.theme.IconPack.VINZ, com.vinz.music.ui.theme.IconPack.FACET, com.vinz.music.ui.theme.IconPack.DOTS, com.vinz.music.ui.theme.IconPack.CLASSIC)
         val measurer = androidx.compose.ui.text.TextMeasurer(
             androidx.compose.ui.text.font.createFontFamilyResolver(org.robolectric.RuntimeEnvironment.getApplication()), Density(1f), LayoutDirection.Ltr,
         )
         val label = androidx.compose.ui.text.TextStyle(fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp))
-        val cellW = 300; val cellH = 118; val cols = 6
+        val cellW = 390; val cellH = 118; val cols = 5
         val rows = (names.size + cols - 1) / cols
         val bmp = Bitmap.createBitmap(cols * cellW, rows * cellH + 40, Bitmap.Config.ARGB_8888)
         CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bmp.asImageBitmap()), Size(bmp.width.toFloat(), bmp.height.toFloat())) {
             drawRect(Color(0xFF060609))
-            drawText(measurer.measure("Vinz · Facet · Dots at 24 dp (×3)", label), Color(0x99EEEEF5), Offset(16f, 10f))
+            drawText(measurer.measure("Vinz · Facet · Dots · Classic at 24 dp (×3)", label), Color(0x99EEEEF5), Offset(16f, 10f))
             names.forEachIndexed { i, name ->
                 val x = (i % cols) * cellW + 16f
                 val y = (i / cols) * cellH + 40f
@@ -276,8 +276,8 @@ class IconRenderTest {
             // Themed icons: Android draws the monochrome layer in a dark tint on a pale one.
             val y = gap * 4 + px * 3
             c.save(); c.translate(x.toFloat(), y.toFloat()); c.drawPath(circle, android.graphics.Paint().apply { color = 0xFFDCE3F5.toInt(); isAntiAlias = true }); c.restore()
-            // 1.8: every icon draws the same mark, so they share one monochrome layer (the tint is the launcher's).
-            layer(R.drawable.ic_launcher_monochrome, x, y, circle, tint = 0xFF2B3A67.toInt())
+            val mono = R.drawable.ic_launcher_monochrome
+            layer(mono, x, y, circle, tint = 0xFF2B3A67.toInt())
         }
         // The notification icon at 24 dp on a phone (×2.6 and ×3.5), white on the status bar's dark grey.
         listOf(62, 84).forEachIndexed { k, s ->

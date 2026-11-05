@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import com.vinz.music.data.db.mergeUploads
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -23,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,29 +54,65 @@ import com.vinz.music.ui.theme.VinzTokens
 
 /** Looks for Home's Replay card, from the quietest to the most colorful. */
 enum class ReplayCardStyle(val label: String, val note: String) {
-    QUIET("Quiet", "Plain glass, one hairline of split light"),
-    LEDGER("Ledger", "Three numbers side by side"),
-    WASH("Wash", "A faint wash of color and month bars"),
-    FRAME("Spectrum frame", "Glass ringed in split light, the time in color"),
-    RING("Ring", "The year so far as a ring of split light"),
-    COVER("Cover", "Your top song's cover sets the color"),
-    STRIPE("Vinz stripe", "A band of refracted light down one side"),
-    BARS("Spectrum bars", "Your months as big bars, red to violet"),
-    AURORA("Aurora", "Full color, like a Rewind slide"),
+    QUIET(tr(R.string.quiet), tr(R.string.plain_glass_one_hairline_of_split)),
+    LEDGER(tr(R.string.ledger), tr(R.string.three_numbers_side_by_side)),
+    WASH(tr(R.string.wash), tr(R.string.a_faint_wash_of_color_and)),
+    FRAME(tr(R.string.spectrum_frame), tr(R.string.glass_ringed_in_split_light_the)),
+    RING(tr(R.string.ring), tr(R.string.the_year_so_far_as_a)),
+    COVER(tr(R.string.cover), tr(R.string.your_top_song_s_cover_sets)),
+    STRIPE(tr(R.string.vinz_stripe), tr(R.string.a_band_of_refracted_light_down)),
+    BARS(tr(R.string.spectrum_bars), tr(R.string.your_months_as_big_bars_red)),
+    AURORA(tr(R.string.aurora), tr(R.string.full_color_like_a_rewind_slide)),
 }
 
-/** What a Replay card shows: the year so far. [months]: listening per month, January first, up to this month. */
+/**
+ * What a Replay card shows: the year so far. [bars]: listening per bar of [graph], oldest first, the one now last
+ * (months: January up to this month; #286: or the last weeks or days).
+ */
 data class ReplayCardData(
     val year: Int,
     val total: String,
-    val months: List<Long>,
+    val bars: List<Long>,
     val topSong: String?,
     val topSongArtist: String?,
     val topArtist: String?,
     /** 0..1: how far through the year it is. */
     val yearDone: Float,
     val songCount: Int,
-)
+    val graph: com.vinz.music.data.prefs.ReplayGraph = com.vinz.music.data.prefs.ReplayGraph.MONTHS,
+    /** "Includes Spotify" when Replay counts imported histories too (1.8.1); null: Vinz's own plays only. */
+    val includes: String? = null,
+) {
+    /** The bars' caption when they aren't the year's months ("Last 14 days"). */
+    val graphCaption: String? get() = when (graph) {
+        com.vinz.music.data.prefs.ReplayGraph.MONTHS -> null
+        com.vinz.music.data.prefs.ReplayGraph.WEEKS -> tr(R.string.replay_last_weeks, bars.size)
+        com.vinz.music.data.prefs.ReplayGraph.DAYS -> tr(R.string.replay_last_days, bars.size)
+    }
+    /** The card's line under the time: what it counts when that's more than Vinz's plays, else what Replay holds. */
+    val subtitle: String get() = includes ?: tr(R.string.your_top_songs_artists_and_genres)
+}
+
+/** "Includes Spotify, Last.fm": the imported histories Replay counts (null: none). */
+fun replayIncludes(counted: Collection<com.vinz.music.data.imports.ImportSource>): String? =
+    counted.takeIf { it.isNotEmpty() }?.sortedBy { it.ordinal }?.joinToString(", ") { it.label }?.let { tr(R.string.imp_includes, it) }
+
+/**
+ * Listening in each bar of [graph] (#286), oldest first, the one [now] is in last: this year's months so far, the last
+ * 12 weeks or the last 14 days, from what Replay counts ([plays]).
+ */
+suspend fun replayCardBars(plays: com.vinz.music.data.imports.PlayStats, graph: com.vinz.music.data.prefs.ReplayGraph, now: Long = System.currentTimeMillis()): List<Long> {
+    val zone = java.time.ZoneId.systemDefault()
+    val buckets = when (graph) {
+        com.vinz.music.data.prefs.ReplayGraph.MONTHS -> com.vinz.music.data.ReplayBuckets.monthsSoFar(now, zone)
+        com.vinz.music.data.prefs.ReplayGraph.WEEKS -> com.vinz.music.data.ReplayBuckets.lastWeeks(
+            graph.count, now, zone, java.time.temporal.WeekFields.of(java.util.Locale.getDefault()).firstDayOfWeek,
+        )
+        com.vinz.music.data.prefs.ReplayGraph.DAYS -> com.vinz.music.data.ReplayBuckets.lastDays(graph.count, now, zone)
+    }
+    // (The store's ranges include both ends: a bar stops a moment before the next one starts.)
+    return buckets.map { b -> runCatching { plays.totalMs(b.start, minOf(b.end - 1, now)) }.getOrDefault(0L) }
+}
 
 private val CARD_HEIGHT = 156.dp
 
@@ -97,10 +136,10 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
                 .clickable(onClick = onClick).padding(22.dp),
         ) {
             Column(Modifier.align(Alignment.BottomStart)) {
-                Eyebrow("Replay ${d.year}")
+                Eyebrow(tr(R.string.replay, d.year))
                 Spacer(Modifier.height(4.dp))
                 Text(d.total, style = big, color = scheme.onSurface, maxLines = 1)
-                Text("Your top songs, artists and genres", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(d.subtitle, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Icon(VinzIcons.ChevronRight, null, Modifier.align(Alignment.TopEnd), tint = scheme.onSurfaceVariant)
         }
@@ -109,12 +148,13 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(VinzTokens.spectrumRing()))
                 Spacer(Modifier.width(8.dp))
-                Eyebrow("Replay ${d.year}", Modifier.weight(1f))
+                Eyebrow(tr(R.string.replay, d.year), Modifier.weight(1f))
                 Icon(VinzIcons.ChevronRight, null, tint = scheme.onSurfaceVariant)
             }
+            d.includes?.let { Text(it, Modifier.padding(start = 16.dp), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1) }
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth().height(76.dp)) {
-                listOf("Listened" to d.total, "Top artist" to (d.topArtist ?: "—"), "Top song" to (d.topSong ?: "—")).forEachIndexed { i, (label, value) ->
+                listOf(tr(R.string.listened) to d.total, tr(R.string.top_artist) to (d.topArtist ?: "—"), tr(R.string.top_song) to (d.topSong ?: "—")).forEachIndexed { i, (label, value) ->
                     if (i > 0) Box(Modifier.padding(horizontal = 12.dp).width(0.7.dp).fillMaxHeight().background(scheme.outlineVariant.copy(alpha = 0.6f)))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.Bottom) {
                         Text(label, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
@@ -135,21 +175,25 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
                 .clickable(onClick = onClick).padding(22.dp),
         ) {
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(0.68f)) {
-                Eyebrow("Replay ${d.year}")
+                Eyebrow(tr(R.string.replay, d.year))
                 Box(Modifier.padding(top = 6.dp, bottom = 8.dp).size(28.dp, 2.dp).clip(CircleShape).background(VinzTokens.spectrum(dark)))
                 Text(d.total, style = big, color = scheme.onSurface, maxLines = 1)
-                Text("Your top songs, artists and genres", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                Text(d.subtitle, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
             }
-            MonthBars(d.months, hues, Modifier.align(Alignment.BottomEnd).size(width = (d.months.size * 7).dp, height = 54.dp), slim = true)
+            Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.End) {
+                // #286: the last weeks or days say so; the year's months are the card's own.
+                d.graphCaption?.let { Text(it, Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1) }
+                GraphBars(d, hues, Modifier.size(width = (d.bars.size * 7).dp, height = 54.dp), slim = true)
+            }
         }
         // 1.7's first look: glass ringed in split light, the time set large and light in the spectrum.
         ReplayCardStyle.FRAME -> Box(
             base.pane(shape).border(1.5.dp, VinzTokens.spectrum(dark), shape).clickable(onClick = onClick).padding(22.dp),
         ) {
             Column(Modifier.align(Alignment.BottomStart)) {
-                Eyebrow("Replay ${d.year}")
+                Eyebrow(tr(R.string.replay, d.year))
                 Text(d.total, style = big.copy(brush = VinzTokens.spectrum(dark)), maxLines = 1)
-                Text("Your top songs, artists and genres", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                Text(d.subtitle, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
             }
             Icon(VinzIcons.ReplayFilled, null, Modifier.align(Alignment.TopEnd), tint = scheme.onSurface)
         }
@@ -171,15 +215,15 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(yearPercent(d.yearDone), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Light), color = scheme.onSurface)
-                    Text("of ${d.year}", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    Text(tr(R.string.of, d.year), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 }
             }
             Spacer(Modifier.width(20.dp))
             Column(Modifier.weight(1f)) {
-                Eyebrow("Replay ${d.year}")
+                Eyebrow(tr(R.string.replay, d.year))
                 Spacer(Modifier.height(4.dp))
                 Text(d.total, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraLight), color = scheme.onSurface, maxLines = 1)
-                Text("Your top songs, artists and genres", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(d.subtitle, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         // The top song's cover sets the color: blown up behind a scrim, and sharp beside the words.
@@ -192,12 +236,13 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
                 }
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
-                    Eyebrow("Replay ${d.year} · your #1", color = Color.White.copy(alpha = 0.75f))
+                    Eyebrow(tr(R.string.replay_your_1, d.year), color = Color.White.copy(alpha = 0.75f))
                     Spacer(Modifier.height(4.dp))
-                    Text(d.topSong ?: "Your year so far", style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(d.topSong ?: tr(R.string.your_year_so_far), style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     d.topSongArtist?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.78f), maxLines = 1) }
                     Spacer(Modifier.height(8.dp))
-                    Text("${d.total} listened", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.9f))
+                    Text(tr(R.string.listened_2, d.total), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.9f))
+                    d.includes?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.75f), maxLines = 1) }
                 }
             }
         }
@@ -218,18 +263,21 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
                 .clickable(onClick = onClick).padding(start = 110.dp, end = 20.dp, top = 20.dp, bottom = 20.dp),
         ) {
             Column(Modifier.align(Alignment.CenterStart)) {
-                Eyebrow("Replay ${d.year}")
+                Eyebrow(tr(R.string.replay, d.year))
                 Spacer(Modifier.height(4.dp))
                 Text(d.total, style = big, color = scheme.onSurface, maxLines = 1)
-                Text("Your top songs, artists and genres", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(d.subtitle, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         // The months as big bars along the card, red to violet (the months still to come as faint stubs), under the time.
         ReplayCardStyle.BARS -> Box(base.pane(shape).border(0.7.dp, glassEdge(), shape).clickable(onClick = onClick)) {
-            MonthBars(d.months, hues, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(86.dp).padding(horizontal = 18.dp, vertical = 14.dp), slim = false)
+            val caption = listOfNotNull(d.graphCaption, d.includes).joinToString(" · ").takeIf { it.isNotEmpty() }
+            // A caption line under the time: the bars give it the room.
+            GraphBars(d, hues, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(if (caption != null) 72.dp else 86.dp).padding(horizontal = 18.dp, vertical = 14.dp), slim = false)
             Column(Modifier.align(Alignment.TopStart).padding(start = 20.dp, top = 18.dp)) {
-                Eyebrow("Replay ${d.year}")
+                Eyebrow(tr(R.string.replay, d.year))
                 Text(d.total, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraLight), color = scheme.onSurface, maxLines = 1)
+                caption?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             Icon(VinzIcons.ChevronRight, null, Modifier.align(Alignment.TopEnd).padding(16.dp), tint = scheme.onSurfaceVariant)
         }
@@ -248,9 +296,9 @@ fun ReplayCard(style: ReplayCardStyle, d: ReplayCardData, art: Painter?, modifie
                 .clickable(onClick = onClick).padding(22.dp),
         ) {
             Column(Modifier.align(Alignment.BottomStart)) {
-                Eyebrow("Replay ${d.year}", color = Color.White.copy(alpha = 0.85f))
+                Eyebrow(tr(R.string.replay, d.year), color = Color.White.copy(alpha = 0.85f))
                 Text(d.total, style = big, color = Color.White, maxLines = 1)
-                Text("Your top songs, artists and genres", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(d.subtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Icon(VinzIcons.ChevronRight, null, Modifier.align(Alignment.TopEnd), tint = Color.White)
         }
@@ -270,7 +318,13 @@ fun ReplayCardPreview(style: ReplayCardStyle, modifier: Modifier = Modifier) {
     }
     val y = raw ?: return
     val art = y.cover?.takeIf { style == ReplayCardStyle.COVER }?.let { coil3.compose.rememberAsyncImagePainter(it) }
-    val data = ReplayCardData(year, listenTotal(y.ms).full, y.months, y.song, y.songArtist, y.artist, y.yearDone, 0)
+    val graph = com.vinz.music.ui.theme.LocalAppSettings.current.view.replayGraph
+    val bars by androidx.compose.runtime.produceState(y.months, graph) {
+        value = if (graph == com.vinz.music.data.prefs.ReplayGraph.MONTHS) y.months
+        else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { replayCardBars(c.imports.replay(), graph) }.getOrDefault(emptyList()) }
+    }
+    // As Home's card: no "Includes Spotify" line (owner, 1.8.1).
+    val data = ReplayCardData(year, listenTotal(y.ms).full, bars, y.song, y.songArtist, y.artist, y.yearDone, 0, graph)
     ReplayCard(style, data, art, modifier) {}
 }
 
@@ -280,19 +334,14 @@ private class PreviewYear(
 
 /** The listener's year so far, as Home's Replay card reads it. */
 private suspend fun previewYear(c: com.vinz.music.AppContainer): PreviewYear {
-    val cal = java.util.Calendar.getInstance()
     fun monthStart(m: Int) = java.util.Calendar.getInstance().apply {
         set(java.util.Calendar.MONTH, m); set(java.util.Calendar.DAY_OF_MONTH, 1)
         set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
     }
     val start = monthStart(0).timeInMillis
     val now = System.currentTimeMillis()
-    val plays = c.db.plays()
-    val months = (0..cal.get(java.util.Calendar.MONTH)).map { m ->
-        val from = monthStart(m)
-        val to = (from.clone() as java.util.Calendar).apply { add(java.util.Calendar.MONTH, 1) }
-        plays.totalMs(from.timeInMillis, minOf(to.timeInMillis, now))
-    }
+    val plays = c.imports.replay()
+    val months = replayCardBars(plays, com.vinz.music.data.prefs.ReplayGraph.MONTHS, now)
     val song = plays.topSongs(start, now, 20).mergeUploads().firstOrNull()
     val artist = plays.topArtists(start, now, 1).firstOrNull()
     return PreviewYear(
@@ -314,19 +363,23 @@ fun yearFraction(now: Long = System.currentTimeMillis()): Float {
     return ((now - start.timeInMillis).toFloat() / (end.timeInMillis - start.timeInMillis)).coerceIn(0f, 1f)
 }
 
-/** The year's months as bars in hue order (this month brightest); [slim] for a small corner chart, else a full row of twelve. */
+/**
+ * The card's bars in hue order, the one now brightest: the year's months ([slim] a small corner chart, else a full row of
+ * twelve with the months to come as stubs), or (#286) the last weeks or days, each a bar.
+ */
 @Composable
-private fun MonthBars(months: List<Long>, hues: List<Color>, modifier: Modifier, slim: Boolean) {
+private fun GraphBars(d: ReplayCardData, hues: List<Color>, modifier: Modifier, slim: Boolean) {
+    val months = d.bars
     val faint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     Canvas(modifier) {
         if (months.isEmpty()) return@Canvas
         val most = months.max().coerceAtLeast(1L).toFloat()
-        val slots = if (slim) months.size else 12
+        val slots = if (slim || d.graph != com.vinz.music.data.prefs.ReplayGraph.MONTHS) months.size else 12
         val step = size.width / slots
         val w = if (slim) 3.dp.toPx() else step * 0.56f
         for (i in 0 until slots) {
             val x = step * i + (step - w) / 2
-            val col = hues[(i * (hues.size - 1)) / 11]
+            val col = hues[(i * (hues.size - 1)) / (slots - 1).coerceAtLeast(1)]
             if (i >= months.size) {
                 drawRoundRect(faint, Offset(x, size.height - w * 0.6f), Size(w, w * 0.6f), CornerRadius(w / 2))
                 continue

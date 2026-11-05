@@ -5,6 +5,8 @@
 - One brand mark everywhere: the V with its cut-in music note, in the purple-to-cyan light, drawn as a single
   traced vector. It replaces the old triangle on all twelve app icons (each keeps its own ground), and is now the themed
   (monochrome) icon, the notification icon, the shortcut tiles' source of truth, and Vinz Remote's favicon and logo.
+- Removed the experimental first-run entrance and its preview controls; Vinz now opens directly to Home.
+  The app identity, V mark, icon backgrounds, notification mark and remote-control favicon remain Vinz-specific.
 - Release in one dispatch: choose `patch`, `minor` or `major` and `preview` or `stable`, and the workflow works
   out the version, bumps the stamped build, tags it and publishes it. No version strings or commit SHAs to type,
   and no release pull request that only edits `version.properties`.

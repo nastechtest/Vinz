@@ -59,9 +59,8 @@
 
 **Vinz** is an unofficial Android client for YouTube Music.
 
-It began as a fork of the open-source Android music client by **Yigder** and has since been developed independently —
-there is no upstream remote, and no upstream sync anywhere in its history. The lineage is kept in the credits and the
-notices, as the GPL requires.
+The original lineage is credited in the contributor list and required notices, as the GPL requires. Vinz keeps its own
+name, identity, and branding.
 
 The project keeps what makes a music client good — fast navigation, a player that gets out of the way, lyrics that
 keep up — and puts the *look* of the app in your hands. Vinz's own contribution is its **Looks** system: a whole
@@ -261,9 +260,9 @@ The checks that gate a merge are **Validate Gradle wrapper**, **Lint**, **Unit t
 
 ### Unit tests in CI
 
-The 20 test classes whose names contain `Live` or `ApiTest` call real YouTube Music and lyric endpoints. They are
-excluded from CI because they fail whenever a remote service is slow or changes its output. The remaining 91 test
-classes run on the JVM and do gate a merge.
+Test classes whose names contain `Live` or end in `ApiTest` call real YouTube Music and lyric endpoints. They are
+excluded from CI because they fail whenever a remote service is slow or changes its output. The deterministic test
+runner discovers the current class counts and prints them on each run.
 
 ### Testing a pull request on a phone
 

@@ -1,5 +1,8 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
+import com.vinz.music.trp
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -25,6 +28,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -63,7 +67,7 @@ import kotlinx.coroutines.launch
  * Google picture, else their initial on glass ringed in split light (with a Vinz Account), else a person.
  */
 @Composable
-fun ProfilePicture(modifier: Modifier = Modifier, description: String = "Your account") {
+fun ProfilePicture(modifier: Modifier = Modifier, description: String = tr(R.string.your_account)) {
     val c = LocalContainer.current
     val s = LocalAppSettings.current
     val profile by c.account.profile.collectAsState()
@@ -115,10 +119,10 @@ private fun AvatarPicker(selected: String?, photoChosen: Boolean, onPhotos: () -
                 Box(
                     Modifier.size(56.dp).clip(CircleShape).background(com.vinz.music.ui.components.glassFill(1.6f))
                         .border(if (photoChosen) 2.dp else 1.dp, if (photoChosen) VinzTokens.spectrumRing() else com.vinz.music.ui.components.glassEdge(), CircleShape)
-                        .clickable(onClickLabel = "Pick a photo") { onPhotos() },
+                        .clickable(onClickLabel = tr(R.string.pick_a_photo)) { onPhotos() },
                     contentAlignment = Alignment.Center,
                 ) { Icon(VinzIcons.Photo, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface) }
-                Text("Photos", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                Text(tr(R.string.photos), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
             }
         }
         items(com.vinz.music.ui.theme.VinzAvatar.entries.size) { i ->
@@ -160,11 +164,11 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         if (c.account.profile.value == null) { pendingPicture = uri; pendingAvatar = null }
-        else scope.launch { if (!c.account.setPicture(uri)) Toast.makeText(context, "Couldn't use that picture", Toast.LENGTH_SHORT).show() }
+        else scope.launch { if (!c.account.setPicture(uri)) Toast.makeText(context, tr(R.string.couldn_t_use_that_picture), Toast.LENGTH_SHORT).show() }
     }
     fun pickPicture() = pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     fun save() {
-        if (name.isBlank()) { Toast.makeText(context, "Type a name first", Toast.LENGTH_SHORT).show(); return }
+        if (name.isBlank()) { Toast.makeText(context, tr(R.string.type_a_name_first), Toast.LENGTH_SHORT).show(); return }
         val made = c.account.profile.value == null
         c.account.create(name)
         scope.launch {
@@ -172,17 +176,17 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
             pendingAvatar?.let { c.account.setAvatar(it.id) }
             pendingPicture = null
             pendingAvatar = null
-            if (made) Toast.makeText(context, "Your Vinz Account is ready", Toast.LENGTH_SHORT).show()
+            if (made) Toast.makeText(context, tr(R.string.your_vinz_account_is_ready), Toast.LENGTH_SHORT).show()
             if (made || onboarding) onDone()
         }
     }
 
     if (removing) AlertDialog(
         onDismissRequest = { removing = false },
-        title = { Text("Remove your Vinz Account?") },
-        text = { Text("Only your name and picture go. Your likes, playlists, downloads, Replay and everything else on this phone stay as they are.") },
-        confirmButton = { VinzTextButton({ removing = false; c.account.delete(); onDone() }) { Text("Remove") } },
-        dismissButton = { VinzTextButton({ removing = false }) { Text("Keep it") } },
+        title = { Text(tr(R.string.remove_your_vinz_account)) },
+        text = { Text(tr(R.string.only_your_name_and_picture_go)) },
+        confirmButton = { VinzTextButton({ removing = false; c.account.delete(); onDone() }) { Text(tr(R.string.remove)) } },
+        dismissButton = { VinzTextButton({ removing = false }) { Text(tr(R.string.keep_it)) } },
     )
 
     Column(
@@ -191,26 +195,26 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!onboarding) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp)) {
-            com.vinz.music.ui.components.RoundAction(VinzIcons.ArrowBack, "Back", glass = true) { onDone() }
+            com.vinz.music.ui.components.RoundAction(VinzIcons.ArrowBack, tr(R.string.back), glass = true) { onDone() }
         }
         Column(Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(if (onboarding) 48.dp else 8.dp))
             Text(
-                if (profile == null) "Your Vinz Account" else profile!!.name,
+                if (profile == null) tr(R.string.your_vinz_account) else profile!!.name,
                 style = com.vinz.music.ui.components.pageTitleStyle(), textAlign = TextAlign.Center,
             )
             Text(
-                "Who you are in Vinz, kept on this phone and in your backups. No email, no password, no server.",
+                tr(R.string.who_you_are_in_vinz_kept),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp),
             )
             Spacer(Modifier.height(28.dp))
             // The picture: tap to pick one.
-            Box(Modifier.size(132.dp).clip(CircleShape).clickable(onClickLabel = "Pick a picture") { pickPicture() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(132.dp).clip(CircleShape).clickable(onClickLabel = tr(R.string.pick_a_picture)) { pickPicture() }, contentAlignment = Alignment.Center) {
                 val pending = pendingPicture
                 val pendingArt = pendingAvatar
                 if (pending != null) coil3.compose.AsyncImage(
-                    pending, "Your picture", Modifier.fillMaxSize().clip(CircleShape).border(1.5.dp, VinzTokens.spectrumRing(), CircleShape), contentScale = ContentScale.Crop,
+                    pending, tr(R.string.your_picture), Modifier.fillMaxSize().clip(CircleShape).border(1.5.dp, VinzTokens.spectrumRing(), CircleShape), contentScale = ContentScale.Crop,
                 ) else if (pendingArt != null) AvatarArt(pendingArt, Modifier.fillMaxSize().clip(CircleShape))
                 else if (profile != null) ProfilePicture(Modifier.fillMaxSize())
                 else Box(
@@ -223,8 +227,8 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
             }
             val hasPicture = (profile?.picture ?: 0) > 0 || profile?.avatar != null || pendingPicture != null || pendingAvatar != null
             Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp)) {
-                Text("Pick a picture", style = MaterialTheme.typography.titleSmall)
-                if (hasPicture) VinzTextButton({ pendingPicture = null; pendingAvatar = null; c.account.clearPicture() }) { Text("Use my initial") }
+                Text(tr(R.string.pick_a_picture), style = MaterialTheme.typography.titleSmall)
+                if (hasPicture) VinzTextButton({ pendingPicture = null; pendingAvatar = null; c.account.clearPicture() }) { Text(tr(R.string.use_my_initial)) }
             }
         }
         // Full width, so the row of pictures runs to the screen's edges.
@@ -239,24 +243,24 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
             Spacer(Modifier.height(18.dp))
             com.vinz.music.ui.components.VinzTextField(
                 name, { name = it.take(40) }, Modifier.fillMaxWidth(), singleLine = true,
-                label = { Text("Your name") },
+                label = { Text(tr(R.string.your_name)) },
             )
             Text(
-                "Home greets you by it; Blend, Listen Together and other phones see it.",
+                tr(R.string.home_greets_you_by_it_blend),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 4.dp),
             )
             Spacer(Modifier.height(22.dp))
             val changed = profile == null || name.trim() != profile?.name
-            VinzButton({ save() }, Modifier.fillMaxWidth().height(52.dp), enabled = changed || pendingPicture != null || pendingAvatar != null) {
-                Text(if (profile == null) "Make my account" else "Save")
+            VinzButton({ save() }, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = changed || pendingPicture != null || pendingAvatar != null) {
+                Text(if (profile == null) tr(R.string.make_my_account) else tr(R.string.save))
             }
-            if (onboarding) VinzTextButton(onDone, Modifier.fillMaxWidth().padding(top = 4.dp)) { Text("Skip for now") }
+            if (onboarding) VinzTextButton(onDone, Modifier.fillMaxWidth().padding(top = 4.dp)) { Text(tr(R.string.skip_for_now)) }
 
             if (profile != null && !onboarding) {
                 Spacer(Modifier.height(32.dp))
                 Column(Modifier.fillMaxWidth().clip(com.vinz.music.ui.theme.LocalUi.current.card).background(com.vinz.music.ui.components.glassFill(1.2f)).padding(18.dp)) {
-                    com.vinz.music.ui.components.Eyebrow("On this phone")
+                    com.vinz.music.ui.components.Eyebrow(tr(R.string.on_this_phone))
                     Spacer(Modifier.height(8.dp))
                     val lists by c.vinzLibrary.lists.collectAsState()
                     val albums by c.vinzLibrary.albums.collectAsState()
@@ -264,48 +268,47 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
                     val stars by c.artistPrefs.favorites.collectAsState()
                     Text(
                         listOf(
-                            "${liked.size} liked ${if (liked.size == 1) "song" else "songs"}",
-                            "${lists.size} ${if (lists.size == 1) "playlist" else "playlists"}",
-                            "${albums.size} saved ${if (albums.size == 1) "album" else "albums"}",
-                            "${stars.size} starred ${if (stars.size == 1) "artist" else "artists"}",
+                            trp(R.plurals.n_liked_songs, liked.size),
+                            trp(R.plurals.n_playlists, lists.size),
+                            trp(R.plurals.n_saved_albums, albums.size),
+                            trp(R.plurals.n_starred_artists, stars.size),
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     if (s.isLoggedIn) {
                         Spacer(Modifier.height(14.dp))
-                        Text("Your YouTube Music library", style = MaterialTheme.typography.titleSmall)
+                        Text(tr(R.string.your_youtube_music_library), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "Copy its playlists, saved albums and artists into Vinz, so they stay on this phone even signed out. " +
-                                "Your account isn't changed; copy again any time to bring Vinz's copies up to date.",
+                            tr(R.string.copy_its_playlists_saved_albums_and_all),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
                         )
                         val at = profile?.broughtAt ?: 0
                         VinzOutlinedButton({
                             if (bringing != null) return@VinzOutlinedButton
-                            bringing = "Starting…"
+                            bringing = tr(R.string.starting)
                             scope.launch {
                                 val r = runCatching { c.account.bringOver { bringing = it } }.getOrNull()
                                 bringing = null
                                 Toast.makeText(
                                     context,
-                                    if (r == null) "Couldn't reach YouTube Music. Try again."
-                                    else "Copied ${r.playlists} playlists, ${r.albums} albums and ${r.artists} artists" + if (r.failed > 0) " (${r.failed} playlists couldn't be read)" else "",
+                                    if (r == null) tr(R.string.couldn_t_reach_youtube_music_try)
+                                    else tr(R.string.copied_playlists_albums_and_artists, trp(R.plurals.n_playlists, r.playlists), trp(R.plurals.n_albums, r.albums), trp(R.plurals.n_artists, r.artists)) + if (r.failed > 0) trp(R.plurals.n_playlists_couldn_t_be_read, r.failed) else "",
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }
                         }, Modifier.fillMaxWidth(), enabled = bringing == null) {
                             if (bringing != null) { com.vinz.music.ui.components.VinzSpinner(Modifier.size(16.dp), stroke = 2.dp); Spacer(Modifier.width(10.dp)); Text(bringing!!) }
-                            else Text(if (at > 0) "Copy again" else "Copy into Vinz")
+                            else Text(if (at > 0) tr(R.string.copy_again) else tr(R.string.copy_into_vinz))
                         }
                         if (at > 0) Text(
-                            "Last copied " + java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(at)),
+                            tr(R.string.last_copied, java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(at))),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
                         )
                     }
                 }
                 Spacer(Modifier.height(18.dp))
-                VinzTextButton({ removing = true }) { Text("Remove Vinz Account", color = MaterialTheme.colorScheme.error) }
+                VinzTextButton({ removing = true }) { Text(tr(R.string.remove_vinz_account), color = MaterialTheme.colorScheme.error) }
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import com.vinz.music.ui.player.lyricsPageBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -135,6 +137,13 @@ internal val standIns = listOf(
     listOf(Color(0xFF4A2E10), Color(0xFFFFC75F)),
 )
 
+/** The small player's veil over its background for a stored "Show background" [show], fully dark at its slider's start (#309). */
+internal fun previewVeil(show: Float): Float {
+    val veil = 1f - 0.55f * show.coerceIn(0f, 1f)
+    val black = com.vinz.music.ui.player.backdropBlackout(show)
+    return (veil + (1f - veil) * black).coerceIn(0f, 1f)
+}
+
 /** The player as [c]'s settings draw it: its background, the cover's size and corners, the title, progress bar and controls. */
 @Composable
 fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
@@ -147,14 +156,15 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
             PlayerBackground.MESH -> Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(hues[0].copy(alpha = 0.85f), hues[1].copy(alpha = 0.55f), Color.Black))))
             PlayerBackground.BLUR -> {
                 StandIn(song, Modifier.fillMaxSize().blur(60.dp), RoundedCornerShape(0.dp), hues)
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - 0.55f * s.playerBackdropShow)))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = previewVeil(s.playerBackdropShow))))
             }
             PlayerBackground.APPEARANCE -> {
                 PageGround(c, Modifier.fillMaxSize(), player = true)
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - 0.55f * s.playerBackdropShow)))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = previewVeil(s.playerBackdropShow))))
             }
             PlayerBackground.THEME -> Box(Modifier.fillMaxSize().background(c.scheme.background))
             PlayerBackground.BLACK -> {}
+            PlayerBackground.WHITE -> Box(Modifier.fillMaxSize().background(com.vinz.music.ui.player.PlayerWhiteBackdrop))
         }
         // Settings → Player (1.7.4): the layout, the title, the parts under it in their order, the buttons.
         val layout = s.playerLayout
@@ -168,8 +178,8 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
             val title = @Composable {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
                     val big = MaterialTheme.typography.headlineSmall.let { it.copy(fontSize = it.fontSize * s.playerTitleSize.scale) }
-                    Text(song?.title ?: "Northern Lights", style = big, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(song?.artistText ?: "Vinz Sample", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+                    Text(song?.title ?: tr(R.string.northern_lights), style = big, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(song?.artistText ?: tr(R.string.vinz_sample), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
                 }
             }
             if (layout == com.vinz.music.data.prefs.PlayerLayout.LYRICS) {
@@ -180,7 +190,7 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                     Box(Modifier.weight(1f)) { title() }
                 }
                 Column(Modifier.padding(horizontal = 28.dp).padding(top = 40.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    listOf("Somewhere a light is turning on", "Every color finds its way", "We follow the line of the sound").forEachIndexed { i, l ->
+                    listOf(tr(R.string.somewhere_a_light_is_turning_on), tr(R.string.every_color_finds_its_way), tr(R.string.we_follow_the_line_of_the)).forEachIndexed { i, l ->
                         Text(l, style = MaterialTheme.typography.headlineSmall, color = Color.White.copy(alpha = if (i == 1) 1f else 0.35f))
                     }
                 }
@@ -207,7 +217,9 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                     }
                 }
             } else StandIn(song, Modifier.padding(horizontal = side.coerceAtLeast(0.dp)).fillMaxWidth().aspectRatio(1f), coverShape, hues)
-            Column(Modifier.padding(horizontal = 28.dp).padding(top = 28.dp)) {
+            // #320: the title and controls dark over the White background, as the player draws them.
+            val inked = with(com.vinz.music.ui.player.PlayerInk) { Modifier.inked { s.playerBackground == PlayerBackground.WHITE } }
+            Column(Modifier.padding(horizontal = 28.dp).padding(top = 28.dp).then(inked)) {
                 title()
                 when (layout) {
                     com.vinz.music.data.prefs.PlayerLayout.COVER -> {}
@@ -219,7 +231,7 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                         when (part) {
                             com.vinz.music.data.prefs.DeckPart.STRIP -> if (s.lyricsOnPlayer) {
                                 Spacer(Modifier.height(16.dp))
-                                Text("Every color finds its way", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
+                                Text(tr(R.string.every_color_finds_its_way), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
                             }
                             com.vinz.music.data.prefs.DeckPart.SCRUBBER -> { Spacer(Modifier.height(20.dp)); PreviewBar(s, light) }
                             com.vinz.music.data.prefs.DeckPart.TRANSPORT -> {
@@ -308,7 +320,7 @@ private val PREVIEW_WAVE = listOf(0.3f, 0.45f, 0.6f, 0.5f, 0.7f, 0.85f, 0.75f, 0
 @Composable
 fun MiniLyrics(c: ThemeColors, song: Song?) {
     val s = LocalAppSettings.current
-    val lines = listOf("Somewhere a light is turning on", "Every color finds its way", "We follow the line of the sound", "Into the bright of the day")
+    val lines = listOf(tr(R.string.somewhere_a_light_is_turning_on), tr(R.string.every_color_finds_its_way), tr(R.string.we_follow_the_line_of_the), tr(R.string.into_the_bright_of_the_day))
     val face = when (s.lyricsFont) {
         "" -> null
         com.vinz.music.data.prefs.FontChoice.CUSTOM.name -> AppFonts.custom(AppFonts.FontSlot.LYRICS)
@@ -323,7 +335,7 @@ fun MiniLyrics(c: ThemeColors, song: Song?) {
     val look = com.vinz.music.ui.player.rememberLyricsLook(s, song?.thumbnail)
     val clock = remember { androidx.compose.runtime.mutableLongStateOf(1300L) }
     val sung = remember(look.uppercase) {
-        val words = listOf("Every ", "color ", "finds ", "its ", "way")
+        val words = listOf(tr(R.string.every), "color ", "finds ", "its ", "way")
         look.shown(com.vinz.music.data.lyrics.LyricLine(0, words.joinToString(""), 2800, words.mapIndexed { k, w -> com.vinz.music.data.lyrics.LyricWord(k * 520L, k * 520L + 480L, w) }))
     }
     val axis = remember(s.lyricsFont, s.fontChoice) {

@@ -78,6 +78,15 @@ object Parser {
         return (n * mult).toLong()
     }
 
+    /**
+     * A view count in a subtitle ("Black Gryph0n & Baasik • 52M views • 2:44"; a card's starts "Video • …"): the first
+     * segment with a number after the [skip] leading ones (the type, the artist, whose name may hold digits), not the
+     * length. Null when there's none.
+     */
+    internal fun countAfterArtist(subtitle: String, skip: Int): Long? =
+        subtitle.split(" • ").drop(skip).map { it.trim() }.firstOrNull { it.any(Char::isDigit) && !durationRegex.matches(it) }
+            ?.let(SearchRank::count)?.takeIf { it > 0 }
+
     /** A list row's play count (album tracks and top songs show one), if it has one. */
     fun playCount(r: JsonObject): Long? =
         r.arr("flexColumns")?.drop(1)?.firstNotNullOfOrNull { col ->
@@ -155,6 +164,10 @@ object Parser {
             val explicit = r.arr("badges")?.any {
                 it.str("musicInlineBadgeRenderer", "icon", "iconType") == "MUSIC_EXPLICIT_BADGE"
             } == true
+            // How often it's been played: a song row's own column ("189M plays", "7963만회 재생"), a video's views in
+            // its subtitle after the artist ("Jack Johnson • 120M views • 3:08").
+            val plays = cols.drop(2).map { c -> c.joinToString("") { it.str("text") ?: "" } }.firstOrNull { it.any(Char::isDigit) }?.let(SearchRank::count)
+                ?: if (!isVideoType(vt)) null else countAfterArtist(cols.getOrNull(1)?.joinToString("") { it.str("text") ?: "" }.orEmpty(), skip = 1)
             return SongItem(
                 Song(
                     id = videoId,
@@ -165,7 +178,8 @@ object Parser {
                     thumbnail = thumb,
                     isVideo = isVideoType(vt), isUpload = vt == UPLOAD,
                     explicit = explicit,
-                )
+                ),
+                plays = plays?.takeIf { it > 0 },
             )
         }
         val browseId = browse.str("browseEndpoint", "browseId") ?: return null
@@ -233,7 +247,9 @@ object Parser {
                     durationSec = parseDuration(subtitleRuns.map { it.str("text") ?: "" }.lastOrNull { durationRegex.matches(it.trim()) }),
                     thumbnail = thumb,
                     isVideo = isVideoType(vt), isUpload = vt == UPLOAD,
-                )
+                ),
+                // A video card's views ("Video • Black Gryph0n & Baasik • 52M views • 2:44"); a song card says none.
+                plays = if (isVideoType(vt)) countAfterArtist(subtitle, skip = 2) else null,
             )
         }
         val browseId = nav.str("browseEndpoint", "browseId") ?: return null
@@ -257,7 +273,9 @@ object Parser {
             // A station ("Station • Bring Me The Horizon, Oasis…"): a radio seeded by a song, not the song itself.
             // Song cards carry their own radio ("RDAMVM" + the song) or album; anything else that's a radio is the station.
             val kind = subtitle.substringBefore(" • ").trim()
-            val station = pid != null && (
+            // A card that says it's a song or a video is one, whatever radio it starts (#266: Speed dial showed no songs).
+            val songCard = id != null && (kind.equals("Song", true) || kind.equals("Video", true))
+            val station = pid != null && !songCard && (
                 id == null || kind.equals("Station", true) || kind.equals("Mix", true) ||
                     (pid.startsWith("RD") && !pid.startsWith("RDAMVM"))
                 )

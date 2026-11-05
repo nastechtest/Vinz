@@ -1,5 +1,7 @@
 package com.vinz.music.data.blend
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +32,8 @@ class BlendExchange(
     private val receive: suspend (code: String, mine: String?) -> Blends.Import,
     /** The name this phone shows in Blends. */
     private val myName: () -> String,
+    /** Injectable for loopback tests; production uses this phone's real private IPv4 addresses. */
+    private val addressProvider: () -> List<String> = { BlendExchange.localAddresses() },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var server: ServerSocket? = null
@@ -49,7 +53,7 @@ class BlendExchange(
     @Synchronized
     fun open(myCode: String): String {
         shown = myCode
-        val addresses = localAddresses()
+        val addresses = addressProvider()
         if (addresses.isEmpty()) return myCode
         val s = server ?: runCatching { ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(PORT)) } }
             .recoverCatching { ServerSocket(0) }.getOrNull()?.also { server = it; accepting = scope.launch { acceptLoop(it) } }
@@ -98,7 +102,7 @@ class BlendExchange(
         }
         when (val r = receive(code, shown)) {
             is Blends.Import.Added -> {
-                writer.write("OK\t" + myName().ifBlank { "A Vinz listener" }.replace('\t', ' ').replace('\n', ' ') + "\n"); writer.flush()
+                writer.write("OK\t" + myName().ifBlank { tr(R.string.a_vinz_listener) }.replace('\t', ' ').replace('\n', ' ') + "\n"); writer.flush()
                 _made.tryEmit(r)
             }
             else -> { writer.write("NO\n"); writer.flush() }
@@ -139,7 +143,7 @@ class BlendExchange(
                     BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8)).readLine()
                 }
             }.getOrNull() ?: continue
-            if (answer.startsWith("OK")) return@withContext SendBack.Done(answer.substringAfter('\t', "").ifBlank { "Your friend" })
+            if (answer.startsWith("OK")) return@withContext SendBack.Done(answer.substringAfter('\t', "").ifBlank { tr(R.string.your_friend) })
         }
         SendBack.Unreachable
     }

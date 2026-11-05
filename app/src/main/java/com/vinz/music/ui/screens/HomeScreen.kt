@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import com.vinz.music.data.db.mergeUploads
 import com.vinz.music.ui.theme.lit
 import androidx.compose.foundation.border
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -54,6 +57,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import com.vinz.music.ui.components.tickWhileShown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -117,12 +122,56 @@ private val standInPicks = MutableStateFlow<List<Song>>(emptyList())
 /** Quick picks made around the listener's artists, kept for the session (and which pull to refresh made them). */
 private val curatedPicks = MutableStateFlow<List<Song>>(emptyList())
 private val curatedAt = MutableStateFlow(-1)
+/** Which pull to refresh Quick picks were last tried for, and the set shown for it (kept: #297). */
+private val picksTried = MutableStateFlow(-1)
+private val shownPicks = MutableStateFlow<Pair<Int, List<Song>>?>(null)
+/** How long Quick picks wait for the set made around the listener's artists before YouTube's own show. */
+private const val QUICK_PICKS_WAIT_MS = 6_000L
+
+/**
+ * The Quick picks to show (#297): the set already shown ([locked]) stays; else the one made around your artists
+ * ([curated]); else, once that's been tried or waited for ([ready]), YouTube's own. Nothing before that, so the section
+ * comes in once rather than changing twice. [keep] leaves out songs shown elsewhere (Speed dial's).
+ */
+internal fun quickPicksToShow(locked: List<Song>?, curated: List<Song>, youtube: List<Song>, ready: Boolean, keep: (Song) -> Boolean = { true }): List<Song> = when {
+    locked != null -> locked
+    curated.isNotEmpty() -> curated.filter(keep)
+    ready -> youtube.filter(keep)
+    else -> emptyList()
+}
+
+/** The set made around your artists, only when it was made for this pull to refresh ([madeFor]): an older one isn't kept. */
+internal fun curatedFor(curated: List<Song>, madeFor: Int, refresh: Int): List<Song> = if (madeFor == refresh) curated else emptyList()
 private val speedDialMine = MutableStateFlow<List<BrowseItem>>(emptyList())
 /** The last lists and mixes made from your music, shown while the next are made. */
 private val lastYours = MutableStateFlow<com.vinz.music.data.foryou.YourMusic.Sections?>(null)
 private val YOURS_KEYS = setOf(HomeSections.ON_REPEAT, HomeSections.REPEAT_REWIND, HomeSections.FORGOTTEN, HomeSections.MADE_FOR_YOU)
 
-fun shelfKey(title: String) = HomeSections.YT_PREFIX + title.trim().lowercase()
+fun shelfKey(title: String) = HomeSections.shelfKey(title)
+
+/** A YouTube shelf's identity beyond its title, when it has one: where its "More" button goes. */
+internal fun shelfIdentity(s: Shelf): String? = s.moreBrowseId?.let { it + "|" + s.moreParams.orEmpty() }
+
+/**
+ * The shelf for each of [keys] (YouTube's sections on Home, by title): by its title, else by where its More button goes,
+ * as last seen under that key ([known]: key -> [shelfIdentity]). #277 (1.7.9.2, a Spanish account): sections such as
+ * "From the community" vanished when YouTube's language changed (the app's language, or a request answered in English
+ * after a retry), because they're kept by title. Only a shelf no other section has by its title, and only one with
+ * that identity, stands in.
+ */
+internal fun matchShelves(keys: Collection<String>, shelves: List<Shelf>, known: Map<String, String>): Map<String, Shelf> {
+    val byTitle = shelves.associateBy { shelfKey(it.title) }
+    val out = LinkedHashMap<String, Shelf>()
+    keys.forEach { k -> byTitle[k]?.let { out[k] = it } }
+    keys.filter { it !in out }.forEach { k ->
+        val id = known[k] ?: return@forEach
+        val same = shelves.filter { shelfIdentity(it) == id }
+        val s = same.singleOrNull() ?: return@forEach
+        if (shelfKey(s.title) in keys || out.values.any { it === s }) return@forEach
+        out[k] = s
+    }
+    return out
+}
 
 /** What kind of section a YouTube shelf is, for "Leave off Home" (1.7.6): mostly music videos, or podcasts. */
 internal fun shelfKind(shelf: Shelf): String? {
@@ -140,21 +189,49 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     val nav = LocalNavigator.current
     val settings = LocalAppSettings.current
     val layoutNow by rememberUpdatedState(settings.homeLayout)
+    // Where each YouTube section's More button goes, by its key: the section is found again under another language's title.
+    val shelfIds = remember { c.app.getSharedPreferences("home_shelf_ids", android.content.Context.MODE_PRIVATE) }
+    fun knownShelves(): Map<String, String> = shelfIds.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+    val cachedHome by homeShelfCache.collectAsState()
     val home = rememberLoad("home") {
         // YouTube's personalised feed reshuffles per load, so pinned shelves (e.g. "Mixed for you")
         // can land on a later page or drop out entirely. Page further for them, and keep the last
         // copy we saw rather than silently hiding a section the user turned on.
         val wanted = layoutNow.filter { it.visible && it.key.startsWith(HomeSections.YT_PREFIX) }.map { it.key }.toSet()
-        val (fresh, pages) = c.ytm.fullHomePages(pages = 3, maxPages = 8) { got -> wanted.all { k -> got.any { shelfKey(it.title) == k } } }
+        // Quick picks and Speed dial too (#162): YouTube puts Quick picks anywhere from the first page to the fourth, and
+        // stopping at three left the section out of a load now and then ("refresh until it comes back").
+        // Signed in only: signed out, YouTube may send no Quick picks at all (es-MX) and has no Speed dial, and every
+        // load would then read all eight pages.
+        val owner = c.settings.current.accountName
+        val signedIn = owner.isNotBlank()
+        val picksOn = signedIn && layoutNow.any { it.visible && it.key == HomeSections.QUICK_PICKS }
+        val dialWanted = signedIn && layoutNow.any { it.visible && it.key == HomeSections.SPEED_DIAL }
+        val known = knownShelves()
+        val (fresh, pages) = c.ytm.fullHomePages(pages = 3, maxPages = 8) { got ->
+            matchShelves(wanted, got, known).size == wanted.size && (!picksOn || got.quickPicks(owner) != null) && (!dialWanted || got.speedDial(owner) != null)
+        }
         // Kept for the next start, to show while this loads again (#126).
         c.scope.launch { c.homeCache.write(pages) }
-        val freshKeys = fresh.map { shelfKey(it.title) }.toSet()
+        // Each section's identity, under its title now (#277).
+        shelfIds.edit().apply { fresh.forEach { s -> shelfIdentity(s)?.let { putString(shelfKey(s.title), it) } } }.apply()
+        val freshKeys = matchShelves(wanted, fresh, known).keys
         val kept = homeShelfCache.value.filter { shelfKey(it.title).let { k -> k in wanted && k !in freshKeys } }
+        // What YouTube's Home held, and which shelves Vinz took for Quick picks and Speed dial (#162, #163: an account
+        // in Spanish found neither), for a diagnostics log.
+        com.vinz.music.playback.AudioDiagnostics.log(
+            "home",
+            tr(R.string.pages_2, pages.size) + fresh.joinToString { s ->
+                // What's in each by kind ("song=3 album=4 playlist=2"): #266's Speed dial had no songs.
+                s.title + " (" + listOfNotNull("rows".takeIf { s.rows }, "stacked".takeIf { s.stacked }, shelfKinds(s),
+                    s.strapline?.let { "strapline=" + if (it.equals(settings.accountName, true)) "owner" else it }).joinToString(" ") + ")"
+            } + tr(R.string.quick_picks_speed_dial, fresh.quickPicks(owner)?.title ?: "none", fresh.speedDial(owner)?.title ?: "none") +
+                if (kept.isNotEmpty()) tr(R.string.kept_from_before, kept.joinToString { it.title }) else "",
+        )
         (fresh + kept).also { homeShelfCache.value = it }
     }
     // The last Home (from this session, else kept on the phone) shows until the new one is in: no spinner at start.
-    val lastHome by produceState(homeShelfCache.value.ifEmpty { null }) {
-        if (value == null) value = c.homeCache.read()?.also { if (homeShelfCache.value.isEmpty()) homeShelfCache.value = it }
+    val lastHome by produceState(cachedHome.ifEmpty { null }, cachedHome) {
+        if (value == null) value = c.homeCache.read()?.also { if (cachedHome.isEmpty()) homeShelfCache.value = it }
     }
     val moods = rememberLoad("moods") { c.taste.rank(runCatching { c.ytm.moodsAndGenres() }.getOrDefault(emptyList())) }
     val recent by c.library.recent.collectAsState()
@@ -162,32 +239,42 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
 
     val shelves = (home.state as? Load.Ok)?.value ?: lastHome ?: emptyList()
     // A reload whose feed has no Quick picks keeps the last ones, rather than the section vanishing or swapping.
-    val picks = remember(shelves) { shelves.quickPicks()?.also { lastQuickPicks.value = it } ?: lastQuickPicks.value }
+    val picks = remember(shelves, settings.accountName) { shelves.quickPicks(settings.accountName)?.also { lastQuickPicks.value = it } ?: lastQuickPicks.value }
     val dialOn = settings.homeLayout.any { it.key == HomeSections.SPEED_DIAL && it.visible }
     // The Speed dial section shows YouTube's own, so it isn't added again as a shelf of its own.
-    val dial = shelves.speedDial()?.takeIf { dialOn }
-    val layout = remember(settings.homeLayout, shelves, settings.autoAddSections, picks, settings.homeHideKinds) {
+    val dial = shelves.speedDial(settings.accountName)?.takeIf { dialOn }
+    // The holiday section and holiday pins only in their season (1.8.0), read from the phone's own date.
+    val today = c.seasonal.today()
+    // YouTube's sections on Home, found by title or, in another language, by where they lead (#277).
+    val ytShelves = remember(settings.homeLayout, shelves) {
+        matchShelves(settings.homeLayout.map { it.key }.filter { it.startsWith(HomeSections.YT_PREFIX) }, shelves, knownShelves())
+    }
+    val layout = remember(settings.homeLayout, shelves, settings.autoAddSections, picks, settings.homeHideKinds, today, ytShelves) {
         val known = settings.homeLayout.map { it.key }.toSet()
+        val placed = ytShelves.values
         val extra = if (settings.autoAddSections) shelves
-            .filter { shelfKey(it.title) !in known && it !== picks && it !== dial && shelfKind(it) !in settings.homeHideKinds }
+            .filter { shelfKey(it.title) !in known && placed.none { p -> p === it } && it !== picks && it !== dial && shelfKind(it) !in settings.homeHideKinds }
             .map { HomeSectionConfig(shelfKey(it.title), it.title) } else emptyList()
-        settings.homeLayout.filter { it.visible } + extra
+        HomeSections.inSeason(settings.homeLayout, today).filter { it.visible } + extra
     }
 
     // Worked out here rather than inside their rows: a LazyColumn row forgets its state when scrolled off, so these were
     // fetched again on the way back and the sections popped out and in, pushing everything under them.
-    var refreshes by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    // Kept across tab switches, so the session's Quick picks aren't made again on the way back to Home.
+    var refreshes by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
     val seed = recent.firstOrNull()?.takeIf { picks == null && home.state is Load.Ok }
-    val standIn by produceState(standInPicks.value, seed?.id, refreshes) {
+    val cachedStandIn by standInPicks.collectAsState()
+    val standIn by produceState(cachedStandIn, seed?.id, refreshes, cachedStandIn) {
         // One stand-in per session (a pull to refresh asks again): each new play swapped the whole section before.
-        if (seed == null || standInPicks.value.isNotEmpty()) return@produceState
+        if (seed == null || cachedStandIn.isNotEmpty()) return@produceState
         val heard = recent.take(50).map { it.id }.toSet()
         value = runCatching { c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }.getOrDefault(emptyList())
             .filter { it.id !in heard && !it.isVideo }.distinctBy { it.id }.take(20)
             .also { standInPicks.value = it }
     }
     val lastPlayed = recent.firstOrNull()?.id
-    val dialMine by produceState(speedDialMine.value, lastPlayed, dialOn) {
+    val cachedSpeedDialMine by speedDialMine.collectAsState()
+    val dialMine by produceState(cachedSpeedDialMine, lastPlayed, dialOn, cachedSpeedDialMine) {
         if (!dialOn) return@produceState
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { speedDialFromHistory(c) }.getOrDefault(emptyList()) }
             .also { speedDialMine.value = it }
@@ -195,25 +282,41 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     // YouTube's tiles lead; yours fill the rest, unless Customize Home says YouTube's only (#131). With none from
     // YouTube (signed out, offline), yours stand in either way.
     val youtubeDialOnly = settings.speedDialYouTubeOnly && (dial?.items?.size ?: 0) >= 3
-    val dialItems = remember(dial, dialMine, youtubeDialOnly) {
-        (dial?.items.orEmpty().filter { it !is MoodItem } + if (youtubeDialOnly) emptyList() else dialMine).distinctBy { it.id }.take(SPEED_DIAL_SIZE)
+    val dialItems = remember(dial, dialMine, youtubeDialOnly, recent, liked) {
+        speedDialTiles(dial?.items.orEmpty(), dialMine, (recent + liked).filter { !it.isEpisode && !it.isLive }.map(::SongItem), youtubeDialOnly)
     }
     // Quick picks made around the artists the listener plays (their favourites, new songs from radios of their top
     // artists, YouTube's own that fit): worked out once a session, again on pull to refresh.
     val youtubePicks = picks?.items?.filterIsInstance<SongItem>()?.map { it.song } ?: standIn
     val onlineNow by c.network.online.collectAsState()
-    val curated by produceState(curatedPicks.value, youtubePicks.isNotEmpty() || recent.isNotEmpty(), refreshes, onlineNow) {
-        if (!onlineNow || (curatedPicks.value.isNotEmpty() && curatedAt.value == refreshes)) return@produceState
-        if (youtubePicks.isEmpty() && recent.isEmpty()) return@produceState
-        val made = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    // #297 / #277 (1.7.9.3): the section showed the kept Home's picks, then the fresh feed's, then these. Now they're
+    // made once, from the fresh feed (not the copy kept from last time), and the section waits for them.
+    val homeSettled = home.state !is Load.Loading
+    val cachedCurated by curatedPicks.collectAsState()
+    val madeFor by curatedAt.collectAsState()
+    val tried by picksTried.collectAsState()
+    val curated by produceState(cachedCurated, homeSettled, refreshes, onlineNow, cachedCurated, madeFor) {
+        if (!onlineNow || (cachedCurated.isNotEmpty() && madeFor == refreshes)) return@produceState
+        if (!homeSettled) return@produceState
+        val made = if (youtubePicks.isEmpty() && recent.isEmpty()) emptyList() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching { c.yourMusic.quickPicks(youtubePicks, radioOf = { seed: Song -> c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }) }.getOrDefault(youtubePicks)
         }
         if (made.isNotEmpty()) { value = made; curatedPicks.value = made; curatedAt.value = refreshes }
+        picksTried.value = refreshes
     }
-    // Songs already on a Speed dial tile aren't repeated in Quick picks.
-    val pickSongs = remember(curated, youtubePicks, dialItems) {
+    // Never waiting for long: after a few seconds YouTube's own show. Kept as the pull to refresh it waited for:
+    // produceState keeps its value when the keys change, so a plain "waited" stayed true after a refresh.
+    val waitedFor by produceState(if (tried == refreshes) refreshes else -1, refreshes, tried) {
+        if (tried != refreshes) kotlinx.coroutines.delay(QUICK_PICKS_WAIT_MS)
+        value = refreshes
+    }
+    val picksReady = waitedFor == refreshes || tried == refreshes
+    // Songs already on a Speed dial tile aren't repeated in Quick picks. Once shown, the set stays for the session
+    // (until pull to refresh), whatever loads after it.
+    val pickSongs = remember(curated, madeFor, youtubePicks, dialItems, picksReady, refreshes) {
         val onDial = if (dialItems.size >= 3) dialItems.map { it.id }.toSet() else emptySet()
-        curated.ifEmpty { youtubePicks }.filter { it.id !in onDial }
+        quickPicksToShow(shownPicks.value?.takeIf { it.first == refreshes }?.second, curatedFor(curated, madeFor, refreshes), youtubePicks, picksReady) { it.id !in onDial }
+            .also { if (it.isNotEmpty()) shownPicks.value = refreshes to it }
     }
 
     // Offline, Home is what's on the phone: no YouTube shelves, and lists keep to songs that play without a connection.
@@ -221,7 +324,8 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     LaunchedEffect(online) { if (online && home.state is Load.Err) { home.reload(false); moods.reload(false) } }
     val offline: (Song) -> Boolean = { online || c.availableOffline(it.id) }
     val wantsYours = !online || layout.any { it.key in YOURS_KEYS }
-    val yours by produceState(lastYours.value, recent.firstOrNull()?.id, online, refreshes, wantsYours) {
+    val cachedYours by lastYours.collectAsState()
+    val yours by produceState(cachedYours, recent.firstOrNull()?.id, online, refreshes, wantsYours, cachedYours) {
         if (!wantsYours) return@produceState
         value = runCatching { c.yourMusic.sections(offlineOnly = !online) }.getOrNull()?.also { lastYours.value = it }
     }
@@ -247,6 +351,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
             item { HomeTopBar() }
             item(key = "update") { UpdateBanner() }
             item(key = "performance") { PerformanceOffer() }
+            item(key = "smartDownloads") { SmartDownloadsOffer() }
             if (!online) item(key = "offline") { OfflineNote() }
             if (online && home.state is Load.Loading && shelves.isEmpty()) item { LoadingState() }
             // With the last Home on show, a failed refresh leaves it there (pull to refresh tries again).
@@ -265,31 +370,40 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                             // what you've just heard). Your recent plays themselves never do: that's Recently played.
                             // A pick starts a radio from it (#38), as on YouTube Music, unless Customize Home says to play them in order.
                             // Offline: the songs on the phone you're most likely to want, played in order.
-                            if (!online) { if (offlinePicks.isNotEmpty()) SongSection(cfg, cfg.titled("Quick picks"), "Ready offline", offlinePicks, snap = true) }
+                            if (!online) { if (offlinePicks.isNotEmpty()) SongSection(cfg, cfg.titled(tr(R.string.quick_picks)), tr(R.string.ready_offline), offlinePicks, snap = true) }
                             else if (pickSongs.isNotEmpty()) SongSection(
-                                cfg, cfg.titled("Quick picks"), picks?.strapline, pickSongs, snap = true,
+                                cfg, cfg.titled(tr(R.string.quick_picks)), picks?.strapline, pickSongs, snap = true,
                                 play = if (settings.quickPicksRadio) { list, i -> c.player.playRadio(list[i]) } else null,
                             )
                         }
-                        HomeSections.RECENT -> recent.filter(offline).take(20).let { if (it.isNotEmpty()) SongSection(cfg, cfg.titled(), null, it) }
-                        HomeSections.LIKED -> liked.filter(offline).take(20).let { if (it.isNotEmpty()) SongSection(cfg, cfg.titled("Liked songs"), null, it) { nav.go(Routes.liked()) } }
-                        HomeSections.ON_REPEAT -> yours?.onRepeat?.takeIf { it.isNotEmpty() }?.let { SongSection(cfg, cfg.titled(), "Your most played this month", it) }
-                        HomeSections.REPEAT_REWIND -> yours?.repeatRewind?.takeIf { it.isNotEmpty() }?.let { SongSection(cfg, cfg.titled(), "What you used to play on repeat", it) }
-                        HomeSections.FORGOTTEN -> yours?.forgotten?.takeIf { it.isNotEmpty() }?.let { SongSection(cfg, cfg.titled(), "Favorites you haven't played in a while", it) }
+                        HomeSections.RECENT -> {
+                            // "Albums & playlists" (#196): what the songs were played from, as cards; songs until there are any.
+                            val played by c.recentCollections.items.collectAsState()
+                            if (settings.behavior.recentShows == com.vinz.music.data.prefs.RecentShows.COLLECTIONS && played.isNotEmpty()) {
+                                SectionHeader(cfg.titled())
+                                StyledItems(cfg.style, played, openItem)
+                            } else recent.filter(offline).take(20).let { if (it.isNotEmpty()) SongSection(cfg, cfg.titled(), null, it) }
+                        }
+                        HomeSections.LIKED -> liked.filter(offline).take(20).let { if (it.isNotEmpty()) SongSection(cfg, cfg.titled(tr(R.string.liked_songs)), null, it) { nav.go(Routes.liked()) } }
+                        HomeSections.ON_REPEAT -> yours?.onRepeat?.takeIf { it.isNotEmpty() }?.let { SongSection(cfg, cfg.titled(), tr(R.string.your_most_played_this_month), it) }
+                        HomeSections.REPEAT_REWIND -> yours?.repeatRewind?.takeIf { it.isNotEmpty() }?.let { SongSection(cfg, cfg.titled(), tr(R.string.what_you_used_to_play_on), it) }
+                        HomeSections.FORGOTTEN -> yours?.forgotten?.takeIf { it.isNotEmpty() }?.let { SongSection(cfg, cfg.titled(), tr(R.string.favorites_you_haven_t_played_in), it) }
                         HomeSections.DOWNLOADS -> {
-                            val dls by c.downloads.downloads.collectAsState()
-                            val songs = remember(dls) { c.downloads.completedSongs() }
-                            if (songs.isNotEmpty()) SongSection(cfg, cfg.titled("Downloads"), null, songs.take(20)) { nav.go(Routes.DOWNLOADS) }
+                            val dls by c.downloadState.collectAsState()
+                            // Nothing until the downloads have started (then they're up already, so this doesn't hold up the first frame).
+                            val songs = remember(dls) { if (dls.isEmpty()) emptyList() else c.downloads.completedSongs() }
+                            if (songs.isNotEmpty()) SongSection(cfg, cfg.titled(tr(R.string.downloads)), null, songs.take(20)) { nav.go(Routes.DOWNLOADS) }
                         }
                         HomeSections.SPEED_DIAL -> SpeedDialSection(cfg, if (online) dialItems else dialItems.filter { it is SongItem && c.availableOffline(it.id) }, openItem)
                         HomeSections.MADE_FOR_YOU -> MadeForYouSection(cfg, offline = !online, yours = yours?.mixes.orEmpty())
                         HomeSections.NEW_RELEASES -> if (online) NewReleasesSection(cfg)
+                        HomeSections.SEASONAL -> if (online) HolidaySection(cfg)
                         HomeSections.REPLAY -> ReplayTeaser(cfg)
                         HomeSections.GENRES -> TopGenresSection(cfg)
                         HomeSections.MOODS -> if (online) {
                             val m = (moods.state as? Load.Ok)?.value?.picks?.take(12)
                             if (!m.isNullOrEmpty()) {
-                                SectionHeader(cfg.titled(), strapline = "Picked for you", onMore = { nav.go(Routes.MOODS) })
+                                SectionHeader(cfg.titled(), strapline = tr(R.string.picked_for_you), onMore = { nav.go(Routes.MOODS) })
                                 if (cfg.style != SectionStyle.GRID) StyledEntries(cfg.style, m.map { mood ->
                                     val col = Color(mood.color or 0xFF000000).lit()
                                     HomeEntry(mood.id + mood.params, mood.title, fill = Brush.linearGradient(listOf(col, col.copy(alpha = 0.6f).compositeOver(Color.Black))), onFill = true, icon = VinzIcons.Mood) { openItem(mood) }
@@ -313,7 +427,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                         } else if (online) {
                             // Not a shelf that already shows as Quick picks or Speed dial (it was on Home twice), nor of a
                             // kind left off Home (Customize Home → Leave off Home).
-                            val shelf = shelves.firstOrNull { shelfKey(it.title) == cfg.key }
+                            val shelf = (ytShelves[cfg.key] ?: shelves.firstOrNull { shelfKey(it.title) == cfg.key })
                                 ?.takeIf { it !== picks && it !== dial && shelfKind(it) !in settings.homeHideKinds }
                             if (shelf != null) ShelfSection(cfg, shelf, openItem)
                         }
@@ -333,7 +447,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                     ) {
                         Icon(VinzIcons.Customize, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(8.dp))
-                        Text("Customize Home", style = MaterialTheme.typography.labelLarge)
+                        Text(tr(R.string.customize_home), style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -362,16 +476,50 @@ private fun PerformanceOffer() {
             Icon(VinzIcons.Speed, null, tint = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Make Vinz lighter on this phone?", style = MaterialTheme.typography.titleSmall)
+                Text(tr(R.string.make_vinz_lighter_on_this_phone), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Performance mode pauses blur, moving backgrounds and animated covers. Every feature stays.",
+                    tr(R.string.performance_mode_pauses_blur_moving_backgrounds),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
         Row(Modifier.align(Alignment.End)) {
-            com.vinz.music.ui.components.VinzTextButton(onClick = { c.settings.setPerformanceOffered() }) { Text("No thanks") }
-            com.vinz.music.ui.components.VinzTextButton(onClick = { c.settings.setPerformanceMode(true) }) { Text("Turn on") }
+            com.vinz.music.ui.components.VinzTextButton(onClick = { c.settings.setPerformanceOffered() }) { Text(tr(R.string.no_thanks)) }
+            com.vinz.music.ui.components.VinzTextButton(onClick = { c.settings.setPerformanceMode(true) }) { Text(tr(R.string.turn_on)) }
+        }
+    }
+}
+
+/**
+ * Once, after setting up (#339, 1.8.1.1): Smart Downloads is off on a new install, so Home offers it. Either answer puts
+ * the card away for good (Downloads, storage & data has the switch); it never shows to anyone who had it before.
+ */
+@Composable
+private fun SmartDownloadsOffer() {
+    val c = LocalContainer.current
+    val settings = LocalAppSettings.current
+    var answered by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { answered = c.settings.smartDownloadsChosen() }
+    if (answered != false || !settings.onboarded) return
+    val ui = com.vinz.music.ui.theme.LocalUi.current
+    val answer = { on: Boolean -> c.settings.setSmartDownloads(on); answered = true }
+    Column(
+        Modifier.padding(start = 16.dp, end = 16.dp, top = ui.gap(14.dp)).fillMaxWidth().pane(ui.shape(16.dp)).padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(VinzIcons.Download, null, tint = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(tr(R.string.smart_downloads_offer_title), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    tr(R.string.smart_downloads_offer_body),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Row(Modifier.align(Alignment.End)) {
+            com.vinz.music.ui.components.VinzTextButton(onClick = { answer(false) }) { Text(tr(R.string.not_now)) }
+            com.vinz.music.ui.components.VinzTextButton(onClick = { answer(true) }) { Text(tr(R.string.turn_on)) }
         }
     }
 }
@@ -387,8 +535,8 @@ private fun OfflineNote() {
         Icon(VinzIcons.CloudOff, null, tint = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.width(14.dp))
         Column {
-            Text("You're offline", style = MaterialTheme.typography.titleSmall)
-            Text("Home shows the music on this phone: downloads, songs kept whole and your files", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.you_re_offline), style = MaterialTheme.typography.titleSmall)
+            Text(tr(R.string.home_shows_the_music_on_this), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -397,14 +545,25 @@ private fun OfflineNote() {
 private fun HomeTopBar() {
     val nav = LocalNavigator.current
     val settings = LocalAppSettings.current
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    // The hour and the day, looked at again when Vinz comes back on screen and each minute while it's shown (1.7.9.3:
+    // left open overnight, Home still said "Friday … Good evening" on Saturday morning). Only a change redraws.
+    var hour by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
+    var day by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_YEAR)) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.tickWhileShown(60_000) {
+            val now = Calendar.getInstance()
+            hour = now.get(Calendar.HOUR_OF_DAY)
+            day = now.get(Calendar.DAY_OF_YEAR)
+        }
+    }
     val greeting = settings.greetingText.trim().ifBlank {
-        when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
+        when (hour) { in 5..11 -> tr(R.string.good_morning); in 12..17 -> tr(R.string.good_afternoon); else -> tr(R.string.good_evening) }
     }
     // In the language's own order ("Thursday 15 October", "10월 15일 목요일"), not English's with translated words.
-    val today = remember {
+    val today = remember(day) {
         val locale = java.util.Locale.getDefault()
-        java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), locale).format(java.util.Date())
+        java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, tr(R.string.eeeedmmmm)), locale).format(java.util.Date())
     }
     val ui = com.vinz.music.ui.theme.LocalUi.current
     val header = settings.homeHeader
@@ -473,14 +632,14 @@ private fun HomeTopRow(greeting: String, today: String, showGreeting: Boolean) {
         // Podcasts live a tap away from Home (as on Spotify's), in the same quiet round button as Customize.
         // With the top Customize button off, Podcasts moves over into its place, beside the account.
         // Settings → Home screen → "Podcasts button" off (#28): Podcasts opens from Library instead.
-        if (settings.homePodcastsButton) com.vinz.music.ui.components.RoundAction(VinzIcons.Podcasts, "Podcasts") { nav.go(Routes.PODCASTS) }
+        if (settings.homePodcastsButton) com.vinz.music.ui.components.RoundAction(VinzIcons.Podcasts, tr(R.string.podcasts)) { nav.go(Routes.PODCASTS) }
         if (settings.homeCustomizeTopButton) {
             if (settings.homePodcastsButton) Spacer(Modifier.width(8.dp))
-            com.vinz.music.ui.components.RoundAction(VinzIcons.Customize, "Customize home") { nav.go(Routes.CATALOGUE) }
+            com.vinz.music.ui.components.RoundAction(VinzIcons.Customize, tr(R.string.customize_home_2)) { nav.go(Routes.CATALOGUE) }
         }
         Spacer(Modifier.width(8.dp))
         com.vinz.music.ui.screens.ProfilePicture(
-            Modifier.size(42.dp).clickable(onClickLabel = "Settings") { nav.go(Routes.SETTINGS) }, description = "Settings",
+            Modifier.size(42.dp).clickable(onClickLabel = tr(R.string.settings)) { nav.go(Routes.SETTINGS) }, description = tr(R.string.settings),
         )
     }
 }
@@ -498,8 +657,8 @@ private fun ContextLine() {
     val rewind = remember { Calendar.getInstance().get(Calendar.MONTH) == Calendar.DECEMBER && c.rewind.isOpen(year) }
     val album = recent.firstNotNullOfOrNull { s -> s.album?.takeIf { it.id != null && it.title.isNotBlank() } }
     val (label, open) = when {
-        rewind -> "Your Rewind $year is ready" to { c.rewindRequest.value = year; nav.go(Routes.REPLAY) }
-        album != null -> "Continue ${album.title}" to { nav.go(Routes.album(album.id!!)) }
+        rewind -> tr(R.string.your_rewind_is_ready, year) to { c.rewindRequest.value = year; nav.go(Routes.REPLAY) }
+        album != null -> tr(R.string.continue_text, album.title) to { nav.go(Routes.album(album.id!!)) }
         else -> return
     }
     val dark = com.vinz.music.ui.theme.LocalIsDark.current
@@ -520,9 +679,11 @@ private fun ContextLine() {
 /**
  * "A new Vinz is out" under the greeting, when there is one. Tapping it downloads the update and
  * opens Android's installer (asking once for permission to install); × puts it off until the next.
+ * Settings → Backup & about shows it too, [inSettings] (no ×: it's there because the listener asked), so an update
+ * installs without Home (#201: with the Home tab turned off, About pointed at a banner that wasn't there).
  */
 @Composable
-private fun UpdateBanner() {
+internal fun UpdateBanner(inSettings: Boolean = false) {
     val c = LocalContainer.current
     val update by c.updates.available.collectAsState()
     val progress by c.updates.progress.collectAsState()
@@ -548,16 +709,18 @@ private fun UpdateBanner() {
     val ink = scheme.onSurface
     val (title, detail) = when (val p = progress) {
         is com.vinz.music.data.UpdateProgress.Downloading ->
-            "Downloading Vinz ${u.version}…" to (p.fraction?.let { "${(it * 100).toInt()}%" } ?: "Starting")
-        com.vinz.music.data.UpdateProgress.Installing -> "Installing Vinz ${u.version}" to "Confirm in Android's installer"
-        is com.vinz.music.data.UpdateProgress.Failed -> "Update didn't finish" to "${p.message}. Tap to try again"
-        com.vinz.music.data.UpdateProgress.NeedsPermission -> "Allow Vinz to install updates" to "Turn on \"Allow from this source\", then come back"
-        com.vinz.music.data.UpdateProgress.Idle -> "Vinz ${u.version} is available" to "Tap to update"
-        is com.vinz.music.data.UpdateProgress.NewSignature -> "Vinz ${u.version} needs a reinstall" to "Tap to move over; your things come with you"
+            tr(R.string.downloading_vinz, u.version) to (p.fraction?.let { "${(it * 100).toInt()}%" } ?: tr(R.string.starting_2))
+        com.vinz.music.data.UpdateProgress.Installing -> tr(R.string.installing_vinz, u.version) to tr(R.string.confirm_in_android_s_installer)
+        is com.vinz.music.data.UpdateProgress.Failed -> tr(R.string.update_didn_t_finish) to tr(R.string.tap_to_try_again_2, p.message)
+        com.vinz.music.data.UpdateProgress.NeedsPermission -> tr(R.string.allow_vinz_to_install_updates) to tr(R.string.turn_on_allow_from_this_source)
+        com.vinz.music.data.UpdateProgress.Idle -> tr(R.string.vinz_is_available, u.version) to tr(R.string.tap_to_update)
+        is com.vinz.music.data.UpdateProgress.NewSignature -> tr(R.string.vinz_needs_a_reinstall, u.version) to tr(R.string.tap_to_move_over_your_things)
     }
     Column(
-        Modifier.padding(start = 16.dp, end = 16.dp, top = ui.gap(14.dp)).fillMaxWidth().pane(ui.shape(16.dp)).border(1.5.dp, com.vinz.music.ui.theme.VinzTokens.spectrum, ui.shape(16.dp))
-            .clickable(enabled = !busy) {
+        Modifier.padding(start = 16.dp, end = 16.dp, top = if (inSettings) 4.dp else ui.gap(14.dp), bottom = if (inSettings) 8.dp else 0.dp)
+            .fillMaxWidth().pane(ui.shape(16.dp)).border(1.5.dp, com.vinz.music.ui.theme.VinzTokens.spectrum, ui.shape(16.dp))
+            // While Android's installer waits, a tap brings its screen back (#278); nothing starts a second update.
+            .clickable(enabled = progress !is com.vinz.music.data.UpdateProgress.Downloading) {
                 when {
                     !u.isApk -> runCatching { uri.openUri(u.url) }
                     progress is com.vinz.music.data.UpdateProgress.NeedsPermission -> runCatching { allow.launch(c.updates.permissionIntent()) }
@@ -573,7 +736,7 @@ private fun UpdateBanner() {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = ink)
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.8f))
             }
-            if (!busy) IconButton(onClick = { c.updates.dismiss() }) { Icon(VinzIcons.Close, "Dismiss", tint = ink) }
+            if (!busy && !inSettings) IconButton(onClick = { c.updates.dismiss() }) { Icon(VinzIcons.Close, tr(R.string.dismiss), tint = ink) }
         }
         (progress as? com.vinz.music.data.UpdateProgress.Downloading)?.let { p ->
             com.vinz.music.ui.components.VinzProgressBar(p.fraction?.let { f -> { f } }, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
@@ -615,7 +778,7 @@ private fun GreetingSection(cfg: HomeSectionConfig, recent: List<Song>) {
             // A Vinz playlist shows its current name and cover (it changes on the phone; the pin keeps a copy).
             val pl = vinzLists.firstOrNull { it.id == pin.id }?.item()?.let { pin.copy(title = it.title, thumbnail = it.thumbnail ?: pin.thumbnail) } ?: pin
             val art = c.covers.art(pl.id, pl.thumbnail)
-            add(Tile(pl.title, null, art, Playable.Of(PlaylistItem(pl.id, pl.title, "Playlist", art))) { nav.go(Routes.playlist(pl.id)) })
+            add(Tile(pl.title, null, art, Playable.Of(PlaylistItem(pl.id, pl.title, tr(R.string.playlist), art))) { nav.go(Routes.playlist(pl.id)) })
         }
         // One tile per album: by its id, or (music files on the phone have no album id) by its title and artist.
         recent.distinctBy { s -> s.album?.id ?: s.album?.title?.takeIf { it.isNotBlank() }?.let { "t:${it.lowercase()}|${s.primaryArtist.lowercase()}" } ?: s.id }
@@ -686,7 +849,7 @@ private fun GreetingSection(cfg: HomeSectionConfig, recent: List<Song>) {
 
 @Composable
 private fun SongSection(
-    cfg: HomeSectionConfig, title: String, strapline: String?, songs: List<Song>,
+    cfg: HomeSectionConfig, title: String, strapline: String?, listed: List<Song>,
     /** Swipes stop on each column of rows, as YouTube Music's Quick picks do. */
     snap: Boolean = false,
     /** What tapping a song does; null plays the section from it. */
@@ -694,6 +857,10 @@ private fun SongSection(
     onMore: (() -> Unit)? = null,
 ) {
     val c = LocalContainer.current
+    // #216: "Hide them" leaves explicit songs off Home's rows too (a row of nothing else goes).
+    val songs = com.vinz.music.data.ExplicitFilter.shown(com.vinz.music.ui.theme.LocalAppSettings.current.behavior.explicitContent, listed)
+    if (songs.isEmpty()) return
+    val current by c.player.currentSong.collectAsState()
     val start: (Int) -> Unit = { i -> play?.invoke(songs, i) ?: c.player.playQueue(songs, i, QueueSource(QueueKind.OTHER, title)) }
     val indexOf: (BrowseItem) -> Int = { item -> songs.indexOfFirst { it.id == item.id }.coerceAtLeast(0) }
     SectionHeader(title, strapline = strapline, onMore = onMore)
@@ -722,12 +889,14 @@ private fun SongSection(
                 flingBehavior = if (snap) snapping else androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior(),
             ) {
                 items(songs.size) { i ->
-                    Box(Modifier.width(330.dp)) { SongRow(songs[i]) { start(i) } }
+                    // The song playing is marked, as in a playlist (#242: Quick picks never showed it).
+                    Box(Modifier.width(330.dp)) { SongRow(songs[i], playing = current?.id == songs[i].id) { start(i) } }
                 }
             }
         }
         SectionStyle.HERO -> HeroRow(songs.map { SongItem(it) }) { item -> start(indexOf(item)) }
         SectionStyle.CAROUSEL -> ItemCarousel(songs.map { SongItem(it) }, { item -> start(indexOf(item)) })
+        SectionStyle.DIAL -> SpeedDialPages(songs.map { SongItem(it) }) { item -> start(indexOf(item)) }
     }
 }
 
@@ -754,19 +923,50 @@ private fun ShelfSection(cfg: HomeSectionConfig, shelf: Shelf, open: (BrowseItem
 @Composable
 private fun SpeedDialSection(cfg: HomeSectionConfig, items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
     if (items.size < 3) return
-    SectionHeader(cfg.title, strapline = "Your go-to music")
+    SectionHeader(cfg.title, strapline = tr(R.string.your_go_to_music))
     when (cfg.style) {
         SectionStyle.CAROUSEL -> ItemCarousel(items, open)
         SectionStyle.HERO -> HeroRow(items, open)
         SectionStyle.LIST -> StyledItems(SectionStyle.LIST, items, open)
-        SectionStyle.GRID -> SpeedDialPages(items, open)
+        SectionStyle.GRID, SectionStyle.DIAL -> SpeedDialPages(items, open)
     }
 }
 
 private const val SPEED_DIAL_SIZE = 27
 
+/**
+ * Speed dial's tiles: YouTube's first, then the listener's own most played ([mine]) and, while the last page still has
+ * gaps, their recent plays and likes ([more]). #295 (1.7.9.3): with only the most played to fill in from, 18–26 tiles
+ * were cut to whole pages, two of them; now the last page is filled. With "YouTube Music's only" ([youtubeOnly]) only
+ * YouTube's own tiles show, cut to whole pages.
+ */
+internal fun speedDialTiles(youtube: List<BrowseItem>, mine: List<BrowseItem>, more: List<BrowseItem>, youtubeOnly: Boolean): List<BrowseItem> {
+    val theirs = youtube.filter { it !is MoodItem }
+    if (youtubeOnly) return theirs.distinctBy { it.id }.take(SPEED_DIAL_SIZE)
+    val first = (theirs + mine).distinctBy { it.id }.take(SPEED_DIAL_SIZE)
+    // Whole pages: as many as there are tiles for, and a page begun is filled up from the rest.
+    val pages = minOf(SPEED_DIAL_SIZE / 9, (first.size + 8) / 9)
+    if (first.size >= pages * 9) return first
+    // Not a song whose album is a tile already.
+    val shown = first.map { it.id }.toSet()
+    return (first + more.filter { (it as? SongItem)?.song?.album?.id !in shown }).distinctBy { it.id }.take(pages * 9)
+}
+
+/**
+ * Speed dial's pages of 3 × 3: whole pages only (#267, 1.7.9.3: 19 tiles left a last page with one), unless there's
+ * less than a page, which shows as it is.
+ */
+internal fun <T> speedDialPages(items: List<T>): List<List<T>> {
+    val whole = if (items.size > 9) items.size - items.size % 9 else items.size
+    return items.take(whole).chunked(9)
+}
+
+/** A shelf's items counted by kind, for the diagnostics log's Home line ("song=3 album=4 playlist=2"). */
+internal fun shelfKinds(s: com.vinz.music.data.model.Shelf): String =
+    s.items.groupingBy { it.javaClass.simpleName.removeSuffix("Item").lowercase() }.eachCount().entries.joinToString(" ") { "${it.key}=${it.value}" }
+
 /** The last three months' most played: albums you've played two or more songs from, and the songs otherwise. */
-private suspend fun speedDialFromHistory(c: com.vinz.music.AppContainer): List<BrowseItem> {
+internal suspend fun speedDialFromHistory(c: com.vinz.music.AppContainer): List<BrowseItem> {
     val since = System.currentTimeMillis() - 90L * 86_400_000L
     val ids = c.db.plays().mostPlayedIds(since, 80)
     if (ids.isEmpty()) return emptyList()
@@ -781,12 +981,12 @@ private suspend fun speedDialFromHistory(c: com.vinz.music.AppContainer): List<B
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun SpeedDialPages(items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
-    val pages = remember(items) { items.chunked(9) }
+internal fun SpeedDialPages(items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
+    val pages = remember(items) { speedDialPages(items) }
     val pager = androidx.compose.foundation.pager.rememberPagerState { pages.size }
     val ui = com.vinz.music.ui.theme.LocalUi.current
     val menu = rememberPlayMenu()
-    Column {
+    Column(Modifier.testTag("dialPages")) {
         androidx.compose.foundation.pager.HorizontalPager(
             pager,
             // Even margins on both sides (#67 again on 1.7.1: the next page peeking in at the right read as the grid
@@ -858,7 +1058,7 @@ internal fun HeroRow(items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
                 Row(Modifier.align(Alignment.BottomStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(item.title, color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(item.subtitle, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        Text(com.vinz.music.data.model.shownKinds(item.subtitle), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
                     }
                     Box(Modifier.size(44.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
                         Icon(VinzIcons.Play, null, tint = Color.Black)
@@ -877,32 +1077,37 @@ internal fun HeroRow(items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
 private class YearSoFar(
     val at: Long, val ms: Long, val months: List<Long>,
     val topSong: com.vinz.music.data.db.SongPlays?, val topArtist: com.vinz.music.data.db.ArtistPlays?,
+    /** What the bars are (#286) and the imported sources counted (1.8.1): read again when either changes. */
+    val graph: com.vinz.music.data.prefs.ReplayGraph = com.vinz.music.data.prefs.ReplayGraph.MONTHS,
+    val counted: Set<com.vinz.music.data.imports.ImportSource> = emptySet(),
 )
 private val yearSoFar = MutableStateFlow<YearSoFar?>(null)
 
-private suspend fun loadYearSoFar(c: com.vinz.music.AppContainer): YearSoFar = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+private suspend fun loadYearSoFar(
+    c: com.vinz.music.AppContainer, graph: com.vinz.music.data.prefs.ReplayGraph, counted: Set<com.vinz.music.data.imports.ImportSource>,
+): YearSoFar = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     val now = System.currentTimeMillis()
     val start = Calendar.getInstance().apply { set(Calendar.DAY_OF_YEAR, 1); set(Calendar.HOUR_OF_DAY, 0) }.timeInMillis
-    val months = Calendar.getInstance().let { today ->
-        (0..today.get(Calendar.MONTH)).map { m ->
-            val from = Calendar.getInstance().apply { set(Calendar.MONTH, m); set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
-            val to = (from.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
-            runCatching { c.db.plays().totalMs(from.timeInMillis, minOf(to.timeInMillis, now)) }.getOrDefault(0L)
-        }
-    }
-    val top = runCatching { c.db.plays().topSongs(start, now, 20).mergeUploads().firstOrNull() to c.db.plays().topArtists(start, now, 1).firstOrNull() }
+    // 1.8.1: the sources Replay counts (Vinz's own plays unless the listener counts an imported history too).
+    val plays = c.imports.stats(counted)
+    // This year's months, or (#286) the last weeks or days.
+    val bars = replayCardBars(plays, graph, now)
+    val top = runCatching { plays.topSongs(start, now, 20).mergeUploads().firstOrNull() to plays.topArtists(start, now, 1).firstOrNull() }
         .getOrDefault(null to null)
-    YearSoFar(now, c.db.plays().totalMs(start, now), months, top.first, top.second)
+    YearSoFar(now, plays.totalMs(start, now), bars, top.first, top.second, graph, counted)
 }
 
 @Composable
 private fun ReplayTeaser(cfg: HomeSectionConfig) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
-    val kept by produceState(yearSoFar.value) {
-        val have = yearSoFar.value
-        if (have != null && System.currentTimeMillis() - have.at < 5 * 60_000L) return@produceState
-        value = runCatching { loadYearSoFar(c) }.getOrNull()?.also { yearSoFar.value = it } ?: have
+    val graph = LocalAppSettings.current.view.replayGraph
+    val counted by c.imports.counted.collectAsState()
+    val cachedYearSoFar by yearSoFar.collectAsState()
+    val kept by produceState(cachedYearSoFar?.takeIf { it.graph == graph && it.counted == counted }, graph, counted) {
+        val have = cachedYearSoFar?.takeIf { it.graph == graph && it.counted == counted }
+        if (have != null && System.currentTimeMillis() - have.at < 5 * 60_000L) { value = have; return@produceState }
+        value = runCatching { loadYearSoFar(c, graph, counted) }.getOrNull()?.also { yearSoFar.value = it } ?: have
     }
     val soFar = kept ?: return
     val ms = soFar.ms
@@ -915,15 +1120,17 @@ private fun ReplayTeaser(cfg: HomeSectionConfig) {
     // Spotlight (the default) is the big card below; the other styles show the year so far as a few cards or rows:
     // the time listened, the top song and the top artist, each opening Replay.
     val top = soFar.topSong to soFar.topArtist
+    // The card counts imported histories too when they're switched on, but doesn't say "Includes Spotify" (owner,
+    // 1.8.1): Replay itself and its story still do.
     if (cfg.style != SectionStyle.HERO) {
         val open: () -> Unit = { if (rewind) c.rewindRequest.value = year; nav.go(Routes.REPLAY) }
         val dark = com.vinz.music.ui.theme.LocalIsDark.current
-        SectionHeader(if (rewind) "Rewind $year" else "Replay $year", strapline = "Your year so far", onMore = open)
+        SectionHeader(if (rewind) tr(R.string.rewind, year) else tr(R.string.replay, year), strapline = tr(R.string.your_year_so_far), onMore = open)
         StyledEntries(cfg.style, listOfNotNull(
-            HomeEntry("replay:time", total.full, if (rewind) "Your year in music" else "Listened this year", icon = VinzIcons.ReplayFilled,
+            HomeEntry("replay:time", total.full, listOfNotNull(if (rewind) tr(R.string.your_year_in_music) else tr(R.string.listened_this_year)).joinToString(" · "), icon = VinzIcons.ReplayFilled,
                 fill = com.vinz.music.ui.theme.VinzTokens.spectrum(dark), onFill = true, onClick = open),
-            top.first?.let { s -> HomeEntry("replay:song", s.title, "Your top song · ${s.artistName}", image = s.thumbnail, onClick = open) },
-            top.second?.let { a -> HomeEntry("replay:artist", a.artistName, "Your top artist", image = a.thumbnail, icon = VinzIcons.Person, onClick = open) },
+            top.first?.let { s -> HomeEntry("replay:song", s.title, tr(R.string.your_top_song, s.artistName), image = s.thumbnail, onClick = open) },
+            top.second?.let { a -> HomeEntry("replay:artist", a.artistName, tr(R.string.your_top_artist), image = a.thumbnail, icon = VinzIcons.Person, onClick = open) },
         ))
         return
     }
@@ -945,7 +1152,7 @@ private fun ReplayTeaser(cfg: HomeSectionConfig) {
         }
         ReplayCard(
             look,
-            ReplayCardData(year, total.full, months, top.first?.title, top.first?.artistName, top.second?.artistName, yearDone, 0),
+            ReplayCardData(year, total.full, months, top.first?.title, top.first?.artistName, top.second?.artistName, yearDone, 0, soFar.graph),
             art, Modifier.padding(vertical = ui.gap(16.dp)),
         ) { nav.go(Routes.REPLAY) }
         return
@@ -972,13 +1179,13 @@ private fun ReplayTeaser(cfg: HomeSectionConfig) {
             .padding(22.dp),
     ) {
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(0.68f)) {
-            com.vinz.music.ui.components.Eyebrow(if (rewind) "Rewind $year" else "Replay $year")
+            com.vinz.music.ui.components.Eyebrow(if (rewind) tr(R.string.rewind, year) else tr(R.string.replay, year))
             Box(Modifier.padding(top = 6.dp, bottom = 8.dp).size(28.dp, 2.dp).clip(CircleShape).background(com.vinz.music.ui.theme.VinzTokens.spectrum(dark)))
             val big = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.ExtraLight)
-            if (rewind) Text("Your year in music", style = big, color = scheme.onSurface, maxLines = 1)
+            if (rewind) Text(tr(R.string.your_year_in_music), style = big, color = scheme.onSurface, maxLines = 1)
             else Text(total.full, Modifier.toggleListenUnit(), style = big, color = scheme.onSurface, maxLines = 1)
             Text(
-                if (rewind) "${total.full}. Your top songs and artists, your year in Vinz, and more" else "Your top songs, artists and genres",
+                (if (rewind) tr(R.string.your_top_songs_and_artists_your, total.full) else tr(R.string.your_top_songs_artists_and_genres)),
                 color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 2,
             )
         }
@@ -1015,7 +1222,7 @@ private fun TopGenresSection(cfg: HomeSectionConfig) {
         genres = map.values.groupingBy { it }.eachCount().toList().sortedByDescending { it.second }.take(8)
     }
     if (genres.isEmpty()) return
-    SectionHeader("Your top genres", strapline = "From your liked songs")
+    SectionHeader(tr(R.string.your_top_genres), strapline = tr(R.string.from_your_liked_songs))
     val palette = listOf(0xFF7C5CFF, 0xFFFF3B5C, 0xFF00B4D8, 0xFF2EC27E, 0xFFFF6B35, 0xFFE056FD, 0xFFFFB627, 0xFF3A86FF)
     val ui = com.vinz.music.ui.theme.LocalUi.current
     // Grid (the default) is the colored tiles below; the other styles show the same genres their way.

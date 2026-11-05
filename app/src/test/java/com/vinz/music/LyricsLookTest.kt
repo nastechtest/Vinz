@@ -21,7 +21,10 @@ import com.vinz.music.data.lyrics.LyricLine
 import com.vinz.music.data.lyrics.LyricWord
 import com.vinz.music.data.prefs.AppSettings
 import com.vinz.music.data.prefs.LyricsBackground
+import com.vinz.music.data.prefs.LyricsLookPrefs
+import com.vinz.music.data.prefs.LyricsMotion
 import com.vinz.music.data.prefs.LyricsStyle
+import com.vinz.music.ui.player.lyricsLookOf
 import com.vinz.music.data.prefs.ThemeMode
 import com.vinz.music.ui.player.LyricsLook
 import com.vinz.music.ui.player.cardColor
@@ -66,6 +69,7 @@ class LyricsLookTest {
         assertEquals(LyricsBackground.PLAYER, s.immersiveBackground)
         // The classic look: white, Light growing to Medium, 1.7's dimming.
         val c = LyricsLook.Classic
+        assertEquals(com.vinz.music.data.prefs.LyricsMotion.GROW, c.motion)
         assertEquals(null, c.sung)
         assertEquals(300, c.weight)
         assertEquals(500, c.sungWeight)
@@ -116,32 +120,56 @@ class LyricsLookTest {
         }
     }
 
+    /** The look [p] draws (white, or Accent for the sung line), Bold card on [card]. */
+    private fun lookOf(p: LyricsLookPrefs): LyricsLook {
+        val sung = if (p.sungColor == com.vinz.music.data.prefs.LyricsColor.ACCENT) androidx.compose.ui.graphics.SolidColor(Color(0xFFFF7A59)) else null
+        return lyricsLookOf(p, sung, Color.White, Color.White, if (p.onCard) cardColor(Color(0xFF8A6BFF)) else null)
+    }
+
+    /** Each "Start from" template as 1.8.0 draws it from the stored Style (styles.png: the same as 1.7.9's). */
     @Test
     fun everyStyleRenders() {
-        val dark = AppSettings(themeMode = ThemeMode.DARK, reduceMotion = true)
-        val card = cardColor(Color(0xFF8A6BFF))
         val looks = buildList {
-            LyricsStyle.entries.forEach { st ->
-                add(st.label to LyricsLook(
-                    style = st,
-                    sung = if (st == LyricsStyle.KARAOKE) VinzTokens.spectrum(true) else null,
-                    card = if (st == LyricsStyle.CARD) card else null,
-                    others = if (st == LyricsStyle.CARD) Color.Black else Color.White,
-                    othersAlpha = if (st == LyricsStyle.CARD) 0.62f else 0.55f,
-                    weight = if (st == LyricsStyle.CARD) 700 else 300, sungWeight = if (st == LyricsStyle.CARD) 900 else 500,
-                ))
-            }
+            LyricsStyle.entries.forEach { st -> add(st.label to lookOf(LyricsLookPrefs().startFrom(st))) }
             add("Accent sung, bold, capitals" to LyricsLook(sung = androidx.compose.ui.graphics.SolidColor(Color(0xFFFF7A59)), weight = 700, sungWeight = 900, uppercase = true))
-            add("Glow in your light, shadow" to LyricsLook(style = LyricsStyle.GLOW, sung = VinzTokens.spectrum(true), shadow = com.vinz.music.ui.player.LyricsShadow))
+            add("Glow in your light, shadow" to lookOf(LyricsLookPrefs(style = LyricsStyle.GLOW, shadow = true)).copy(sung = VinzTokens.spectrum(true)))
             add("Thin, airy, faint others" to LyricsLook(weight = 200, sungWeight = 400, spacing = 1.6f, othersAlpha = 0.25f))
         }
+        sheet("styles.png", looks, extraFor = "Calm")
+    }
+
+    /**
+     * The four parts (parts.png, for the owner): each Animation on Vinz's look, then templates with one part changed
+     * (only that part looks different from the template above it in styles.png).
+     */
+    @Test
+    fun everyPartRenders() {
+        val vinz = LyricsLookPrefs()
+        val looks = buildList {
+            LyricsMotion.entries.forEach { m -> add("Animation: ${m.label}" to lookOf(vinz.copy(motion = m))) }
+            add("Bold card + Typewriter" to lookOf(vinz.startFrom(LyricsStyle.CARD).copy(motion = LyricsMotion.TYPEWRITER)))
+            add("Bold card, weight Light" to lookOf(vinz.startFrom(LyricsStyle.CARD).copy(weight = com.vinz.music.data.prefs.LyricsWeight.LIGHT, boldLines = false)))
+            add("Glow + Color fills" to lookOf(vinz.startFrom(LyricsStyle.GLOW).copy(motion = LyricsMotion.FILL)))
+            add("Glow + Grows bolder" to lookOf(vinz.startFrom(LyricsStyle.GLOW).copy(motion = LyricsMotion.GROW)))
+            add("Karaoke + Glow, accent" to lookOf(vinz.startFrom(LyricsStyle.KARAOKE).copy(halo = true, sungColor = com.vinz.music.data.prefs.LyricsColor.ACCENT)))
+            add("Vinz on Bold card" to lookOf(vinz.copy(card = true)))
+            add("Calm, centered, capitals, shadow" to lookOf(vinz.startFrom(LyricsStyle.CALM).copy(uppercase = true, shadow = true)))
+        }
+        sheet("parts.png", looks, centered = "Calm, centered, capitals, shadow")
+    }
+
+    private fun sheet(file: String, looks: List<Pair<String, LyricsLook>>, extraFor: String? = null, centered: String? = null) {
+        val dark = AppSettings(themeMode = ThemeMode.DARK, reduceMotion = true)
         compose.setContent {
             CompositionLocalProvider(LocalAppSettings provides dark) {
                 VinzTheme(dark, artworkColor = null) {
                     Column(Modifier.width(412.dp).background(Color(0xFF0A0A0D)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         looks.forEach { (name, look) ->
                             Text(name, color = Color.White.copy(alpha = 0.7f))
-                            LyricsSample(look, Modifier.fillMaxWidth(), extra = if (name == "Calm") "Cada color encuentra su camino" else null)
+                            val s = if (name == centered) dark.copy(lyricsAlign = com.vinz.music.data.prefs.LyricsAlign.CENTER) else dark
+                            CompositionLocalProvider(LocalAppSettings provides s) {
+                                LyricsSample(look, Modifier.fillMaxWidth(), extra = if (name == extraFor) "Cada color encuentra su camino" else null, backing = name == centered, progress = name == centered)
+                            }
                         }
                     }
                 }
@@ -150,6 +178,6 @@ class LyricsLookTest {
         compose.waitForIdle()
         val bmp = compose.onRoot().captureToImage().asAndroidBitmap()
         val dir = File("build/lyrics-previews").apply { mkdirs() }
-        File(dir, "styles.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(dir, file).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

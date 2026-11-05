@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Runs the JVM unit tests that are deterministic in CI.
 #
-# Vinz has 111 JVM tests; the *LiveTest and *ApiTest classes call real YouTube Music / lyric endpoints and
-# fail on network hiccups or upstream changes, so they are excluded here (this mirrors the filter the
-# repository's CI already used). Everything else -- Robolectric, Compose UI, Room migration, audio DSP --
-# runs on the JVM and is safe to gate a merge on.
+# Classes whose names contain Live or end in ApiTest call real YouTube Music / lyric endpoints and can
+# fail on network hiccups or upstream changes, so they are excluded here. All other discovered JVM test
+# classes -- Robolectric, Compose UI, Room migrations, audio DSP -- run and gate a merge.
 #
 #   run-unit-tests.sh [extra gradle args...]
 set -euo pipefail
@@ -12,6 +11,9 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
+
+# Fail before tests if a required Vinz brand asset is missing or has drifted.
+python3 "${script_dir}/check_branding.py"
 
 # Robolectric fetches its Android runtime from Maven Central inside the test JVM, where a single 404 fails whichever
 # test happens to be running (PR #19 lost five render tests to one missing .pom.sha512). Warmed up front instead, with

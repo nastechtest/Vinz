@@ -1,5 +1,7 @@
 package com.vinz.music.connect
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.app.Application
 import android.content.Context
 import android.media.AudioManager
@@ -77,10 +79,7 @@ class WebRemote(private val app: Application, private val c: AppContainer) : Rem
     })
     // The page's files; its font is Vinz's own Outfit, straight from the app (nothing is fetched from the internet).
     private val server = RemoteServer(auth, this, { name ->
-        runCatching {
-            if (name == "outfit.ttf") app.resources.openRawResource(com.vinz.music.R.font.outfit).use { it.readBytes() }
-            else app.assets.open("remote/$name").use { it.readBytes() }
-        }.getOrNull()
+        runCatching { app.assets.open("remote/$name").use { it.readBytes() } }.getOrNull()
     })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
@@ -164,7 +163,7 @@ class WebRemote(private val app: Application, private val c: AppContainer) : Rem
             smart = c.queue.smartShuffle.value,
             repeat = pc.repeatMode.value,
             volume = volume(),
-            output = cast?.renderer?.name ?: "This phone",
+            output = cast?.renderer?.name ?: tr(R.string.this_phone_2),
             source = c.queue.source.value.title,
             lyricShift = pc.lyricShift.value,
             canNext = pc.hasNext.value,

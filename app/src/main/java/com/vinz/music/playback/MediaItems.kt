@@ -1,3 +1,4 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import android.net.Uri
@@ -27,16 +28,21 @@ fun Song.toMediaItem(videoId: String? = null): MediaItem {
         putString(EXTRA_SONG, InnerTube.json.encodeToString(Song.serializer(), this@toMediaItem))
         if (videoId != null) putString(EXTRA_VIDEO, videoId)
     }
+    // #328: shown as the version picked to play in its place (the item itself stays the song, for history and likes).
+    val shown = com.vinz.music.data.SongVersions.shownOf(this)
     return MediaItem.Builder()
         .setMediaId(id)
         .setUri(uri)
         .setCustomCacheKey(id)
         .setMediaMetadata(
             MediaMetadata.Builder()
-                .setTitle(title)
-                .setArtist(artistText)
-                .setAlbumTitle(album?.title)
-                .setArtworkUri(hiRes(thumbnail, 544)?.let(Uri::parse))
+                .setTitle(shown.title)
+                .setArtist(shown.artistText)
+                .setAlbumTitle(shown.album?.title)
+                // The cover picked for the song or its album (#305), through the artwork provider so a car can show it too.
+                .setArtworkUri(com.vinz.music.data.PlaylistCovers.artOf(this@toMediaItem).let { art ->
+                    if (art != null && art.startsWith("file:")) ArtworkProvider.contentUri(art) else hiRes(art, 544)?.let(Uri::parse)
+                })
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
                 .setMediaType(if (isEpisode) MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE else MediaMetadata.MEDIA_TYPE_MUSIC)
