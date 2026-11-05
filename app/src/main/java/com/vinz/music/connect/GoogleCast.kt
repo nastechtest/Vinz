@@ -474,17 +474,13 @@ class GoogleCastLink(
         const val OTHER = "googlecast://other"
 
         /** TLS to a Cast device, which presents a self-signed certificate. */
-        fun tlsSocket(host: String, port: Int): Socket = tlsSocket(host, port, provider = null)
-
-        /** Provider-selectable variant for deterministic JVM tests; production uses the platform default above. */
-        internal fun tlsSocket(host: String, port: Int, provider: String?): Socket {
+        fun tlsSocket(host: String, port: Int): Socket {
             val trustAny = object : X509TrustManager {
                 override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
                 override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
                 override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
             }
-            val ctx = (provider?.let { SSLContext.getInstance("TLS", it) } ?: SSLContext.getInstance("TLS"))
-                .apply { init(null, arrayOf(trustAny), SecureRandom()) }
+            val ctx = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustAny), SecureRandom()) }
             val s = ctx.socketFactory.createSocket() as SSLSocket
             s.connect(InetSocketAddress(host, port), 5_000)
             // The device pings every 5 s: nothing for 20 s means it's gone.
