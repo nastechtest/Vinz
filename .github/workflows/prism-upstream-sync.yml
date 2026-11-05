@@ -1,0 +1,112 @@
+# Daily, deterministic sync from Prism. The scheduled job opens one PR per upstream change-set and
+# merges it only after the dedicated validation workflow passes. Conflicts or failing checks leave
+# the PR open for a maintainer; no model makes code or branding decisions.
+name: Prism upstream sync
+
+on:
+  schedule:
+    - cron: "47 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: prism-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync, open PR, validate, and merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      SYNC_BRANCH: automation/prism-upstream-sync
+    steps:
+      - name: Check out Vinz
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Check updater logic
+        run: python3 scripts/upstream/sync_prism.py --self-test
+
+      - name: Verify the protected Vinz artwork
+        run: python3 scripts/upstream/sync_prism.py --verify-branding
+
+      - name: Apply upstream changes and preserve Vinz branding
+        id: sync
+        run: |
+          set -euo pipefail
+          python3 scripts/upstream/sync_prism.py
+          if git diff --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Prism has no new changes."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Configure and push the update branch
+        if: steps.sync.outputs.changed == 'true'
+        id: push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --force-create "$SYNC_BRANCH"
+          git add -A
+          git commit -m "chore(upstream): sync Prism"
+          sha=$(git rev-parse HEAD)
+          git push --force origin "$SYNC_BRANCH"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the upstream PR
+        if: steps.sync.outputs.changed == 'true'
+        id: pr
+        run: |
+          set -euo pipefail
+          number=$(gh pr list --state open --head "$SYNC_BRANCH" --json number --jq '.[0].number // empty')
+          if [[ -z "$number" ]]; then
+            gh pr create \
+              --base main \
+              --head "$SYNC_BRANCH" \
+              --title "chore(upstream): sync Prism" \
+              --body "Automated Prism sync. This PR removes no Vinz identity files: the updater three-way merges upstream changes, rebrands names and paths, preserves the Vinz logo assets, and stops on conflicts. The source commit is `${{ steps.push.outputs.sha }}`. It will be merged only after the dedicated validation workflow passes."
+            number=$(gh pr list --state open --head "$SYNC_BRANCH" --json number --jq '.[0].number')
+          else
+            gh pr edit "$number" \
+              --title "chore(upstream): sync Prism" \
+              --body "Automated Prism sync. The updater three-way merges upstream changes, rebrands names and paths, preserves the Vinz logo assets, and stops on conflicts. The source commit is `${{ steps.push.outputs.sha }}`. It will be merged only after the dedicated validation workflow passes."
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch validation on the exact synced commit
+        if: steps.sync.outputs.changed == 'true'
+        id: validation
+        run: |
+          set -euo pipefail
+          workflow="prism-upstream-validation.yml"
+          previous=$(gh run list --workflow "$workflow" --branch "$SYNC_BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          gh workflow run "$workflow" --ref "$SYNC_BRANCH"
+          run_id=""
+          for _ in $(seq 1 60); do
+            run_id=$(gh run list --workflow "$workflow" --branch "$SYNC_BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [[ -n "$run_id" && "$run_id" != "$previous" ]] && break
+            sleep 10
+          done
+          [[ -n "$run_id" && "$run_id" != "$previous" ]] || { echo "Validation workflow did not start." >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --exit-status
+
+      - name: Merge only a passing update
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_NUMBER"
+          gh pr merge "$PR_NUMBER" --squash --delete-branch

@@ -1,5 +1,7 @@
 package com.vinz.music.connect
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.app.Application
 import android.content.Context
 import android.net.nsd.NsdManager
@@ -26,15 +28,20 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 import kotlin.coroutines.resume
 
-/** Another Vinz on this network that's available for handoff. */
-data class VinzDevice(val name: String, val host: String, val port: Int, val id: String?, val key: String, val paired: Boolean)
+/**
+ * Another Vinz on this network that's available for handoff. [hosts]: every address it answers on, the likeliest first
+ * ([LinkReach.order]); [host] is the first.
+ */
+data class VinzDevice(
+    val name: String, val host: String, val port: Int, val id: String?, val key: String, val paired: Boolean, val tv: Boolean = false,
+    val hosts: List<String> = listOf(host),
+)
 
 /** A code this device is showing for another to type in, while it pairs. */
 data class ShownCode(val code: String, val from: String)
@@ -65,6 +72,15 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
     val busy: StateFlow<String?> = _busy.asStateFlow()
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val events = _events.asSharedFlow()
+    private val _unreachable = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** Devices (by [VinzDevice.key]) that didn't answer the last time, and why: shown on their rows, tapped to try again. */
+    val unreachable: StateFlow<Map<String, String>> = _unreachable.asStateFlow()
+    init {
+        // 1.8.0: links are encrypted now (version 2); keys from before can't be used for it, so those devices pair again once.
+        val old = prefs.all.keys.filter { it.startsWith("s:") }
+        if (old.isNotEmpty()) prefs.edit().apply { old.forEach { k -> remove(k); remove("n:" + k.removePrefix("s:")) } }.apply()
+    }
+
     private val _pairings = MutableStateFlow(pairings())
     /** Devices this one is paired with: id → name. */
     val pairedDevices: StateFlow<List<Pair<String, String>>> = _pairings.asStateFlow()
@@ -82,21 +98,22 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
 
     // ------------------------------------------------------------ Pairings
 
-    private fun pairings(): List<Pair<String, String>> = prefs.all.keys.filter { it.startsWith("s:") }.map { k ->
-        val id = k.removePrefix("s:")
-        id to (prefs.getString("n:$id", null) ?: "A Vinz device")
+    private fun pairings(): List<Pair<String, String>> = prefs.all.keys.filter { it.startsWith("k:") }.map { k ->
+        val id = k.removePrefix("k:")
+        id to (prefs.getString("n:$id", null) ?: tr(R.string.a_vinz_device))
     }.sortedBy { it.second.lowercase() }
 
-    override fun secretFor(device: String): String? = prefs.getString("s:$device", null)
+    override fun secretFor(device: String): String? = prefs.getString("k:$device", null)
 
     override fun savePairing(device: String, name: String, secret: String) {
-        prefs.edit().putString("s:$device", secret).putString("n:$device", name).apply()
+        prefs.edit().putString("k:$device", secret).putString("n:$device", name).apply()
         _pairings.value = pairings()
         refreshPaired()
+        _pairedWith.tryEmit(name)
     }
 
     override fun forget(device: String) {
-        prefs.edit().remove("s:$device").remove("n:$device").apply()
+        prefs.edit().remove("k:$device").remove("n:$device").apply()
         _pairings.value = pairings()
         refreshPaired()
     }
@@ -106,13 +123,15 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
     }
 
     override fun showCode(code: String?, from: String) {
+        // A TV's code is on its pairing screen already, not in a notification.
+        if (isTv) return
         _shown.value = code?.let { ShownCode(it, from) }
         if (code == null) {
             runCatching { androidx.core.app.NotificationManagerCompat.from(app).cancel(Notifications.CONNECT, NOTIFY_ID) }
         } else {
             Notifications.post(
-                app, Notifications.CONNECT, NOTIFY_ID, "Pairing code: ${code.take(3)} ${code.drop(3)}",
-                "$from wants to play music on this device. Type this code on $from to pair them.", "vinz://connect",
+                app, Notifications.CONNECT, NOTIFY_ID, tr(R.string.pairing_code_2, code.take(3), code.drop(3)),
+                tr(R.string.wants_to_play_music_on_this, from, from), "vinz://connect",
             ) { it.setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH).setTimeoutAfter(HandoffPeer.PAIR_WAIT_MS.toLong()) }
         }
     }
@@ -153,17 +172,17 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
         val canPlay = runBlocking(Dispatchers.Main) { onScreen() || c.player.isPlaying.value }
         if (s.playing && !canPlay) {
             Log.i(TAG, "turned down a move from $from: not on screen or playing here")
-            return "Open Vinz on $name first: Android only lets it start playing there while it's open (or already playing)"
+            return tr(R.string.open_vinz_on_first_android_only, name)
         }
         runBlocking(Dispatchers.Main) {
-            c.player.takeOver(s.songs, s.index, s.positionMs, s.playing, s.order.takeIf { s.shuffle }, s.repeat, s.title.ifBlank { "From $from" })
+            c.player.takeOver(s.songs, s.index, s.positionMs, s.playing, s.order.takeIf { s.shuffle }, s.repeat, s.title.ifBlank { tr(R.string.from, from) })
         }
         if (s.playing) {
             // Started for real (the speaker can still be refused): only then does the other device stop.
             val started = runBlocking { withTimeoutOrNull(START_WAIT_MS) { while (!c.player.isPlaying.value) delay(100); true } } == true
-            if (!started) return "$name couldn't start playing. Open Vinz there and try again"
+            if (!started) return tr(R.string.couldn_t_start_playing_open_vinz, name)
         }
-        _events.tryEmit("Playing here from $from")
+        _events.tryEmit(tr(R.string.playing_here_from, from))
         return null
     }
 
@@ -187,6 +206,293 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
         }
     }
 
+    // ------------------------------------------------------------ A TV's side (1.8.0)
+
+    override val isTv: Boolean by lazy { com.vinz.music.ui.tv.TvDevice.isTv(app) }
+
+    private val tvPairing = PairingCode()
+    /** The code the TV's pairing screen shows, while it's open; a TV takes pairings only then. */
+    val tvCode: StateFlow<String?> = tvPairing.value
+    private val _pairedWith = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** A device that just paired with this one (its name): the TV's pairing screen moves on. */
+    val pairedWith = _pairedWith.asSharedFlow()
+    private val _signedIn = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** The account a phone just signed this TV in with. */
+    val signedIn = _signedIn.asSharedFlow()
+
+    /** The TV's pairing screen opens: a fresh code, shown on it. */
+    fun openPairing(): String = tvPairing.open()
+    fun closePairing() = tvPairing.close()
+
+    override fun takesPairing(): Boolean = !isTv || tvPairing.value.value != null
+
+    /** A TV: a new code after every try (shown on its screen and in the QR code), none once a phone has paired. */
+    override fun pairingEnded(code: String, matched: Boolean): Boolean = if (isTv) tvPairing.ended(code, matched) else matched
+
+    /**
+     * The link a TV's pairing screen puts in its QR code: this TV's address and port, its name and the code shown, and
+     * whether the phone should then offer its sign-in ([signIn]). A phone's camera opens it in Vinz ([pairFromLink]).
+     */
+    fun pairingLink(code: String, signIn: Boolean): String? {
+        val host = Lan.ownAddress() ?: return null
+        val port = server?.localPort ?: return null
+        return android.net.Uri.Builder().scheme("vinz").authority("pair")
+            .appendQueryParameter("h", host).appendQueryParameter("p", port.toString())
+            .appendQueryParameter("n", name).appendQueryParameter("c", code)
+            .apply { if (signIn) appendQueryParameter("s", "1") }
+            .build().toString()
+    }
+
+    private val _signInAsk = MutableStateFlow<VinzDevice?>(null)
+    /** A TV this phone just paired with asked for its sign-in: the phone asks the listener first ([HandoffDialogs]). */
+    val signInAsk: StateFlow<VinzDevice?> = _signInAsk.asStateFlow()
+    fun askSignIn(d: VinzDevice?) { _signInAsk.value = d }
+
+    /** A pairing link opened on this phone, waiting for the listener's yes ([HandoffDialogs]). */
+    data class LinkPair(val name: String, val address: java.net.InetAddress, val port: Int, val code: String, val signIn: Boolean) {
+        val shownAddress: String get() = address.hostAddress ?: "?"
+    }
+
+    private val _linkPair = MutableStateFlow<LinkPair?>(null)
+    val linkPair: StateFlow<LinkPair?> = _linkPair.asStateFlow()
+
+    /**
+     * A TV's QR code, scanned on this phone: once the listener says yes to the TV's name and address ([answerLinkPair]),
+     * pairs with it (the code comes with the link), then offers the sign-in if it's a TV. Any page or app can open such
+     * a link, so nothing happens without that yes, and only to an address on this network (not this phone itself).
+     */
+    fun pairFromLink(link: android.net.Uri) {
+        val host = link.getQueryParameter("h") ?: return
+        val port = link.getQueryParameter("p")?.toIntOrNull()?.takeIf { it in 1..65_535 } ?: return
+        val code = link.getQueryParameter("c")?.filter { it.isDigit() }?.takeIf { it.length == 6 } ?: return
+        val name = link.getQueryParameter("n")?.trim()?.take(60)?.ifBlank { null }
+        val signIn = link.getQueryParameter("s") == "1"
+        scope.launch {
+            // Looked up once, here, and connected to as found (a name can't point elsewhere in between).
+            val address = runCatching { java.net.InetAddress.getByName(host) }.getOrNull() ?: return@launch
+            if (address.isLoopbackAddress || address.isAnyLocalAddress || !Lan.isLocal(address)) return@launch
+            _linkPair.value = LinkPair(name ?: address.hostAddress ?: host, address, port, code, signIn)
+        }
+    }
+
+    /** The listener's answer to [linkPair]. */
+    fun answerLinkPair(yes: Boolean) {
+        val ask = _linkPair.value ?: return
+        _linkPair.value = null
+        if (!yes) return
+        scope.launch {
+            val socket = runCatching { Socket().apply { connect(InetSocketAddress(ask.address, ask.port), 5_000); tcpNoDelay = true } }.getOrNull()
+            val r = socket?.let { s -> HLink(s).use { link -> runCatching { peer.request(link, HandoffRequest.Pair) { ask.code } }.getOrNull() } }
+            when (r) {
+                is HandoffResult.Done -> {
+                    val them = r.peer ?: return@launch
+                    _events.tryEmit(tr(R.string.tv_paired_with, them.name))
+                    // The sign-in is offered to the device that just proved itself, and only if it says it's a TV (and
+                    // there's a sign-in here to give); then, as without one, bringing the listener's Vinz there.
+                    if (them.tv) {
+                        val tv = VinzDevice(them.name, ask.shownAddress, ask.port, them.device, "link:${them.device}", true, tv = true)
+                        if (ask.signIn && c.settings.current.isLoggedIn) _signInAsk.value = tv else _bringAsk.value = tv
+                    }
+                }
+                is HandoffResult.Failed -> _events.tryEmit(r.reason)
+                else -> _events.tryEmit(tr(R.string.couldn_t_reach_is_vinz_open, ask.name))
+            }
+        }
+    }
+
+    /**
+     * This phone's YouTube Music sign-in, sent to [d] (after the listener said yes); what to tell them. Only to the
+     * device [d] names, paired already and a TV ([HandoffPeer.request]).
+     */
+    suspend fun sendSignIn(d: VinzDevice): String {
+        if (d.id == null) return tr(R.string.tv_sign_in_pair_first, d.name)
+        val values = c.settings.forBackup(settings = false, accounts = true).filterKeys { it in SIGN_IN_KEYS }
+        val account = c.settings.current.let { it.accountEmail.ifBlank { it.accountName } }
+        return when (val r = ask(d, HandoffRequest.SignIn(values, account))) {
+            is HandoffResult.Done -> {
+                // Signed in: the same flow then asks about the listening, likes and Vinz playlists.
+                _bringAsk.value = d
+                tr(R.string.tv_signed_in_on, d.name)
+            }
+            is HandoffResult.Failed -> r.reason
+            else -> tr(R.string.couldn_t_reach_is_vinz_open, d.name)
+        }
+    }
+
+    private fun lookCode(): String =
+        c.looks.code(com.vinz.music.data.looks.Look("sent", name, c.settings.lookValues.value, c.looks.currentIcons(), null, System.currentTimeMillis()))
+
+    // ------------------------------------------------------------ Bring your Vinz (1.8.0), the phone's side
+
+    private val _bringAsk = MutableStateFlow<VinzDevice?>(null)
+    /** A TV to offer "Bring your Vinz" to (after pairing with it, or signing it in): asked first ([HandoffDialogs]). */
+    val bringAsk: StateFlow<VinzDevice?> = _bringAsk.asStateFlow()
+    fun askBring(d: VinzDevice?) { _bringAsk.value = d }
+
+    /** A bring under way, or just over ([done], or [failed] with why), from this phone to [device]. */
+    data class Bringing(val device: VinzDevice, val sent: Long = 0, val total: Long = 0, val done: Boolean = false, val failed: String? = null) {
+        val running: Boolean get() = !done && failed == null
+        val fraction: Float get() = if (total > 0) (sent.toFloat() / total).coerceIn(0f, 1f) else 0f
+    }
+
+    private val _bringing = MutableStateFlow<Bringing?>(null)
+    val bringing: StateFlow<Bringing?> = _bringing.asStateFlow()
+    fun dismissBringing() { if (_bringing.value?.running != true) _bringing.value = null }
+
+    /**
+     * Brings this phone's Vinz to [d] (the listener said yes): listening history and likes, Vinz playlists, folders and
+     * saved albums, starred artists, song versions, lyric timings, best parts and exclusions ([com.vinz.music.data.Backup.bringBundle]),
+     * and the look with [withLook]. Only to the TV [d] names, paired already ([HandoffPeer.request]). Progress in [bringing].
+     */
+    fun bringTo(d: VinzDevice, withLook: Boolean) {
+        if (_bringing.value?.running == true) return
+        _bringing.value = Bringing(d)
+        scope.launch {
+            val out = java.io.File(app.cacheDir, "bring-out-${UUID.randomUUID()}.zip")
+            var size = 0L
+            val result = try {
+                if (d.id == null || !d.tv) HandoffResult.Failed(tr(R.string.bring_pair_first, d.name))
+                else {
+                    c.backup.bringBundle(out, if (withLook) lookCode() else null)
+                    size = out.length()
+                    if (size > BringTransfer.MAX_BYTES) HandoffResult.Failed(tr(R.string.bring_too_big))
+                    else ask(d, HandoffRequest.Bring(BringSource.of(out)) { sent, total -> _bringing.value = Bringing(d, sent, total) })
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "bringing to ${d.name} failed", e)
+                HandoffResult.Failed(tr(R.string.bring_failed))
+            } finally {
+                out.delete()
+            }
+            _bringing.value = when (result) {
+                is HandoffResult.Done -> Bringing(d, size, size, done = true)
+                is HandoffResult.Failed -> Bringing(d, failed = result.reason)
+                else -> Bringing(d, failed = tr(R.string.bring_failed))
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ Bring your Vinz, the TV's side
+
+    /** A phone's Vinz coming in ([from]: its name), or just in ([done]) or not ([failed]: nothing here changed). */
+    data class BringingIn(val from: String, val got: Long = 0, val total: Long = 0, val done: Boolean = false, val failed: Boolean = false) {
+        val fraction: Float get() = if (total > 0) (got.toFloat() / total).coerceIn(0f, 1f) else 0f
+    }
+
+    private val _bringIn = MutableStateFlow<BringingIn?>(null)
+    val bringIn: StateFlow<BringingIn?> = _bringIn.asStateFlow()
+    private val _broughtAt = MutableStateFlow(0L)
+    /** When a phone's Vinz was last merged in here (0: never, this run): Home's own rows are made again from it. */
+    val broughtAt: StateFlow<Long> = _broughtAt.asStateFlow()
+
+    override fun bringStarting(from: String, size: Long): String? = synchronized(_bringIn) {
+        if (!isTv) return tr(R.string.tv_not_a_tv, name)
+        val now = _bringIn.value
+        if (now != null && !now.done && !now.failed) return tr(R.string.bring_busy, now.from)
+        _bringIn.value = BringingIn(from, 0, size)
+        null
+    }
+
+    override fun bringProgress(from: String, got: Long, total: Long) { _bringIn.value = BringingIn(from, got, total) }
+
+    override fun bringScratch(): java.io.File = java.io.File(app.cacheDir, "bring-in-${UUID.randomUUID()}.zip")
+
+    override fun bringArrived(file: java.io.File, from: String): String? {
+        if (!isTv) return tr(R.string.tv_not_a_tv, name)
+        val merged = runCatching { runBlocking(Dispatchers.IO) { c.backup.mergeBrought(file) } }
+            .onFailure { Log.w(TAG, "bringing in from $from failed", it) }.getOrNull() ?: return tr(R.string.bring_failed)
+        Log.i(TAG, "brought in from $from: $merged")
+        // Vinz's own rows are made from it now: Made for you's mixes again, the rest as Home asks.
+        c.scope.launch(Dispatchers.IO) { runCatching { c.forYou.refresh(force = true) } }
+        _broughtAt.value = System.currentTimeMillis()
+        return null
+    }
+
+    override fun bringEnded(from: String, ok: Boolean) {
+        val now = _bringIn.value
+        val ended = BringingIn(from, now?.got ?: 0, now?.total ?: 0, done = ok, failed = !ok)
+        _bringIn.value = ended
+        scope.launch { delay(if (ok) 6_000 else 12_000); _bringIn.compareAndSet(ended, null) }
+    }
+
+    /** The look this phone has now, sent to [d] as a Look code; what to tell the listener. */
+    suspend fun sendLook(d: VinzDevice): String {
+        return when (val r = ask(d, HandoffRequest.Look(lookCode()))) {
+            is HandoffResult.Done -> tr(R.string.tv_look_sent, d.name)
+            is HandoffResult.Failed -> r.reason
+            else -> tr(R.string.couldn_t_reach_is_vinz_open, d.name)
+        }
+    }
+
+    override fun pairingCode(from: String): String? = if (isTv) tvPairing.value.value else HandoffKeys.newCode().also { showCode(it, from) }
+
+    override fun remote(key: RemoteKey, value: Long): String? {
+        runBlocking(Dispatchers.Main) {
+            val p = c.player
+            when (key) {
+                RemoteKey.TOGGLE -> p.togglePlay()
+                RemoteKey.PLAY -> p.setPlaying(true)
+                RemoteKey.PAUSE -> p.setPlaying(false)
+                RemoteKey.NEXT -> p.next()
+                RemoteKey.PREVIOUS -> p.previous()
+                RemoteKey.SEEK_TO -> p.seekTo(value.coerceAtLeast(0))
+                RemoteKey.SEEK_BY -> p.seekBy(value)
+                RemoteKey.VOLUME_UP, RemoteKey.VOLUME_DOWN -> app.getSystemService(android.media.AudioManager::class.java)?.adjustStreamVolume(
+                    android.media.AudioManager.STREAM_MUSIC,
+                    if (key == RemoteKey.VOLUME_UP) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
+                    android.media.AudioManager.FLAG_SHOW_UI,
+                )
+            }
+        }
+        return null
+    }
+
+    override fun nowPlaying(): RemoteNow? = runBlocking(Dispatchers.Main) {
+        val song = c.player.currentSong.value ?: return@runBlocking null
+        val audio = app.getSystemService(android.media.AudioManager::class.java)
+        val volume = audio?.let { a ->
+            val max = a.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            a.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) * 100 / max
+        } ?: 0
+        RemoteNow(song.title, song.artistText, song.thumbnail, c.player.isPlaying.value, c.player.position, c.player.duration, volume)
+    }
+
+    override fun addSongs(songs: List<com.vinz.music.data.model.Song>, next: Boolean, from: String): String? {
+        runBlocking(Dispatchers.Main) {
+            val source = com.vinz.music.playback.QueueSource(com.vinz.music.playback.QueueKind.OTHER, tr(R.string.from, from))
+            when {
+                c.player.queue.value.isEmpty() -> c.player.playQueue(songs, 0, source)
+                next -> c.player.playNext(songs, source)
+                else -> c.player.addToQueue(songs, source)
+            }
+        }
+        return null
+    }
+
+    /** A phone's sign-in: only a TV takes one (and only the sign-in's own settings; Discord and Last.fm never come). */
+    override fun signIn(values: Map<String, String>, account: String, from: String): String? {
+        if (!isTv) return tr(R.string.tv_not_a_tv, name)
+        val signIn = values.filterKeys { it in SIGN_IN_KEYS }
+        if (signIn["cookie"].isNullOrBlank()) return tr(R.string.tv_not_a_tv, name)
+        // Another account was signed in here: its library, offline copies and Home go first, as on signing out.
+        if (c.settings.current.isLoggedIn) c.library.forgetAccount()
+        runBlocking {
+            c.settings.fromBackup(signIn, settings = false, accounts = true)
+            c.settings.setOnboarded(true)
+        }
+        c.library.syncInBackground()
+        _signedIn.tryEmit(account)
+        return null
+    }
+
+    /** A Look sent from a phone: a TV uses it (on a phone, Looks are shared as codes and files instead). */
+    override fun useLook(code: String, from: String): String? {
+        if (!isTv) return tr(R.string.tv_not_a_tv, name)
+        val look = c.looks.decode(code) ?: return tr(R.string.that_look_code_couldn_t_be)
+        runBlocking { c.looks.apply(look) }
+        return null
+    }
+
     // ------------------------------------------------------------ Being available
 
     @Volatile private var server: ServerSocket? = null
@@ -194,16 +500,26 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
 
     fun setAvailable(on: Boolean) { if (on) startServer() else stopServer() }
 
+    /** The port this device listens on while available (null: not listening). */
+    val port: Int? get() = server?.localPort
+
+    /** Connections being served, on threads of their own ([LinkGate]). */
+    private val links = LinkGate(MAX_LINKS, MAX_LINKS_PER_ADDRESS) { s ->
+        HLink(s.apply { tcpNoDelay = true }).use { link -> runCatching { peer.serve(link) }.onFailure { Log.w(TAG, "handoff from ${link.remote} failed", it) } }
+    }
+
     @Synchronized
     private fun startServer() {
         if (server != null) return
         val ss = runCatching { ServerSocket(PORT) }.getOrNull() ?: runCatching { ServerSocket(0) }.getOrNull() ?: return
         server = ss
-        scope.launch {
+        kotlin.concurrent.thread(name = "handoff-accept", isDaemon = true) {
             while (!ss.isClosed) {
                 val s = runCatching { ss.accept() }.getOrNull() ?: break
-                if (!Lan.isLocal(s.inetAddress)) { runCatching { s.close() }; continue }
-                scope.launch { HLink(s.apply { tcpNoDelay = true }).use { link -> runCatching { peer.serve(link) }.onFailure { Log.w(TAG, "handoff from ${link.remote} failed", it) } } }
+                // A home network's addresses are private ones, or any on this device's own network (some routers hand
+                // out others, 1.8.1).
+                if (!Lan.isLocal(s.inetAddress) && !Lan.sameNetwork(s.inetAddress, Lan.ownNetworks())) { runCatching { s.close() }; continue }
+                links.take(s)
             }
         }
         register(ss.localPort)
@@ -226,6 +542,10 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
             setPort(port)
             setAttribute("id", device)
             setAttribute("v", VERSION.toString())
+            if (isTv) setAttribute("tv", "1")
+            // Its IPv4 addresses, said outright (1.8.1): a phone on Android 13 or older is told one address by its lookup,
+            // often an IPv6 link-local one it can't connect to.
+            Lan.ownAddresses().take(3).joinToString(",").takeIf { it.isNotEmpty() }?.let { setAttribute("a", it) }
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) = Unit
@@ -247,7 +567,7 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
         lookers++
         val manager = nsd ?: return
         if (discovery != null) return
-        _devices.value = emptyList()
+        _devices.value = testPeers()
         val listener = object : NsdManager.DiscoveryListener {
             override fun onServiceFound(info: NsdServiceInfo) { if (info.serviceType.contains(SERVICE_LABEL)) resolve(info) }
             override fun onServiceLost(info: NsdServiceInfo) { _devices.value = _devices.value.filterNot { it.key == info.serviceName } }
@@ -260,6 +580,22 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
         runCatching { manager.discoverServices(SERVICE, NsdManager.PROTOCOL_DNS_SD, listener) }.onFailure { discovery = null }
     }
 
+    /**
+     * Debug builds only: Vinzs by address, one "host:port|name|tv" per line in …/files/connect_peers.txt, for the
+     * two-emulator tests (emulators can't find each other on a network; adb forwards a port between them).
+     */
+    private fun testPeers(): List<VinzDevice> {
+        if (!com.vinz.music.BuildConfig.DEBUG) return emptyList()
+        val f = app.getExternalFilesDir(null)?.let { java.io.File(it, "connect_peers.txt") }?.takeIf { it.isFile } ?: return emptyList()
+        return f.readLines().mapNotNull { line ->
+            val parts = line.trim().split("|")
+            val host = parts[0].substringBeforeLast(':').takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val port = parts[0].substringAfterLast(':').toIntOrNull() ?: return@mapNotNull null
+            val name = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: host
+            VinzDevice(name, host, port, null, "test:$host:$port", false, tv = parts.getOrNull(2) == "tv")
+        }
+    }
+
     fun stopDiscovery() {
         lookers = (lookers - 1).coerceAtLeast(0)
         if (lookers > 0) return
@@ -268,31 +604,49 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
     }
 
     private fun resolve(info: NsdServiceInfo) {
-        val manager = nsd ?: return
         scope.launch {
-            resolveLock.withLock {
-                val r = withTimeoutOrNull(6_000) {
-                    suspendCancellableCoroutine<NsdServiceInfo?> { cont ->
-                        runCatching {
-                            @Suppress("DEPRECATION")
-                            manager.resolveService(info, object : NsdManager.ResolveListener {
-                                override fun onResolveFailed(i: NsdServiceInfo, error: Int) { if (cont.isActive) cont.resume(null) }
-                                override fun onServiceResolved(i: NsdServiceInfo) { if (cont.isActive) cont.resume(i) }
-                            })
-                        }.onFailure { if (cont.isActive) cont.resume(null) }
-                    }
-                } ?: return@withLock
-                val id = r.attributes["id"]?.toString(Charsets.UTF_8)
-                // Itself (this very app, advertising while it looks).
-                if (id == device) return@withLock
-                @Suppress("DEPRECATION")
-                val all = if (Build.VERSION.SDK_INT >= 34) r.hostAddresses else listOfNotNull(r.host)
-                val host = (all.firstOrNull { it is Inet4Address } ?: all.firstOrNull())?.hostAddress ?: return@withLock
-                val d = VinzDevice(r.serviceName.removePrefix(NAME_PREFIX), host, r.port, id, r.serviceName, id != null && secretFor(id) != null)
-                _devices.value = (_devices.value.filterNot { it.key == d.key } + d).sortedBy { it.name.lowercase() }
-            }
+            val d = lookUp(info) ?: return@launch
+            _devices.value = (_devices.value.filterNot { it.key == d.key } + d).sortedBy { it.name.lowercase() }
         }
     }
+
+    /** The Vinz advertised as [info], looked up afresh (its addresses and port); null if it didn't answer, or is this one. */
+    private suspend fun lookUp(info: NsdServiceInfo): VinzDevice? {
+        val manager = nsd ?: return null
+        return resolveLock.withLock {
+            val r = withTimeoutOrNull(6_000) {
+                suspendCancellableCoroutine<NsdServiceInfo?> { cont ->
+                    runCatching {
+                        @Suppress("DEPRECATION")
+                        manager.resolveService(info, object : NsdManager.ResolveListener {
+                            override fun onResolveFailed(i: NsdServiceInfo, error: Int) { if (cont.isActive) cont.resume(null) }
+                            override fun onServiceResolved(i: NsdServiceInfo) { if (cont.isActive) cont.resume(i) }
+                        })
+                    }.onFailure { if (cont.isActive) cont.resume(null) }
+                }
+            } ?: return@withLock null
+            val id = r.attributes["id"]?.toString(Charsets.UTF_8)
+            // Itself (this very app, advertising while it looks).
+            if (id == device) return@withLock null
+            @Suppress("DEPRECATION")
+            val all = if (Build.VERSION.SDK_INT >= 34) r.hostAddresses else listOfNotNull(r.host)
+            val said = r.attributes["a"]?.toString(Charsets.UTF_8)?.split(',').orEmpty()
+            val hosts = LinkReach.order(all, said, Lan.ownNetworks(), ::scopedToWifi).takeIf { it.isNotEmpty() } ?: return@withLock null
+            val tv = r.attributes["tv"]?.toString(Charsets.UTF_8) == "1"
+            val d = VinzDevice(r.serviceName.removePrefix(NAME_PREFIX), hosts.first(), r.port, id, r.serviceName, id != null && secretFor(id) != null, tv, hosts)
+            if (tv) prefs.edit().apply { hosts.forEach { putString("tvhost:$it", d.name) } }.apply()
+            Log.i(TAG, "found ${d.name} on ${hosts.joinToString()} port ${d.port}")
+            d
+        }
+    }
+
+    /** An IPv6 link-local address, given this device's Wi-Fi as its scope (it can't be connected to without one). */
+    private fun scopedToWifi(a: java.net.Inet6Address): java.net.InetAddress = runCatching {
+        val wifi = java.net.NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && !it.isLoopback && it.inetAddresses.toList().any { x -> x is java.net.Inet6Address && x.isLinkLocalAddress } }
+            .minByOrNull { i -> listOf("wlan", "swlan", "eth").indexOfFirst { i.name.startsWith(it) }.let { if (it < 0) 9 else it } }
+        java.net.Inet6Address.getByAddress(null, a.address, wifi)
+    }.getOrDefault(a)
 
     // ------------------------------------------------------------ Moving
 
@@ -303,27 +657,34 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
         code?.complete(value?.filter { it.isDigit() }?.takeIf { it.length == 6 })
     }
 
+    /**
+     * The Vinz TV last seen at [host] (its name), or null: a TV's own Cast or DLNA player on that address is the same
+     * TV, where Vinz plays better (1.8.0). Kept from when its Vinz was found on this Wi-Fi.
+     */
+    fun vinzTvAt(host: String?): String? = host?.let { prefs.getString("tvhost:$it", null) }
+
     /** What's playing here goes to [d]. */
-    fun moveTo(d: VinzDevice) = run(d, HandoffCommand.MOVE, "Moving to ${d.name}…")
+    fun moveTo(d: VinzDevice) = run(d, HandoffCommand.MOVE, tr(R.string.moving_to, d.name))
 
     /** What's playing on [d] comes here. */
-    fun bringFrom(d: VinzDevice) = run(d, HandoffCommand.PULL, "Bringing it over from ${d.name}…")
+    fun bringFrom(d: VinzDevice) = run(d, HandoffCommand.PULL, tr(R.string.bringing_it_over_from, d.name))
 
     private fun run(d: VinzDevice, command: HandoffCommand, label: String) {
         if (_busy.value != null) return
         _busy.value = label
         scope.launch {
             try {
-                var result = attempt(d, command)
+                val request = if (command == HandoffCommand.MOVE) HandoffRequest.Move else HandoffRequest.Pull
+                var result = attempt(d, request)
                 // Its key was refused (forgotten over there): pair again, once.
-                if (result == HandoffResult.Unpaired) result = attempt(d, command)
+                if (result == HandoffResult.Unpaired) result = attempt(d, request, repair = true)
                 when (result) {
                     is HandoffResult.Done -> _events.tryEmit(
-                        (if (command == HandoffCommand.MOVE) "Playing on ${d.name}" else "Playing here") + (result.note?.let { " · $it" } ?: "")
+                        (if (command == HandoffCommand.MOVE) tr(R.string.playing_on, d.name) else tr(R.string.playing_here)) + (result.note?.let { " · $it" } ?: "")
                     )
                     is HandoffResult.Failed -> _events.tryEmit(result.reason)
-                    HandoffResult.Unpaired -> _events.tryEmit("${d.name} didn't accept the pairing. Try again.")
-                    HandoffResult.Cancelled -> Unit
+                    HandoffResult.Unpaired -> _events.tryEmit(tr(R.string.didn_t_accept_the_pairing_try, d.name))
+                    HandoffResult.Cancelled, is HandoffResult.Playing -> Unit
                 }
             } finally {
                 _busy.value = null
@@ -332,30 +693,108 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
         }
     }
 
-    private fun attempt(d: VinzDevice, command: HandoffCommand): HandoffResult {
-        val socket = runCatching { Socket().apply { connect(InetSocketAddress(d.host, d.port), 5_000); tcpNoDelay = true } }.getOrNull()
-            ?: return HandoffResult.Failed("Couldn't reach ${d.name}. Is Vinz open there, on the same Wi-Fi?")
-        return HLink(socket).use { link ->
-            runCatching {
-                peer.call(link, command) { them ->
-                    val wait = CompletableDeferred<String?>()
-                    code = wait
-                    _asking.value = them
-                    try { runBlocking { withTimeoutOrNull(HandoffPeer.PAIR_WAIT_MS.toLong() - 5_000) { wait.await() } } } finally { _asking.value = null; code = null }
-                }
-            }.getOrElse { HandoffResult.Failed("Lost the connection to ${d.name}") }
-        }
+    /**
+     * [request] of [d] (a TV's remote button, what it's playing, a sign-in, a Look), pairing first if they aren't yet
+     * (the code is asked for as for a move); its answer. Off the main thread.
+     */
+    suspend fun ask(d: VinzDevice, request: HandoffRequest): HandoffResult = withContext(Dispatchers.IO) {
+        val r = attempt(d, request)
+        if (r == HandoffResult.Unpaired) attempt(d, request, repair = true) else r
     }
+
+    /** [repair]: pair again though a key is kept (it was refused); the kept key is replaced only once that works. */
+    private fun attempt(d: VinzDevice, request: HandoffRequest, repair: Boolean = false): HandoffResult {
+        val (link, why) = connect(d)
+        return link?.use { attempt(d, it, request, repair) } ?: HandoffResult.Failed(why ?: tr(R.string.couldn_t_reach_is_vinz_open, d.name))
+    }
+
+    /**
+     * A connection to [d], or why not: each of its addresses in turn ([LinkReach]), then, if none answered, each of the
+     * ones a fresh lookup gives (it may have moved to another address, or another port, since it was found). Blocking.
+     */
+    private fun connect(d: VinzDevice): Pair<HLink?, String?> {
+        val failures = ArrayList<LinkReach.Failure>()
+        val tried = HashSet<String>()
+        fun tryAll(hosts: List<String>, port: Int): HLink? {
+            for (h in hosts) {
+                if (!tried.add("$h:$port")) continue
+                val s = Socket()
+                try {
+                    s.connect(InetSocketAddress(h, port), LinkReach.CONNECT_MS)
+                    s.tcpNoDelay = true
+                    return HLink(s)
+                } catch (t: Throwable) {
+                    runCatching { s.close() }
+                    failures += LinkReach.failure(t)
+                    Log.i(TAG, "${d.name} didn't answer on $h:$port: $t")
+                }
+            }
+            return null
+        }
+        val link = tryAll(d.hosts, d.port) ?: run {
+            val info = NsdServiceInfo().apply { serviceName = d.key; serviceType = SERVICE }
+            val fresh = if (d.key.startsWith("test:")) null else runBlocking { lookUp(info) }
+            fresh?.let { f ->
+                _devices.value = _devices.value.map { if (it.key == f.key) f else it }
+                tryAll(f.hosts, f.port)
+            }
+        }
+        if (link != null) { _unreachable.value = _unreachable.value - d.key; return link to null }
+        val why = LinkReach.why(d.name, failures)
+        _unreachable.value = _unreachable.value + (d.key to why)
+        return null to why
+    }
+
+    private fun attempt(d: VinzDevice, link: HLink, request: HandoffRequest, repair: Boolean): HandoffResult = runCatching {
+        peer.request(link, request, HandoffExpect(device = d.id, repair = repair)) { them ->
+            val wait = CompletableDeferred<String?>()
+            code = wait
+            _asking.value = them
+            try { runBlocking { withTimeoutOrNull(HandoffPeer.PAIR_WAIT_MS.toLong() - 5_000) { wait.await() } } } finally { _asking.value = null; code = null }
+        }
+    }.getOrElse { HandoffResult.Failed(tr(R.string.lost_the_connection_to, d.name)) }
+
+    /**
+     * A Vinz TV playing along with this phone ([Cast.connectTv], 1.8.0), from [first] on, pairing first if they aren't
+     * yet: the connection, kept open for it, or why not (null and null: the listener cancelled the code). Off the main
+     * thread.
+     */
+    fun openFollow(d: VinzDevice, first: FollowState): Pair<HLink?, String?> {
+        for (repair in listOf(false, true)) {
+            val (link, why) = connect(d)
+            if (link == null) return null to (why ?: tr(R.string.couldn_t_reach_is_vinz_open, d.name))
+            when (val r = attempt(d, link, HandoffRequest.Follow(first), repair)) {
+                is HandoffResult.Done -> return link to null
+                // Its key was refused (forgotten over there): pair again, once.
+                HandoffResult.Unpaired -> link.close()
+                is HandoffResult.Failed -> { link.close(); return null to r.reason }
+                else -> { link.close(); return null to null }
+            }
+        }
+        return null to tr(R.string.didn_t_accept_the_pairing_try, d.name)
+    }
+
+    // ------------------------------------------------------------ A TV playing along with a phone (1.8.0)
+
+    override fun followStart(from: String): String? = if (!isTv) tr(R.string.tv_not_a_tv, name) else null
+
+    override fun follow(link: HLink, first: FollowState, from: String) = TvFollower(c, link, from).run(first)
 
     companion object {
         private const val TAG = "VinzHandoff"
-        const val VERSION = 1
+        /** 2 (1.8.0): X25519 + AES-GCM; a version 1 Vinz is told both need the latest. */
+        const val VERSION = 2
         const val PORT = 47321
         private const val SERVICE_LABEL = "_vinzconnect"
         private const val SERVICE = "$SERVICE_LABEL._tcp"
         private const val NAME_PREFIX = "Vinz · "
         private const val NOTIFY_ID = 4701
+        /** The sign-in's own settings (as the backup's "Accounts" part): all a phone sends a TV. */
+        val SIGN_IN_KEYS = setOf("cookie", "visitor_data", "data_sync_id", "auth_user", "account_name", "account_email", "account_avatar")
         /** How long a song gets to start here (it may still be loading) before the move counts as failed. */
         private const val START_WAIT_MS = 12_000L
+        /** Connections served at once (a move, a remote's buttons, a pairing), and from one address. */
+        private const val MAX_LINKS = 6
+        private const val MAX_LINKS_PER_ADDRESS = 3
     }
 }

@@ -1,5 +1,7 @@
 package com.vinz.music.connect
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.app.Application
 import android.content.Context
 import android.media.AudioManager
@@ -164,7 +166,7 @@ class WebRemote(private val app: Application, private val c: AppContainer) : Rem
             smart = c.queue.smartShuffle.value,
             repeat = pc.repeatMode.value,
             volume = volume(),
-            output = cast?.renderer?.name ?: "This phone",
+            output = cast?.renderer?.name ?: tr(R.string.this_phone_2),
             source = c.queue.source.value.title,
             lyricShift = pc.lyricShift.value,
             canNext = pc.hasNext.value,

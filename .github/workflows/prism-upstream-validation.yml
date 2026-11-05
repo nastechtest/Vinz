@@ -1,0 +1,86 @@
+# Called by the scheduled updater through workflow_dispatch on its exact update branch.
+# GITHUB_TOKEN does not start pull_request workflows when it pushes a branch, so this explicit
+# dispatch is the required green/red gate before the sync automation can merge its PR.
+name: Prism upstream validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prism-upstream-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_PACKAGE: com.vinz.music
+  JAVA_VERSION: "17"
+  VINZ_GIT_SHA: ${{ github.sha }}
+  VINZ_BUILD_CHANNEL: upstream-sync
+
+jobs:
+  scripts:
+    name: CI scripts and workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact synced commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Check updater logic
+        run: python3 scripts/upstream/sync_prism.py --self-test
+      - name: Verify the protected Vinz artwork
+        run: python3 scripts/upstream/sync_prism.py --verify-branding
+      - name: Shellcheck
+        run: shellcheck -x scripts/*.sh scripts/ci/*.sh scripts/tests/*.sh
+      - name: Test CI scripts
+        run: ./scripts/tests/ci-scripts-test.sh
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the exact synced commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+      - name: Run Android Lint
+        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
+
+  build-and-test:
+    name: Unit tests and debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the exact synced commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+      - name: Run deterministic unit tests
+        run: ./scripts/ci/run-unit-tests.sh
+      - name: Assemble APK and baseline profile module
+        run: ./gradlew :app:assembleDebug :baselineprofile:assemble --no-daemon --stacktrace

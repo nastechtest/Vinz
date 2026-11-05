@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -34,7 +36,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -113,6 +118,8 @@ object SearchMemory {
     }.getOrNull().orEmpty()
 
     fun remember(context: Context, item: BrowseItem) {
+        // #296: not while history is paused.
+        if (com.vinz.music.data.HistoryPause.paused((context.applicationContext as com.vinz.music.VinzApp).container.settings.current.behavior)) return
         val o = OpenedItem.of(item) ?: return
         val now = (listOf(o) + opened(context).filterNot { it.kind == o.kind && it.id == o.id }).take(MAX)
         prefs(context).edit().putString("opened", InnerTube.json.encodeToString(ListSerializer(OpenedItem.serializer()), now)).apply()
@@ -148,14 +155,18 @@ internal fun SearchLanding(
     var arranging by remember { mutableStateOf(false) }
     if (arranging) ArrangeSearchSheet { arranging = false }
     val artists = rememberYourArtists()
+    // #279: sections come in as they load (your artists, moods); the list held on to the first row it showed, so on the
+    // first visit after launch, when that was "Arrange this page" at the end, Search opened scrolled to the bottom.
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    com.vinz.music.ui.components.KeepAtTopUntilScrolled(listState)
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding + 16.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("searchLanding"), state = listState, contentPadding = PaddingValues(bottom = bottomPadding + 16.dp)) {
         settings.searchSections.forEach { section ->
             when (section) {
                 SearchSection.RECENT -> {
-                    val items = opened.mapNotNull { o -> o.item()?.let { o to it } }
+                    val items = opened.distinctBy { it.kind + it.id }.mapNotNull { o -> o.item()?.let { o to it } }
                     if (items.isNotEmpty()) {
-                        item(key = "opened-h") { SectionHeader("Recently opened") }
+                        item(key = "opened-h") { SectionHeader(tr(R.string.recently_opened)) }
                         item(key = "opened") {
                             LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 items(items, key = { (o, _) -> o.kind + o.id }) { (o, item) ->
@@ -165,19 +176,19 @@ internal fun SearchLanding(
                         }
                     }
                     if (recents.isNotEmpty()) {
-                        item(key = "recents-h") { SectionHeader("Recent searches") }
+                        item(key = "recents-h") { SectionHeader(tr(R.string.recent_searches)) }
                         item(key = "recents") {
                             FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 recents.take(10).forEach { r ->
                                     // The chip takes the long press itself: wrapped in another clickable, its own click ate it.
-                                    VinzChip(false, { onPick(r) }, r, icon = VinzIcons.History, onLongClick = { onRemove(r) }, onLongClickLabel = "Remove")
+                                    VinzChip(false, { onPick(r) }, r, icon = VinzIcons.History, onLongClick = { onRemove(r) }, onLongClickLabel = tr(R.string.remove))
                                 }
                             }
                         }
                     }
                 }
                 SearchSection.ARTISTS -> if (artists.isNotEmpty()) {
-                    item(key = "artists-h") { SectionHeader("Your artists") }
+                    item(key = "artists-h") { SectionHeader(tr(R.string.your_artists)) }
                     item(key = "artists") {
                         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(artists, key = { it.id }) { a -> ItemCard(a, width = 104.dp) { onOpen(a) } }
@@ -186,31 +197,49 @@ internal fun SearchLanding(
                 }
                 SearchSection.MOODS -> {
                     val ranked = (moods.state as? Load.Ok)?.value ?: return@forEach
-                    // "For you" is Vinz's own ranking; the groups after it leave out what it already shows.
-                    val shown = HashSet<String>()
-                    val forYou = ranked.picks.take(8).onEach { shown += it.id + "|" + it.params }
-                    val groups = listOf("For you" to forYou) + ranked.sections.filterNot { it.first.contains("for you", true) }.map { (title, tiles) ->
-                        title to tiles.filter { shown.add(it.id + "|" + it.params) }.take(6)
-                    }
-                    groups.forEach { (title, tiles) ->
-                        if (tiles.isEmpty()) return@forEach
-                        item(key = "mh:$title") { SectionHeader(if (title == "For you") "Moods & genres for you" else title, onMore = { nav.go(Routes.MOODS) }) }
-                        tiles.chunked(2).forEachIndexed { i, pair ->
-                            item(key = "m:$title:$i") {
-                                Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    pair.forEach { mood -> VinzMoodTile(mood, Modifier.weight(1f)) { onMood(mood) } }
-                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
+                    moodSections(moodGroups(ranked, tr(R.string.for_you)), onMore = { nav.go(Routes.MOODS) }, onMood = onMood)
                 }
             }
         }
         item(key = "arrange") {
             Box(Modifier.fillMaxWidth().padding(top = 18.dp), contentAlignment = Alignment.Center) {
                 VinzTextButton(onClick = { arranging = true }) {
-                    Icon(VinzIcons.SwapVertical, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Arrange this page")
+                    Icon(VinzIcons.SwapVertical, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(tr(R.string.arrange_this_page))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Search's mood groups: Vinz's own "For you" ranking ([forYou] = its name in the listener's language) first, then
+ * YouTube's sections, each leaving out what an earlier group already shows.
+ */
+internal fun moodGroups(ranked: com.vinz.music.data.RankedCategories, forYou: String): List<Pair<String, List<MoodItem>>> {
+    val shown = HashSet<String>()
+    val picks = ranked.picks.take(8).onEach { shown += it.id + "|" + it.params }
+    // #346: YouTube names its own "For you" section in the listener's language ("Per te"), as Vinz's is.
+    val theirs = ranked.sections.filterNot { it.first.contains("for you", true) || it.first.equals(forYou, true) }
+    return listOf(forYou to picks) + theirs.map { (title, tiles) -> title to tiles.filter { shown.add(it.id + "|" + it.params) }.take(6) }
+}
+
+/**
+ * The mood groups as rows of two tiles under their headings. Keyed by the group's place, not its title (#346: two
+ * groups both titled "Per te" crashed Search with "Key was already used").
+ */
+internal fun androidx.compose.foundation.lazy.LazyListScope.moodSections(
+    groups: List<Pair<String, List<MoodItem>>>,
+    onMore: () -> Unit,
+    onMood: (MoodItem) -> Unit,
+) {
+    groups.forEachIndexed { g, (title, tiles) ->
+        if (tiles.isEmpty()) return@forEachIndexed
+        item(key = "mh:$g") { SectionHeader(if (g == 0) tr(R.string.moods_genres_for_you) else title, onMore = onMore) }
+        tiles.chunked(2).forEachIndexed { i, pair ->
+            item(key = "m:$g:$i") {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { mood -> VinzMoodTile(mood, Modifier.weight(1f)) { onMood(mood) } }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -226,8 +255,8 @@ private fun rememberYourArtists(): List<ArtistItem> {
     val recent by c.library.recent.collectAsState()
     val thumbs by c.library.artistThumbs.collectAsState()
     val list = remember(favorites, library, recent, thumbs) {
-        val played = recent.flatMap { s -> s.artists.take(1).mapNotNull { a -> a.id?.let { ArtistItem(it, a.name, "Artist", thumbs[it]) } } }
-        (favorites.map { ArtistItem(it.id, it.name, "Artist", it.thumbnail) } + library.filterIsInstance<ArtistItem>() + played)
+        val played = recent.flatMap { s -> s.artists.take(1).mapNotNull { a -> a.id?.let { ArtistItem(it, a.name, tr(R.string.artist), thumbs[it]) } } }
+        (favorites.map { ArtistItem(it.id, it.name, tr(R.string.artist), it.thumbnail) } + library.filterIsInstance<ArtistItem>() + played)
             .distinctBy { it.id }.take(16)
             .map { a -> c.covers.custom(c.covers.artistKey(a.id))?.let { a.copy(thumbnail = it) } ?: a }
     }
@@ -274,19 +303,31 @@ private fun ArrangeSearchSheet(onDismiss: () -> Unit) {
     val settings = LocalAppSettings.current
     val shown = settings.searchSections
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("Arrange Search", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
-        Column(Modifier.padding(top = 8.dp, bottom = 28.dp)) {
+        Text(tr(R.string.arrange_search), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 28.dp)) {
             com.vinz.music.ui.components.ReorderList(shown, { it }, { c.settings.setSearchSections(it) }) { s, _, _, mod ->
                 Row(mod.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     VinzCheck(true, enabled = shown.size > 1, label = s.label) { c.settings.setSearchSections(shown - s) }
                     Text(s.label, Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodyLarge)
-                    com.vinz.music.ui.components.DragGrip(Modifier.dragHandle(), "Drag ${s.label}")
+                    com.vinz.music.ui.components.DragGrip(Modifier.dragHandle(), tr(R.string.drag, s.label))
                 }
             }
             SearchSection.entries.filter { it !in shown }.forEach { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     VinzCheck(false, label = s.label) { c.settings.setSearchSections(shown + s) }
                     Text(s.label, Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            // The chips over the results, in your order (#224); Search opens on the first.
+            Text(tr(R.string.search_chips), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp))
+            Text(tr(R.string.search_opens_on_the_first_one), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp))
+            val chips = chipOrder(settings.searchChips)
+            com.vinz.music.ui.components.ReorderList(chips, ::chipName, { c.settings.setSearchChips(it.map(::chipName)) }) { f, _, _, mod ->
+                val name = f?.label ?: tr(R.string.on_this_phone)
+                Row(mod.fillMaxWidth().testTag("chip:" + chipName(f)).padding(start = 24.dp, end = 12.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    com.vinz.music.ui.components.DragGrip(Modifier.dragHandle(), tr(R.string.drag, name))
                 }
             }
         }

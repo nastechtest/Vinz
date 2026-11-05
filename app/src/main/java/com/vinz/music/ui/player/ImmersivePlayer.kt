@@ -1,5 +1,7 @@
 package com.vinz.music.ui.player
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -123,13 +125,12 @@ import com.vinz.music.ui.theme.rememberHaptics
 /** The lines' look (Aura × Spectrum): big, light and centred, lifted off the cover by a soft glow rather than a hard shadow. */
 private val lineShadow = Shadow(Color.Black.copy(alpha = 0.45f), androidx.compose.ui.geometry.Offset(0f, 1f), 26f)
 
-/** How immersive mode draws its lyrics: as the lyrics page does ("Same look everywhere", 1.7.5), else as it always has. */
+/** How immersive mode draws its lyrics: as the lyrics page does (1.8.0: always). */
 @Composable
 private fun immersiveLook(song: Song): LyricsLook {
     val s = com.vinz.music.ui.theme.LocalAppSettings.current
-    val look = rememberLyricsLook(s, song.thumbnail)
     // There's no card under immersive lyrics: Bold card keeps its bold type, on the cover.
-    return if (s.lyricsEverywhere) look.withoutCard(s.lyricsOthersAlpha) else LyricsLook.Classic
+    return rememberLyricsLook(s, com.vinz.music.data.PlaylistCovers.artOf(song)).withoutCard(s.lyricsOthersAlpha)
 }
 
 /** The lyrics' typeface on its weight axis, so the sung words thicken as on the lyrics page; null for System / imported fonts. */
@@ -158,6 +159,8 @@ fun ImmersivePlayer(
     lyricsState: LyricsState,
     /** A sheet is over the player. The clip and the lyrics keep going under it (they used to freeze, which read as a bug). */
     covered: Boolean,
+    /** The song's music video is playing: it fills the screen in the cover's place (#170). */
+    video: Boolean = false,
     onExit: () -> Unit,
     onLyricsTiming: () -> Unit,
     onLyricsSource: () -> Unit,
@@ -189,7 +192,7 @@ fun ImmersivePlayer(
         view.keepScreenOn = true
         onDispose {
             // Back to the bars as the settings have them (#115: the status bar may stay hidden).
-            com.vinz.music.ui.components.SystemBars.apply(ctl, c.settings.current.hideStatusBar)
+            com.vinz.music.ui.components.SystemBars.apply(ctl, com.vinz.music.ui.components.SystemBars.hidden(c.settings.current))
             view.keepScreenOn = false
         }
     }
@@ -197,7 +200,7 @@ fun ImmersivePlayer(
     var drag by remember { mutableFloatStateOf(0f) }
     // Sideways, the cover follows the finger a little; past the mark, letting go changes the song.
     var swipe by remember { mutableFloatStateOf(0f) }
-    val blurred = rememberFullArtworkBlur(song.thumbnail)
+    val blurred = rememberFullArtworkBlur(com.vinz.music.data.PlaylistCovers.artOf(song))
     Box(
         Modifier
             .fillMaxSize()
@@ -206,13 +209,13 @@ fun ImmersivePlayer(
             // For TalkBack the gestures are actions: a double tap opens the settings (the button only shows for a few
             // seconds), and the swipes and the hold have their own entries in its actions menu.
             .semantics {
-                contentDescription = "Immersive player, ${song.title} by ${song.artistText}"
-                onClick("Open immersive mode settings") { menu = true; true }
+                contentDescription = tr(R.string.immersive_player_by, song.title, song.artistText)
+                onClick(tr(R.string.open_immersive_mode_settings)) { menu = true; true }
                 customActions = listOf(
-                    CustomAccessibilityAction("Next song") { c.player.next(); true },
-                    CustomAccessibilityAction("Previous song") { c.player.previous(); true },
-                    CustomAccessibilityAction("Leave immersive mode") { onExit(); true },
-                    CustomAccessibilityAction("Close the player") { onCollapse(); true },
+                    CustomAccessibilityAction(tr(R.string.next_song)) { c.player.next(); true },
+                    CustomAccessibilityAction(tr(R.string.previous_song)) { c.player.previous(); true },
+                    CustomAccessibilityAction(tr(R.string.leave_immersive_mode)) { onExit(); true },
+                    CustomAccessibilityAction(tr(R.string.close_the_player)) { onCollapse(); true },
                 )
             }
             .pointerInput(Unit) { detectTapGestures(onTap = { button = !button }) }
@@ -243,8 +246,10 @@ fun ImmersivePlayer(
         // ---- Settings → Lyrics → Immersive background (1.7.5): the cover (as before, moving when it can), or something
         // plainer behind the words.
         val ground = settings.immersiveBackground
-        val coverShown = ground == com.vinz.music.data.prefs.LyricsBackground.PLAYER || ground == com.vinz.music.data.prefs.LyricsBackground.CANVAS
-        if (!coverShown) LyricsBackdrop(ground, settings, song.thumbnail, blurred, null, canvasSaved, isPlaying, Modifier.fillMaxSize())
+        // A playing music video takes the cover's place, cropped to fill the screen (#170).
+        if (video) MusicVideoSurface(Modifier.fillMaxSize().graphicsLayer { translationX = swipe * 0.35f }, fill = true)
+        val coverShown = !video && (ground == com.vinz.music.data.prefs.LyricsBackground.PLAYER || ground == com.vinz.music.data.prefs.LyricsBackground.CANVAS)
+        if (!coverShown && !video) LyricsBackdrop(ground, settings, com.vinz.music.data.PlaylistCovers.artOf(song), blurred, null, canvasSaved, isPlaying, Modifier.fillMaxSize())
 
         // ---- Behind a zoomed-out cover, the cover blurred, so it still fills the screen.
         if (coverShown && art != ImmersiveArt.FILL) FullArtworkBlurBackdrop(blurred, scrim = 0.8f)
@@ -261,7 +266,7 @@ fun ImmersivePlayer(
                     .graphicsLayer { translationX = swipe * 0.35f },
             ) {
                 AsyncImage(
-                    hiRes(song.thumbnail, 1200), null, contentScale = ContentScale.Crop,
+                    hiRes(com.vinz.music.data.PlaylistCovers.artOf(song), 1200), null, contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { alpha = 1f - canvasCover; compositingStrategy = CompositingStrategy.Offscreen }
@@ -346,8 +351,9 @@ fun ImmersivePlayer(
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(song.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(song.artistText, color = Color.White.copy(alpha = 0.65f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val shown = com.vinz.music.data.SongVersions.shownOf(song)
+                Text(shown.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(shown.artistText, color = Color.White.copy(alpha = 0.65f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         // "Keep controls on screen" (Reddit 1.7): the capsule stays; a tap still brings up the song's name.
@@ -362,14 +368,14 @@ fun ImmersivePlayer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ImmersiveGlyph(VinzIcons.Previous, "Previous") { haptics.tick(); poke++; c.player.previous() }
+                ImmersiveGlyph(VinzIcons.Previous, tr(R.string.widget_previous)) { haptics.tick(); poke++; c.player.previous() }
                 Box(
                     Modifier.size(56.dp).clip(CircleShape).background(Color.White)
                         .border(2.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), CircleShape)
-                        .clickable(onClickLabel = if (isPlaying) "Pause" else "Play") { haptics.click(); poke++; c.player.togglePlay() },
+                        .clickable(onClickLabel = if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play)) { haptics.click(); poke++; c.player.togglePlay() },
                     contentAlignment = Alignment.Center,
-                ) { Icon(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, if (isPlaying) "Pause" else "Play", Modifier.size(26.dp), tint = Color.Black) }
-                ImmersiveGlyph(VinzIcons.Next, "Next") { haptics.tick(); poke++; c.player.next() }
+                ) { Icon(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play), Modifier.size(26.dp), tint = Color.Black) }
+                ImmersiveGlyph(VinzIcons.Next, tr(R.string.widget_next)) { haptics.tick(); poke++; c.player.next() }
                 HoldToLeaveButton(
                     onTap = { menu = true },
                     onPressing = { pressing = it },
@@ -382,28 +388,28 @@ fun ImmersivePlayer(
     if (menu) ActionSheet(song.thumbnail, { menu = false; button = false }) { close ->
         ActionHeader(song.thumbnail, song.title, song.artistText)
         ActionGroup(
-            "Immersive mode",
+            tr(R.string.immersive_mode),
             listOf(
-                ActionItem(VinzIcons.FullscreenExit, "Show the player", onClick = onExit),
+                ActionItem(VinzIcons.FullscreenExit, tr(R.string.show_the_player), onClick = onExit),
                 // Fill the screen → zoomed out → the whole cover, round again.
-                ActionItem(VinzIcons.AspectRatio, "Artwork", value = art.label, keepOpen = true) {
+                ActionItem(VinzIcons.AspectRatio, tr(R.string.artwork), value = art.label, keepOpen = true) {
                     c.settings.setImmersiveArt(ImmersiveArt.entries[(art.ordinal + 1) % ImmersiveArt.entries.size])
                 },
-                ActionItem(VinzIcons.Play, "Keep controls on screen", value = if (settings.immersiveControls) "On" else "Off", active = settings.immersiveControls, keepOpen = true) {
+                ActionItem(VinzIcons.Play, tr(R.string.keep_controls_on_screen), value = if (settings.immersiveControls) tr(R.string.on_2) else tr(R.string.off), active = settings.immersiveControls, keepOpen = true) {
                     c.settings.setImmersiveControls(!settings.immersiveControls)
                 },
-                ActionItem(VinzIcons.More, "Song options", onClick = onSongOptions),
+                ActionItem(VinzIcons.More, tr(R.string.song_options), onClick = onSongOptions),
             ),
         ) { runAction(it, close) }
         ActionGroup(
-            "Lyrics",
+            tr(R.string.lyrics),
             listOf(
                 // High → middle → low → over the whole screen, round again.
-                ActionItem(VinzIcons.Lyrics, "Lyrics position", value = place.label, keepOpen = true) {
+                ActionItem(VinzIcons.Lyrics, tr(R.string.lyrics_position), value = place.label, keepOpen = true) {
                     c.settings.setImmersiveLyrics(ImmersiveLyrics.entries[(place.ordinal + 1) % ImmersiveLyrics.entries.size])
                 },
-                ActionItem(VinzIcons.Timer, "Lyrics timing", onClick = onLyricsTiming),
-                ActionItem(VinzIcons.Lyrics, "Lyrics source", onClick = onLyricsSource),
+                ActionItem(VinzIcons.Timer, tr(R.string.lyrics_timing), onClick = onLyricsTiming),
+                ActionItem(VinzIcons.Lyrics, tr(R.string.lyrics_source), onClick = onLyricsSource),
             ),
         ) { runAction(it, close) }
     }
@@ -449,8 +455,8 @@ private fun LineAtATime(song: Song, state: LyricsState, active: Boolean, align: 
                 // Before the first line: the song's name, as a lyric video opens.
                 line == null && i < firstSung -> TitleCard(song)
                 line == null -> Text("♪", style = lineStyle, color = Color.White.copy(alpha = 0.7f))
-                // Vinz's line-timed lines stay as they were here (Normal, white); every style else draws its own.
-                !line.isWordSynced && look.style == com.vinz.music.data.prefs.LyricsStyle.VINZ ->
+                // Vinz's line-timed lines stay as they were here (Normal, white); every animation else draws its own.
+                !line.isWordSynced && look.plainWhenLineTimed ->
                     Text(line.text, style = lineStyle.copy(fontWeight = FontWeight(look.weight + 100)), color = Color.White, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
                 else -> SungLine(line, clock, lineStyle, look, axis, Modifier.fillMaxWidth(), maxLines = 4, dimAlpha = 0.45f)
             }
@@ -480,6 +486,8 @@ private fun LineAtATime(song: Song, state: LyricsState, active: Boolean, align: 
 
 @Composable
 private fun TitleCard(song: Song) {
+    // #328: as the version picked to play in its place, if any.
+    @Suppress("NAME_SHADOWING") val song = com.vinz.music.data.SongVersions.shownOf(song)
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             song.title, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -517,7 +525,7 @@ private fun HoldToLeaveButton(onTap: () -> Unit, onPressing: (Boolean) -> Unit, 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         AnimatedVisibility(held, enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
             Text(
-                "Keep holding to leave immersive mode (or press Back)", color = Color.White,
+                tr(R.string.keep_holding_to_leave_immersive_mode), color = Color.White,
                 style = MaterialTheme.typography.labelLarge.copy(shadow = lineShadow),
                 modifier = Modifier.padding(bottom = 10.dp),
             )
@@ -528,9 +536,9 @@ private fun HoldToLeaveButton(onTap: () -> Unit, onPressing: (Boolean) -> Unit, 
                 // The hold can't be done with TalkBack, so it's an action of the button's own.
                 .clearAndSetSemantics {
                     role = Role.Button
-                    contentDescription = "Immersive mode settings"
+                    contentDescription = tr(R.string.immersive_mode_settings)
                     onClick { onTap(); true }
-                    customActions = listOf(CustomAccessibilityAction("Leave immersive mode") { onHeld(); true })
+                    customActions = listOf(CustomAccessibilityAction(tr(R.string.leave_immersive_mode)) { onHeld(); true })
                 }
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -564,7 +572,7 @@ private fun HoldToLeaveButton(onTap: () -> Unit, onPressing: (Boolean) -> Unit, 
                 },
             contentAlignment = Alignment.Center,
         ) {
-            FloatingDisc { ink -> Icon(VinzIcons.SettingsFilled, "Immersive mode settings (hold to leave)", Modifier.size(22.dp), tint = ink) }
+            FloatingDisc { ink -> Icon(VinzIcons.SettingsFilled, tr(R.string.immersive_mode_settings_hold_to_leave), Modifier.size(22.dp), tint = ink) }
         }
     }
 }
@@ -629,7 +637,7 @@ private fun LyricsOverAll(song: Song, state: LyricsState, active: Boolean, modif
                     Column(Modifier.fillMaxWidth()) {
                         when {
                             line.isGap -> Text("♪", style = style, color = Color.White, modifier = Modifier.fillMaxWidth())
-                            current && (line.isWordSynced || look.style != com.vinz.music.data.prefs.LyricsStyle.VINZ) ->
+                            current && (line.isWordSynced || !look.plainWhenLineTimed) ->
                                 SungLine(line, clock, style, look, axis, Modifier.fillMaxWidth(), dimAlpha = 0.45f)
                             // The lines around it are dimmed by the list itself; their color is the look's.
                             else -> Text(line.text, style = style.copy(shadow = look.shadow ?: style.shadow), color = if (current) Color.White else look.others, modifier = Modifier.fillMaxWidth())

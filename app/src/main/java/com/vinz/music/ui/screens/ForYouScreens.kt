@@ -1,5 +1,8 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
+import com.vinz.music.trp
 import com.vinz.music.ui.components.pane
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -161,14 +164,14 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
                 Icon(VinzIcons.StarFilled, null, tint = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Pick a few artists you like", style = MaterialTheme.typography.titleMedium)
-                    Text("Your mixes and new releases start from them", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr(R.string.pick_a_few_artists_you_like), style = MaterialTheme.typography.titleMedium)
+                    Text(tr(R.string.your_mixes_and_new_releases_start), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         return
     }
-    SectionHeader(cfg.title, strapline = "Made on your phone from what you play")
+    SectionHeader(cfg.title, strapline = tr(R.string.made_on_your_phone_from_what))
     // Carousel (the default) is the row of covers below; the other styles show the same mixes their way.
     if (cfg.style != com.vinz.music.data.prefs.SectionStyle.CAROUSEL) {
         val playMix: (Mix) -> Unit = { mix ->
@@ -209,11 +212,11 @@ private fun ReleaseEntity.dateText(today: LocalDate): String {
     val date = releaseDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return year.toString()
     val days = ChronoUnit.DAYS.between(date, today)
     return when {
-        days < 0 -> "Out " + date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
-        days == 0L -> "Today"
-        days == 1L -> "Yesterday"
+        days < 0 -> tr(R.string.out, date.format(com.vinz.music.localDates("EEEMMMd")))
+        days == 0L -> tr(R.string.today)
+        days == 1L -> tr(R.string.yesterday)
         days < 7 -> date.format(DateTimeFormatter.ofPattern("EEEE", Locale.getDefault()))
-        else -> date.format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
+        else -> date.format(com.vinz.music.localDates("MMMd"))
     }
 }
 
@@ -223,10 +226,14 @@ fun NewReleasesSection(cfg: HomeSectionConfig) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val today = remember { LocalDate.now() }
-    val releases by remember { c.db.releases().freshFlow(today.year - 1).map { list -> list.filter { ReleaseRadar.isRecent(it, today, 30) } } }
+    val recent by remember { c.db.releases().freshFlow(today.year - 1).map { list -> list.filter { ReleaseRadar.isRecent(it, today, 30) } } }
         .collectAsState(initial = emptyList())
+    // #311: with the page's "Favorite artists only" on, Home's section keeps to them too.
+    val favorites by c.artistPrefs.favorites.collectAsState()
+    val starredOnly = remember { c.library.sortOf(ReleaseRadar.STARRED_ONLY) != null }
+    val releases = if (starredOnly) ReleaseRadar.fromFavorites(recent, favorites.map { it.id }.toSet()) else recent
     if (releases.isEmpty()) return
-    SectionHeader(cfg.title, strapline = "From artists you listen to", onMore = { nav.go(Routes.NEW_RELEASES) })
+    SectionHeader(cfg.title, strapline = tr(R.string.from_artists_you_listen_to), onMore = { nav.go(Routes.NEW_RELEASES) })
     StyledItems(cfg.style, releases.take(15).map { it.asItem() }) { nav.go(Routes.album(it.id)) }
 }
 
@@ -250,23 +257,39 @@ fun NewReleasesScreen(bottomPadding: Dp) {
     var kind by remember { mutableStateOf(ReleaseKind.entries.firstOrNull { it.name == c.library.sortOf("releases:kind") } ?: ReleaseKind.ALL) }
     var order by remember { mutableStateOf(ReleaseOrder.entries.firstOrNull { it.name == c.library.sortOf("releases:order") } ?: ReleaseOrder.NEWEST) }
     var hideSaved by remember { mutableStateOf(c.library.sortOf("releases:hide_saved") != null) }
+    // #311 (1.8.1): only your favorite (starred) artists' releases, kept like the other filters; and one artist at a
+    // time, picked from the artists you play most (for this visit only).
+    var starredOnly by remember { mutableStateOf(c.library.sortOf(ReleaseRadar.STARRED_ONLY) != null) }
+    var oneArtist by remember { mutableStateOf<String?>(null) }
+    val favorites by c.artistPrefs.favorites.collectAsState()
+    val starredIds = remember(favorites) { favorites.map { it.id }.toSet() }
+    val mostPlayed by androidx.compose.runtime.produceState(emptyList<String>()) {
+        val now = System.currentTimeMillis()
+        value = runCatching { c.imports.taste.tasteTopArtists(now - 90L * 86_400_000, now, 60).mapNotNull { it.artistId } }.getOrDefault(emptyList())
+    }
     val libraryAlbums by c.library.albums.collectAsState()
     val savedHere by c.vinzLibrary.albums.collectAsState()
     val savedIds = remember(libraryAlbums, savedHere) {
         (libraryAlbums.map { it.id } + libraryAlbums.mapNotNull { (it as? com.vinz.music.data.model.AlbumItem)?.playlistId } + savedHere.map { it.id }).toSet()
     }
     SubPage(
-        com.vinz.music.data.prefs.HomeSections.NEW_RELEASES_TITLE, bottomPadding, subtitle = "New albums, singles and EPs from artists you listen to",
-        actions = { RoundAction(VinzIcons.Refresh, "Look now", glass = true, enabled = !running) { scope.launch { c.releaseRadar.refresh() } } },
+        tr(R.string.section_new_from_your_artists), bottomPadding, subtitle = tr(R.string.new_albums_singles_and_eps_from),
+        actions = { RoundAction(VinzIcons.Refresh, tr(R.string.look_now), glass = true, enabled = !running) { scope.launch { c.releaseRadar.refresh() } } },
     ) {
         if (running) item("running") {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 com.vinz.music.ui.components.VinzSpinner(Modifier.size(18.dp), stroke = 2.dp)
                 Spacer(Modifier.width(12.dp))
-                Text("Looking round your artists…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr(R.string.looking_round_your_artists), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         val all = releases ?: return@SubPage
+        val beforeArtist = all
+            .filter { age(it) <= within.days }
+            .filter { kind.accepts(it.kind) }
+            .filter { !hideSaved || (it.id !in savedIds && (it.playlistId == null || it.playlistId !in savedIds)) }
+            .let { if (starredOnly) ReleaseRadar.fromFavorites(it, starredIds) else it }
+        val artistChoices = ReleaseRadar.artistsToPick(beforeArtist, mostPlayed)
         item("filters") {
             ReleaseFilters(
                 within, kind, order, hideSaved,
@@ -274,15 +297,22 @@ fun NewReleasesScreen(bottomPadding: Dp) {
                 onKind = { kind = it; c.library.setSort("releases:kind", it.name) },
                 onOrder = { order = it; c.library.setSort("releases:order", it.name) },
                 onHideSaved = { hideSaved = it; c.library.setSort("releases:hide_saved", if (it) "on" else null) },
+                starredOnly = starredOnly,
+                onStarredOnly = { starredOnly = it; oneArtist = null; c.library.setSort(ReleaseRadar.STARRED_ONLY, if (it) "on" else null) },
+                artists = artistChoices, oneArtist = oneArtist, onArtist = { oneArtist = it },
             )
         }
-        val list = all
-            .filter { age(it) <= within.days }
-            .filter { kind.accepts(it.kind) }
-            .filter { !hideSaved || (it.id !in savedIds && (it.playlistId == null || it.playlistId !in savedIds)) }
+        val list = beforeArtist.filter { oneArtist == null || it.artistId == oneArtist }
+        if (starredOnly && starredIds.isEmpty()) item("no-favorites") {
+            Text(
+                tr(R.string.no_favorite_artists_yet),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
         if (all.isNotEmpty() && list.isEmpty()) item("filtered-empty") {
             Text(
-                "Nothing matches these filters. Try a longer time or another type.",
+                tr(R.string.nothing_matches_these_filters_try_a),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
@@ -291,40 +321,41 @@ fun NewReleasesScreen(bottomPadding: Dp) {
         if (order != ReleaseOrder.NEWEST) {
             val sorted = if (order == ReleaseOrder.ARTIST) list.sortedWith(compareBy<ReleaseEntity> { it.artistName.lowercase() }.thenBy { age(it) })
                 else list.sortedBy { it.title.lowercase() }
-            items(sorted, key = { it.id }) { r -> ReleaseRow(r, today) { nav.go(Routes.album(r.id)) } }
+            items(sorted, key = { it.id }) { r -> com.vinz.music.ui.components.SwipeToQueue(r.asItem()) { ReleaseRow(r, today) { nav.go(Routes.album(r.id)) } } }
             return@SubPage
         }
         if (all.isEmpty() && !running) item("empty") {
             Text(
-                "Nothing new from your artists in the last three months. Vinz looks every few days at the artists you've starred, " +
-                    "saved and play most; the first look only learns what's already out, so new music shows up from the next one.",
+                tr(R.string.nothing_new_from_your_artists_in_all),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
         }
-        listOf("This week" to (Long.MIN_VALUE..7L), "This month" to (8L..30L), "Earlier" to (31L..Long.MAX_VALUE)).forEach { (title, range) ->
+        listOf(tr(R.string.this_week) to (Long.MIN_VALUE..7L), tr(R.string.this_month) to (8L..30L), tr(R.string.earlier) to (31L..Long.MAX_VALUE)).forEach { (title, range) ->
             val part = list.filter { age(it) in range }
             if (part.isEmpty()) return@forEach
             item("h:$title") {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 6.dp))
             }
-            items(part, key = { it.id }) { r -> ReleaseRow(r, today) { nav.go(Routes.album(r.id)) } }
+            items(part, key = { it.id }) { r -> com.vinz.music.ui.components.SwipeToQueue(r.asItem()) { ReleaseRow(r, today) { nav.go(Routes.album(r.id)) } } }
         }
     }
 }
 
-private enum class ReleaseWithin(val label: String, val days: Long) { WEEK("This week", 7), MONTH("This month", 30), QUARTER("3 months", 90) }
+private enum class ReleaseWithin(val label: String, val days: Long) { WEEK(tr(R.string.this_week), 7), MONTH(tr(R.string.this_month), 30), QUARTER(tr(R.string.t_3_months), 90) }
 private enum class ReleaseKind(val label: String) {
-    ALL("All"), ALBUMS("Albums"), SINGLES("Singles & EPs");
+    ALL(tr(R.string.all)), ALBUMS(tr(R.string.albums)), SINGLES(tr(R.string.singles_eps));
     fun accepts(kind: String) = this == ALL || (this == ALBUMS) == (kind == "Album")
 }
-private enum class ReleaseOrder(val label: String) { NEWEST("Newest"), ARTIST("Artist"), TITLE("Title") }
+private enum class ReleaseOrder(val label: String) { NEWEST(tr(R.string.newest)), ARTIST(tr(R.string.artist)), TITLE(tr(R.string.title)) }
 
 /** The New releases page's filters: how far back, which kind, hide what's already in the library, and the order. */
 @Composable
 private fun ReleaseFilters(
     within: ReleaseWithin, kind: ReleaseKind, order: ReleaseOrder, hideSaved: Boolean,
     onWithin: (ReleaseWithin) -> Unit, onKind: (ReleaseKind) -> Unit, onOrder: (ReleaseOrder) -> Unit, onHideSaved: (Boolean) -> Unit,
+    starredOnly: Boolean = false, onStarredOnly: (Boolean) -> Unit = {},
+    artists: List<Pair<String, String>> = emptyList(), oneArtist: String? = null, onArtist: (String?) -> Unit = {},
 ) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.vinz.music.ui.components.Segmented(ReleaseWithin.entries, within, { it.label }, Modifier.fillMaxWidth(), onWithin)
@@ -333,10 +364,23 @@ private fun ReleaseFilters(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ReleaseKind.entries.forEach { k -> com.vinz.music.ui.components.VinzChip(k == kind, { onKind(k) }, k.label) }
-            com.vinz.music.ui.components.VinzChip(hideSaved, { onHideSaved(!hideSaved) }, "Not in my library", icon = if (hideSaved) VinzIcons.Check else null)
+            com.vinz.music.ui.components.VinzChip(hideSaved, { onHideSaved(!hideSaved) }, tr(R.string.not_in_my_library), icon = if (hideSaved) VinzIcons.Check else null)
+            // #311: just the artists you've starred.
+            com.vinz.music.ui.components.VinzChip(
+                starredOnly, { onStarredOnly(!starredOnly) }, tr(R.string.favorite_artists_only),
+                icon = if (starredOnly) VinzIcons.Check else VinzIcons.Star,
+            )
+        }
+        // #311: one artist at a time, the ones you play most first.
+        if (artists.size > 1) Row(
+            Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            com.vinz.music.ui.components.VinzChip(oneArtist == null, { onArtist(null) }, tr(R.string.every_artist))
+            artists.forEach { (id, name) -> com.vinz.music.ui.components.VinzChip(oneArtist == id, { onArtist(if (oneArtist == id) null else id) }, name) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Sort by", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.sort_by), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             ReleaseOrder.entries.forEach { o -> com.vinz.music.ui.components.VinzChip(o == order, { onOrder(o) }, o.label) }
         }
     }
@@ -453,20 +497,20 @@ fun PickArtistsScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
     // Clear of the mini player and tab bar (none during onboarding, then just the gesture bar).
     Column(Modifier.fillMaxSize().statusBarsPadding().then(if (bottomPadding > 0.dp) Modifier.padding(bottom = bottomPadding) else Modifier.navigationBarsPadding())) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (!onboarding) RoundAction(VinzIcons.ArrowBack, "Back", glass = true) { nav.back() }
+            if (!onboarding) RoundAction(VinzIcons.ArrowBack, tr(R.string.back), glass = true) { nav.back() }
             Spacer(Modifier.weight(1f))
-            if (onboarding) VinzTextButton({ finish() }) { Text("Skip") }
+            if (onboarding) VinzTextButton({ finish() }) { Text(tr(R.string.skip)) }
         }
         Column(Modifier.padding(horizontal = 20.dp)) {
-            Text("Pick artists you like", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Medium)
+            Text(tr(R.string.pick_artists_you_like), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Medium)
             Text(
-                "They shape your Daily Mixes and Release Radar. They're starred on this phone; nothing is followed on YouTube.",
+                tr(R.string.they_shape_your_daily_mixes_and),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
             com.vinz.music.ui.components.VinzTextField(
                 query, { query = it; if (it.isBlank()) searched = null }, Modifier.fillMaxWidth(), singleLine = true,
-                placeholder = { Text("Search for an artist") }, leadingIcon = { Icon(VinzIcons.Search, null) },
+                placeholder = { Text(tr(R.string.search_for_an_artist)) }, leadingIcon = { Icon(VinzIcons.Search, null) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { searched = query.trim() }),
             )
         }
@@ -499,7 +543,7 @@ fun PickArtistsScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
                         if (on) Box(
                             Modifier.size(92.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)).border(3.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), CircleShape),
                             contentAlignment = Alignment.Center,
-                        ) { Icon(VinzIcons.Check, "Picked", tint = Color.White, modifier = Modifier.size(36.dp)) }
+                        ) { Icon(VinzIcons.Check, tr(R.string.picked), tint = Color.White, modifier = Modifier.size(36.dp)) }
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(a.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -508,7 +552,7 @@ fun PickArtistsScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
         }
         val count = favorites.size
         VinzButton({ finish() }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-            Text(if (count == 0) "Done" else "Done · $count ${if (count == 1) "artist" else "artists"}")
+            Text(if (count == 0) tr(R.string.done) else trp(R.plurals.done_n_artists, count))
         }
     }
 }
@@ -555,7 +599,7 @@ fun ExclusionsScreen(bottomPadding: Dp) {
     val artists by c.exclusions.artists.collectAsState()
     val playlists by c.exclusions.playlists.collectAsState()
     val songs by c.exclusions.songs.collectAsState()
-    SubPage("Exclusions", bottomPadding, subtitle = "What Vinz leaves out of your recommendations") {
+    SubPage(tr(R.string.exclusions), bottomPadding, subtitle = tr(R.string.what_vinz_leaves_out_of_your)) {
         fun section(title: String, note: String, list: List<Excluded>, bring: (Excluded) -> Unit) {
             item("h:$title") {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp)) {
@@ -564,19 +608,19 @@ fun ExclusionsScreen(bottomPadding: Dp) {
                 }
             }
             if (list.isEmpty()) item("e:$title") {
-                Text("None", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+                Text(tr(R.string.none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
             }
             items(list, key = { "$title:${it.id}" }) { e ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Artwork(e.thumbnail, Modifier.size(44.dp), if (title.startsWith("Artists")) LocalUi.current.artistArt else LocalUi.current.songArt, placeholderIcon = VinzIcons.Song)
                     Spacer(Modifier.width(12.dp))
                     Text(e.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    VinzTextButton({ bring(e) }) { Text("Bring back") }
+                    VinzTextButton({ bring(e) }) { Text(tr(R.string.bring_back)) }
                 }
             }
         }
-        section("Artists not to play", "Never in radios, autoplay, Smart Shuffle, your mixes or Smart Downloads. Asked for, they still play.", artists) { c.exclusions.setArtist(it, false) }
-        section("Playlists left out of your taste", "They play as usual, but don't shape your recommendations. Replay still counts them.", playlists) { c.exclusions.setPlaylist(it, false) }
-        section("Songs left out of your taste", "The same, for single songs.", songs) { c.exclusions.setSong(it, false) }
+        section(tr(R.string.artists_not_to_play), tr(R.string.never_in_radios_autoplay_smart_shuffle), artists) { c.exclusions.setArtist(it, false) }
+        section(tr(R.string.playlists_left_out_of_your_taste), tr(R.string.they_play_as_usual_but_don), playlists) { c.exclusions.setPlaylist(it, false) }
+        section(tr(R.string.songs_left_out_of_your_taste), tr(R.string.the_same_for_single_songs), songs) { c.exclusions.setSong(it, false) }
     }
 }

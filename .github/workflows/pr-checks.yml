@@ -71,6 +71,9 @@ jobs:
       - name: Test the CI scripts
         run: ./scripts/tests/ci-scripts-test.sh
 
+      - name: Test the deterministic Prism sync updater
+        run: python3 scripts/upstream/sync_prism.py --self-test
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

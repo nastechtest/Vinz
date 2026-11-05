@@ -75,37 +75,14 @@ fun CanvasPlayer(
     var aspect by remember(canvas) { mutableFloatStateOf(0f) }
     var texture by remember { mutableStateOf<TextureView?>(null) }
 
-    val keep by rememberUpdatedState(saved)
-    val clip by rememberUpdatedState(url)
-    val player = remember {
-        // Clips come from the phone when they've played before (or were saved), else stream and are kept.
-        val sources = DefaultMediaSourceFactory(c.canvasStore.dataSourceFactory({ clip }) { keep })
-        val side = com.vinz.music.data.canvas.canvasMaxSide(context)
-        ExoPlayer.Builder(context).setMediaSourceFactory(sources)
-            // A clip of a few seconds, looping, mostly read from the phone: a few seconds ahead is plenty. With the
-            // player's defaults (50 s, up to 128 MB for video) it kept loading further loops of the same clip and
-            // held ~50 MB of it in memory (heap dump on the budget emulator, 1.7.6).
-            .setLoadControl(
-                androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(4_000, 10_000, 1_000, 2_000)
-                    .setTargetBufferBytes(8 * 1024 * 1024)
-                    .setPrioritizeTimeOverSizeThresholds(false)
-                    .build()
-            )
-            .build().apply {
-            volume = 0f
-            repeatMode = Player.REPEAT_MODE_ONE
-            // Always the same rendition (H.264, the best up to canvasMaxSide), so what was kept last
-            // time, or saved ahead by CanvasStore (which picks the same one), is what plays.
-            trackSelectionParameters = trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                .setMaxVideoSize(side, side)
-                .clearViewportSizeConstraints()
-                .setPreferredVideoMimeType(MimeTypes.VIDEO_H264)
-                .setForceHighestSupportedBitrate(true)
-                .build()
-        }
-    }
+    // The player is borrowed from [CanvasPlayers] and handed back when the clip leaves the screen, so opening the
+    // player again picks up the same one, clip and decoder (#343: a new player each time made a new video decoder
+    // and checked every rendition against the phone's decoders again, many times a minute while it was opened and
+    // closed).
+    val held = remember { CanvasPlayers.take(context, c, url) }
+    val player = held.player
+    androidx.compose.runtime.SideEffect { held.source.clip = url; held.source.keep = saved }
+    DisposableEffect(held) { onDispose { CanvasPlayers.give(held) } }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -120,13 +97,18 @@ fun CanvasPlayer(
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
+        onDispose { player.removeListener(listener) }
     }
     LaunchedEffect(url) {
         rendered = false
+        // The same clip as last time the player was open: it carries on, no new loading or decoder.
+        if (CanvasPlayers.playing(player, url)) {
+            val v = player.videoSize
+            val w = v.width * v.pixelWidthHeightRatio
+            aspect = if (w > 0 && v.height > 0) w / v.height else 0f
+            texture?.cropTo(aspect)
+            return@LaunchedEffect
+        }
         val item = MediaItem.Builder().setUri(url)
         if (url.substringBefore('?').endsWith(".m3u8")) item.setMimeType(MimeTypes.APPLICATION_M3U8)
         player.setMediaItem(item.build())
@@ -194,6 +176,75 @@ fun CanvasPlayer(
         },
         modifier = modifier,
     )
+}
+
+/**
+ * The animated covers' players, kept between uses (#343, 1.8.1.1): a clip leaving the screen (the player closing) hands
+ * its player back paused and without a surface, and the next one to show takes it, with its clip and decoder still
+ * there. One kept at a time, let go after [IDLE_RELEASE_MS] unused. Main thread only.
+ */
+@OptIn(UnstableApi::class)
+internal object CanvasPlayers {
+    /** What the player's data source reads, set by whichever [CanvasPlayer] holds it now. */
+    class Source { @Volatile var clip: String = ""; @Volatile var keep: Boolean = false }
+    class Held(val player: ExoPlayer, val source: Source)
+
+    private const val IDLE_RELEASE_MS = 30_000L
+    /** The player can show the clip twice at once (behind everything and in the lyrics' ground): two kept at most. */
+    private const val KEPT = 2
+    private val parked = ArrayList<Held>(KEPT)
+    private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val letGo = Runnable { parked.forEach { it.player.release() }; parked.clear() }
+
+    /** A kept player, the one already on [url] if there is one, else a new one. */
+    fun take(context: Context, c: com.vinz.music.AppContainer, url: String): Held {
+        (parked.firstOrNull { it.source.clip == url } ?: parked.lastOrNull())?.let { parked.remove(it); return it }
+        val source = Source()
+        // Clips come from the phone when they've played before (or were saved), else stream and are kept.
+        val sources = DefaultMediaSourceFactory(c.canvasStore.dataSourceFactory({ source.clip }) { source.keep })
+        val side = com.vinz.music.data.canvas.canvasMaxSide(context)
+        val player = ExoPlayer.Builder(context.applicationContext).setMediaSourceFactory(sources)
+            // A clip of a few seconds, looping, mostly read from the phone: a few seconds ahead is plenty. With the
+            // player's defaults (50 s, up to 128 MB for video) it kept loading further loops of the same clip and
+            // held ~50 MB of it in memory (heap dump on the budget emulator, 1.7.6).
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(4_000, 10_000, 1_000, 2_000)
+                    .setTargetBufferBytes(8 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .build()
+            )
+            .build().apply {
+                volume = 0f
+                repeatMode = Player.REPEAT_MODE_ONE
+                // Always the same rendition (H.264, the best up to canvasMaxSide), so what was kept last
+                // time, or saved ahead by CanvasStore (which picks the same one), is what plays.
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .setMaxVideoSize(side, side)
+                    .clearViewportSizeConstraints()
+                    .setPreferredVideoMimeType(MimeTypes.VIDEO_H264)
+                    .setForceHighestSupportedBitrate(true)
+                    .build()
+            }
+        return Held(player, source)
+    }
+
+    fun give(held: Held) {
+        held.player.playWhenReady = false
+        held.player.clearVideoSurface()
+        if (parked.size >= KEPT) { held.player.release(); return }
+        parked += held
+        // Let go once nothing has taken them back for a while (each hand-back starts the wait again).
+        main.removeCallbacks(letGo)
+        main.postDelayed(letGo, IDLE_RELEASE_MS)
+    }
+
+    /** The player has [url] loaded (not failed or stopped): showing it again needs nothing new. */
+    fun playing(player: Player, url: String): Boolean = loadedAlready(player.currentMediaItem?.localConfiguration?.uri?.toString(), player.playbackState, player.playerError != null, url)
+
+    internal fun loadedAlready(current: String?, state: Int, failed: Boolean, url: String): Boolean =
+        current == url && !failed && state != Player.STATE_IDLE
 }
 
 /** Centre-crop the video into the view (a TextureView stretches by default). */

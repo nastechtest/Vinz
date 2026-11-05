@@ -34,6 +34,47 @@ import kotlin.math.abs
  * into the nearest of these rather than getting categories of their own.
  */
 object Genres {
+    /** A genre (Vinz's own, kept and matched in English) as the listener reads it, for the screen. */
+    fun shown(genre: String): String = when (genre) {
+        "Reggae & caribbean" -> com.vinz.music.R.string.genre_reggae
+        "Christian & gospel" -> com.vinz.music.R.string.genre_christian
+        "Soundtracks & musicals" -> com.vinz.music.R.string.genre_soundtracks
+        "Family" -> com.vinz.music.R.string.genre_family
+        "Hip-hop" -> com.vinz.music.R.string.genre_hip_hop
+        "Metal" -> com.vinz.music.R.string.genre_metal
+        "R&B & soul" -> com.vinz.music.R.string.genre_rnb
+        "Indie & alternative" -> com.vinz.music.R.string.genre_indie
+        "Dance & electronic" -> com.vinz.music.R.string.genre_dance
+        "Country & Americana" -> com.vinz.music.R.string.genre_country
+        "Folk & acoustic" -> com.vinz.music.R.string.genre_folk
+        "Jazz" -> com.vinz.music.R.string.genre_jazz
+        "Blues" -> com.vinz.music.R.string.genre_blues
+        "Classical" -> com.vinz.music.R.string.genre_classical
+        "Rock" -> com.vinz.music.R.string.genre_rock
+        "Pop" -> com.vinz.music.R.string.genre_pop
+        else -> null
+    }?.let { com.vinz.music.tr(it) } ?: genre
+
+    /** A genre as one word in a mix's name ("Your Tuesday evening hip-hop", "Your indie mix"). */
+    fun word(genre: String): String = when (genre) {
+        "Reggae & caribbean" -> com.vinz.music.R.string.genre_word_reggae
+        "Christian & gospel" -> com.vinz.music.R.string.genre_word_christian
+        "Soundtracks & musicals" -> com.vinz.music.R.string.genre_word_soundtracks
+        "Family" -> com.vinz.music.R.string.genre_word_family
+        "Hip-hop" -> com.vinz.music.R.string.genre_word_hip_hop
+        "Metal" -> com.vinz.music.R.string.genre_word_metal
+        "R&B & soul" -> com.vinz.music.R.string.genre_word_rnb
+        "Indie & alternative" -> com.vinz.music.R.string.genre_word_indie
+        "Dance & electronic" -> com.vinz.music.R.string.genre_word_dance
+        "Country & Americana" -> com.vinz.music.R.string.genre_word_country
+        "Folk & acoustic" -> com.vinz.music.R.string.genre_word_folk
+        "Jazz" -> com.vinz.music.R.string.genre_word_jazz
+        "Blues" -> com.vinz.music.R.string.genre_word_blues
+        "Classical" -> com.vinz.music.R.string.genre_word_classical
+        "Rock" -> com.vinz.music.R.string.genre_word_rock
+        "Pop" -> com.vinz.music.R.string.genre_word_pop
+        else -> null
+    }?.let { com.vinz.music.tr(it) } ?: genre.substringBefore(" & ").lowercase()
     /** Regional / non-English scenes; their YouTube tiles and shelves are left out of Vinz. */
     private val regionalWords = listOf(
         "k-pop", "kpop", "korean", "j-pop", "jpop", "j-rock", "japanese", "anime", "city pop", "mandopop", "cantopop", "c-pop",

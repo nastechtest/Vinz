@@ -80,7 +80,8 @@ fun StyledEntries(style: SectionStyle, entries: List<HomeEntry>) {
         SectionStyle.CAROUSEL -> LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(entries, key = { it.key }) { e -> EntryCard(e, ui.cardWidth) }
         }
-        SectionStyle.GRID -> LazyHorizontalGrid(
+        // Vinz's own tiles (mixes, moods) keep the two-row grid for 3 × 3 too: they're drawn, not covers.
+        SectionStyle.GRID, SectionStyle.DIAL -> LazyHorizontalGrid(
             GridCells.Fixed(if (entries.size > 2) 2 else 1), Modifier.height(if (entries.size > 2) GRID_ROW * 2 else GRID_ROW),
             contentPadding = PaddingValues(horizontal = 12.dp),
         ) {
@@ -103,11 +104,15 @@ fun StyledEntries(style: SectionStyle, entries: List<HomeEntry>) {
  * rows whatever they are (it used to fall back to a carousel unless every one was a song).
  */
 @Composable
-fun StyledItems(style: SectionStyle, items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
+fun StyledItems(style: SectionStyle, listed: List<BrowseItem>, open: (BrowseItem) -> Unit) {
+    // #216: "Hide them" leaves explicit songs off Home's shelves (albums, artists and playlists stay).
+    val items = com.vinz.music.data.ExplicitFilter.items(com.vinz.music.ui.theme.LocalAppSettings.current.behavior.explicitContent, listed)
     if (items.isEmpty()) return
     when (style) {
         SectionStyle.CAROUSEL -> ItemCarousel(items, open)
         SectionStyle.HERO -> HeroRow(items, open)
+        // Reddit, 1.7.9.1: "Listen again" and the rest as YouTube Music's 3 × 3 pages, whole square covers.
+        SectionStyle.DIAL -> SpeedDialPages(items, open)
         SectionStyle.GRID -> LazyHorizontalGrid(
             GridCells.Fixed(if (items.size > 2) 2 else 1), Modifier.height(if (items.size > 2) GRID_ROW * 2 else GRID_ROW),
             contentPadding = PaddingValues(horizontal = 12.dp),
