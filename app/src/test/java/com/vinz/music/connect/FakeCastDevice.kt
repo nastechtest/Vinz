@@ -222,8 +222,8 @@ class FakeCastDevice(
         p.inputStream.readBytes()
         check(p.waitFor() == 0) { "keytool failed" }
         val store = java.security.KeyStore.getInstance("PKCS12").apply { file.inputStream().use { load(it, pass) } }
-        // The JDK's own TLS for the device's end: Robolectric tests that ran earlier in this JVM make Conscrypt (the
-        // phone's TLS) the default, which the app's end then uses, as on a phone.
+        // Keep the fake device on JSSE; GoogleCastTest pins its test client to the same provider even if Robolectric
+        // changes the JVM default provider earlier in the suite.
         val kmf = javax.net.ssl.KeyManagerFactory.getInstance("SunX509", "SunJSSE").apply { init(store, pass) }
         val ctx = javax.net.ssl.SSLContext.getInstance("TLS", "SunJSSE").apply { init(kmf.keyManagers, null, null) }
         return ctx.serverSocketFactory.createServerSocket(port, 4, InetAddress.getByName(bind))

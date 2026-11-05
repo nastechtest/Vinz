@@ -129,7 +129,9 @@ class GoogleCastTest {
     @Test
     fun overTlsLikeARealDevice() = runBlocking {
         FakeCastDevice(fetch = false, tls = true).use { fake ->
-            val link = GoogleCastLink(fake.renderer())
+            // Robolectric can change the JVM default TLS provider earlier in the suite. Pin both test endpoints to
+            // JSSE so this test checks Cast TLS behavior rather than provider-order-dependent interop.
+            val link = GoogleCastLink(fake.renderer()) { host, port -> GoogleCastLink.tlsSocket(host, port, "SunJSSE") }
             try {
                 assertEquals("NO_MEDIA_PRESENT", link.transport().state)
                 link.load(url, "", media)
