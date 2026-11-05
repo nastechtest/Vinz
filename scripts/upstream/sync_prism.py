@@ -49,7 +49,6 @@ SYNC_ROOTS = (
     "docs",
     "design",
     "themes",
-    "promo",
 )
 
 # Exact Vinz identity sources. They are never replaced by upstream even if Prism changes a file
@@ -59,6 +58,7 @@ PROTECTED_FILES = {
     "app/src/main/res/drawable/ic_launcher_foreground.xml",
     "app/src/main/res/drawable/ic_launcher_monochrome.xml",
     "app/src/main/res/drawable/ic_notification.xml",
+    "app/src/main/res/drawable/tv_banner.xml",
     "app/src/main/assets/remote/icon.svg",
 }
 PROTECTED_PREFIXES = (
