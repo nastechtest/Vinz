@@ -1104,7 +1104,7 @@ private fun AppIconSettings() {
                                     Modifier.size(60.dp).then(if (on) Modifier.border(2.dp, com.vinz.music.ui.theme.VinzTokens.spectrum, RoundedCornerShape(18.dp)) else Modifier)
                                         .padding(if (on) 4.dp else 0.dp).clip(RoundedCornerShape(15.dp)),
                                 ) {
-                                    // An adaptive icon's layers are 108 units with the visible 72 in the middle: draw them 1.5× and crop.
+                                    // Compose painterResource supports vector backgrounds and the transparent raster mark.
                                     androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.background), null, Modifier.fillMaxSize().scale(1.5f))
                                     androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.foreground), null, Modifier.fillMaxSize().scale(1.5f))
                                 }

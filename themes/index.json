@@ -57,6 +57,41 @@
       "by": "Vinz community",
       "note": "Frosted glass, a pink-red accent, big bold titles, Cupertino icons",
       "code": "VINZLOOK1:dZLNbqswEIXfxet20R9VFTuX0gTJgQiIeruyjOsEq9SmHpN70yrvfseQhFRVt-fDZ2bO4YsYEpFZKwAa24MiF2RLoi8ibWsdB9s7qfADiOJVWeULxEJKZTxqOrq8ub-6u749iVz9EzKgOrpCsdWbxnPwu3a0eJ6nVYI69G4tpOJeDz4QZcmqKihDtLboIhurj1NZQjPUvfat4qA_R5nRYhac_K5TXIbltTyN7VqxU46PT_6qsMTw6CFnj4ildUY5GKTkD84dNv3o9SvfBKeTz9pZ8Oo3tRMbNalGbM8OfWI5rdJsdgCtqFU7DqTsmb6UYXNRcy2tmUKgcZxkFaJ3bTQ_HDF5xrR4nI6rhXzbONub1wEuknIeTJ0w0Fl3HvqMvSznYSJI19f1N89DIicylP69qiPyTf9ej2XlWSB17z2uD43oRrNlytgQ7zbMCDIXzmvw4-VxWmCZIeud0xLOtlgWabmYwM_GDkDg_2QGvaxoUU2gs6C9tiOr5ikGtb8gOvzGHeaEcrxaJgU2kpP9_j8"
+    },
+    {
+      "id": "nastech-full-glass",
+      "name": "Full Glass",
+      "by": "Nastech Research",
+      "note": "Frosted glass across every screen with aurora light.",
+      "code": "VINZLOOK1:ddBdb8IgFAbgv7Kca3exG5txx5Ras2oXWuNMmhCkqERsHbRmpul_H9J9OJfdPi_nBU4LJSAIG63vJppbCwM4AWqh3smDZIeqkC62aIzps4tEpSvDbNUY0ftokWbJzCVcCFnWzhS6D4ZBMHwMvpXJdy4u2Ro9ONRqu6uZrc-671hG04w4t43ZcCFZrXyRRXOyyCiO_chbowq29S_86tmYytbyPz3yrfxRf4btVVn45pAmaUbGLlhzsS9MdbTe2xyiZEZyQDngBU0ozmGQQ0owHUW3Gk-fKKarW6bkJcarvxVZNp1P0l_e-ZWaUpr-evLq_uus5Ker_YRxgi-zn4Hma6n78zhe4lXq_KBKxY6an6W5GhxhOoau-wA"
+    },
+    {
+      "id": "nastech-amoled-night",
+      "name": "AMOLED Night",
+      "by": "Nastech Research",
+      "note": "Pure-black surfaces with a crisp electric-cyan accent.",
+      "code": "VINZLOOK1:dZBdb4MgFED_ysLzlsytL-XNKUlNqSZ-ZI8E6a0lQ7GAzZqm_31Ik8497PWcy7nAFQ0Io3hXUJI-5bI7OvSMzghfkTtCD6zXe_ADFqdxufVqnAywVnHx5WmLI4-EVtowqycj7qNJU9XFzhsuBAzOM4lfouh9tYre1g_M4JsL96ioeTez7qLukc9NVhPP7WQOXABzMpQszklTlzENR06T3LNOcWtD59XDg9HWwX905B38UqHNAMaGbNV81HReOPDz4hppkWxJ6nEvB8lGxS9gFrqi2fxQK8zUtn_MJs5KmuVkacNPBRsnCclrdLv9AA"
+    },
+    {
+      "id": "nastech-starburst",
+      "name": "Animated Starburst",
+      "by": "Nastech Research",
+      "note": "Animated constellation stars over deep AMOLED black.",
+      "code": "VINZLOOK1:dZHRSsMwFIZfRXI9wcluzF3sqit2raQZIhRCmp5twTapSTocY-9u3KDkwt1-3-HnnP-ckEYYEa164aG9q7ywzWidRzN0QPiE_B564L1pIYw5vCT0LahhtMCbTsivQBs8D0iazljuzGjldTTZVKxcByOkBO0DU_h-vnhcPE2Mw4-Qforo1G7vufPH7prwscpYGrgb7VZI4F5dYhwu0g2jJA-qCSu01gzuwk81WpXrtEa4RklZVCzNc8KysqjRrEZVSmiyuiHz7JkS-nnD0vQ9J583cxnLitfqP32OdgwtemX0dK6FdpQQ04dLCd-javmuE85NcGuNC--J6Dyig9iBix5hNdhrIbTcFMvAtDhEvb7kJfnbOIheacWHThzBRgMJoUt0Pv8C"
+    },
+    {
+      "id": "nastech-glass-starfield",
+      "name": "Glass Starfield",
+      "by": "Nastech Research",
+      "note": "Full frosted glass with animated blue-violet starfields.",
+      "code": "VINZLOOK1:dZFRb8IgFIX_ysKzS_TBLekbq2ib1XahmM2kCUGKlVjBATUzxv8-Wo3rw_r6ncO53HMvQIEALGpm7VPumNlKUZdgBE4guAC3EwdBD7oU3mODGcTvXuK61oZa3Rh-4-EqJ9nSK4xzoZxnMnh-mU5ep-Ppg1Lxw3irbYKJh7Wsdo5ad65vGZ9RTJDntjFbxgV1sguyQYpWBMOke_LdyJJW7V8fOVujrRND9Mgq8Uc7D91LVXbJc5zlBM28sGF8Xxp9tB2_FCDKlqgAQQHCLPWeJIEkztICjAqQI4jDaEBM4jcM8XpAxegjgevBXELidJH_J197f_TncFKrx1JGlA0XfTrubmSUMLd90Jcv0DPFTr3C50kG24FeOEgl6bFmZ2F6hhDitps7b8dXRjf37pYoj8D1-gs"
+    },
+    {
+      "id": "nastech-prism-frost",
+      "name": "Prism Frost",
+      "by": "Nastech Research",
+      "note": "Aurora-frosted surfaces with a vivid violet prism accent.",
+      "code": "VINZLOOK1:dZFRa8IwGEX_ysizg4mwYd4yrVNWraQtIhRCmkYNpolLUpmI_31pK9o59npuvpObL2egAARLI2z5NDHaOtADRwDPwO14yUmpC-5zC8cIf_qIaakNsboyrOWjNE6iuU8oY1w5zwR8HrwOh2_9wY0S_k1ZneWw76EU250j1p1k61hNZ0ngua3MhjJOnGhEFi6CNMEobEa-KlGQraTW3jybui__jx7olt9pc4bshSoa8wRHcRKMfZBTti-MPtiGnzMwjeZBBmAGUIojjDLQy0AcIDyaPtJw9o4RXj9iHCxDtP6rSJLZ4iP-xS-dAn7XTmh1a2x4UTHepS_NBxjFTVsWR-mifoKix842J2GE6puugaQ5l-15FK7QOva8FEqQg6QnbjqDI4RrmzwZwSzJZWWuXS6XHw"
     }
   ]
 }
