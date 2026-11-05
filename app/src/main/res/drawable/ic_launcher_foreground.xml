@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:width="72dp" android:height="72dp" android:gravity="center">
-        <!-- A foreground must be transparent outside the mark so adaptive-icon backgrounds can show through. -->
-        <bitmap android:src="@drawable/vinz_notification_mark" android:gravity="fill" android:filter="true" />
+        <bitmap android:src="@drawable/vinz_logo" android:gravity="fill" android:filter="true" />
     </item>
 </layer-list>
