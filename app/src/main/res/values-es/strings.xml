@@ -4685,4 +4685,8 @@
     <string name="glass_kinds_info">Cristal esmerilado: un desenfoque suave detrás de las barras y los controles. Liquid Glass: curvan lo que hay detrás como un cristal de verdad (Android 12 o posterior; los móviles más antiguos usan Cristal esmerilado). Normal desenfoca lo que hay detrás, como el cristal esmerilado. Transparente lo deja nítido, solo con un tinte ligero.</string>
     <string name="smart_downloads_offer_title">¿Descargar canciones antes de que las necesites?</string>
     <string name="smart_downloads_offer_body">Descargas inteligentes mantiene listas sin conexión las canciones que probablemente escucharás: hasta 1 GB, con Wi-Fi. Cámbialo cuando quieras en Descargas, almacenamiento y datos.</string>
+    <string name="show_next_track_preview">Mostrar siguiente canción</string>
+    <string name="show_next_track_preview_detail">Sigue el orden de reproducción, incluidos el modo aleatorio y la repetición. Toca para abrir la cola.</string>
+    <string name="next_track_preview_label">A continuación</string>
+    <string name="next_track_preview_open_queue">Abrir cola</string>
 </resources>

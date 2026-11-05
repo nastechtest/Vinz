@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">毛玻璃：列和控制項後方的柔和模糊。液態玻璃：它們像真正的玻璃一樣折射後方的內容（Android 12 以上；較舊的手機會使用毛玻璃）。一般會模糊後方的內容，就像毛玻璃一樣。透明則保持清晰，僅帶淡淡的色調。</string>
     <string name="smart_downloads_offer_title">在需要之前先下載歌曲？</string>
     <string name="smart_downloads_offer_body">智慧下載會把你可能會播放的歌曲準備好供離線使用：最多 1 GB，透過 Wi-Fi。隨時可在「下載、儲存空間和數據」中變更。</string>
+    <string name="show_next_track_preview">顯示下一首歌曲</string>
+    <string name="show_next_track_preview_detail">依照播放順序，包含隨機播放與重複播放。點選以開啟佇列。</string>
+    <string name="next_track_preview_label">下一首</string>
+    <string name="next_track_preview_open_queue">開啟佇列</string>
 </resources>

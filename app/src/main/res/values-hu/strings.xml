@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">Matt üveg: lágy elmosás a sávok és a vezérlők mögött. Folyékony üveg: ezek úgy hajlítják el a mögöttük lévőt, mint az igazi üveg (Android 12 vagy újabb; a régebbi telefonok a Matt üveget kapják). A Normál elmossa a mögötte lévőt, ahogy a matt üveg is. Az Átlátszó élesen hagyja, csak enyhe árnyalattal.</string>
     <string name="smart_downloads_offer_title">Letöltöd a dalokat, mielőtt szükséged lenne rájuk?</string>
     <string name="smart_downloads_offer_body">Az Okos letöltések offline készenlétben tartják a dalokat, amelyeket valószínűleg meghallgatsz: legfeljebb 1 GB, Wi-Fi-n. Bármikor módosíthatod a Letöltések, tárhely és adatforgalom alatt.</string>
+    <string name="show_next_track_preview">Következő szám megjelenítése</string>
+    <string name="show_next_track_preview_detail">Követi a lejátszási sorrendet, a keverést és az ismétlést is. Koppints a sor megnyitásához.</string>
+    <string name="next_track_preview_label">Következő</string>
+    <string name="next_track_preview_open_queue">Lejátszási sor megnyitása</string>
 </resources>

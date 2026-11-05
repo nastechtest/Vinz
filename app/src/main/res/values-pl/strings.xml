@@ -4747,4 +4747,8 @@
     <string name="glass_kinds_info">Matowe szkło: delikatne rozmycie za paskami i przyciskami. Liquid Glass: uginają to, co jest za nimi, jak prawdziwe szkło (Android 12 i nowszy; starsze telefony dostają Matowe szkło). Zwykła rozmywa to, co jest za nią, tak jak matowe szkło. Przezroczysta zostawia to ostre, tylko z lekkim odcieniem.</string>
     <string name="smart_downloads_offer_title">Pobrać piosenki, zanim będą potrzebne?</string>
     <string name="smart_downloads_offer_body">Inteligentne pobieranie trzyma gotowe offline piosenki, które prawdopodobnie odtworzysz: do 1 GB, przez Wi-Fi. Zmienisz to w każdej chwili w Pobrane, pamięć i dane.</string>
+    <string name="show_next_track_preview">Pokaż następny utwór</string>
+    <string name="show_next_track_preview_detail">Uwzględnia kolejność odtwarzania, losowanie i powtarzanie. Dotknij, aby otworzyć kolejkę.</string>
+    <string name="next_track_preview_label">Następny</string>
+    <string name="next_track_preview_open_queue">Otwórz kolejkę</string>
 </resources>

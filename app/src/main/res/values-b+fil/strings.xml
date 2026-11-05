@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">Frosted Glass: banayad na blur sa likod ng mga bar at kontrol. Liquid Glass: binabaluktot nila ang nasa likod nila na parang totoong salamin (Android 12 at mas bago; Frosted Glass ang makukuha ng mas lumang phone). Binu-blur ng Regular ang nasa likod, tulad ng frosted glass. Pinapanatiling malinaw ng Malinaw ang nasa likod, na may bahagyang tint lang.</string>
     <string name="smart_downloads_offer_title">I-download ang mga kanta bago mo pa kailanganin?</string>
     <string name="smart_downloads_offer_body">Pinapanatiling handa offline ng Smart Downloads ang mga kantang malamang mong pakinggan: hanggang 1 GB, sa Wi-Fi. Baguhin ito anumang oras sa Mga download, storage at data.</string>
+    <string name="show_next_track_preview">Ipakita ang susunod na kanta</string>
+    <string name="show_next_track_preview_detail">Sinusunod ang pagkakasunod ng pag-play, kasama ang shuffle at pag-ulit. I-tap upang buksan ang pila.</string>
+    <string name="next_track_preview_label">Susunod</string>
+    <string name="next_track_preview_open_queue">Buksan ang pila</string>
 </resources>

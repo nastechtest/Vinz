@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">फ़्रॉस्टेड ग्लास: बार और कंट्रोल के पीछे हल्का ब्लर। लिक्विड ग्लास: ये अपने पीछे की चीज़ को असली कांच की तरह मोड़ते हैं (Android 12 और उसके बाद; पुराने फ़ोन में फ़्रॉस्टेड मिलता है)। सामान्य पीछे की चीज़ को ब्लर करता है, जैसे फ़्रॉस्टेड ग्लास करता है। साफ़ उसे तेज़ रखता है, बस हल्का सा रंग रहता है।</string>
     <string name="smart_downloads_offer_title">ज़रूरत से पहले गाने डाउनलोड कर लें?</string>
     <string name="smart_downloads_offer_body">स्मार्ट डाउनलोड वे गाने ऑफ़लाइन तैयार रखता है जिन्हें आप शायद चलाएंगे: 1 GB तक, Wi-Fi पर। इसे कभी भी डाउनलोड, स्टोरेज &amp; डेटा में बदलें।</string>
+    <string name="show_next_track_preview">अगला गाना दिखाएँ</string>
+    <string name="show_next_track_preview_detail">शफ़ल और दोहराव सहित चलाने के क्रम का पालन करता है। कतार खोलने के लिए टैप करें।</string>
+    <string name="next_track_preview_label">अगला गाना</string>
+    <string name="next_track_preview_open_queue">कतार खोलें</string>
 </resources>

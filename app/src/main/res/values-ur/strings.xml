@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">دھندلا شیشہ: بارز اور کنٹرولز کے پیچھے ہلکی دھندلاہٹ۔ مائع شیشہ: یہ اپنے پیچھے کی چیزوں کو اصلی شیشے کی طرح موڑتے ہیں (Android 12 اور بعد کے ورژن؛ پرانے فونز کو دھندلا شیشہ ملتا ہے)۔ عام اپنے پیچھے کی چیزوں کو دھندلا کرتا ہے، جیسے دھندلا شیشہ کرتا ہے۔ شفاف اسے صاف رکھتا ہے، صرف ہلکی سی رنگت کے ساتھ۔</string>
     <string name="smart_downloads_offer_title">گانے ضرورت سے پہلے ڈاؤن لوڈ کریں؟</string>
     <string name="smart_downloads_offer_body">سمارٹ ڈاؤن لوڈز وہ گانے آف لائن تیار رکھتا ہے جنہیں آپ کے چلانے کا امکان ہے: 1 GB تک، Wi-Fi پر۔ اسے کسی بھی وقت ڈاؤن لوڈز، اسٹوریج اور ڈیٹا میں بدلیں۔</string>
+    <string name="show_next_track_preview">اگلا گانا دکھائیں</string>
+    <string name="show_next_track_preview_detail">شفل اور دہرانے سمیت پلے بیک کی ترتیب کی پیروی کرتا ہے۔ قطار کھولنے کے لیے تھپتھپائیں۔</string>
+    <string name="next_track_preview_label">اگلا گانا</string>
+    <string name="next_track_preview_open_queue">قطار کھولیں</string>
 </resources>

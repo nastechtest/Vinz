@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">شیشه مات: محوی نرم پشت نوارها و کنترل‌ها. شیشه مایع: آن‌ها آنچه را پشتشان است مثل شیشهٔ واقعی خم می‌کنند (Android 12 و بالاتر؛ گوشی‌های قدیمی‌تر شیشه مات می‌گیرند). معمولی آنچه را پشتش است محو می‌کند، مثل شیشه مات. شفاف آن را واضح نگه می‌دارد، فقط با رنگ‌مایه‌ای ملایم.</string>
     <string name="smart_downloads_offer_title">آهنگ‌ها را پیش از نیاز دانلود کنیم؟</string>
     <string name="smart_downloads_offer_body">دانلود هوشمند آهنگ‌هایی را که احتمالاً پخش می‌کنید برای شنیدن بدون اینترنت آماده نگه می‌دارد: تا 1 GB، با Wi-Fi. هر زمان خواستید در «دانلودها، فضای ذخیره‌سازی و داده» تغییرش دهید.</string>
+    <string name="show_next_track_preview">نمایش آهنگ بعدی</string>
+    <string name="show_next_track_preview_detail">از ترتیب پخش، شامل پخش تصادفی و تکرار، پیروی می‌کند. برای باز کردن صف ضربه بزنید.</string>
+    <string name="next_track_preview_label">آهنگ بعدی</string>
+    <string name="next_track_preview_open_queue">باز کردن صف</string>
 </resources>

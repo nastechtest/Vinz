@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">すりガラス：バーやコントロールの背後をやわらかくぼかします。リキッドグラス：背後のものを本物のガラスのように曲げて見せます（Android 12 以降。それより古いスマホではすりガラス）。標準は背後をすりガラスのようにぼかします。クリアは背後をくっきり見せ、わずかに色を付けるだけです。</string>
     <string name="smart_downloads_offer_title">曲が必要になる前にダウンロードしておきますか？</string>
     <string name="smart_downloads_offer_body">スマートダウンロードは、よく再生しそうな曲をオフライン用に準備しておきます（最大 1 GB、Wi-Fi 接続時）。「ダウンロード、ストレージ、データ」でいつでも変更できます。</string>
+    <string name="show_next_track_preview">次の曲を表示</string>
+    <string name="show_next_track_preview_detail">シャッフルとリピートを含む再生順序に従います。タップするとキューが開きます。</string>
+    <string name="next_track_preview_label">次の曲</string>
+    <string name="next_track_preview_open_queue">キューを開く</string>
 </resources>

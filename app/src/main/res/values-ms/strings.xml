@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">Kaca Kabur: kabur lembut di belakang bar dan kawalan. Kaca Cecair: ia membengkokkan apa yang ada di belakangnya seperti kaca sebenar (Android 12 dan lebih baharu; telefon lama mendapat Kaca Kabur). Biasa mengaburkan apa yang ada di belakangnya, seperti kaca kabur. Jernih memastikannya tajam, dengan hanya sedikit rona.</string>
     <string name="smart_downloads_offer_title">Muat turun lagu sebelum anda memerlukannya?</string>
     <string name="smart_downloads_offer_body">Muat Turun Pintar menyediakan lagu yang mungkin anda mainkan untuk kegunaan luar talian: sehingga 1 GB, melalui Wi-Fi. Tukar pada bila-bila masa dalam Muat turun, storan &amp; data.</string>
+    <string name="show_next_track_preview">Tunjukkan lagu seterusnya</string>
+    <string name="show_next_track_preview_detail">Mengikut urutan main balik, termasuk rawak dan ulang. Ketik untuk membuka baris gilir.</string>
+    <string name="next_track_preview_label">Seterusnya</string>
+    <string name="next_track_preview_open_queue">Buka baris gilir</string>
 </resources>

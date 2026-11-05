@@ -4561,4 +4561,8 @@
     <string name="glass_kinds_info">Kaca Buram: blur lembut di belakang bilah dan kontrol. Kaca Cair: keduanya membelokkan apa yang ada di belakangnya seperti kaca sungguhan (Android 12 dan yang lebih baru; ponsel lama mendapat Kaca Buram). Reguler mengaburkan yang ada di belakangnya, seperti kaca buram. Bening menjaganya tetap tajam, hanya dengan sedikit rona.</string>
     <string name="smart_downloads_offer_title">Download lagu sebelum dibutuhkan?</string>
     <string name="smart_downloads_offer_body">Download Pintar menyiapkan lagu yang kemungkinan besar diputar agar siap offline: hingga 1 GB, lewat Wi-Fi. Ubah kapan saja di Download, penyimpanan &amp; data.</string>
+    <string name="show_next_track_preview">Tampilkan lagu berikutnya</string>
+    <string name="show_next_track_preview_detail">Mengikuti urutan pemutaran, termasuk acak dan ulangi. Ketuk untuk membuka antrean.</string>
+    <string name="next_track_preview_label">Berikutnya</string>
+    <string name="next_track_preview_open_queue">Buka antrean</string>
 </resources>

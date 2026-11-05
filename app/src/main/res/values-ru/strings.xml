@@ -4747,4 +4747,8 @@
     <string name="glass_kinds_info">Матовое стекло: мягкое размытие за панелями и кнопками. Жидкое стекло: они преломляют то, что за ними, как настоящее стекло (Android 12 и новее; на старых телефонах будет Матовое стекло). «Обычный» размывает то, что за ним, как матовое стекло. «Прозрачное» оставляет фон чётким, лишь с лёгким оттенком.</string>
     <string name="smart_downloads_offer_title">Скачать песни заранее?</string>
     <string name="smart_downloads_offer_body">«Умные загрузки» держат готовыми офлайн песни, которые ты, скорее всего, включишь: до 1 GB, по Wi-Fi. Измени это в любой момент в разделе «Скачанное, хранилище и трафик».</string>
+    <string name="show_next_track_preview">Показывать следующий трек</string>
+    <string name="show_next_track_preview_detail">Следует порядку воспроизведения, включая перемешивание и повтор. Нажмите, чтобы открыть очередь.</string>
+    <string name="next_track_preview_label">Далее</string>
+    <string name="next_track_preview_open_queue">Открыть очередь</string>
 </resources>

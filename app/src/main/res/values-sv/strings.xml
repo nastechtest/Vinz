@@ -4623,4 +4623,8 @@
     <string name="glass_kinds_info">Frostat glas: en mjuk oskärpa bakom fälten och kontrollerna. Flytande glas: de böjer det som finns bakom dem, som riktigt glas (Android 12 och senare; äldre telefoner får Frostat glas). Normal gör det bakom suddigt, som frostat glas. Klar håller det skarpt, med bara en lätt ton.</string>
     <string name="smart_downloads_offer_title">Ladda ner låtar innan du behöver dem?</string>
     <string name="smart_downloads_offer_body">Smarta nedladdningar håller de låtar du troligen spelar redo offline: upp till 1 GB, på Wi-Fi. Ändra när du vill under Nedladdningar, lagring &amp; data.</string>
+    <string name="show_next_track_preview">Visa nästa låt</string>
+    <string name="show_next_track_preview_detail">Följer uppspelningsordningen, även blandning och upprepning. Tryck för att öppna kön.</string>
+    <string name="next_track_preview_label">Härnäst</string>
+    <string name="next_track_preview_open_queue">Öppna kön</string>
 </resources>
