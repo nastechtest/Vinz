@@ -213,6 +213,7 @@ fun PlayerPartsGroup() {
         PlayerPartsPreview(s, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { part -> prefs.setPartShown(part, !s.shows(part)) }
         val hidden = PlayerPart.entries.filter { !s.shows(it) && it != PlayerPart.NAV_BAND && (s.mix || it !in PlayerPart.CROSSFADE) }
         if (hidden.isNotEmpty()) Note(tr(R.string.hidden_s, hidden.joinToString(", ") { it.label }))
+        Toggle(tr(R.string.show_next_track_preview), tr(R.string.show_next_track_preview_detail), s.showNextTrack) { prefs.setShowNextTrack(it) }
         // The parts under the title, top to bottom, as they sit on the player.
         Label(tr(R.string.under_the_title), info = tr(R.string.top_to_bottom_as_they_sit))
         val order = s.playerDeck

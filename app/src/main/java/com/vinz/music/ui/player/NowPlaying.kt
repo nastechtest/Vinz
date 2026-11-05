@@ -1232,6 +1232,12 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         else sleeveGesture.then(doubleTapSeek)
                     Column(swipes.then(coverGestures).testTag("playerDeck").inked(), horizontalAlignment = Alignment.CenterHorizontally) {
                         val deckGap = if (roomyCover) 12.dp else 18.dp
+                        if (settings.showNextTrack && !lyricsOpen && !queueOpen && !statsOpen && !covered) {
+                            NextTrackPreview(
+                                onOpenQueue = { if (!queueOpen) toggleQueue() },
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
                         // With the lyrics open: Sing's one button at their lower right (1.7.8, V; their source is a line
                         // at their end), and the source as a button at the lower left when asked for (1.7.9).
                         if (lyricsOpen) LyricsButtonsRow(song, lyricsState, onChangeSource = { showProviders = true }, onNeedsDownload = { showSing = true }, modifier = Modifier.padding(bottom = 6.dp))
