@@ -145,7 +145,9 @@ jobs:
           "$emulator_bin" -accel-check > emulator-logs/accel-check.txt 2>&1 || fail "Android emulator acceleration check failed"
           timeout 15s adb start-server > emulator-logs/adb-start-server.txt 2>&1 || fail "adb server did not start within 15 seconds"
           host_snapshot before-emulator
-          "$emulator_bin" -avd vinz-api34 -port "$EMULATOR_PORT" -memory 1536 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel on > emulator-logs/emulator.log 2>&1 &
+          # API 34 raises smaller guest RAM requests to 2560 MB. Use supported
+          # software GLES without Vulkan after a native emulator SIGSEGV (139).
+          "$emulator_bin" -avd vinz-api34 -port "$EMULATOR_PORT" -memory 2560 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader -feature -Vulkan -no-snapshot -accel on > emulator-logs/emulator.log 2>&1 &
           emulator_pid=$!
           trap cleanup EXIT
 
