@@ -13,13 +13,15 @@ jobs:
       - name: Check out staged repair
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Verify and apply exact source patch
         env:
           EXPECTED_PATCH_SHA256: dcada84dc8742ebad33f7d2f09dd2d60715608c1a9b7bc8b9e2d930ca720e55c
         run: |
           set -euo pipefail
-          test -z "$(git diff --name-only e1e21aebb37183644cb22f28849a023aa88b5bbc HEAD -- . ':(exclude).ci/pr32-ci-blockers.part*' ':(exclude).github/workflows/pr32-source-repair.yml')"
+          exec > >(tee "$RUNNER_TEMP/pr32-repair.log") 2>&1
+          git diff --name-only e1e21aebb37183644cb22f28849a023aa88b5bbc HEAD -- . ':(exclude).ci/pr32-ci-blockers.part*' ':(exclude).github/workflows/pr32-source-repair.yml' > "$RUNNER_TEMP/unexpected-paths"
+          test ! -s "$RUNNER_TEMP/unexpected-paths"
           python3 - <<'PY'
           import base64, gzip, hashlib, os
           from pathlib import Path
@@ -30,9 +32,18 @@ jobs:
           PY
           git apply --check "$RUNNER_TEMP/pr32.patch"
           git apply --index "$RUNNER_TEMP/pr32.patch"
-          git rm .ci/pr32-ci-blockers.part* .github/workflows/pr32-source-repair.yml
+          git rm .ci/pr32-ci-blockers.part*
+          # Workflow edits are published separately through the connected repository account.
+          git restore --source=HEAD --staged --worktree .github/workflows/icons-shapes.yml
           git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Fix PR32 settings capacity, locale parity and emulator runtime'
           git push origin HEAD:fix/icons-shapes-stability
+      - name: Upload repair diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr32-repair-diagnostics
+          path: ${{ runner.temp }}/pr32-repair.log
+          retention-days: 3
