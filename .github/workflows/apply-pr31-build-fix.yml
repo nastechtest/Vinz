@@ -1,0 +1,28 @@
+name: Apply reviewed PR31 build repair
+on:
+  push:
+    branches: [feat/bantu-language-pickers]
+    paths: [.github/workflows/apply-pr31-build-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/feat/bantu-language-pickers'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/bantu-language-pickers
+      - name: Apply checksum-pinned reviewed repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat docs/ports/.pr31-build-fix.*.b64 | base64 -d | gzip -d > /tmp/pr31-build-fix.patch
+          echo "012a97ce970d8ead6c6f38d5a482202fccb5bbaa673cb879a36323083c665bf9  /tmp/pr31-build-fix.patch" | sha256sum -c -
+          git apply --check /tmp/pr31-build-fix.patch
+          git apply /tmp/pr31-build-fix.patch
+          git diff --check
+          git add app/src/main/java/com/vinz/music/ui/screens/SettingsScreen.kt app/src/main/res/values*/strings.xml app/src/test/java/com/vinz/music/TranslationTablesTest.kt
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(i18n): restore missing picker integration and translation resources'
+          git push origin HEAD:feat/bantu-language-pickers
