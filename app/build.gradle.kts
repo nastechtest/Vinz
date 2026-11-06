@@ -11,9 +11,9 @@ plugins {
     id("androidx.room")
     id("androidx.baselineprofile")
 }
-// The app version lives in version.properties at the repository root: one source of truth for local builds, CI
-// and the release workflow. CI stamps development builds with -PciVersionName (and -PciVersionCode when needed)
-// so an installed dev build says which build it is in Settings -> About, without a commit rewriting the file.
+// Local builds use the minimum target in version.properties. CI resolves published stable tags through
+// scripts/ci/version.sh and stamps the same short name/code into main, PR and release APKs. Channel and
+// source identity live in BuildConfig rather than adding extra numbers to the public version.
 val appVersionFile = rootProject.file("version.properties")
 val appVersion = Properties().apply {
     require(appVersionFile.exists()) {
@@ -48,6 +48,9 @@ android {
         targetSdk = 36
         versionCode = ciVersionCode ?: appVersion.getProperty("versionCode").toInt()
         versionName = ciVersionName ?: appVersion.getProperty("versionName")
+        require(versionName?.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) == true) {
+            "versionName must have exactly three numeric parts; use build metadata for channel/identity."
+        }
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
         vectorDrawables { useSupportLibrary = true }

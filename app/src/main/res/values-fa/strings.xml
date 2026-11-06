@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">از ترتیب پخش، شامل پخش تصادفی و تکرار، پیروی می‌کند. برای باز کردن صف ضربه بزنید.</string>
     <string name="next_track_preview_label">آهنگ بعدی</string>
     <string name="next_track_preview_open_queue">باز کردن صف</string>
+    <string name="bantu_priority_languages">زبان‌های اولویت‌دار</string>
+    <string name="bantu_east">بانتو شرقی</string>
+    <string name="bantu_central">بانتو مرکزی</string>
+    <string name="bantu_southern">بانتو جنوبی</string>
+    <string name="bantu_more_languages_coming">زبان‌های بیشتری در راه است</string>
+    <string name="bantu_app_translation_coming">ترجمهٔ برنامه در راه است</string>
+    <string name="bantu_translation_unverified">پشتیبانی ترجمه تأیید نشده است</string>
+    <string name="bantu_installed_languages">زبان‌های نصب‌شدهٔ دیگر</string>
+    <string name="bantu_translation_availability">دسترس‌پذیری ترجمه به سرویس بستگی دارد.</string>
+    <string name="bantu_language_groups">زبان‌های بانتو</string>
 </resources>

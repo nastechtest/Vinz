@@ -4689,4 +4689,14 @@
     <string name="show_next_track_preview_detail">לפי סדר ההשמעה, כולל ערבוב וחזרה. יש להקיש לפתיחת התור.</string>
     <string name="next_track_preview_label">הבא בתור</string>
     <string name="next_track_preview_open_queue">פתיחת התור</string>
+    <string name="bantu_priority_languages">שפות בעדיפות</string>
+    <string name="bantu_east">בנטו מזרחית</string>
+    <string name="bantu_central">בנטו מרכזית</string>
+    <string name="bantu_southern">בנטו דרומית</string>
+    <string name="bantu_more_languages_coming">שפות נוספות בקרוב</string>
+    <string name="bantu_app_translation_coming">תרגום לאפליקציה בקרוב</string>
+    <string name="bantu_translation_unverified">תמיכת התרגום לא אומתה</string>
+    <string name="bantu_installed_languages">שפות מותקנות אחרות</string>
+    <string name="bantu_translation_availability">זמינות התרגום תלויה בשירות.</string>
+    <string name="bantu_language_groups">שפות בנטו</string>
 </resources>

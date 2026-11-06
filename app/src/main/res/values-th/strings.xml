@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">ตามลำดับการเล่น รวมถึงการสุ่มและการเล่นซ้ำ แตะเพื่อเปิดคิว</string>
     <string name="next_track_preview_label">เพลงถัดไป</string>
     <string name="next_track_preview_open_queue">เปิดคิว</string>
+    <string name="bantu_priority_languages">ภาษาที่สำคัญ</string>
+    <string name="bantu_east">ภาษาบันตูตะวันออก</string>
+    <string name="bantu_central">ภาษาบันตูกลาง</string>
+    <string name="bantu_southern">ภาษาบันตูใต้</string>
+    <string name="bantu_more_languages_coming">จะมีภาษาเพิ่มเติมเร็ว ๆ นี้</string>
+    <string name="bantu_app_translation_coming">การแปลแอปจะพร้อมในภายหลัง</string>
+    <string name="bantu_translation_unverified">ยังไม่ได้ตรวจสอบการรองรับการแปล</string>
+    <string name="bantu_installed_languages">ภาษาอื่นที่ติดตั้งไว้</string>
+    <string name="bantu_translation_availability">ความพร้อมใช้งานของการแปลขึ้นอยู่กับผู้ให้บริการ</string>
+    <string name="bantu_language_groups">ภาษาบันตู</string>
 </resources>

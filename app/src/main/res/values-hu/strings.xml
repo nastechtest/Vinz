@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Követi a lejátszási sorrendet, a keverést és az ismétlést is. Koppints a sor megnyitásához.</string>
     <string name="next_track_preview_label">Következő</string>
     <string name="next_track_preview_open_queue">Lejátszási sor megnyitása</string>
+    <string name="bantu_priority_languages">Elsődleges nyelvek</string>
+    <string name="bantu_east">Keleti bantu</string>
+    <string name="bantu_central">Közép-bantu</string>
+    <string name="bantu_southern">Déli bantu</string>
+    <string name="bantu_more_languages_coming">További nyelvek hamarosan</string>
+    <string name="bantu_app_translation_coming">Az alkalmazás fordítása hamarosan</string>
+    <string name="bantu_translation_unverified">A fordítás támogatása nincs ellenőrizve</string>
+    <string name="bantu_installed_languages">Más telepített nyelvek</string>
+    <string name="bantu_translation_availability">A fordítás elérhetősége a szolgáltatástól függ.</string>
+    <string name="bantu_language_groups">Bantu nyelvek</string>
 </resources>

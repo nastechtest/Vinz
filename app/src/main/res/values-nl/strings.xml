@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Volgt de afspeelvolgorde, inclusief shuffle en herhalen. Tik om de wachtrij te openen.</string>
     <string name="next_track_preview_label">Hierna</string>
     <string name="next_track_preview_open_queue">Wachtrij openen</string>
+    <string name="bantu_priority_languages">Prioriteitstalen</string>
+    <string name="bantu_east">Oostelijk Bantoe</string>
+    <string name="bantu_central">Centraal Bantoe</string>
+    <string name="bantu_southern">Zuidelijk Bantoe</string>
+    <string name="bantu_more_languages_coming">Meer talen komen eraan</string>
+    <string name="bantu_app_translation_coming">Appvertaling komt eraan</string>
+    <string name="bantu_translation_unverified">Vertaalondersteuning niet geverifieerd</string>
+    <string name="bantu_installed_languages">Andere geïnstalleerde talen</string>
+    <string name="bantu_translation_availability">De beschikbaarheid van vertalingen hangt af van de service.</string>
+    <string name="bantu_language_groups">Bantoetalen</string>
 </resources>

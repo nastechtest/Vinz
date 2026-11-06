@@ -4751,4 +4751,14 @@
     <string name="show_next_track_preview_detail">Дотримується порядку відтворення, зокрема перемішування й повторення. Натисніть, щоб відкрити чергу.</string>
     <string name="next_track_preview_label">Далі</string>
     <string name="next_track_preview_open_queue">Відкрити чергу</string>
+    <string name="bantu_priority_languages">Пріоритетні мови</string>
+    <string name="bantu_east">Східні мови банту</string>
+    <string name="bantu_central">Центральні мови банту</string>
+    <string name="bantu_southern">Південні мови банту</string>
+    <string name="bantu_more_languages_coming">Незабаром з’являться інші мови</string>
+    <string name="bantu_app_translation_coming">Переклад застосунку з’явиться пізніше</string>
+    <string name="bantu_translation_unverified">Підтримку перекладу не перевірено</string>
+    <string name="bantu_installed_languages">Інші встановлені мови</string>
+    <string name="bantu_translation_availability">Доступність перекладу залежить від сервісу.</string>
+    <string name="bantu_language_groups">Мови банту</string>
 </resources>

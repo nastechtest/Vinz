@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Version helpers for CI. The single source of truth is version.properties at the repo root; this script
-# only *derives* build labels from it, so no workflow has to parse Gradle files or duplicate the rules.
+# Shared version resolver: published stable tags plus the minimum target in version.properties.
+# New releases and development builds use the same three-part name; build identity is kept separately.
 #
-#   version.sh name                    versionName at HEAD            (e.g. 1.7.7.1)
+#   version.sh name                    minimum unreleased target at HEAD
+#   version.sh development-name        next shared three-part version (e.g. 1.8.2)
 #   version.sh code                    versionCode at HEAD            (e.g. 47)
-#   version.sh main                    main development label         (e.g. v1.7.7.1-main.15)
+#   version.sh main                    main development label         (e.g. v1.8.2-main.15)
 #   version.sh main-count              commits on the integration branch (the "15" above)
-#   version.sh pr <number> <build>     PR label                       (e.g. pr-42-1.7.7.1-3)
+#   version.sh pr <number> <build>     PR label                       (e.g. pr-42-1.8.2-3)
 #   version.sh name-at <git-ref>       versionName at a ref
 #   version.sh code-at <git-ref>       versionCode at a ref
 #   version.sh previous-stable-tag     highest non-prerelease v* tag, empty if none
@@ -75,7 +76,7 @@ cmd_main_count() {
 }
 
 cmd_main() {
-  printf 'v%s-main.%s' "$(cmd_name)" "$(cmd_main_count)"
+  printf 'v%s-main.%s' "$(cmd_development_name)" "$(cmd_main_count)"
 }
 
 cmd_pr() {
@@ -83,26 +84,17 @@ cmd_pr() {
   local pr=$1 build=$2
   [[ $pr =~ ^[0-9]+$ ]] || die "PR number must be numeric, got '$pr'"
   [[ $build =~ ^[0-9]+$ ]] || die "build number must be numeric, got '$build'"
-  printf 'pr-%s-%s-%s' "$pr" "$(cmd_name)" "$build"
+  printf 'pr-%s-%s-%s' "$pr" "$(cmd_development_name)" "$build"
 }
 
 # Prereleases carry a hyphen after the version (v1.7.8-rc.1); stable tags do not (v1.7.8).
 cmd_previous_stable_tag() {
-  git -C "$repo_root" tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1 || true
+  git -C "$repo_root" tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -1 || true
 }
 
 
-# The highest version anyone has claimed: what version.properties says, and what the newest stable tag
-# says. Normally these agree. When a release pushed a bump that never reached main, they don't, and the
-# newer of the two wins so a version is never handed out twice.
-highest_version() {
-  local file tag
-  file=$(cmd_name)
-  tag=$(cmd_latest_stable_version) || tag=""
-  if [[ -z $tag ]]; then printf '%s' "$file"; return; fi
-  printf '%s\n%s\n' "$file" "$tag" | sort -V | tail -1
-}
-
+# version.properties is the minimum *unreleased* target. Published stable tags are authoritative;
+# main, PRs and stable releases all derive their next version here rather than trusting a branch copy.
 cmd_latest_stable_version() {
   local tag
   tag=$(cmd_previous_stable_tag)
@@ -110,27 +102,38 @@ cmd_latest_stable_version() {
   printf '%s' "${tag#v}"
 }
 
-# patch bumps the last number (1.7.7.1 -> 1.7.7.2; 1.7.8 -> 1.7.9); minor and major bump their position
-# and reset everything after it (1.7.7.1 -> 1.8.0.0 -> 2.0.0.0). The number of parts never changes.
+cmd_development_name() { cmd_bump_name patch; }
+
+# Legacy four-part tags remain immutable and readable, but every new version has three parts.
+# A legacy file is rounded up (1.8.1.2 -> 1.8.2), never shortened onto an already published version.
 cmd_bump_name() {
   [[ $# -eq 1 ]] || die "usage: version.sh bump-name <patch|minor|major>"
-  local kind=$1 base i
+  require_full_history
+  local kind=$1 floor tag base major minor micro candidate floor_name
+  local -a parts
   case "$kind" in
     patch|minor|major) ;;
     *) die "bump must be patch, minor or major, got '$kind'" ;;
   esac
-  base=$(highest_version)
-  [[ $base =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "cannot bump '$base': not a dotted numeric version"
+  floor=$(cmd_name)
+  [[ $floor =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "invalid version floor '$floor'"
+  IFS=. read -ra parts <<< "$floor"
+  major=$((10#${parts[0]})); minor=$((10#${parts[1]})); micro=$((10#${parts[2]}))
+  if [[ ${#parts[@]} -eq 4 ]]; then micro=$((micro + 1)); fi
+  floor_name="${major}.${minor}.${micro}"
+  tag=$(cmd_latest_stable_version) || tag=""
+  base=${tag:-$floor}
   IFS=. read -ra parts <<< "$base"
-  local last=$(( ${#parts[@]} - 1 ))
+  major=$((10#${parts[0]})); minor=$((10#${parts[1]})); micro=$((10#${parts[2]}))
   case "$kind" in
-    patch) parts[last]=$(( parts[last] + 1 )) ;;
-    minor) parts[1]=$(( parts[1] + 1 )); for ((i=2; i<=last; i++)); do parts[i]=0; done ;;
-    major) parts[0]=$(( parts[0] + 1 )); for ((i=1; i<=last; i++)); do parts[i]=0; done ;;
+    patch)
+      if [[ -z $tag ]]; then printf '%s' "$floor_name"; return; fi
+      micro=$((micro + 1)) ;;
+    minor) minor=$((minor + 1)); micro=0 ;;
+    major) major=$((major + 1)); minor=0; micro=0 ;;
   esac
-  local out
-  out=$(IFS=.; printf '%s' "${parts[*]}")
-  printf '%s' "$out"
+  candidate="${major}.${minor}.${micro}"
+  printf '%s\n%s\n' "$floor_name" "$candidate" | sort -V | tail -1
 }
 
 # The versionCode a stable tag was released with. Release tags are annotated and carry it in their
@@ -148,6 +151,7 @@ stable_tag_code() {
 # Always one more than the highest versionCode ever released, which is the file's or the newest stable
 # tag's recorded one: Android refuses an APK whose versionCode does not increase.
 cmd_bump_code() {
+  require_full_history
   local file high tag recorded
   file=$(cmd_code)
   high=$file
@@ -159,6 +163,7 @@ cmd_bump_code() {
     [[ $recorded =~ ^[0-9]+$ ]] || continue
     if [[ $recorded -gt $high ]]; then high=$recorded; fi
   done <<< "$(git -C "$repo_root" tag -l 'v[0-9]*' | grep -v -- '-' || true)"
+  [[ $high -lt 2100000000 ]] || die "versionCode exhausted Android's 2100000000 limit"
   printf '%s' $(( high + 1 ))
 }
 
@@ -166,6 +171,7 @@ sub=${1:-}
 shift || true
 case "$sub" in
   name) cmd_name ;;
+  development-name) cmd_development_name ;;
   code) cmd_code ;;
   main) cmd_main ;;
   main-count) cmd_main_count "$@" ;;

@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Följer uppspelningsordningen, även blandning och upprepning. Tryck för att öppna kön.</string>
     <string name="next_track_preview_label">Härnäst</string>
     <string name="next_track_preview_open_queue">Öppna kön</string>
+    <string name="bantu_priority_languages">Prioriterade språk</string>
+    <string name="bantu_east">Östliga bantuspråk</string>
+    <string name="bantu_central">Centrala bantuspråk</string>
+    <string name="bantu_southern">Sydliga bantuspråk</string>
+    <string name="bantu_more_languages_coming">Fler språk kommer</string>
+    <string name="bantu_app_translation_coming">Appöversättning kommer</string>
+    <string name="bantu_translation_unverified">Översättningsstöd ej verifierat</string>
+    <string name="bantu_installed_languages">Andra installerade språk</string>
+    <string name="bantu_translation_availability">Tillgången till översättning beror på leverantören.</string>
+    <string name="bantu_language_groups">Bantuspråk</string>
 </resources>

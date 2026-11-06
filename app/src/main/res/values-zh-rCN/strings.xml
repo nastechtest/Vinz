@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">遵循播放顺序，包括随机播放和重复播放。点按可打开队列。</string>
     <string name="next_track_preview_label">下一首</string>
     <string name="next_track_preview_open_queue">打开队列</string>
+    <string name="bantu_priority_languages">优先语言</string>
+    <string name="bantu_east">东部班图语言</string>
+    <string name="bantu_central">中部班图语言</string>
+    <string name="bantu_southern">南部班图语言</string>
+    <string name="bantu_more_languages_coming">更多语言即将推出</string>
+    <string name="bantu_app_translation_coming">应用翻译即将推出</string>
+    <string name="bantu_translation_unverified">翻译支持尚未验证</string>
+    <string name="bantu_installed_languages">其他已安装的语言</string>
+    <string name="bantu_translation_availability">翻译可用性取决于服务提供商。</string>
+    <string name="bantu_language_groups">班图语言</string>
 </resources>

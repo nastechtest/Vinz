@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">Theo thứ tự phát, bao gồm phát ngẫu nhiên và lặp lại. Nhấn để mở hàng đợi.</string>
     <string name="next_track_preview_label">Tiếp theo</string>
     <string name="next_track_preview_open_queue">Mở hàng đợi</string>
+    <string name="bantu_priority_languages">Ngôn ngữ ưu tiên</string>
+    <string name="bantu_east">Bantu Đông</string>
+    <string name="bantu_central">Bantu Trung</string>
+    <string name="bantu_southern">Bantu Nam</string>
+    <string name="bantu_more_languages_coming">Sắp có thêm ngôn ngữ</string>
+    <string name="bantu_app_translation_coming">Bản dịch ứng dụng sắp ra mắt</string>
+    <string name="bantu_translation_unverified">Chưa xác minh hỗ trợ dịch</string>
+    <string name="bantu_installed_languages">Các ngôn ngữ khác đã cài đặt</string>
+    <string name="bantu_translation_availability">Khả năng dịch phụ thuộc vào nhà cung cấp.</string>
+    <string name="bantu_language_groups">Ngôn ngữ Bantu</string>
 </resources>

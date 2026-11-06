@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">شفل اور دہرانے سمیت پلے بیک کی ترتیب کی پیروی کرتا ہے۔ قطار کھولنے کے لیے تھپتھپائیں۔</string>
     <string name="next_track_preview_label">اگلا گانا</string>
     <string name="next_track_preview_open_queue">قطار کھولیں</string>
+    <string name="bantu_priority_languages">ترجیحی زبانیں</string>
+    <string name="bantu_east">مشرقی بنٹو</string>
+    <string name="bantu_central">وسطی بنٹو</string>
+    <string name="bantu_southern">جنوبی بنٹو</string>
+    <string name="bantu_more_languages_coming">مزید زبانیں جلد آ رہی ہیں</string>
+    <string name="bantu_app_translation_coming">ایپ کا ترجمہ جلد آ رہا ہے</string>
+    <string name="bantu_translation_unverified">ترجمے کی سہولت کی تصدیق نہیں ہوئی</string>
+    <string name="bantu_installed_languages">دیگر نصب شدہ زبانیں</string>
+    <string name="bantu_translation_availability">ترجمے کی دستیابی خدمت فراہم کنندہ پر منحصر ہے۔</string>
+    <string name="bantu_language_groups">بنٹو زبانیں</string>
 </resources>

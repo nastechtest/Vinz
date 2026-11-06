@@ -48,9 +48,9 @@ git tag -a v2.3.9-rc.1 -m "prerelease"
 expect_eq "ignores prerelease tags" "v2.3.0" "$("$ci/version.sh" previous-stable-tag)"
 expect_eq "reads versionCode at a tag" "77" "$("$ci/version.sh" code-at v2.3.0)"
 
-# Bump rules: patch moves the last number, minor and major move their position and reset the rest.
-# version.properties is 2.3.4 and the newest stable tag is v2.3.0, so the file is the higher of the two.
-expect_eq "patch bumps the last number"      "2.3.5" "$("$ci/version.sh" bump-name patch)"
+# The file is the minimum unreleased target: an ahead-of-release floor is not bumped twice.
+# A stale branch automatically advances when a newer stable tag is fetched.
+expect_eq "patch respects the unreleased target" "2.3.4" "$("$ci/version.sh" bump-name patch)"
 expect_eq "minor resets everything after it" "2.4.0" "$("$ci/version.sh" bump-name minor)"
 expect_eq "major resets everything after it" "3.0.0" "$("$ci/version.sh" bump-name major)"
 expect_eq "latest stable version"            "2.3.0" "$("$ci/version.sh" latest-stable-version)"
@@ -68,13 +68,33 @@ expect_eq "minor from a released tag"                 "2.5.0" "$("$ci/version.sh
 git tag -a v2.6.0 -m "legacy release"
 expect_eq "an older tag without a record cannot hide a recorded one" "91" "$("$ci/version.sh" bump-code)"
 
-# Four-part versions keep their shape.
+# Legacy four-part inputs migrate to short versions without reusing an old tag.
 printf 'versionName=1.7.7.1\nversionCode=47\n' > version.properties
 git commit -qam "four-part version"
 while IFS= read -r old_tag; do git tag -d "$old_tag" >/dev/null 2>&1 || true; done < <(git tag -l 'v*')
-expect_eq "patch on a four-part version" "1.7.7.2" "$("$ci/version.sh" bump-name patch)"
-expect_eq "minor on a four-part version" "1.8.0.0" "$("$ci/version.sh" bump-name minor)"
-expect_eq "major on a four-part version" "2.0.0.0" "$("$ci/version.sh" bump-name major)"
+expect_eq "patch migrates a four-part version" "1.7.8" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor migrates a four-part version" "1.8.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major migrates a four-part version" "2.0.0" "$("$ci/version.sh" bump-name major)"
+
+# Reproduce the real stale-file/legacy-tag combination, then publish a short release without editing
+# the branch file. Main, PR and stable must all move together to the next target.
+printf 'versionName=1.8.2\nversionCode=57\n' > version.properties
+git commit -qam "three-part target"
+git tag -a v1.8.1.2 -m "legacy stable" -m "versionCode: 59"
+git tag v9.9.9-preview.99
+git tag vgarbage
+expect_eq "legacy release resolves to 1.8.2" "1.8.2" "$("$ci/version.sh" development-name)"
+expect_eq "stable patch uses the same target" "1.8.2" "$("$ci/version.sh" bump-name patch)"
+expect_eq "next code passes published legacy code" "60" "$("$ci/version.sh" bump-code)"
+git tag -a v1.8.2 -m "Vinz 1.8.2" -m "versionCode: 60"
+expect_eq "release automatically advances development name" "1.8.3" "$("$ci/version.sh" development-name)"
+expect_eq "PR ignores stale file after release" "pr-31-1.8.3-18" "$("$ci/version.sh" pr 31 18)"
+expect_eq "main ignores stale file after release" "v1.8.3-main.$("$ci/version.sh" main-count)" "$("$ci/version.sh" main)"
+expect_eq "next release uses same target" "1.8.3" "$("$ci/version.sh" bump-name patch)"
+expect_eq "next code also advances after release" "61" "$("$ci/version.sh" bump-code)"
+expect_eq "minor output has three parts" "1.9.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major output has three parts" "2.0.0" "$("$ci/version.sh" bump-name major)"
+expect_eq "prerelease and malformed tags are ignored" "v1.8.2" "$("$ci/version.sh" previous-stable-tag)"
 
 expect_fail "rejects a non-numeric PR number" "$ci/version.sh" pr abc 1
 expect_fail "rejects a non-numeric build number" "$ci/version.sh" pr 1 abc
@@ -114,6 +134,8 @@ if grep -rq 'pull_request_target' "$repo_root/.github/workflows/"; then
 else
   pass "no pull_request_target"
 fi
+
+bash "$repo_root/scripts/tests/publish-main-test.sh" || failures=$((failures + 1))
 
 printf '\n%s checks, %s failure(s)\n' "$checks" "$failures"
 [[ $failures -eq 0 ]]

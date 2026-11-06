@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Sinusunod ang pagkakasunod ng pag-play, kasama ang shuffle at pag-ulit. I-tap upang buksan ang pila.</string>
     <string name="next_track_preview_label">Susunod</string>
     <string name="next_track_preview_open_queue">Buksan ang pila</string>
+    <string name="bantu_priority_languages">Mga pangunahing wika</string>
+    <string name="bantu_east">Silangang Bantu</string>
+    <string name="bantu_central">Gitnang Bantu</string>
+    <string name="bantu_southern">Timog Bantu</string>
+    <string name="bantu_more_languages_coming">May darating pang mga wika</string>
+    <string name="bantu_app_translation_coming">Darating ang pagsasalin ng app</string>
+    <string name="bantu_translation_unverified">Hindi napatunayan ang suporta sa pagsasalin</string>
+    <string name="bantu_installed_languages">Iba pang naka-install na wika</string>
+    <string name="bantu_translation_availability">Nakadepende ang pagkakaroon ng pagsasalin sa serbisyo.</string>
+    <string name="bantu_language_groups">Mga wikang Bantu</string>
 </resources>

@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">Mengikut urutan main balik, termasuk rawak dan ulang. Ketik untuk membuka baris gilir.</string>
     <string name="next_track_preview_label">Seterusnya</string>
     <string name="next_track_preview_open_queue">Buka baris gilir</string>
+    <string name="bantu_priority_languages">Bahasa keutamaan</string>
+    <string name="bantu_east">Bantu Timur</string>
+    <string name="bantu_central">Bantu Tengah</string>
+    <string name="bantu_southern">Bantu Selatan</string>
+    <string name="bantu_more_languages_coming">Lebih banyak bahasa akan datang</string>
+    <string name="bantu_app_translation_coming">Terjemahan aplikasi akan datang</string>
+    <string name="bantu_translation_unverified">Sokongan terjemahan belum disahkan</string>
+    <string name="bantu_installed_languages">Bahasa lain yang dipasang</string>
+    <string name="bantu_translation_availability">Ketersediaan terjemahan bergantung pada perkhidmatan.</string>
+    <string name="bantu_language_groups">Bahasa Bantu</string>
 </resources>

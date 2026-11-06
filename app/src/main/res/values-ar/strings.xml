@@ -4875,4 +4875,14 @@
     <string name="show_next_track_preview_detail">يتبع ترتيب التشغيل، بما في ذلك التشغيل العشوائي والتكرار. اضغط لفتح قائمة الانتظار.</string>
     <string name="next_track_preview_label">التالي</string>
     <string name="next_track_preview_open_queue">فتح قائمة الانتظار</string>
+    <string name="bantu_priority_languages">اللغات ذات الأولوية</string>
+    <string name="bantu_east">البانتو الشرقية</string>
+    <string name="bantu_central">البانتو الوسطى</string>
+    <string name="bantu_southern">البانتو الجنوبية</string>
+    <string name="bantu_more_languages_coming">المزيد من اللغات قريبًا</string>
+    <string name="bantu_app_translation_coming">ترجمة التطبيق قريبًا</string>
+    <string name="bantu_translation_unverified">لم يتم التحقق من دعم الترجمة</string>
+    <string name="bantu_installed_languages">لغات أخرى مثبتة</string>
+    <string name="bantu_translation_availability">يعتمد توفر الترجمة على الخدمة.</string>
+    <string name="bantu_language_groups">لغات البانتو</string>
 </resources>

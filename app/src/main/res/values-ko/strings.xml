@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">셔플과 반복을 포함한 재생 순서를 따릅니다. 탭하여 대기열을 엽니다.</string>
     <string name="next_track_preview_label">다음 곡</string>
     <string name="next_track_preview_open_queue">대기열 열기</string>
+    <string name="bantu_priority_languages">우선 언어</string>
+    <string name="bantu_east">동부 반투어</string>
+    <string name="bantu_central">중부 반투어</string>
+    <string name="bantu_southern">남부 반투어</string>
+    <string name="bantu_more_languages_coming">더 많은 언어 지원 예정</string>
+    <string name="bantu_app_translation_coming">앱 번역 지원 예정</string>
+    <string name="bantu_translation_unverified">번역 지원이 확인되지 않음</string>
+    <string name="bantu_installed_languages">기타 설치된 언어</string>
+    <string name="bantu_translation_availability">번역 가능 여부는 서비스에 따라 다릅니다.</string>
+    <string name="bantu_language_groups">반투어</string>
 </resources>
