@@ -33,8 +33,8 @@ jobs:
           assert len(parts) == 8
           payload = json.loads(gzip.decompress(base64.b64decode("".join(p.read_text().strip() for p in parts))))
           patch = payload["patch"]
-          run(["git", "apply", "--check", "--whitespace=error"], patch)
-          run(["git", "apply", "--whitespace=error"], patch)
+          run(["git", "apply", "--check", "--whitespace=error", "--exclude=app/src/main/java/com/vinz/music/ui/theme/AppIcons.kt"], patch)
+          run(["git", "apply", "--whitespace=error", "--exclude=app/src/main/java/com/vinz/music/ui/theme/AppIcons.kt"], patch)
           for name, content in payload["files"].items():
               path = Path(name)
               assert name.startswith("app/src/") and ".." not in path.parts
