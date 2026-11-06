@@ -283,7 +283,7 @@ dependencies {
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Renders the backgrounds to PNGs on the PC (BackdropRenderTest), with Robolectric's real graphics.
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("org.robolectric:robolectric:4.17")
 
     // In-app tests (1.7.9, release-check PLAN.md): Compose UI tests on a device, all Apache-2.0, test-only.
     androidTestImplementation(composeBom)
