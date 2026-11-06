@@ -6,11 +6,13 @@ import com.vinz.music.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -21,10 +23,26 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
 class ExperimentalNavigationTest {
-    private fun repository() = SettingsRepository(
+    private val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var repo: SettingsRepository? = null
+
+    private fun repository() = repo ?: SettingsRepository(
         RuntimeEnvironment.getApplication(),
-        CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    )
+        testScope,
+    ).also { repo = it }
+
+    @After
+    fun restoreDefaultAndCancelScope(): Unit = runBlocking {
+        try {
+            // Restore shared state even when a test assertion fails.
+            repo?.let { settings ->
+                settings.setExperimentalSplitNavigation(false)
+                withTimeout(5_000) { settings.flow.first { !it.experimentalSplitNavigation } }
+            }
+        } finally {
+            testScope.cancel()
+        }
+    }
 
     @Test
     fun freshSettingsKeepExperimentalSplitNavigationOff() {
@@ -86,8 +104,5 @@ class ExperimentalNavigationTest {
             }.experimentalSplitNavigation
         })
 
-        // Shared Robolectric's conventional app DataStore is left in the default state for other tests.
-        repo.setExperimentalSplitNavigation(false)
-        withTimeout(5_000) { repo.flow.first { !it.experimentalSplitNavigation } }
     }
 }
