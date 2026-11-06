@@ -20,20 +20,19 @@ jobs:
     # Keep avdmanager and emulator on the same runner-local AVD registry.
     # The default locations can differ on hosted runners, leaving an AVD image
     # behind without the .ini file that `emulator -avd` resolves.
-    env:
-      ANDROID_AVD_HOME: ${{ runner.temp }}/vinz-android-avd
-      ANDROID_USER_HOME: ${{ runner.temp }}/vinz-android-user
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
-      - name: Assert shared AVD environment
+      - name: Set shared AVD environment
         run: |
           set -euo pipefail
-          test "$ANDROID_AVD_HOME" = "$RUNNER_TEMP/vinz-android-avd"
-          test "$ANDROID_USER_HOME" = "$RUNNER_TEMP/vinz-android-user"
+          {
+            echo "ANDROID_AVD_HOME=$RUNNER_TEMP/vinz-android-avd"
+            echo "ANDROID_USER_HOME=$RUNNER_TEMP/vinz-android-user"
+          } >> "$GITHUB_ENV"
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
