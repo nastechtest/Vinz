@@ -1,6 +1,7 @@
 package com.vinz.music
 
 import com.vinz.music.data.prefs.AppSettings
+import com.vinz.music.data.prefs.BehaviorPrefs
 import com.vinz.music.data.prefs.Corners
 import com.vinz.music.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +48,21 @@ class ExperimentalNavigationTest {
     @Test
     fun freshSettingsKeepExperimentalSplitNavigationOff() {
         assertFalse(AppSettings().experimentalSplitNavigation)
+    }
+
+    @Test
+    fun nestedOptInSurvivesCopiesWithoutChangingDefaults() {
+        val defaults = AppSettings()
+        val optedIn = defaults.copy(
+            behavior = defaults.behavior.copy(experimentalSplitNavigation = true),
+        )
+
+        assertFalse(BehaviorPrefs().experimentalSplitNavigation)
+        assertFalse(defaults.experimentalSplitNavigation)
+        assertTrue(optedIn.experimentalSplitNavigation)
+        assertTrue(optedIn.copy().experimentalSplitNavigation)
+        assertTrue(optedIn.copy(performanceMode = true).effective().experimentalSplitNavigation)
+        assertFalse(optedIn.copy(behavior = BehaviorPrefs()).experimentalSplitNavigation)
     }
 
     @Test

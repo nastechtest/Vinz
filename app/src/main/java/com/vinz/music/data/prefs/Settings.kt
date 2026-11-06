@@ -316,6 +316,8 @@ data class BehaviorPrefs(
     val playCountSeconds: Int = 10,
     /** #263: YouTube Music's history waits for the same; off, it's told as a song starts (as before). */
     val playCountOnAccount: Boolean = false,
+    /** Explicit opt-in; Looks must never enable experimental navigation. */
+    val experimentalSplitNavigation: Boolean = false,
 )
 
 /**
@@ -1406,8 +1408,6 @@ data class AppSettings(
     val navStyle: NavBarStyle = NavBarStyle.FLOATING,
     val navLabels: NavLabels = NavLabels.ALWAYS,
     val navHideOnScroll: Boolean = true,
-    /** Explicit opt-in; Looks must never enable experimental navigation. */
-    val experimentalSplitNavigation: Boolean = false,
     val navTabs: List<NavTab> = listOf(NavTab.HOME, NavTab.LIBRARY, NavTab.SEARCH, NavTab.REPLAY),
     /** Tabs given their own names (1.7.6); the rest keep theirs. */
     val tabNames: Map<NavTab, String> = emptyMap(),
@@ -1536,6 +1536,9 @@ data class AppSettings(
     val performanceOffered: Boolean = false,
 ) {
     val isLoggedIn: Boolean get() = cookie.contains("SAPISID")
+
+    /** Nested with behavior settings to leave room under the JVM constructor limit. */
+    val experimentalSplitNavigation: Boolean get() = behavior.experimentalSplitNavigation
 
     // The lyrics' look, read as before (1.7.7 moved them into [lyricsLook]; see [LyricsLookPrefs]).
     val lyricsStyle: LyricsStyle get() = lyricsLook.style
@@ -2356,6 +2359,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 historyPausedUntil = p[K.historyPausedUntil] ?: d.behavior.historyPausedUntil,
                 playCountSeconds = (p[K.playCountSeconds] ?: d.behavior.playCountSeconds).coerceIn(0, 600),
                 playCountOnAccount = p[K.playCountOnAccount] ?: d.behavior.playCountOnAccount,
+                experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.behavior.experimentalSplitNavigation,
             ),
             tv = TvPrefs(
                 ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
@@ -2372,7 +2376,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             navStyle = p.enum(K.navStyle, d.navStyle),
             navLabels = p.enum(K.navLabels, d.navLabels),
             navHideOnScroll = p[K.navHideOnScroll] ?: d.navHideOnScroll,
-            experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.experimentalSplitNavigation,
             navTabs = p[K.navTabs]?.split(",")?.mapNotNull { n -> NavTab.entries.firstOrNull { it.name == n } }?.takeIf { it.isNotEmpty() } ?: d.navTabs,
             tabNames = p[K.tabNames]?.let(::parseTabNames) ?: d.tabNames,
             navBarSize = p.enum(K.navBarSize, d.navBarSize),

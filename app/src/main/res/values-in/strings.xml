@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">Bahasa lain yang terpasang</string>
     <string name="bantu_translation_availability">Ketersediaan terjemahan bergantung pada layanan.</string>
     <string name="bantu_language_groups">Bahasa-bahasa Bantu</string>
+    <string name="experimental_split_navigation">Navigasi pemutar terpisah (eksperimental)</string>
+    <string name="experimental_split_navigation_summary">Nonaktif mempertahankan navigasi Vinz asli.</string>
+    <string name="experimental_split_navigation_info">Dengan gaya Mengambang dan Perkecil saat menggulir aktif, pemutar berada di antara dua grup tab saat Anda menggulir. Navigasi asli tetap dipakai pada layar sempit, teks besar, tablet, atau Kurangi gerakan. Nonaktifkan kapan saja untuk memulihkannya.</string>
+    <string name="experimental_split_navigation_keywords">eksperimental navigasi terpisah tengah pemutar mini berubah asli</string>
+    <string name="icons_shapes_summary">Paket dan bobot ikon, sudut dan bentuk</string>
+    <string name="icons_shapes_keywords">ikon paket bobot sudut bentuk</string>
 </resources>

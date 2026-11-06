@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">Các ngôn ngữ khác đã cài đặt</string>
     <string name="bantu_translation_availability">Khả năng dịch phụ thuộc vào nhà cung cấp.</string>
     <string name="bantu_language_groups">Ngôn ngữ Bantu</string>
+    <string name="experimental_split_navigation">Điều hướng trình phát tách đôi (thử nghiệm)</string>
+    <string name="experimental_split_navigation_summary">Tắt sẽ giữ điều hướng Vinz nguyên bản.</string>
+    <string name="experimental_split_navigation_info">Với kiểu Nổi và Thu nhỏ khi cuộn bật, trình phát nằm giữa hai nhóm thẻ khi bạn cuộn. Điều hướng nguyên bản vẫn dùng trên màn hình hẹp, chữ lớn, máy tính bảng hoặc Giảm chuyển động. Tắt bất cứ lúc nào để khôi phục.</string>
+    <string name="experimental_split_navigation_keywords">thử nghiệm tách đôi điều hướng giữa trình phát nhỏ biến đổi nguyên bản</string>
+    <string name="icons_shapes_summary">Gói và độ đậm biểu tượng, góc và hình dạng</string>
+    <string name="icons_shapes_keywords">biểu tượng gói độ đậm góc hình dạng</string>
 </resources>

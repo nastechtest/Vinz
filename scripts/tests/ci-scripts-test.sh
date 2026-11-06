@@ -113,6 +113,33 @@ expect_fail "rejects an APK that does not exist" "$ci/verify-apk.sh" /nonexisten
 echo "install-android-sdk.sh"
 expect_fail "fails without ANDROID_HOME" bash -c "unset ANDROID_HOME; '$ci/install-android-sdk.sh'"
 
+echo "install-emulator-runtime.sh"
+runtime_bin="$fixture/emulator-runtime-bin"
+runtime_log="$fixture/emulator-runtime.log"
+mkdir -p "$runtime_bin"
+cat > "$runtime_bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+exec "$@"
+EOF
+cat > "$runtime_bin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$EMULATOR_RUNTIME_LOG"
+EOF
+cat > "$runtime_bin/ldconfig" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'libpulse.so.0 (libc6,x86-64) => /lib/x86_64-linux-gnu/libpulse.so.0'
+EOF
+chmod +x "$runtime_bin/sudo" "$runtime_bin/apt-get" "$runtime_bin/ldconfig"
+runtime_output=$(PATH="$runtime_bin:$PATH" EMULATOR_RUNTIME_LOG="$runtime_log" "$ci/install-emulator-runtime.sh")
+expect_contains "installs libpulse0 for the emulator" "$(<"$runtime_log")" "install --no-install-recommends -y libpulse0"
+expect_contains "confirms the emulator runtime library" "$runtime_output" "libpulse.so.0"
+cat > "$runtime_bin/ldconfig" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$runtime_bin/ldconfig"
+expect_fail "fails when libpulse.so.0 is absent after install" env PATH="$runtime_bin:$PATH" EMULATOR_RUNTIME_LOG="$runtime_log" "$ci/install-emulator-runtime.sh"
+
 echo "apply-github-settings.sh"
 output=$("$repo_root/scripts/apply-github-settings.sh" --repo example/repo --dry-run 2>&1)
 expect_contains "dry run lists the branch ruleset"  "$output" "protect-main-and-stable"
@@ -121,6 +148,11 @@ expect_contains "dry run requires the lint check"   "$output" '"Lint"'
 expect_contains "dry run requires the test check"   "$output" '"Unit tests and debug build"'
 
 echo "workflows"
+if grep -Fq './scripts/ci/install-emulator-runtime.sh' "$repo_root/.github/workflows/icons-shapes.yml"; then
+  pass "icons workflow installs emulator runtime libraries"
+else
+  fail "icons workflow installs emulator runtime libraries" "runtime installer is not invoked"
+fi
 for workflow in "$repo_root"/.github/workflows/*.yml; do
   if grep -qE '^\s*permissions:' "$workflow"; then pass "$(basename "$workflow") declares permissions"; else fail "$(basename "$workflow") declares permissions" "no permissions block"; fi
 done

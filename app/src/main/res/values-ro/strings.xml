@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">Alte limbi instalate</string>
     <string name="bantu_translation_availability">Disponibilitatea traducerii depinde de furnizor.</string>
     <string name="bantu_language_groups">Limbi bantu</string>
+    <string name="experimental_split_navigation">Navigare cu player împărțit (experimentală)</string>
+    <string name="experimental_split_navigation_summary">Dezactivată păstrează navigarea originală Vinz.</string>
+    <string name="experimental_split_navigation_info">Cu stilul Flotant și Micșorează la derulare activate, playerul încape între două grupuri de file când derulezi. Navigarea originală rămâne pe ecrane înguste, cu text mare, tablete sau Reducerea mișcării. Dezactiveaz-o oricând pentru a o restaura.</string>
+    <string name="experimental_split_navigation_keywords">experimental navigare împărțită centrat mini player transformare original</string>
+    <string name="icons_shapes_summary">Pachet și grosime pictograme, colțuri și forme</string>
+    <string name="icons_shapes_keywords">pictogramă pachet grosime colțuri forme</string>
 </resources>

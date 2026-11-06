@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">その他のインストール済み言語</string>
     <string name="bantu_translation_availability">翻訳の利用可否はサービスによって異なります。</string>
     <string name="bantu_language_groups">バントゥー諸語</string>
+    <string name="experimental_split_navigation">分割プレーヤーナビゲーション（試験的）</string>
+    <string name="experimental_split_navigation_summary">オフにすると元のVinzナビゲーションを維持します。</string>
+    <string name="experimental_split_navigation_info">フローティングスタイルとスクロール時に縮小を有効にすると、スクロール中にプレーヤーが2つのタブグループの間に収まります。狭い画面、大きな文字、タブレット、動きを減らす設定では元のナビゲーションを使います。オフにすると元に戻せます。</string>
+    <string name="experimental_split_navigation_keywords">試験的 分割 ナビゲーション 中央 ミニプレーヤー 変形 元</string>
+    <string name="icons_shapes_summary">アイコンパックと太さ、角と形</string>
+    <string name="icons_shapes_keywords">アイコン パック 太さ 角 形</string>
 </resources>

@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">שפות מותקנות אחרות</string>
     <string name="bantu_translation_availability">זמינות התרגום תלויה בשירות.</string>
     <string name="bantu_language_groups">שפות בנטו</string>
+    <string name="experimental_split_navigation">ניווט נגן מפוצל (ניסיוני)</string>
+    <string name="experimental_split_navigation_summary">כיבוי משאיר את הניווט המקורי של Vinz.</string>
+    <string name="experimental_split_navigation_info">עם סגנון צף וכיווץ בעת גלילה, הנגן נכנס בין שתי קבוצות לשוניות בזמן גלילה. הניווט המקורי נשאר במסכים צרים, בטקסט גדול, בטאבלטים או עם הפחתת תנועה. אפשר לכבות כדי לשחזר אותו.</string>
+    <string name="experimental_split_navigation_keywords">ניסיוני ניווט מפוצל ממורכז מיני נגן שינוי מקורי</string>
+    <string name="icons_shapes_summary">חבילת ומשקל סמלים, פינות וצורות</string>
+    <string name="icons_shapes_keywords">סמל חבילה משקל פינות צורות</string>
 </resources>

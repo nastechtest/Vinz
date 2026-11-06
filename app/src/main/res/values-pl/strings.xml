@@ -4761,4 +4761,10 @@
     <string name="bantu_installed_languages">Inne zainstalowane języki</string>
     <string name="bantu_translation_availability">Dostępność tłumaczeń zależy od usługi.</string>
     <string name="bantu_language_groups">Języki bantu</string>
+    <string name="experimental_split_navigation">Dzielona nawigacja odtwarzacza (eksperymentalna)</string>
+    <string name="experimental_split_navigation_summary">Wyłączenie zachowuje oryginalną nawigację Vinz.</string>
+    <string name="experimental_split_navigation_info">Przy stylu Pływającym i włączonym zmniejszaniu podczas przewijania odtwarzacz mieści się między dwiema grupami kart. Oryginalna nawigacja działa na wąskich ekranach, z dużym tekstem, na tabletach lub przy ograniczeniu ruchu. Wyłącz, aby ją przywrócić.</string>
+    <string name="experimental_split_navigation_keywords">eksperymentalna dzielona nawigacja wyśrodkowany mini odtwarzacz przekształcenie oryginalna</string>
+    <string name="icons_shapes_summary">Pakiet i grubość ikon, rogi i kształty</string>
+    <string name="icons_shapes_keywords">ikona pakiet grubość rogi kształty</string>
 </resources>

@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">زبان‌های نصب‌شدهٔ دیگر</string>
     <string name="bantu_translation_availability">دسترس‌پذیری ترجمه به سرویس بستگی دارد.</string>
     <string name="bantu_language_groups">زبان‌های بانتو</string>
+    <string name="experimental_split_navigation">ناوبری پخش‌کنندهٔ جداشده (آزمایشی)</string>
+    <string name="experimental_split_navigation_summary">خاموش بودن، ناوبری اصلی Vinz را نگه می‌دارد.</string>
+    <string name="experimental_split_navigation_info">با سبک شناور و فعال بودن کوچک‌شدن هنگام پیمایش، پخش‌کننده هنگام پیمایش میان دو گروه زبانه جا می‌گیرد. ناوبری اصلی همچنان در نمایشگرهای باریک، متن بزرگ، تبلت‌ها یا با کاهش حرکت استفاده می‌شود. هر زمان خواستید آن را خاموش کنید تا ناوبری اصلی بازگردد.</string>
+    <string name="experimental_split_navigation_keywords">آزمایشی ناوبری جداشده مرکزی مینی پخش‌کننده تغییرشکل اصلی</string>
+    <string name="icons_shapes_summary">بسته و ضخامت آیکن، گوشه‌ها و شکل‌ها</string>
+    <string name="icons_shapes_keywords">آیکن بسته ضخامت گوشه‌ها شکل‌ها</string>
 </resources>
