@@ -4689,4 +4689,14 @@
     <string name="show_next_track_preview_detail">Sigue el orden de reproducción, incluidos el modo aleatorio y la repetición. Toca para abrir la cola.</string>
     <string name="next_track_preview_label">A continuación</string>
     <string name="next_track_preview_open_queue">Abrir cola</string>
+    <string name="bantu_priority_languages">Idiomas prioritarios</string>
+    <string name="bantu_east">Bantú oriental</string>
+    <string name="bantu_central">Bantú central</string>
+    <string name="bantu_southern">Bantú meridional</string>
+    <string name="bantu_more_languages_coming">Próximamente más idiomas</string>
+    <string name="bantu_app_translation_coming">Próximamente traducción de la app</string>
+    <string name="bantu_translation_unverified">Compatibilidad de traducción sin verificar</string>
+    <string name="bantu_installed_languages">Otros idiomas instalados</string>
+    <string name="bantu_translation_availability">La disponibilidad de traducción depende del servicio.</string>
+    <string name="bantu_language_groups">Idiomas bantúes</string>
 </resources>

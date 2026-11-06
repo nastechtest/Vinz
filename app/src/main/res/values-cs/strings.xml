@@ -4751,4 +4751,14 @@
     <string name="show_next_track_preview_detail">Respektuje pořadí přehrávání včetně náhodného přehrávání a opakování. Klepnutím otevřete frontu.</string>
     <string name="next_track_preview_label">Následuje</string>
     <string name="next_track_preview_open_queue">Otevřít frontu</string>
+    <string name="bantu_priority_languages">Prioritní jazyky</string>
+    <string name="bantu_east">Východní bantu</string>
+    <string name="bantu_central">Střední bantu</string>
+    <string name="bantu_southern">Jižní bantu</string>
+    <string name="bantu_more_languages_coming">Další jazyky již brzy</string>
+    <string name="bantu_app_translation_coming">Překlad aplikace již brzy</string>
+    <string name="bantu_translation_unverified">Podpora překladu nebyla ověřena</string>
+    <string name="bantu_installed_languages">Další nainstalované jazyky</string>
+    <string name="bantu_translation_availability">Dostupnost překladu závisí na službě.</string>
+    <string name="bantu_language_groups">Bantuské jazyky</string>
 </resources>

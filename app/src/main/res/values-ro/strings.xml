@@ -4689,4 +4689,14 @@
     <string name="show_next_track_preview_detail">Urmează ordinea de redare, inclusiv redarea aleatorie și repetarea. Atinge pentru a deschide coada.</string>
     <string name="next_track_preview_label">Urmează</string>
     <string name="next_track_preview_open_queue">Deschide coada</string>
+    <string name="bantu_priority_languages">Limbi prioritare</string>
+    <string name="bantu_east">Bantu de est</string>
+    <string name="bantu_central">Bantu central</string>
+    <string name="bantu_southern">Bantu sudic</string>
+    <string name="bantu_more_languages_coming">Mai multe limbi în curând</string>
+    <string name="bantu_app_translation_coming">Traducerea aplicației în curând</string>
+    <string name="bantu_translation_unverified">Compatibilitatea traducerii nu este verificată</string>
+    <string name="bantu_installed_languages">Alte limbi instalate</string>
+    <string name="bantu_translation_availability">Disponibilitatea traducerii depinde de furnizor.</string>
+    <string name="bantu_language_groups">Limbi bantu</string>
 </resources>

@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Ακολουθεί τη σειρά αναπαραγωγής, με τυχαία αναπαραγωγή και επανάληψη. Πατήστε για άνοιγμα της ουράς.</string>
     <string name="next_track_preview_label">Ακολουθεί</string>
     <string name="next_track_preview_open_queue">Άνοιγμα ουράς</string>
+    <string name="bantu_priority_languages">Γλώσσες προτεραιότητας</string>
+    <string name="bantu_east">Ανατολικές Μπαντού</string>
+    <string name="bantu_central">Κεντρικές Μπαντού</string>
+    <string name="bantu_southern">Νότιες Μπαντού</string>
+    <string name="bantu_more_languages_coming">Έρχονται περισσότερες γλώσσες</string>
+    <string name="bantu_app_translation_coming">Έρχεται μετάφραση της εφαρμογής</string>
+    <string name="bantu_translation_unverified">Η υποστήριξη μετάφρασης δεν έχει επαληθευτεί</string>
+    <string name="bantu_installed_languages">Άλλες εγκατεστημένες γλώσσες</string>
+    <string name="bantu_translation_availability">Η διαθεσιμότητα μετάφρασης εξαρτάται από την υπηρεσία.</string>
+    <string name="bantu_language_groups">Γλώσσες Μπαντού</string>
 </resources>

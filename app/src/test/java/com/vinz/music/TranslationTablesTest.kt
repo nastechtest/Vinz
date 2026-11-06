@@ -64,7 +64,7 @@ class TranslationTablesLanguagesTest {
                 Strings.resources = ctx.createConfigurationContext(config).resources
                 val words = strings(folder)
                 // Every 40th string, and the ones a widget or the launcher shows (still resources).
-                val names = english.keys.filterIndexed { i, _ -> i % 40 == 0 } + listOf("widget_play", "tile_recognize", "downloads")
+                val names = english.keys.filterIndexed { i, _ -> i % 40 == 0 } + listOf("widget_play", "tile_recognize", "downloads", "bantu_priority_languages", "bantu_east", "bantu_central", "bantu_southern", "bantu_more_languages_coming", "bantu_app_translation_coming", "bantu_translation_unverified", "bantu_installed_languages", "bantu_translation_availability", "bantu_language_groups")
                 for (n in names) {
                     val want = words[n]?.let(Strings::compile) ?: continue
                     val got = tr(id(n))

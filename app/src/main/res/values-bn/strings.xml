@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">শাফল ও পুনরাবৃত্তিসহ প্লেব্যাকের ক্রম অনুসরণ করে। সারি খুলতে ট্যাপ করুন।</string>
     <string name="next_track_preview_label">পরের গান</string>
     <string name="next_track_preview_open_queue">সারি খুলুন</string>
+    <string name="bantu_priority_languages">অগ্রাধিকারপ্রাপ্ত ভাষা</string>
+    <string name="bantu_east">পূর্ব বান্টু</string>
+    <string name="bantu_central">মধ্য বান্টু</string>
+    <string name="bantu_southern">দক্ষিণ বান্টু</string>
+    <string name="bantu_more_languages_coming">আরও ভাষা আসছে</string>
+    <string name="bantu_app_translation_coming">অ্যাপ অনুবাদ আসছে</string>
+    <string name="bantu_translation_unverified">অনুবাদ সহায়তা যাচাই করা হয়নি</string>
+    <string name="bantu_installed_languages">অন্যান্য ইনস্টল করা ভাষা</string>
+    <string name="bantu_translation_availability">অনুবাদের উপলভ্যতা পরিষেবার ওপর নির্ভর করে।</string>
+    <string name="bantu_language_groups">বান্টু ভাষাসমূহ</string>
 </resources>

@@ -4689,4 +4689,14 @@
     <string name="show_next_track_preview_detail">Suit l’ordre de lecture, y compris la lecture aléatoire et la répétition. Appuyez pour ouvrir la file d’attente.</string>
     <string name="next_track_preview_label">À suivre</string>
     <string name="next_track_preview_open_queue">Ouvrir la file d’attente</string>
+    <string name="bantu_priority_languages">Langues prioritaires</string>
+    <string name="bantu_east">Bantou de l\'Est</string>
+    <string name="bantu_central">Bantou central</string>
+    <string name="bantu_southern">Bantou du Sud</string>
+    <string name="bantu_more_languages_coming">D\'autres langues arrivent</string>
+    <string name="bantu_app_translation_coming">Traduction de l\'application à venir</string>
+    <string name="bantu_translation_unverified">Prise en charge de la traduction non vérifiée</string>
+    <string name="bantu_installed_languages">Autres langues installées</string>
+    <string name="bantu_translation_availability">La disponibilité des traductions dépend du service.</string>
+    <string name="bantu_language_groups">Langues bantoues</string>
 </resources>

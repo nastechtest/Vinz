@@ -4751,4 +4751,14 @@
     <string name="show_next_track_preview_detail">Uwzględnia kolejność odtwarzania, losowanie i powtarzanie. Dotknij, aby otworzyć kolejkę.</string>
     <string name="next_track_preview_label">Następny</string>
     <string name="next_track_preview_open_queue">Otwórz kolejkę</string>
+    <string name="bantu_priority_languages">Języki priorytetowe</string>
+    <string name="bantu_east">Bantu wschodnie</string>
+    <string name="bantu_central">Bantu środkowe</string>
+    <string name="bantu_southern">Bantu południowe</string>
+    <string name="bantu_more_languages_coming">Wkrótce więcej języków</string>
+    <string name="bantu_app_translation_coming">Tłumaczenie aplikacji wkrótce</string>
+    <string name="bantu_translation_unverified">Obsługa tłumaczeń niezweryfikowana</string>
+    <string name="bantu_installed_languages">Inne zainstalowane języki</string>
+    <string name="bantu_translation_availability">Dostępność tłumaczeń zależy od usługi.</string>
+    <string name="bantu_language_groups">Języki bantu</string>
 </resources>

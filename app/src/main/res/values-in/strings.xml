@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">Mengikuti urutan pemutaran, termasuk acak dan ulangi. Ketuk untuk membuka antrean.</string>
     <string name="next_track_preview_label">Berikutnya</string>
     <string name="next_track_preview_open_queue">Buka antrean</string>
+    <string name="bantu_priority_languages">Bahasa prioritas</string>
+    <string name="bantu_east">Bantu Timur</string>
+    <string name="bantu_central">Bantu Tengah</string>
+    <string name="bantu_southern">Bantu Selatan</string>
+    <string name="bantu_more_languages_coming">Bahasa lainnya segera hadir</string>
+    <string name="bantu_app_translation_coming">Terjemahan aplikasi segera hadir</string>
+    <string name="bantu_translation_unverified">Dukungan terjemahan belum diverifikasi</string>
+    <string name="bantu_installed_languages">Bahasa lain yang terpasang</string>
+    <string name="bantu_translation_availability">Ketersediaan terjemahan bergantung pada layanan.</string>
+    <string name="bantu_language_groups">Bahasa-bahasa Bantu</string>
 </resources>

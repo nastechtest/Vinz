@@ -4660,4 +4660,14 @@
     <string name="show_next_track_preview_detail">A compact preview in the portrait player. Follows shuffle and repeat; tap to open the queue.</string>
     <string name="next_track_preview_label">Next track</string>
     <string name="next_track_preview_open_queue">Open queue</string>
+    <string name="bantu_priority_languages">Priority languages</string>
+    <string name="bantu_east">Eastern Bantu</string>
+    <string name="bantu_central">Central Bantu</string>
+    <string name="bantu_southern">Southern Bantu</string>
+    <string name="bantu_more_languages_coming">More languages coming</string>
+    <string name="bantu_app_translation_coming">App translation coming</string>
+    <string name="bantu_translation_unverified">Translation support unverified</string>
+    <string name="bantu_installed_languages">Other installed languages</string>
+    <string name="bantu_translation_availability">Translation availability depends on the provider.</string>
+    <string name="bantu_language_groups">Bantu languages</string>
 </resources>

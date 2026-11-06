@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">शफ़ल और दोहराव सहित चलाने के क्रम का पालन करता है। कतार खोलने के लिए टैप करें।</string>
     <string name="next_track_preview_label">अगला गाना</string>
     <string name="next_track_preview_open_queue">कतार खोलें</string>
+    <string name="bantu_priority_languages">प्राथमिक भाषाएँ</string>
+    <string name="bantu_east">पूर्वी बांटू</string>
+    <string name="bantu_central">मध्य बांटू</string>
+    <string name="bantu_southern">दक्षिणी बांटू</string>
+    <string name="bantu_more_languages_coming">और भाषाएँ आ रही हैं</string>
+    <string name="bantu_app_translation_coming">ऐप अनुवाद आ रहा है</string>
+    <string name="bantu_translation_unverified">अनुवाद सहायता सत्यापित नहीं है</string>
+    <string name="bantu_installed_languages">अन्य स्थापित भाषाएँ</string>
+    <string name="bantu_translation_availability">अनुवाद की उपलब्धता सेवा पर निर्भर करती है।</string>
+    <string name="bantu_language_groups">बांटू भाषाएँ</string>
 </resources>

@@ -4565,4 +4565,14 @@
     <string name="show_next_track_preview_detail">シャッフルとリピートを含む再生順序に従います。タップするとキューが開きます。</string>
     <string name="next_track_preview_label">次の曲</string>
     <string name="next_track_preview_open_queue">キューを開く</string>
+    <string name="bantu_priority_languages">優先言語</string>
+    <string name="bantu_east">東バントゥー語群</string>
+    <string name="bantu_central">中央バントゥー語群</string>
+    <string name="bantu_southern">南部バントゥー語群</string>
+    <string name="bantu_more_languages_coming">さらに多くの言語に対応予定</string>
+    <string name="bantu_app_translation_coming">アプリ翻訳に対応予定</string>
+    <string name="bantu_translation_unverified">翻訳のサポートは未確認です</string>
+    <string name="bantu_installed_languages">その他のインストール済み言語</string>
+    <string name="bantu_translation_availability">翻訳の利用可否はサービスによって異なります。</string>
+    <string name="bantu_language_groups">バントゥー諸語</string>
 </resources>

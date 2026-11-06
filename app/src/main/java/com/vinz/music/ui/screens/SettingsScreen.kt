@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import coil3.compose.AsyncImage
 import com.vinz.music.data.local.LocalLossless
+import com.vinz.music.data.language.LyricsTranslationTargets
 import com.vinz.music.data.prefs.AppSettings
 import com.vinz.music.data.prefs.AudioQuality
 import com.vinz.music.data.prefs.CarLyricsStyle
@@ -1951,14 +1952,6 @@ private fun SoundPage() {
 }
 // ---------------------------------------------------------------------------- Lyrics
 
-/** Languages lyrics can be translated into (Google Translate codes); "" is the phone's own. */
-private val TRANSLATE_LANGUAGES = listOf(
-    "" to tr(R.string.phone_s_language), "en" to tr(R.string.english), "es" to tr(R.string.spanish), "pt" to tr(R.string.portuguese), "fr" to tr(R.string.french),
-    "de" to tr(R.string.german), "it" to tr(R.string.italian), "nl" to tr(R.string.dutch), "pl" to tr(R.string.polish), "tr" to tr(R.string.turkish), "ru" to tr(R.string.russian),
-    "uk" to tr(R.string.ukrainian), "ar" to tr(R.string.arabic), "hi" to tr(R.string.hindi), "id" to tr(R.string.indonesian), "vi" to tr(R.string.vietnamese),
-    "tl" to tr(R.string.filipino), "ja" to tr(R.string.japanese), "ko" to tr(R.string.korean), tr(R.string.zh_cn) to tr(R.string.chinese_simplified), tr(R.string.zh_tw) to tr(R.string.chinese_traditional),
-)
-
 /** Kuromoji's dictionary, for Japanese lyrics' kanji: download, progress, or remove. */
 @Composable
 private fun JapaneseReadingData() {
@@ -2074,10 +2067,30 @@ private fun LyricsSettings() {
             Label(tr(R.string.translate_into), info = tr(R.string.for_songs_in_another_language_machine))
             val off = "\u0000off"
             Chips(
-                listOf(off) + TRANSLATE_LANGUAGES.map { it.first },
-                if (!s.lyricsTranslate) off else s.lyricsTranslateTo.takeIf { code -> TRANSLATE_LANGUAGES.any { it.first == code } } ?: "",
-                { code -> if (code == off) tr(R.string.off) else TRANSLATE_LANGUAGES.first { it.first == code }.second },
+                listOf(off, "", "en"),
+                if (!s.lyricsTranslate) off else LyricsTranslationTargets.normalize(s.lyricsTranslateTo),
+                { code -> when (code) { off -> tr(R.string.off); "" -> tr(R.string.phone_s_language); else -> tr(R.string.english) } },
             ) { code -> if (code == off) prefs.setLyricsTranslate(false) else { prefs.setLyricsTranslateTo(code); prefs.setLyricsTranslate(true) } }
+            val normalizedTarget = LyricsTranslationTargets.normalize(s.lyricsTranslateTo)
+            LaunchedEffect(s.lyricsTranslateTo) {
+                if (s.lyricsTranslateTo != normalizedTarget) prefs.setLyricsTranslateTo(normalizedTarget)
+            }
+            BantuLanguageGroups(
+                selected = if (s.lyricsTranslate) normalizedTarget else null,
+                canSelect = { LyricsTranslationTargets.isSelectable(it.tag) },
+                pendingText = tr(R.string.bantu_translation_unverified),
+                onSelect = { code -> prefs.setLyricsTranslateTo(code); prefs.setLyricsTranslate(true) },
+            )
+            MoreOptions(listOf(tr(R.string.more_options))) {
+                LyricsTranslationTargets.legacyTags.forEach { code ->
+                    val language = java.util.Locale.forLanguageTag(if (code == "tl") "fil" else code)
+                    Item(language.getDisplayName(java.util.Locale.getDefault()).replaceFirstChar { it.titlecase() }, null,
+                        onClick = { prefs.setLyricsTranslateTo(code); prefs.setLyricsTranslate(true) }) {
+                        if (s.lyricsTranslate && normalizedTarget == code) Icon(VinzIcons.Check, null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            Note(tr(R.string.bantu_translation_availability))
             Label(tr(R.string.romanize_lyrics), info = tr(R.string.other_scripts_in_latin_letters_to))
             Chips(com.vinz.music.data.prefs.RomanizeMode.entries, s.romanize, { it.label }) { prefs.setRomanize(it) }
             if (s.romanize != com.vinz.music.data.prefs.RomanizeMode.OFF) Toggle(

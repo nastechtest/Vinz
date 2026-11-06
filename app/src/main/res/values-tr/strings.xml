@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Karıştırma ve tekrar dahil oynatma sırasını izler. Kuyruğu açmak için dokunun.</string>
     <string name="next_track_preview_label">Sıradaki</string>
     <string name="next_track_preview_open_queue">Kuyruğu aç</string>
+    <string name="bantu_priority_languages">Öncelikli diller</string>
+    <string name="bantu_east">Doğu Bantu</string>
+    <string name="bantu_central">Orta Bantu</string>
+    <string name="bantu_southern">Güney Bantu</string>
+    <string name="bantu_more_languages_coming">Yakında daha fazla dil</string>
+    <string name="bantu_app_translation_coming">Uygulama çevirisi yakında</string>
+    <string name="bantu_translation_unverified">Çeviri desteği doğrulanmadı</string>
+    <string name="bantu_installed_languages">Diğer yüklü diller</string>
+    <string name="bantu_translation_availability">Çeviri kullanılabilirliği sağlayıcıya bağlıdır.</string>
+    <string name="bantu_language_groups">Bantu dilleri</string>
 </resources>

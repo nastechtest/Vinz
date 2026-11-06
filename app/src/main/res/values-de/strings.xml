@@ -4627,4 +4627,14 @@
     <string name="show_next_track_preview_detail">Folgt der Wiedergabereihenfolge, einschließlich Zufallswiedergabe und Wiederholung. Tippen öffnet die Warteschlange.</string>
     <string name="next_track_preview_label">Als Nächstes</string>
     <string name="next_track_preview_open_queue">Warteschlange öffnen</string>
+    <string name="bantu_priority_languages">Prioritätssprachen</string>
+    <string name="bantu_east">Ost-Bantu</string>
+    <string name="bantu_central">Zentral-Bantu</string>
+    <string name="bantu_southern">Süd-Bantu</string>
+    <string name="bantu_more_languages_coming">Weitere Sprachen folgen</string>
+    <string name="bantu_app_translation_coming">App-Übersetzung folgt</string>
+    <string name="bantu_translation_unverified">Übersetzungsunterstützung nicht bestätigt</string>
+    <string name="bantu_installed_languages">Weitere installierte Sprachen</string>
+    <string name="bantu_translation_availability">Die Verfügbarkeit der Übersetzung hängt vom Dienst ab.</string>
+    <string name="bantu_language_groups">Bantu-Sprachen</string>
 </resources>
