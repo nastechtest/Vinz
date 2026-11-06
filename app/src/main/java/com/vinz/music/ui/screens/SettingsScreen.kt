@@ -366,7 +366,7 @@ private fun SettingsPage(
                 // Keep expensive previews in separate lazy items, not one eagerly composed, oversized page.
                 item(key = "icons") { IconSettings() }
                 item(key = "app-icons") { AppIconSettings() }
-                item(key = "icon-corners") { ShapeSettings() }
+                item(key = "icon-corners") { ShapeSettings(includeRelatedShapes = false) }
                 item(key = "cover-shapes") { CoverShapeGroup() }
                 item(key = "button-shapes") { ButtonShapeGroup() }
                 item(key = "home-widgets") { HomeWidgetsGroup() }
@@ -1192,7 +1192,7 @@ private fun FontPicker(current: FontChoice, customName: String?, stamp: Long, on
 }
 
 @Composable
-private fun ShapeSettings() {
+private fun ShapeSettings(includeRelatedShapes: Boolean = true) {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     val scheme = MaterialTheme.colorScheme
@@ -1213,6 +1213,11 @@ private fun ShapeSettings() {
                 Box(Modifier.weight(1f).aspectRatio(1.3f).border(2.dp, settingsIconColor(col, scheme.surface), ui.tile))
             }
         }
+    }
+    // Other customizers still use this shared group as a complete shape section.
+    if (includeRelatedShapes) {
+        CoverShapeGroup()
+        ButtonShapeGroup()
     }
 }
 
