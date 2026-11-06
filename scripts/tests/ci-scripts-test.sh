@@ -1,1 +1,187 @@
-IyEvdXNyL2Jpbi9lbnYgYmFzaAojIFNlbGYtdGVzdHMgZm9yIHRoZSBDSSBoZWxwZXIgc2NyaXB0cy4gTm8gQW5kcm9pZCBTREssIG5vIG5ldHdvcmssIG5vIEdpdEh1YiB0b2tlbjogZXZlcnl0aGluZyBydW5zCiMgYWdhaW5zdCBhIHRocm93YXdheSBnaXQgcmVwb3NpdG9yeSwgc28gdGhpcyBwcm92ZXMgdGhlIHZlcnNpb24gYXJpdGhtZXRpYyBhbmQgdGhlIGZhaWx1cmUgbW9kZXMgdGhhdAojIHRoZSB3b3JrZmxvd3MgZGVwZW5kIG9uLgojCiMgICBzY3JpcHRzL3Rlc3RzL2NpLXNjcmlwdHMtdGVzdC5zaApzZXQgLXVvIHBpcGVmYWlsCgpyZXBvX3Jvb3Q9JChnaXQgLUMgIiQoZGlybmFtZSAiJHtCQVNIX1NPVVJDRVswXX0iKS8uLi8uLiIgcmV2LXBhcnNlIC0tc2hvdy10b3BsZXZlbCkKY2k9IiRyZXBvX3Jvb3Qvc2NyaXB0cy9jaSIKZmFpbHVyZXM9MApjaGVja3M9MAoKcGFzcygpIHsgY2hlY2tzPSQoKGNoZWNrcyArIDEpKTsgcHJpbnRmICcgIG9rICAgICVzXG4nICIkMSI7IH0KZmFpbCgpIHsgY2hlY2tzPSQoKGNoZWNrcyArIDEpKTsgZmFpbHVyZXM9JCgoZmFpbHVyZXMgKyAxKSk7IHByaW50ZiAnICBGQUlMICAlc1xuICAgICAgICAlc1xuJyAiJDEiICIkMiI7IH0KZXhwZWN0X2VxKCkgeyBpZiBbWyAiJDIiID09ICIkMyIgXV07IHRoZW4gcGFzcyAiJDEiOyBlbHNlIGZhaWwgIiQxIiAiZXhwZWN0ZWQgJyQyJywgZ290ICckMyciOyBmaTsgfQpleHBlY3RfZmFpbCgpIHsgbG9jYWwgZD0kMTsgc2hpZnQ7IGlmICIkQCIgPi9kZXYvbnVsbCAyPiYxOyB0aGVuIGZhaWwgIiRkIiAiZXhwZWN0ZWQgYSBub24temVybyBleGl0IjsgZWxzZSBwYXNzICIkZCI7IGZpOyB9CmV4cGVjdF9jb250YWlucygpIHsgaWYgW1sgIiQyIiA9PSAqIiQzIiogXV07IHRoZW4gcGFzcyAiJDEiOyBlbHNlIGZhaWwgIiQxIiAiJyQzJyBub3QgZm91bmQgaW4gb3V0cHV0IjsgZmk7IH0KCmZpeHR1cmU9JChta3RlbXAgLWQpCnRyYXAgJ3JtIC1yZiAiJGZpeHR1cmUiJyBFWElUCmNkICIkZml4dHVyZSIgfHwgZXhpdCAxCmdpdCBpbml0IC1xIC4KZ2l0IHN5bWJvbGljLXJlZiBIRUFEIHJlZnMvaGVhZHMvbWFpbgpnaXQgY29uZmlnIHVzZXIuZW1haWwgY2lAZXhhbXBsZS5pbnZhbGlkCmdpdCBjb25maWcgdXNlci5uYW1lIENJCmdpdCBjb25maWcgY29tbWl0LmdwZ3NpZ24gZmFsc2UKCnByaW50ZiAndmVyc2lvbk5hbWU9Mi4zLjRcbnZlcnNpb25Db2RlPTc3XG4nID4gdmVyc2lvbi5wcm9wZXJ0aWVzCmdpdCBhZGQgdmVyc2lvbi5wcm9wZXJ0aWVzCmdpdCBjb21taXQgLXFtICJiYXNlIgoKZWNobyAidmVyc2lvbi5zaCIKZXhwZWN0X2VxICJyZWFkcyB2ZXJzaW9uTmFtZSIgICAgICAgICAgICAiMi4zLjQiICIkKCIkY2kvdmVyc2lvbi5zaCIgbmFtZSkiCmV4cGVjdF9lcSAicmVhZHMgdmVyc2lvbkNvZGUiICAgICAgICAgICAgIjc3IiAgICAiJCgiJGNpL3ZlcnNpb24uc2giIGNvZGUpIgpleHBlY3RfZXEgImZvcm1hdHMgYSBwdWxsIHJlcXVlc3QgbGFiZWwiICJwci05LTIuMy40LTIiICIkKCIkY2kvdmVyc2lvbi5zaCIgcHIgOSAyKSIKZXhwZWN0X2VxICJidWlsZCBudW1iZXIgaXMgY29tbWl0IGNvdW50IiAiMSIgICAgICIkKCIkY2kvdmVyc2lvbi5zaCIgbWFpbi1jb3VudCkiCmV4cGVjdF9lcSAiZm9ybWF0cyB0aGUgbWFpbiBsYWJlbCIgICAgICAgInYyLjMuNC1tYWluLjEiICIkKCIkY2kvdmVyc2lvbi5zaCIgbWFpbikiCgpnaXQgY29tbWl0IC1xIC0tYWxsb3ctZW1wdHkgLW0gb25lCmdpdCBjb21taXQgLXEgLS1hbGxvdy1lbXB0eSAtbSB0d28KZXhwZWN0X2VxICJidWlsZCBudW1iZXIgaW5jcmVtZW50cyB3aXRoIGNvbW1pdHMiICIzIiAiJCgiJGNpL3ZlcnNpb24uc2giIG1haW4tY291bnQpIgpleHBlY3RfZXEgIm1haW4gbGFiZWwgZm9sbG93cyB0aGUgY291bnQiICAgICAgICAgInYyLjMuNC1tYWluLjMiICIkKCIkY2kvdmVyc2lvbi5zaCIgbWFpbikiCgpleHBlY3RfZXEgIm5vIHN0YWJsZSB0YWcgeWV0IiAgIiIgICAgICAgIiQoIiRjaS92ZXJzaW9uLnNoIiBwcmV2aW91cy1zdGFibGUtdGFnKSIKZ2l0IHRhZyAtYSB2Mi4zLjAgLW0gIm9sZCByZWxlYXNlIgpnaXQgdGFnIC1hIHYyLjMuOS1yYy4xIC1tICJwcmVyZWxlYXNlIgpleHBlY3RfZXEgImlnbm9yZXMgcHJlcmVsZWFzZSB0YWdzIiAidjIuMy4wIiAiJCgiJGNpL3ZlcnNpb24uc2giIHByZXZpb3VzLXN0YWJsZS10YWcpIgpleHBlY3RfZXEgInJlYWRzIHZlcnNpb25Db2RlIGF0IGEgdGFnIiAiNzciICIkKCIkY2kvdmVyc2lvbi5zaCIgY29kZS1hdCB2Mi4zLjApIgoKIyBUaGUgZmlsZSBpcyB0aGUgbWluaW11bSB1bnJlbGVhc2VkIHRhcmdldDogYW4gYWhlYWQtb2YtcmVsZWFzZSBmbG9vciBpcyBub3QgYnVtcGVkIHR3aWNlLgojIEEgc3RhbGUgYnJhbmNoIGF1dG9tYXRpY2FsbHkgYWR2YW5jZXMgd2hlbiBhIG5ld2VyIHN0YWJsZSB0YWcgaXMgZmV0Y2hlZC4KZXhwZWN0X2VxICJwYXRjaCByZXNwZWN0cyB0aGUgdW5yZWxlYXNlZCB0YXJnZXQiICIyLjMuNCIgIiQoIiRjaS92ZXJzaW9uLnNoIiBidW1wLW5hbWUgcGF0Y2gpIgpleHBlY3RfZXEgIm1pbm9yIHJlc2V0cyBldmVyeXRoaW5nIGFmdGVyIGl0IiAiMi40LjAiICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIG1pbm9yKSIKZXhwZWN0X2VxICJtYWpvciByZXNldHMgZXZlcnl0aGluZyBhZnRlciBpdCIgIjMuMC4wIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtbmFtZSBtYWpvcikiCmV4cGVjdF9lcSAibGF0ZXN0IHN0YWJsZSB2ZXJzaW9uIiAgICAgICAgICAgICIyLjMuMCIgIiQoIiRjaS92ZXJzaW9uLnNoIiBsYXRlc3Qtc3RhYmxlLXZlcnNpb24pIgpleHBlY3RfZXEgInZlcnNpb25Db2RlIGlzIG9uZSBhYm92ZSB0aGUgZmlsZSIgIjc4IiAgICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1jb2RlKSIKZXhwZWN0X2ZhaWwgInJlamVjdHMgYW4gdW5rbm93biBidW1wIGtpbmQiICIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIHNpZGV3YXlzCgojIEEgcmVsZWFzZWQgdGFnIHJlY29yZHMgaXRzIHZlcnNpb25Db2RlLCBiZWNhdXNlIHRoZSBBUEsgaXMgc3RhbXBlZCByYXRoZXIgdGhhbiBjb21taXR0ZWQ6IHRoZSBmaWxlIHN0aWxsCiMgc2F5cyA3NywgYnV0IHRoZSBuZXh0IHJlbGVhc2UgbXVzdCBub3QgcmV1c2UgNzguCmdpdCB0YWcgLWEgdjIuNC4wIC1tICJWaW56IDIuNC4wIiAtbSAidmVyc2lvbkNvZGU6IDkwIgpleHBlY3RfZXEgInZlcnNpb25Db2RlIGNvbnRpbnVlcyBwYXN0IHRoZSByZWNvcmRlZCBvbmUiICI5MSIgIiQoIiRjaS92ZXJzaW9uLnNoIiBidW1wLWNvZGUpIgpleHBlY3RfZXEgInRoZSB0YWcgaXMgbm93IHRoZSBoaWdoZXN0IHZlcnNpb24iICAgICAgICAiMi40LjEiICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIHBhdGNoKSIKZXhwZWN0X2VxICJtaW5vciBmcm9tIGEgcmVsZWFzZWQgdGFnIiAgICAgICAgICAgICAgICAgIjIuNS4wIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtbmFtZSBtaW5vcikiCgojIEEgdGFnIG1hZGUgYmVmb3JlIHZlcnNpb25Db2RlIHdhcyByZWNvcmRlZCBmYWxscyBiYWNrIHRvIHRoZSBmaWxlIGF0IHRoYXQgdGFnLgpnaXQgdGFnIC1hIHYyLjYuMCAtbSAibGVnYWN5IHJlbGVhc2UiCmV4cGVjdF9lcSAiYW4gb2xkZXIgdGFnIHdpdGhvdXQgYSByZWNvcmQgY2Fubm90IGhpZGUgYSByZWNvcmRlZCBvbmUiICI5MSIgIiQoIiRjaS92ZXJzaW9uLnNoIiBidW1wLWNvZGUpIgoKIyBMZWdhY3kgZm91ci1wYXJ0IGlucHV0cyBtaWdyYXRlIHRvIHNob3J0IHZlcnNpb25zIHdpdGhvdXQgcmV1c2luZyBhbiBvbGQgdGFnLgpwcmludGYgJ3ZlcnNpb25OYW1lPTEuNy43LjFcbnZlcnNpb25Db2RlPTQ3XG4nID4gdmVyc2lvbi5wcm9wZXJ0aWVzCmdpdCBjb21taXQgLXFhbSAiZm91ci1wYXJ0IHZlcnNpb24iCndoaWxlIElGUz0gcmVhZCAtciBvbGRfdGFnOyBkbyBnaXQgdGFnIC1kICIkb2xkX3RhZyIgPi9kZXYvbnVsbCAyPiYxIHx8IHRydWU7IGRvbmUgPCA8KGdpdCB0YWcgLWwgJ3YqJykKZXhwZWN0X2VxICJwYXRjaCBtaWdyYXRlcyBhIGZvdXItcGFydCB2ZXJzaW9uIiAiMS43LjgiICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIHBhdGNoKSIKZXhwZWN0X2VxICJtaW5vciBtaWdyYXRlcyBhIGZvdXItcGFydCB2ZXJzaW9uIiAiMS44LjAiICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIG1pbm9yKSIKZXhwZWN0X2VxICJtYWpvciBtaWdyYXRlcyBhIGZvdXItcGFydCB2ZXJzaW9uIiAiMi4wLjAiICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIG1ham9yKSIKCiMgUmVwcm9kdWNlIHRoZSByZWFsIHN0YWxlLWZpbGUvbGVnYWN5LXRhZyBjb21iaW5hdGlvbiwgdGhlbiBwdWJsaXNoIGEgc2hvcnQgcmVsZWFzZSB3aXRob3V0IGVkaXRpbmcKIyB0aGUgYnJhbmNoIGZpbGUuIE1haW4sIFBSIGFuZCBzdGFibGUgbXVzdCBhbGwgbW92ZSB0b2dldGhlciB0byB0aGUgbmV4dCB0YXJnZXQuCnByaW50ZiAndmVyc2lvbk5hbWU9MS44LjJcbnZlcnNpb25Db2RlPTU3XG4nID4gdmVyc2lvbi5wcm9wZXJ0aWVzCmdpdCBjb21taXQgLXFhbSAidGhyZWUtcGFydCB0YXJnZXQiCmdpdCB0YWcgLWEgdjEuOC4xLjIgLW0gImxlZ2FjeSBzdGFibGUiIC1tICJ2ZXJzaW9uQ29kZTogNTkiCmdpdCB0YWcgdjkuOS45LXByZXZpZXcuOTkKZ2l0IHRhZyB2Z2FyYmFnZQpleHBlY3RfZXEgImxlZ2FjeSByZWxlYXNlIHJlc29sdmVzIHRvIDEuOC4yIiAiMS44LjIiICIkKCIkY2kvdmVyc2lvbi5zaCIgZGV2ZWxvcG1lbnQtbmFtZSkiCmV4cGVjdF9lcSAic3RhYmxlIHBhdGNoIHVzZXMgdGhlIHNhbWUgdGFyZ2V0IiAiMS44LjIiICIkKCIkY2kvdmVyc2lvbi5zaCIgYnVtcC1uYW1lIHBhdGNoKSIKZXhwZWN0X2VxICJuZXh0IGNvZGUgcGFzc2VzIHB1Ymxpc2hlZCBsZWdhY3kgY29kZSIgIjYwIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtY29kZSkiCmdpdCB0YWcgLWEgdjEuOC4yIC1tICJWaW56IDEuOC4yIiAtbSAidmVyc2lvbkNvZGU6IDYwIgpleHBlY3RfZXEgInJlbGVhc2UgYXV0b21hdGljYWxseSBhZHZhbmNlcyBkZXZlbG9wbWVudCBuYW1lIiAiMS44LjMiICIkKCIkY2kvdmVyc2lvbi5zaCIgZGV2ZWxvcG1lbnQtbmFtZSkiCmV4cGVjdF9lcSAiUFIgaWdub3JlcyBzdGFsZSBmaWxlIGFmdGVyIHJlbGVhc2UiICJwci0zMS0xLjguMy0xOCIgIiQoIiRjaS92ZXJzaW9uLnNoIiBwciAzMSAxOCkiCmV4cGVjdF9lcSAibWFpbiBpZ25vcmVzIHN0YWxlIGZpbGUgYWZ0ZXIgcmVsZWFzZSIgInYxLjguMy1tYWluLiQoIiRjaS92ZXJzaW9uLnNoIiBtYWluLWNvdW50KSIgIiQoIiRjaS92ZXJzaW9uLnNoIiBtYWluKSIKZXhwZWN0X2VxICJuZXh0IHJlbGVhc2UgdXNlcyBzYW1lIHRhcmdldCIgIjEuOC4zIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtbmFtZSBwYXRjaCkiCmV4cGVjdF9lcSAibmV4dCBjb2RlIGFsc28gYWR2YW5jZXMgYWZ0ZXIgcmVsZWFzZSIgIjYxIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtY29kZSkiCmV4cGVjdF9lcSAibWlub3Igb3V0cHV0IGhhcyB0aHJlZSBwYXJ0cyIgIjEuOS4wIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtbmFtZSBtaW5vcikiCmV4cGVjdF9lcSAibWFqb3Igb3V0cHV0IGhhcyB0aHJlZSBwYXJ0cyIgIjIuMC4wIiAiJCgiJGNpL3ZlcnNpb24uc2giIGJ1bXAtbmFtZSBtYWpvcikiCmV4cGVjdF9lcSAicHJlcmVsZWFzZSBhbmQgbWFsZm9ybWVkIHRhZ3MgYXJlIGlnbm9yZWQiICJ2MS44LjIiICIkKCIkY2kvdmVyc2lvbi5zaCIgcHJldmlvdXMtc3RhYmxlLXRhZykiCgpleHBlY3RfZmFpbCAicmVqZWN0cyBhIG5vbi1udW1lcmljIFBSIG51bWJlciIgIiRjaS92ZXJzaW9uLnNoIiBwciBhYmMgMQpleHBlY3RfZmFpbCAicmVqZWN0cyBhIG5vbi1udW1lcmljIGJ1aWxkIG51bWJlciIgIiRjaS92ZXJzaW9uLnNoIiBwciAxIGFiYwpleHBlY3RfZmFpbCAicmVqZWN0cyBhbiB1bmtub3duIHN1YmNvbW1hbmQiICIkY2kvdmVyc2lvbi5zaCIgbm9uc2Vuc2UKZXhwZWN0X2ZhaWwgImZhaWxzIHdoZW4gdmVyc2lvbi5wcm9wZXJ0aWVzIGlzIGFic2VudCIgYmFzaCAtYyAicm0gLWYgdmVyc2lvbi5wcm9wZXJ0aWVzICYmICckY2kvdmVyc2lvbi5zaCcgbmFtZSIKCmVjaG8gInByLWJ1aWxkLW51bWJlci5zaCIKZXhwZWN0X2VxICJmYWxscyBiYWNrIHRvIEdJVEhVQl9SVU5fTlVNQkVSIHdpdGhvdXQgYSB0b2tlbiIgXAogICI0NTYiICIkKFBSX05VTUJFUj03IEdJVEhVQl9SVU5fTlVNQkVSPTQ1NiAiJGNpL3ByLWJ1aWxkLW51bWJlci5zaCIpIgpleHBlY3RfZmFpbCAicmVqZWN0cyBhIG1pc3NpbmcgUFIgbnVtYmVyIiBiYXNoIC1jICJHSVRIVUJfUlVOX05VTUJFUj0xICckY2kvcHItYnVpbGQtbnVtYmVyLnNoJyIKCmVjaG8gInZlcmlmeS1hcGsuc2giCmV4cGVjdF9mYWlsICJyZWplY3RzIGEgbWlzc2luZyBhcmd1bWVudCIgIiRjaS92ZXJpZnktYXBrLnNoIgpleHBlY3RfZmFpbCAicmVqZWN0cyBhbiBBUEsgdGhhdCBkb2VzIG5vdCBleGlzdCIgIiRjaS92ZXJpZnktYXBrLnNoIiAvbm9uZXhpc3RlbnQuYXBrCgplY2hvICJpbnN0YWxsLWFuZHJvaWQtc2RrLnNoIgpleHBlY3RfZmFpbCAiZmFpbHMgd2l0aG91dCBBTkRST0lEX0hPTUUiIGJhc2ggLWMgInVuc2V0IEFORFJPSURfSE9NRTsgJyRjaS9pbnN0YWxsLWFuZHJvaWQtc2RrLnNoJyIKCmVjaG8gImluc3RhbGwtZW11bGF0b3ItcnVudGltZS5zaCIKcnVudGltZV9iaW49IiRmaXh0dXJlL2VtdWxhdG9yLXJ1bnRpbWUtYmluIgpydW50aW1lX2xvZz0iJGZpeHR1cmUvZW11bGF0b3ItcnVudGltZS5sb2ciCm1rZGlyIC1wICIkcnVudGltZV9iaW4iCmNhdCA+ICIkcnVudGltZV9iaW4vc3VkbyIgPDwnRU9GJwojIS91c3IvYmluL2VudiBiYXNoCmV4ZWMgIiRAIgpFT0YKY2F0ID4gIiRydW50aW1lX2Jpbi9hcHQtZ2V0IiA8PCdFT0YnCiMhL3Vzci9iaW4vZW52IGJhc2gKcHJpbnRmICclc1xuJyAiJCoiID4+ICIkRU1VTEFUT1JfUlVOVElNRV9MT0ciCkVPRgpjYXQgPiAiJHJ1bnRpbWVfYmluL2xkY29uZmlnIiA8PCdFT0YnCiMhL3Vzci9iaW4vZW52IGJhc2gKcHJpbnRmICclc1xuJyAnbGlicHVsc2Uuc28uMCAobGliYzYseDg2LTY0KSA9PiAvbGliL3g4Nl82NC1saW51eC1nbnUvbGlicHVsc2Uuc28uMCcKRU9GCmNobW9kICt4ICIkcnVudGltZV9iaW4vc3VkbyIgIiRydW50aW1lX2Jpbi9hcHQtZ2V0IiAiJHJ1bnRpbWVfYmluL2xkY29uZmlnIgpydW50aW1lX291dHB1dD0kKFBBVEg9IiRydW50aW1lX2JpbjokUEFUSCIgRU1VTEFUT1JfUlVOVElNRV9MT0c9IiRydW50aW1lX2xvZyIgIiRjaS9pbnN0YWxsLWVtdWxhdG9yLXJ1bnRpbWUuc2giKQpleHBlY3RfY29udGFpbnMgImluc3RhbGxzIGxpYnB1bHNlMCBmb3IgdGhlIGVtdWxhdG9yIiAiJCg8IiRydW50aW1lX2xvZyIpIiAiaW5zdGFsbCAtLW5vLWluc3RhbGwtcmVjb21tZW5kcyAteSBsaWJwdWxzZTAiCmV4cGVjdF9jb250YWlucyAiY29uZmlybXMgdGhlIGVtdWxhdG9yIHJ1bnRpbWUgbGlicmFyeSIgIiRydW50aW1lX291dHB1dCIgImxpYnB1bHNlLnNvLjAiCmNhdCA+ICIkcnVudGltZV9iaW4vbGRjb25maWciIDw8J0VPRicKIyEvdXNyL2Jpbi9lbnYgYmFzaApleGl0IDAKRU9GCmNobW9kICt4ICIkcnVudGltZV9iaW4vbGRjb25maWciCmV4cGVjdF9mYWlsICJmYWlscyB3aGVuIGxpYnB1bHNlLnNvLjAgaXMgYWJzZW50IGFmdGVyIGluc3RhbGwiIGVudiBQQVRIPSIkcnVudGltZV9iaW46JFBBVEgiIEVNVUxBVE9SX1JVTlRJTUVfTE9HPSIkcnVudGltZV9sb2ciICIkY2kvaW5zdGFsbC1lbXVsYXRvci1ydW50aW1lLnNoIgoKZWNobyAiYXBwbHktZ2l0aHViLXNldHRpbmdzLnNoIgpvdXRwdXQ9JCgiJHJlcG9fcm9vdC9zY3JpcHRzL2FwcGx5LWdpdGh1Yi1zZXR0aW5ncy5zaCIgLS1yZXBvIGV4YW1wbGUvcmVwbyAtLWRyeS1ydW4gMj4mMSkKZXhwZWN0X2NvbnRhaW5zICJkcnkgcnVuIGxpc3RzIHRoZSBicmFuY2ggcnVsZXNldCIgICIkb3V0cHV0IiAicHJvdGVjdC1tYWluLWFuZC1zdGFibGUiCmV4cGVjdF9jb250YWlucyAiZHJ5IHJ1biBwcm90ZWN0cyByZWxlYXNlIHRhZ3MiICAgICAiJG91dHB1dCIgImltbXV0YWJsZS1yZWxlYXNlLXRhZ3MiCmV4cGVjdF9jb250YWlucyAiZHJ5IHJ1biByZXF1aXJlcyB0aGUgbGludCBjaGVjayIgICAiJG91dHB1dCIgJyJMaW50IicKZXhwZWN0X2NvbnRhaW5zICJkcnkgcnVuIHJlcXVpcmVzIHRoZSB0ZXN0IGNoZWNrIiAgICIkb3V0cHV0IiAnIlVuaXQgdGVzdHMgYW5kIGRlYnVnIGJ1aWxkIicKCmVjaG8gIndvcmtmbG93cyIKaWYgZ3JlcCAtRnEgJy4vc2NyaXB0cy9jaS9pbnN0YWxsLWVtdWxhdG9yLXJ1bnRpbWUuc2gnICIkcmVwb19yb290Ly5naXRodWIvd29ya2Zsb3dzL2ljb25zLXNoYXBlcy55bWwiOyB0aGVuCiAgcGFzcyAiaWNvbnMgd29ya2Zsb3cgaW5zdGFsbHMgZW11bGF0b3IgcnVudGltZSBsaWJyYXJpZXMiCmVsc2UKICBmYWlsICJpY29ucyB3b3JrZmxvdyBpbnN0YWxscyBlbXVsYXRvciBydW50aW1lIGxpYnJhcmllcyIgInJ1bnRpbWUgaW5zdGFsbGVyIGlzIG5vdCBpbnZva2VkIgpmaQppY29uc193b3JrZmxvdz0kKDwiJHJlcG9fcm9vdC8uZ2l0aHViL3dvcmtmbG93cy9pY29ucy1zaGFwZXMueW1sIikKZXhwZWN0X2NvbnRhaW5zICJlbXVsYXRvciBSQU0gbWVldHMgdGhlIEFQSSAzNCBmbG9vciBhbmQgY29yZXMgYXJlIGJvdW5kZWQiICIkaWNvbnNfd29ya2Zsb3ciICItbWVtb3J5IDI1NjAgLWNvcmVzIDIiCmV4cGVjdF9jb250YWlucyAiZW11bGF0b3IgdXNlcyB0aGUgTWVzYSBzb2Z0d2FyZSByZW5kZXJlciIgIiRpY29uc193b3JrZmxvdyIgIi1ncHUgbGF2YXBpcGUgLWZlYXR1cmUgLVZ1bGthbiIKaWYgZ3JlcCAtRXEgLS0gJy1ncHUgc3dpZnRzaGFkZXIoX2luZGlyZWN0KT8oW1s6c3BhY2U6XV18JCknIDw8PCAiJGljb25zX3dvcmtmbG93IjsgdGhlbgogIGZhaWwgImVtdWxhdG9yIGF2b2lkcyB0aGUgY3Jhc2hpbmcgU3dpZnRTaGFkZXIgYmFja2VuZCIgIlN3aWZ0U2hhZGVyIHJlbWFpbnMgY29uZmlndXJlZCBhZnRlciBuYXRpdmUgU0lHU0VHVnMiCmVsc2UKICBwYXNzICJlbXVsYXRvciBhdm9pZHMgdGhlIGNyYXNoaW5nIFN3aWZ0U2hhZGVyIGJhY2tlbmQiCmZpCmV4cGVjdF9jb250YWlucyAiZW11bGF0b3IgYnVpbGQgYXZvaWRzIGEgcmV0YWluZWQgS290bGluIGRhZW1vbiIgIiRpY29uc193b3JrZmxvdyIgIi1Qa290bGluLmNvbXBpbGVyLmV4ZWN1dGlvbi5zdHJhdGVneT1pbi1wcm9jZXNzIgpleHBlY3RfY29udGFpbnMgImVtdWxhdG9yIEdyYWRsZSBjb25jdXJyZW5jeSBpcyBib3VuZGVkIiAiJGljb25zX3dvcmtmbG93IiAiLS1uby1kYWVtb24gLS1uby1wYXJhbGxlbCAtLW1heC13b3JrZXJzPTIiCmV4cGVjdF9jb250YWlucyAiZW11bGF0b3IgdGVzdCBHcmFkbGUgaGVhcCBpcyBib3VuZGVkIiAiJGljb25zX3dvcmtmbG93IiAnLURvcmcuZ3JhZGxlLmp2bWFyZ3M9Ii1YbXgyZyAtRGZpbGUuZW5jb2Rpbmc9VVRGLTgiJwpleHBlY3RfY29udGFpbnMgImVtdWxhdG9yIGZhaWx1cmUgcmVjb3JkcyBob3N0IG1lbW9yeSBldmlkZW5jZSIgIiRpY29uc193b3JrZmxvdyIgIm1lbW9yeS5jdXJyZW50IG1lbW9yeS5tYXggbWVtb3J5LmV2ZW50cyIKZXhwZWN0X2NvbnRhaW5zICJlbXVsYXRvciBmYWlsdXJlIHJlY29yZHMgcHJvY2VzcyBleGl0IHN0YXR1cyIgIiRpY29uc193b3JrZmxvdyIgImVtdWxhdG9yLWxvZ3MvZW11bGF0b3ItZXhpdC1jb2RlLnR4dCIKZXhwZWN0X2NvbnRhaW5zICJlbXVsYXRvciBjYXB0dXJlcyBsb2dzIGJlZm9yZSBhIGRpc2Nvbm5lY3QiICIkaWNvbnNfd29ya2Zsb3ciICJlbXVsYXRvci1sb2dzL2xvZ2NhdC1saXZlLnR4dCIKZm9yIHdvcmtmbG93IGluICIkcmVwb19yb290Ii8uZ2l0aHViL3dvcmtmbG93cy8qLnltbDsgZG8KICBpZiBncmVwIC1xRSAnXlxzKnBlcm1pc3Npb25zOicgIiR3b3JrZmxvdyI7IHRoZW4gcGFzcyAiJChiYXNlbmFtZSAiJHdvcmtmbG93IikgZGVjbGFyZXMgcGVybWlzc2lvbnMiOyBlbHNlIGZhaWwgIiQoYmFzZW5hbWUgIiR3b3JrZmxvdyIpIGRlY2xhcmVzIHBlcm1pc3Npb25zIiAibm8gcGVybWlzc2lvbnMgYmxvY2siOyBmaQpkb25lCmlmIGdyZXAgLXJxRSAndXNlczogW14gXStAKHZbMC05XXxtYWlufG1hc3RlcikkJyAiJHJlcG9fcm9vdC8uZ2l0aHViL3dvcmtmbG93cy8iOyB0aGVuCiAgZmFpbCAibm8gdW5waW5uZWQgYWN0aW9uIHJlZnMiICJmb3VuZCBhbiBhY3Rpb24gcmVmZXJlbmNlZCBieSB0YWcgaW5zdGVhZCBvZiBhIGNvbW1pdCBTSEEiCmVsc2UKICBwYXNzICJubyB1bnBpbm5lZCBhY3Rpb24gcmVmcyIKZmkKaWYgZ3JlcCAtcnEgJ3B1bGxfcmVxdWVzdF90YXJnZXQnICIkcmVwb19yb290Ly5naXRodWIvd29ya2Zsb3dzLyI7IHRoZW4KICBmYWlsICJubyBwdWxsX3JlcXVlc3RfdGFyZ2V0IiAicHVsbHMgaW4gdW50cnVzdGVkIGNvZGUgd2l0aCBzZWNyZXRzIGF2YWlsYWJsZSIKZWxzZQogIHBhc3MgIm5vIHB1bGxfcmVxdWVzdF90YXJnZXQiCmZpCgpiYXNoICIkcmVwb19yb290L3NjcmlwdHMvdGVzdHMvcHVibGlzaC1tYWluLXRlc3Quc2giIHx8IGZhaWx1cmVzPSQoKGZhaWx1cmVzICsgMSkpCgpwcmludGYgJ1xuJXMgY2hlY2tzLCAlcyBmYWlsdXJlKHMpXG4nICIkY2hlY2tzIiAiJGZhaWx1cmVzIgpbWyAkZmFpbHVyZXMgLWVxIDAgXV0K
+#!/usr/bin/env bash
+# Self-tests for the CI helper scripts. No Android SDK, no network, no GitHub token: everything runs
+# against a throwaway git repository, so this proves the version arithmetic and the failure modes that
+# the workflows depend on.
+#
+#   scripts/tests/ci-scripts-test.sh
+set -uo pipefail
+
+repo_root=$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse --show-toplevel)
+ci="$repo_root/scripts/ci"
+failures=0
+checks=0
+
+pass() { checks=$((checks + 1)); printf '  ok    %s\n' "$1"; }
+fail() { checks=$((checks + 1)); failures=$((failures + 1)); printf '  FAIL  %s\n        %s\n' "$1" "$2"; }
+expect_eq() { if [[ "$2" == "$3" ]]; then pass "$1"; else fail "$1" "expected '$2', got '$3'"; fi; }
+expect_fail() { local d=$1; shift; if "$@" >/dev/null 2>&1; then fail "$d" "expected a non-zero exit"; else pass "$d"; fi; }
+expect_contains() { if [[ "$2" == *"$3"* ]]; then pass "$1"; else fail "$1" "'$3' not found in output"; fi; }
+
+fixture=$(mktemp -d)
+trap 'rm -rf "$fixture"' EXIT
+cd "$fixture" || exit 1
+git init -q .
+git symbolic-ref HEAD refs/heads/main
+git config user.email ci@example.invalid
+git config user.name CI
+git config commit.gpgsign false
+
+printf 'versionName=2.3.4\nversionCode=77\n' > version.properties
+git add version.properties
+git commit -qm "base"
+
+echo "version.sh"
+expect_eq "reads versionName"            "2.3.4" "$("$ci/version.sh" name)"
+expect_eq "reads versionCode"            "77"    "$("$ci/version.sh" code)"
+expect_eq "formats a pull request label" "pr-9-2.3.4-2" "$("$ci/version.sh" pr 9 2)"
+expect_eq "build number is commit count" "1"     "$("$ci/version.sh" main-count)"
+expect_eq "formats the main label"       "v2.3.4-main.1" "$("$ci/version.sh" main)"
+
+git commit -q --allow-empty -m one
+git commit -q --allow-empty -m two
+expect_eq "build number increments with commits" "3" "$("$ci/version.sh" main-count)"
+expect_eq "main label follows the count"         "v2.3.4-main.3" "$("$ci/version.sh" main)"
+
+expect_eq "no stable tag yet"  ""       "$("$ci/version.sh" previous-stable-tag)"
+git tag -a v2.3.0 -m "old release"
+git tag -a v2.3.9-rc.1 -m "prerelease"
+expect_eq "ignores prerelease tags" "v2.3.0" "$("$ci/version.sh" previous-stable-tag)"
+expect_eq "reads versionCode at a tag" "77" "$("$ci/version.sh" code-at v2.3.0)"
+
+# The file is the minimum unreleased target: an ahead-of-release floor is not bumped twice.
+# A stale branch automatically advances when a newer stable tag is fetched.
+expect_eq "patch respects the unreleased target" "2.3.4" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor resets everything after it" "2.4.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major resets everything after it" "3.0.0" "$("$ci/version.sh" bump-name major)"
+expect_eq "latest stable version"            "2.3.0" "$("$ci/version.sh" latest-stable-version)"
+expect_eq "versionCode is one above the file" "78"   "$("$ci/version.sh" bump-code)"
+expect_fail "rejects an unknown bump kind" "$ci/version.sh" bump-name sideways
+
+# A released tag records its versionCode, because the APK is stamped rather than committed: the file still
+# says 77, but the next release must not reuse 78.
+git tag -a v2.4.0 -m "Vinz 2.4.0" -m "versionCode: 90"
+expect_eq "versionCode continues past the recorded one" "91" "$("$ci/version.sh" bump-code)"
+expect_eq "the tag is now the highest version"        "2.4.1" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor from a released tag"                 "2.5.0" "$("$ci/version.sh" bump-name minor)"
+
+# A tag made before versionCode was recorded falls back to the file at that tag.
+git tag -a v2.6.0 -m "legacy release"
+expect_eq "an older tag without a record cannot hide a recorded one" "91" "$("$ci/version.sh" bump-code)"
+
+# Legacy four-part inputs migrate to short versions without reusing an old tag.
+printf 'versionName=1.7.7.1\nversionCode=47\n' > version.properties
+git commit -qam "four-part version"
+while IFS= read -r old_tag; do git tag -d "$old_tag" >/dev/null 2>&1 || true; done < <(git tag -l 'v*')
+expect_eq "patch migrates a four-part version" "1.7.8" "$("$ci/version.sh" bump-name patch)"
+expect_eq "minor migrates a four-part version" "1.8.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major migrates a four-part version" "2.0.0" "$("$ci/version.sh" bump-name major)"
+
+# Reproduce the real stale-file/legacy-tag combination, then publish a short release without editing
+# the branch file. Main, PR and stable must all move together to the next target.
+printf 'versionName=1.8.2\nversionCode=57\n' > version.properties
+git commit -qam "three-part target"
+git tag -a v1.8.1.2 -m "legacy stable" -m "versionCode: 59"
+git tag v9.9.9-preview.99
+git tag vgarbage
+expect_eq "legacy release resolves to 1.8.2" "1.8.2" "$("$ci/version.sh" development-name)"
+expect_eq "stable patch uses the same target" "1.8.2" "$("$ci/version.sh" bump-name patch)"
+expect_eq "next code passes published legacy code" "60" "$("$ci/version.sh" bump-code)"
+git tag -a v1.8.2 -m "Vinz 1.8.2" -m "versionCode: 60"
+expect_eq "release automatically advances development name" "1.8.3" "$("$ci/version.sh" development-name)"
+expect_eq "PR ignores stale file after release" "pr-31-1.8.3-18" "$("$ci/version.sh" pr 31 18)"
+expect_eq "main ignores stale file after release" "v1.8.3-main.$("$ci/version.sh" main-count)" "$("$ci/version.sh" main)"
+expect_eq "next release uses same target" "1.8.3" "$("$ci/version.sh" bump-name patch)"
+expect_eq "next code also advances after release" "61" "$("$ci/version.sh" bump-code)"
+expect_eq "minor output has three parts" "1.9.0" "$("$ci/version.sh" bump-name minor)"
+expect_eq "major output has three parts" "2.0.0" "$("$ci/version.sh" bump-name major)"
+expect_eq "prerelease and malformed tags are ignored" "v1.8.2" "$("$ci/version.sh" previous-stable-tag)"
+
+expect_fail "rejects a non-numeric PR number" "$ci/version.sh" pr abc 1
+expect_fail "rejects a non-numeric build number" "$ci/version.sh" pr 1 abc
+expect_fail "rejects an unknown subcommand" "$ci/version.sh" nonsense
+expect_fail "fails when version.properties is absent" bash -c "rm -f version.properties && '$ci/version.sh' name"
+
+echo "pr-build-number.sh"
+expect_eq "falls back to GITHUB_RUN_NUMBER without a token" \
+  "456" "$(PR_NUMBER=7 GITHUB_RUN_NUMBER=456 "$ci/pr-build-number.sh")"
+expect_fail "rejects a missing PR number" bash -c "GITHUB_RUN_NUMBER=1 '$ci/pr-build-number.sh'"
+
+echo "verify-apk.sh"
+expect_fail "rejects a missing argument" "$ci/verify-apk.sh"
+expect_fail "rejects an APK that does not exist" "$ci/verify-apk.sh" /nonexistent.apk
+
+echo "install-android-sdk.sh"
+expect_fail "fails without ANDROID_HOME" bash -c "unset ANDROID_HOME; '$ci/install-android-sdk.sh'"
+
+echo "install-emulator-runtime.sh"
+runtime_bin="$fixture/emulator-runtime-bin"
+runtime_log="$fixture/emulator-runtime.log"
+mkdir -p "$runtime_bin"
+cat > "$runtime_bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+exec "$@"
+EOF
+cat > "$runtime_bin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$EMULATOR_RUNTIME_LOG"
+EOF
+cat > "$runtime_bin/ldconfig" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'libpulse.so.0 (libc6,x86-64) => /lib/x86_64-linux-gnu/libpulse.so.0'
+EOF
+chmod +x "$runtime_bin/sudo" "$runtime_bin/apt-get" "$runtime_bin/ldconfig"
+runtime_output=$(PATH="$runtime_bin:$PATH" EMULATOR_RUNTIME_LOG="$runtime_log" "$ci/install-emulator-runtime.sh")
+expect_contains "installs libpulse0 for the emulator" "$(<"$runtime_log")" "install --no-install-recommends -y libpulse0"
+expect_contains "confirms the emulator runtime library" "$runtime_output" "libpulse.so.0"
+cat > "$runtime_bin/ldconfig" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$runtime_bin/ldconfig"
+expect_fail "fails when libpulse.so.0 is absent after install" env PATH="$runtime_bin:$PATH" EMULATOR_RUNTIME_LOG="$runtime_log" "$ci/install-emulator-runtime.sh"
+
+echo "apply-github-settings.sh"
+output=$("$repo_root/scripts/apply-github-settings.sh" --repo example/repo --dry-run 2>&1)
+expect_contains "dry run lists the branch ruleset"  "$output" "protect-main-and-stable"
+expect_contains "dry run protects release tags"     "$output" "immutable-release-tags"
+expect_contains "dry run requires the lint check"   "$output" '"Lint"'
+expect_contains "dry run requires the test check"   "$output" '"Unit tests and debug build"'
+
+echo "workflows"
+if grep -Fq './scripts/ci/install-emulator-runtime.sh' "$repo_root/.github/workflows/icons-shapes.yml"; then
+  pass "icons workflow installs emulator runtime libraries"
+else
+  fail "icons workflow installs emulator runtime libraries" "runtime installer is not invoked"
+fi
+icons_workflow=$(<"$repo_root/.github/workflows/icons-shapes.yml")
+expect_contains "emulator RAM meets the API 34 floor and cores are bounded" "$icons_workflow" "-memory 2560 -cores 2"
+expect_contains "emulator uses the Mesa software renderer" "$icons_workflow" "-gpu lavapipe -feature -Vulkan"
+if grep -Eq -- '-gpu swiftshader(_indirect)?([[:space:]]|$)' <<< "$icons_workflow"; then
+  fail "emulator avoids the crashing SwiftShader backend" "SwiftShader remains configured after native SIGSEGVs"
+else
+  pass "emulator avoids the crashing SwiftShader backend"
+fi
+expect_contains "emulator build avoids a retained Kotlin daemon" "$icons_workflow" "-Pkotlin.compiler.execution.strategy=in-process"
+expect_contains "emulator Gradle concurrency is bounded" "$icons_workflow" "--no-daemon --no-parallel --max-workers=2"
+expect_contains "emulator test Gradle heap is bounded" "$icons_workflow" '-Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"'
+expect_contains "emulator failure records host memory evidence" "$icons_workflow" "memory.current memory.max memory.events"
+expect_contains "emulator failure records process exit status" "$icons_workflow" "emulator-logs/emulator-exit-code.txt"
+expect_contains "emulator captures logs before a disconnect" "$icons_workflow" "emulator-logs/logcat-live.txt"
+for workflow in "$repo_root"/.github/workflows/*.yml; do
+  if grep -qE '^\s*permissions:' "$workflow"; then pass "$(basename "$workflow") declares permissions"; else fail "$(basename "$workflow") declares permissions" "no permissions block"; fi
+done
+if grep -rqE 'uses: [^ ]+@(v[0-9]|main|master)$' "$repo_root/.github/workflows/"; then
+  fail "no unpinned action refs" "found an action referenced by tag instead of a commit SHA"
+else
+  pass "no unpinned action refs"
+fi
+if grep -rq 'pull_request_target' "$repo_root/.github/workflows/"; then
+  fail "no pull_request_target" "pulls in untrusted code with secrets available"
+else
+  pass "no pull_request_target"
+fi
+
+bash "$repo_root/scripts/tests/publish-main-test.sh" || failures=$((failures + 1))
+
+printf '\n%s checks, %s failure(s)\n' "$checks" "$failures"
+[[ $failures -eq 0 ]]
