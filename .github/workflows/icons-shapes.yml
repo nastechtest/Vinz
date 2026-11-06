@@ -37,6 +37,9 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install Android emulator runtime libraries
+        run: ./scripts/ci/install-emulator-runtime.sh
+
       - name: Install Android SDK packages
         run: |
           ./scripts/ci/install-android-sdk.sh
