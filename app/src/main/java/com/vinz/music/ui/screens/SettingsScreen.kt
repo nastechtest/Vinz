@@ -2084,7 +2084,7 @@ private fun LyricsSettings() {
             MoreOptions(listOf(tr(R.string.more_options))) {
                 LyricsTranslationTargets.legacyTags.forEach { code ->
                     val language = java.util.Locale.forLanguageTag(if (code == "tl") "fil" else code)
-                    Item(language.getDisplayName(java.util.Locale.getDefault()).replaceFirstChar { it.titlecase() }, null,
+                    Item(language.getDisplayName(locale).replaceFirstChar { it.titlecase() }, null,
                         onClick = { prefs.setLyricsTranslateTo(code); prefs.setLyricsTranslate(true) }) {
                         if (s.lyricsTranslate && normalizedTarget == code) Icon(VinzIcons.Check, null, tint = MaterialTheme.colorScheme.primary)
                     }
