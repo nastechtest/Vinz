@@ -79,7 +79,11 @@ jobs:
 
       - name: Assemble the focused test APKs
         run: |
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PsideBySide --no-daemon --stacktrace
+          # Compile before boot without leaving a Kotlin daemon competing with the emulator.
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PsideBySide \
+            --no-daemon --no-parallel --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" \
+            -Pkotlin.compiler.execution.strategy=in-process --stacktrace
 
       - name: Run Icons & shapes screen test
         env:
@@ -97,10 +101,32 @@ jobs:
             exit 1
           }
 
+          host_snapshot() {
+            {
+              date -u
+              free -m
+              for name in memory.current memory.max memory.events; do
+                echo "cgroup $name:"
+                cat "/sys/fs/cgroup/$name" 2>/dev/null || true
+              done
+              ps -eo pid,ppid,rss,comm --sort=-rss | head -30 || true
+              sudo -n dmesg --ctime 2>/dev/null | tail -200 || true
+            } > "emulator-logs/host-$1.txt" 2>&1
+          }
+
           cleanup() {
             exit_code=$?
             trap - EXIT
             set +e
+            host_snapshot after-test
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              wait "$emulator_pid"
+              echo "$?" > emulator-logs/emulator-exit-code.txt
+            fi
+            if [[ -n ${logcat_pid:-} ]]; then
+              kill "$logcat_pid" 2>/dev/null || true
+              wait "$logcat_pid" 2>/dev/null || true
+            fi
             timeout 10s adb devices -l > emulator-logs/adb-devices.txt 2>&1 || true
             timeout 15s adb -s "$EMULATOR_SERIAL" logcat -d -t 4000 > emulator-logs/logcat.txt 2>&1 || true
             timeout 10s adb -s "$EMULATOR_SERIAL" emu kill > emulator-logs/emu-kill.log 2>&1 || true
@@ -118,7 +144,8 @@ jobs:
           "$emulator_bin" -version > emulator-logs/emulator-version.txt 2>&1 || fail "Android emulator version check failed"
           "$emulator_bin" -accel-check > emulator-logs/accel-check.txt 2>&1 || fail "Android emulator acceleration check failed"
           timeout 15s adb start-server > emulator-logs/adb-start-server.txt 2>&1 || fail "adb server did not start within 15 seconds"
-          "$emulator_bin" -avd vinz-api34 -port "$EMULATOR_PORT" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel on > emulator-logs/emulator.log 2>&1 &
+          host_snapshot before-emulator
+          "$emulator_bin" -avd vinz-api34 -port "$EMULATOR_PORT" -memory 1536 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel on > emulator-logs/emulator.log 2>&1 &
           emulator_pid=$!
           trap cleanup EXIT
 
@@ -137,9 +164,14 @@ jobs:
           done
           [[ "$boot_completed" == "1" ]] || fail "Android emulator did not finish booting within 300 seconds"
           timeout 10s adb -s "$EMULATOR_SERIAL" shell input keyevent 82 || fail "Could not unlock Android emulator"
+          adb -s "$EMULATOR_SERIAL" logcat -v threadtime > emulator-logs/logcat-live.txt 2>&1 &
+          logcat_pid=$!
+          host_snapshot before-test
           ./gradlew :app:connectedDebugAndroidTest -PsideBySide \
             -Pandroid.testInstrumentationRunnerArguments.class=com.vinz.music.IconsShapesScreenTest \
-            --no-daemon --stacktrace
+            --no-daemon --no-parallel --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" \
+            -Pkotlin.compiler.execution.strategy=in-process --stacktrace
 
       - name: Upload instrumented test reports and logs
         if: always()
