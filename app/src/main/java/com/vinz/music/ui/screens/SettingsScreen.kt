@@ -340,7 +340,7 @@ private fun SettingsPage(
                 }
                 item { AccountCard() }
                 item(key = "performance") { PerformanceGroup() }
-                // Every section's icon sits on its own color of the split light, red at the top to violet at the foot.
+                // Each section has its own coloured foreground, red at the top to violet at the foot.
                 val hubCount = hubGroups.sumOf { it.second.size }
                 var hubIndex = 0
                 hubGroups.forEach { (title, sections) ->
@@ -362,8 +362,15 @@ private fun SettingsPage(
             SettingsSection.LOOKS -> looksPage()
             SettingsSection.COLOR -> colorPage()
             SettingsSection.TEXT -> item(key = "text") { Column(verticalArrangement = Arrangement.spacedBy(22.dp)) { TypeSettings(); ResetPage(section) } }
-            SettingsSection.ICONS -> item(key = "icons") {
-                Column(verticalArrangement = Arrangement.spacedBy(22.dp)) { IconSettings(); AppIconSettings(); ShapeSettings(); HomeWidgetsGroup(); ResetPage(section) }
+            SettingsSection.ICONS -> {
+                // Keep expensive previews in separate lazy items, not one eagerly composed, oversized page.
+                item(key = "icons") { IconSettings() }
+                item(key = "app-icons") { AppIconSettings() }
+                item(key = "icon-corners") { ShapeSettings() }
+                item(key = "cover-shapes") { CoverShapeGroup() }
+                item(key = "button-shapes") { ButtonShapeGroup() }
+                item(key = "home-widgets") { HomeWidgetsGroup() }
+                item(key = "reset-icons") { ResetPage(section) }
             }
             SettingsSection.GLASS -> item(key = "glass") { Column(verticalArrangement = Arrangement.spacedBy(22.dp)) { GlassSettings(); ResetPage(section) } }
             SettingsSection.INTERFACE -> layoutAndNavigation()
@@ -1032,9 +1039,7 @@ private fun IconSettings() {
             // The drawings' own names (design/icons), never words on the screen: translated, "Inicio" had no drawing and
             // the page closed Vinz in every language but English (#255).
             val icons = remember(f) { listOf("Home", "Library", "Heart").map { com.vinz.music.ui.theme.VinzIcons.preview(it, f) } }
-            Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                icons.forEach { Icon(it, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface) }
-            }
+            SettingsIconSamples(icons)
         }
         // "The tab you're on" is with the tab bar now (1.8.0: NavBarGroup).
         // Packs (1.7.7 adds Facet and Dots): each card draws the same four icons in its pack.
@@ -1053,9 +1058,7 @@ private fun IconSettings() {
                 // The drawings' own names, never translated words (#255).
                 else listOf("Home", "Search", "Heart", "Play").map { com.vinz.music.ui.theme.VinzIcons.preview(it, com.vinz.music.ui.theme.IconFill.OUTLINE, p) }
             }
-            Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                icons.forEach { Icon(it, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface) }
-            }
+            SettingsIconSamples(icons)
         }
         Label(tr(R.string.weight))
         Chips(com.vinz.music.ui.theme.IconWeight.entries, saved.first, { it.label }) { save(it to saved.second) }
@@ -1207,12 +1210,10 @@ private fun ShapeSettings() {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val ui = LocalUi.current
             listOf(scheme.primary, scheme.tertiary, scheme.secondary).forEach { col ->
-                Box(Modifier.weight(1f).aspectRatio(1.3f).clip(ui.tile).background(Brush.linearGradient(listOf(col, col.copy(alpha = 0.55f)))))
+                Box(Modifier.weight(1f).aspectRatio(1.3f).border(2.dp, settingsIconColor(col, scheme.surface), ui.tile))
             }
         }
     }
-    CoverShapeGroup()
-    ButtonShapeGroup()
 }
 
 /** Covers' shapes (1.7.7): which kind of cover, then each shape drawn as a cover would be. */

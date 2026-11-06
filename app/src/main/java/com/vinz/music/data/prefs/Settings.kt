@@ -2281,7 +2281,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             textScale = p[K.textScale] ?: d.textScale,
             corners = p.enum(K.corners, d.corners),
             shapes = ShapeLook(
-                cornerScale = p[K.cornerScale],
+                cornerScale = p[K.cornerScale]?.takeIf { it.isFinite() }?.coerceIn(0f, 2f),
                 songs = p.enum(K.songShape, d.shapes.songs),
                 albums = p.enum(K.albumShape, d.shapes.albums),
                 artists = p.enum(K.artistShape, d.shapes.artists),
@@ -2803,7 +2803,10 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setTextScale(v: Float) = edit { it[K.textScale] = v }
     /** A corners step: the slider goes back to following it. */
     fun setCorners(v: Corners) = edit { it[K.corners] = v.name; it.remove(K.cornerScale) }
-    fun setCornerScale(v: Float) = edit { it[K.cornerScale] = v.coerceIn(0f, 2f) }
+    fun setCornerScale(v: Float) {
+        if (!v.isFinite()) return
+        edit { it[K.cornerScale] = v.coerceIn(0f, 2f) }
+    }
     fun setCoverShape(which: String, v: CoverShape) = edit { p ->
         val key = when (which) { "songs" -> K.songShape; "albums" -> K.albumShape; "artists" -> K.artistShape; "player" -> K.playerShape; else -> return@edit }
         p[key] = v.name
