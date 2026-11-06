@@ -45,7 +45,7 @@ class SettingsIconAppearanceTest {
     fun spectrumIconsMeetMinimumContrastOnLightAndNearBlack() {
         val backgrounds = listOf(Color.White, Color(0xFF09090C))
         backgrounds.forEach { background ->
-            VinzTokens.spectrumColors.forEach { hue ->
+            VinzTokens.spectrumColors.forEach { (_, hue) ->
                 val result = settingsIconColor(hue, background)
                 assertTrue("$hue on $background is translucent", result.alpha == 1f)
                 assertTrue("$hue on $background contrast=${contrastRatio(result, background)}", contrastRatio(result, background) >= 3f)
