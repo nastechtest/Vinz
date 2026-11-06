@@ -14,15 +14,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh api repos/nastechtest/Vinz/actions/jobs/127760056345/logs > /tmp/compiler-log.txt 2>/tmp/request-error; then
-            while IFS= read -r line; do echo "::error::$line"; done < /tmp/request-error
-            exit 1
-          fi
+          gh api --allow-escape-sequences repos/nastechtest/Vinz/actions/jobs/127760056345/logs > /tmp/compiler-log.txt
           python3 - <<'PY'
           import pathlib,re
           lines=pathlib.Path('/tmp/compiler-log.txt').read_text(errors='replace').splitlines()
           found=0
           for i,line in enumerate(lines):
+              line=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', line)
               if 'e: file:' in line or ' error:' in line or 'What went wrong:' in line or 'Execution failed for task' in line:
                   text=re.sub(r'(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)', '[REDACTED]',line)
                   print('::error::'+text.replace('%','%25'))
