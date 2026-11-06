@@ -121,6 +121,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+          # All stable tags are needed even when the PR branch predates the latest release.
+          fetch-depth: 0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -146,13 +148,15 @@ jobs:
           set -euo pipefail
           build_number=$(./scripts/ci/pr-build-number.sh "$PR_NUMBER")
           label=$(./scripts/ci/version.sh pr "$PR_NUMBER" "$build_number")
-          base=$(./scripts/ci/version.sh name)
-          # Stamped into Settings -> About so an installed test build identifies itself.
-          stamped="${base}-pr${PR_NUMBER}.${build_number}"
+          base=$(./scripts/ci/version.sh development-name)
+          version_code=$(./scripts/ci/version.sh bump-code)
+          # Keep the public version short; channel, commit and artifact label identify this test build.
+          stamped="$base"
           {
             echo "number=$build_number"
             echo "label=$label"
             echo "version-name=$stamped"
+            echo "version-code=$version_code"
             echo "apk-name=Vinz-PR-${PR_NUMBER}-build-${build_number}.apk"
           } >> "$GITHUB_OUTPUT"
           echo "PR build: $label (versionName $stamped)"
@@ -167,6 +171,7 @@ jobs:
           set -euo pipefail
           ./gradlew :app:assembleDebug :baselineprofile:assemble \
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
             --no-daemon --stacktrace
 
       - name: Verify the APK
