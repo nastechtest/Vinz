@@ -153,6 +153,14 @@ if grep -Fq './scripts/ci/install-emulator-runtime.sh' "$repo_root/.github/workf
 else
   fail "icons workflow installs emulator runtime libraries" "runtime installer is not invoked"
 fi
+icons_workflow=$(<"$repo_root/.github/workflows/icons-shapes.yml")
+expect_contains "emulator RAM is bounded" "$icons_workflow" "-memory 1536 -cores 2"
+expect_contains "emulator build avoids a retained Kotlin daemon" "$icons_workflow" "-Pkotlin.compiler.execution.strategy=in-process"
+expect_contains "emulator Gradle concurrency is bounded" "$icons_workflow" "--no-daemon --no-parallel --max-workers=2"
+expect_contains "emulator test Gradle heap is bounded" "$icons_workflow" '-Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"'
+expect_contains "emulator failure records host memory evidence" "$icons_workflow" "memory.current memory.max memory.events"
+expect_contains "emulator failure records process exit status" "$icons_workflow" "emulator-logs/emulator-exit-code.txt"
+expect_contains "emulator captures logs before a disconnect" "$icons_workflow" "emulator-logs/logcat-live.txt"
 for workflow in "$repo_root"/.github/workflows/*.yml; do
   if grep -qE '^\s*permissions:' "$workflow"; then pass "$(basename "$workflow") declares permissions"; else fail "$(basename "$workflow") declares permissions" "no permissions block"; fi
 done
