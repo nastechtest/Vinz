@@ -11,8 +11,8 @@ checks=0
 failures=0
 pass() { checks=$((checks + 1)); printf '  ok    %s\n' "$1"; }
 fail() { checks=$((checks + 1)); failures=$((failures + 1)); printf '  FAIL  %s\n        %s\n' "$1" "$2"; }
-expect_contains() { [[ "$2" == *"$3"* ]] && pass "$1" || fail "$1" "'$3' not found"; }
-expect_not_contains() { [[ "$2" != *"$3"* ]] && pass "$1" || fail "$1" "unexpected '$3'"; }
+expect_contains() { if [[ "$2" == *"$3"* ]]; then pass "$1"; else fail "$1" "'$3' not found"; fi; }
+expect_not_contains() { if [[ "$2" != *"$3"* ]]; then pass "$1"; else fail "$1" "unexpected '$3'"; fi; }
 expect_fail() { local description=$1; shift; if "$@" >/dev/null 2>&1; then fail "$description" "expected failure"; else pass "$description"; fi; }
 
 make_mock() {
@@ -97,7 +97,7 @@ printf apk > "$bad/dist/Vinz.apk"
 printf '%064d\n' 0 > "$bad/dist/Vinz.apk.sha256"
 : > "$bad/gh.log"
 expect_fail "rejects an invalid staged checksum before GitHub calls" bash -c "cd '$bad' && PATH='$fixture/bin':\$PATH GH_LOG='$bad/gh.log' GH_SCENARIO=existing GH_REPO=example/Vinz TARGET_SHA=0123456789abcdef0123456789abcdef01234567 APK_NAME=Vinz.apk LABEL=x VERSION_NAME=x bash '$publisher'"
-[[ ! -s "$bad/gh.log" ]] && pass "bad checksum makes no GitHub call" || fail "bad checksum makes no GitHub call" "mock was invoked"
+if [[ ! -s "$bad/gh.log" ]]; then pass "bad checksum makes no GitHub call"; else fail "bad checksum makes no GitHub call" "mock was invoked"; fi
 
 printf '\n%s checks, %s failure(s)\n' "$checks" "$failures"
 [[ $failures -eq 0 ]]
