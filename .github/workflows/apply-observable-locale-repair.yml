@@ -1,0 +1,38 @@
+name: Apply observable locale repair
+on:
+  push:
+    branches: [feat/bantu-language-pickers]
+    paths: [.github/workflows/apply-observable-locale-repair.yml]
+permissions:
+  contents: write
+jobs:
+  repair:
+    name: Apply observable locale repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/bantu-language-pickers
+      - name: Apply the reviewed one-line change
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/vinz/music/ui/screens/SettingsScreen.kt')
+          old = 'language.getDisplayName(java.util.Locale.getDefault())'
+          new = 'language.getDisplayName(locale)'
+          text = p.read_text()
+          if old not in text:
+              assert new in text, 'Expected locale expression is missing'
+          else:
+              assert text.count(old) == 1
+              assert 'val locale = LocalConfiguration.current.locales[0]' in text
+              p.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/vinz/music/ui/screens/SettingsScreen.kt
+          git commit -m 'fix(i18n): observe locale changes in lyrics language labels'
+          git push origin HEAD:feat/bantu-language-pickers
