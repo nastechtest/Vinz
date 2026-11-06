@@ -154,7 +154,13 @@ else
   fail "icons workflow installs emulator runtime libraries" "runtime installer is not invoked"
 fi
 icons_workflow=$(<"$repo_root/.github/workflows/icons-shapes.yml")
-expect_contains "emulator RAM is bounded" "$icons_workflow" "-memory 1536 -cores 2"
+expect_contains "emulator RAM meets the API 34 floor and cores are bounded" "$icons_workflow" "-memory 2560 -cores 2"
+expect_contains "emulator uses supported software GLES rendering" "$icons_workflow" "-gpu swiftshader -feature -Vulkan"
+if grep -Fq -- '-gpu swiftshader_indirect' <<< "$icons_workflow"; then
+  fail "emulator avoids the deprecated indirect renderer" "deprecated software renderer remains configured"
+else
+  pass "emulator avoids the deprecated indirect renderer"
+fi
 expect_contains "emulator build avoids a retained Kotlin daemon" "$icons_workflow" "-Pkotlin.compiler.execution.strategy=in-process"
 expect_contains "emulator Gradle concurrency is bounded" "$icons_workflow" "--no-daemon --no-parallel --max-workers=2"
 expect_contains "emulator test Gradle heap is bounded" "$icons_workflow" '-Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"'
