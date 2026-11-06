@@ -14,7 +14,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/nastechtest/Vinz/actions/jobs/127760056345/logs > /tmp/compiler-log.txt
+          if ! gh api repos/nastechtest/Vinz/actions/jobs/127760056345/logs > /tmp/compiler-log.txt 2>/tmp/request-error; then
+            while IFS= read -r line; do echo "::error::$line"; done < /tmp/request-error
+            exit 1
+          fi
           python3 - <<'PY'
           import pathlib,re
           lines=pathlib.Path('/tmp/compiler-log.txt').read_text(errors='replace').splitlines()
