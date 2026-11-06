@@ -19,7 +19,7 @@ jobs:
           python3 - <<'PY'
           import base64, gzip, hashlib, pathlib
           files = sorted(pathlib.Path('.').glob('.icon-repair-part-*.txt'))
-          assert len(files) == 4, 'Expected four patch parts'
+          assert len(files) == 1, 'Expected one patch part'
           patch = gzip.decompress(base64.b64decode(''.join(p.read_text() for p in files)))
           assert hashlib.sha256(patch).hexdigest() == 'b56f56d52d3f13c7a290f6a2e8539b82c82b2ddec93fd348a312cea3bb413adf'
           pathlib.Path('/tmp/icon-repair.patch').write_bytes(patch)
