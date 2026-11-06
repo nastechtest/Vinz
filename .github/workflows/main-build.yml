@@ -37,6 +37,7 @@ jobs:
       label: ${{ steps.build-id.outputs.label }}
       version-name: ${{ steps.build-id.outputs.version-name }}
       apk-name: ${{ steps.build-id.outputs.apk-name }}
+      commit-sha: ${{ steps.build-id.outputs.commit-sha }}
     steps:
       # fetch-depth 0: the build number is the commit count on main, which a shallow clone cannot report.
       - name: Check out main
@@ -63,14 +64,19 @@ jobs:
         run: |
           set -euo pipefail
           label=$(./scripts/ci/version.sh main)
-          base=$(./scripts/ci/version.sh name)
+          base=$(./scripts/ci/version.sh development-name)
+          version_code=$(./scripts/ci/version.sh bump-code)
           build_number=${label##*.}
           short_sha=$(git rev-parse --short=7 HEAD)
-          stamped="${base}-main.${build_number}"
+          stamped="$base"
+          build_sha=$(git rev-parse HEAD)
+          echo "VINZ_GIT_SHA=$build_sha" >> "$GITHUB_ENV"
           {
             echo "label=$label"
             echo "number=$build_number"
             echo "version-name=$stamped"
+            echo "version-code=$version_code"
+            echo "commit-sha=$build_sha"
             echo "short-sha=$short_sha"
             echo "apk-name=Vinz-main-${base}-build-${build_number}.apk"
           } >> "$GITHUB_OUTPUT"
@@ -87,6 +93,7 @@ jobs:
           set -euo pipefail
           ./gradlew :app:assembleDebug :baselineprofile:assemble \
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
             --no-daemon --stacktrace
 
       - name: Verify the APK
@@ -100,6 +107,7 @@ jobs:
           APK_NAME: ${{ steps.build-id.outputs.apk-name }}
           LABEL: ${{ steps.build-id.outputs.label }}
           VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          BUILD_SHA: ${{ steps.build-id.outputs.commit-sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -110,7 +118,7 @@ jobs:
             echo
             echo "build:       ${LABEL}"
             echo "versionName: ${VERSION_NAME}"
-            echo "commit:      ${GITHUB_SHA}"
+            echo "commit:      ${BUILD_SHA}"
             echo "ref:         ${GITHUB_REF_NAME}"
             echo "package:     ${APP_PACKAGE}"
             echo "sha256:      $(cat "dist/${APK_NAME}.sha256")"
@@ -146,6 +154,7 @@ jobs:
           VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
           APK_NAME: ${{ steps.build-id.outputs.apk-name }}
           SHORT_SHA: ${{ steps.build-id.outputs.short-sha }}
+          BUILD_SHA: ${{ steps.build-id.outputs.commit-sha }}
           STATUS: ${{ job.status }}
         run: |
           set -euo pipefail
@@ -161,7 +170,7 @@ jobs:
             echo "| Result | **${verdict}** |"
             echo "| Build | \`${LABEL}\` |"
             echo "| versionName stamped | \`${VERSION_NAME}\` |"
-            echo "| Commit | \`${SHORT_SHA}\` (${GITHUB_SHA}) |"
+            echo "| Commit | \`${SHORT_SHA}\` (${BUILD_SHA}) |"
             echo "| APK | \`${APK_NAME}\` |"
             echo
             echo "A successful build refreshes the rolling prerelease **Main — Latest**."
@@ -176,6 +185,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out the verified publisher
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.build.outputs.commit-sha }}
+          persist-credentials: false
+
       - name: Download the development APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -185,66 +200,10 @@ jobs:
       - name: Move the rolling tag and refresh the prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # This job has no working copy (it only downloads the APK), so `gh` cannot discover the repo from a
-          # git remote. Point it at the repository explicitly, here and with -R below.
           GH_REPO: ${{ github.repository }}
+          # This must be the SHA checked out and built by the build job, not merely the workflow trigger SHA.
+          TARGET_SHA: ${{ needs.build.outputs.commit-sha }}
           APK_NAME: ${{ needs.build.outputs.apk-name }}
           LABEL: ${{ needs.build.outputs.label }}
           VERSION_NAME: ${{ needs.build.outputs.version-name }}
-        run: |
-          set -euo pipefail
-          apk="dist/${APK_NAME}"
-
-          # "main-latest" is deliberately the only mutable ref in this repository: a pointer at the newest
-          # development build. It never matches "v*", so it cannot collide with a stable release tag, and no
-          # immutable version tag is ever moved.
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/main-latest" >/dev/null 2>&1; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/main-latest" \
-              -f sha="$GITHUB_SHA" -F force=true >/dev/null
-          else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/main-latest" -f sha="$GITHUB_SHA" >/dev/null
-          fi
-          echo "main-latest -> $GITHUB_SHA"
-
-          checksum=$(cat "dist/${APK_NAME}.sha256")
-          cat > release-notes.md <<EOF
-          **DEVELOPMENT BUILD — NOT A STABLE RELEASE**
-
-          Automatic build of \`main\`. It may be broken, half-finished or unreviewed by anyone but its author.
-          For a build you can rely on, use the latest stable release.
-
-          | | |
-          | --- | --- |
-          | Build | \`${LABEL}\` |
-          | versionName | \`${VERSION_NAME}\` |
-          | Commit | \`${GITHUB_SHA}\` |
-          | APK | \`${APK_NAME}\` |
-          | SHA-256 | \`${checksum}\` |
-          | Built | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
-
-          ### Install
-
-          \`\`\`bash
-          adb install -r ${APK_NAME}
-          \`\`\`
-
-          Debug-signed: uninstall an official Vinz first, since Android will not apply an update signed with
-          a different key. Settings -> About shows \`${VERSION_NAME}\`.
-          EOF
-
-          # Recreated rather than edited so the release always targets the newest commit (a moved tag does
-          # not update a release's target on its own). --cleanup-tag=false keeps the tag we just moved.
-          # -R on each call: no working copy here, so gh must not go looking for one.
-          # --verify-tag is gone: the tag was created or moved by the API three lines above and its result was
-          # already checked, so there is nothing left to verify -- and it is the flag that reaches for git.
-          gh release delete main-latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag=false >/dev/null 2>&1 || true
-          gh release create main-latest \
-            "$apk#${APK_NAME}" \
-            "dist/${APK_NAME}.sha256#${APK_NAME}.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Main — Latest (development)" \
-            --notes-file release-notes.md \
-            --prerelease
-
-          echo "::notice::Latest development build: ${LABEL} (${GITHUB_SHA})"
+        run: bash ./scripts/ci/publish-main.sh
