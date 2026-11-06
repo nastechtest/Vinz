@@ -76,6 +76,9 @@ class LookStoreTest {
 
         // Changed (back to how Vinz comes, which is Vinz's own Look: still a change to yours) after saving: Vinz offers to update it.
         settings.setCorners(Corners.ROUND)
+        // These independently collected flows can advance in either order: edits() reads lookValues,
+        // while edited is derived from currentId and settings.flow. Wait for the data it asserts on.
+        withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:ROUND" } }
         assertEquals(mine.id, withTimeout(5_000) { looks.edited.first { it != null } }!!.id)
         assertEquals(true, looks.edits(mine)?.startsWith("You've changed its"))
 
