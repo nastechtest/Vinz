@@ -1,0 +1,28 @@
+name: Restore PR32 script executable mode
+on:
+  push:
+    branches: [fix/icons-shapes-stability]
+    paths: [.github/workflows/restore-pr32-mode.yml]
+permissions:
+  contents: write
+jobs:
+  restore-mode:
+    if: github.repository == 'nastechtest/Vinz' && github.ref == 'refs/heads/fix/icons-shapes-stability'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repair branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/icons-shapes-stability
+      - name: Restore only the test script executable bit
+        run: |
+          set -euo pipefail
+          test "$(git ls-files -s scripts/tests/ci-scripts-test.sh | cut -d' ' -f1)" = 100644
+          git update-index --chmod=+x scripts/tests/ci-scripts-test.sh
+          test "$(git diff --cached --name-only)" = scripts/tests/ci-scripts-test.sh
+          test "$(git diff --cached --numstat | cut -f1,2)" = $'0	0'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Restore executable mode on CI script test entry point'
+          git push origin HEAD:fix/icons-shapes-stability
