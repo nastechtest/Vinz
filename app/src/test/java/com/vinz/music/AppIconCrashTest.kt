@@ -1,93 +1,56 @@
 package com.vinz.music
 
-import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.util.TypedValue
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.size
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.unit.dp
+import android.content.ComponentName
+import android.content.Context
+import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import com.vinz.music.ui.theme.AppIcon
+import com.vinz.music.ui.theme.AppIcons
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.GraphicsMode
-import org.xmlpull.v1.XmlPullParser
 
-/** PR #29's layer-list crash must not return when the launcher previews compose during a scroll. */
+/** Removed launcher previews must stay removed; upgrades restore the default launcher safely. */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w400dp-h800dp-xxhdpi", application = android.app.Application::class)
+@Config(sdk = [34], application = android.app.Application::class)
 class AppIconCrashTest {
-    @get:Rule val compose = createComposeRule()
+    private val context: Context get() = ApplicationProvider.getApplicationContext()
+    private val pm get() = context.packageManager
+    private fun component(icon: AppIcon) = ComponentName(context.packageName, "com.vinz.music" + icon.alias)
 
     @Test
-    fun everyPreviewLayerUsesAComposeSupportedResource() {
-        val resources = ApplicationProvider.getApplicationContext<android.content.Context>().resources
-        AppIcon.entries.forEach { icon ->
-            listOf(icon.background, icon.foreground).forEach { resource ->
-                val value = TypedValue()
-                resources.getValue(resource, value, true)
-                if (value.string.toString().endsWith(".xml")) {
-                    val parser = resources.getXml(resource)
-                    try {
-                        while (parser.eventType != XmlPullParser.START_TAG && parser.eventType != XmlPullParser.END_DOCUMENT) {
-                            parser.next()
-                        }
-                        assertEquals("${icon.name}: painterResource cannot render ${parser.name}", "vector", parser.name)
-                    } finally {
-                        parser.close()
-                    }
-                } else {
-                    val bitmap = BitmapFactory.decodeResource(resources, resource)
-                    assertNotNull("${icon.name}: preview must decode as a bitmap", bitmap)
-                    bitmap?.recycle()
-                }
-            }
-        }
+    fun anOlderSelectedAliasMigratesBackToClassic() {
+        pm.setComponentEnabledSetting(component(AppIcon.PAPER), PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(component(AppIcon.CLASSIC), PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+
+        AppIcons.migrateToClassic(context)
+
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_ENABLED, pm.getComponentEnabledSetting(component(AppIcon.CLASSIC)))
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, pm.getComponentEnabledSetting(component(AppIcon.PAPER)))
+        assertEquals(AppIcon.CLASSIC, AppIcons.current(context))
     }
 
     @Test
-    fun foregroundIsTransparentRatherThanAnOpaqueBackgroundTile() {
-        val resources = ApplicationProvider.getApplicationContext<android.content.Context>().resources
-        AppIcon.entries.forEach { icon ->
-            val bitmap = BitmapFactory.decodeResource(resources, icon.foreground)
-            assertNotNull("${icon.name}: foreground must be a transparent bitmap, not layer-list XML", bitmap)
-            requireNotNull(bitmap)
-            try {
-                assertTrue("${icon.name}: foreground has no alpha channel", bitmap.hasAlpha())
-                listOf(0 to 0, (bitmap.width - 1) to 0, 0 to (bitmap.height - 1), (bitmap.width - 1) to (bitmap.height - 1)).forEach { (x, y) ->
-                    assertEquals("${icon.name}: foreground covers the background at $x,$y", 0, Color.alpha(bitmap.getPixel(x, y)))
-                }
-            } finally {
-                bitmap.recycle()
-            }
+    fun migrationDisablesEveryEnabledLegacyAliasAndIsIdempotent() {
+        AppIcon.entries.filter { it != AppIcon.CLASSIC }.forEach {
+            pm.setComponentEnabledSetting(component(it), PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
         }
+        AppIcons.migrateToClassic(context)
+        AppIcons.migrateToClassic(context)
+        AppIcon.entries.filter { it != AppIcon.CLASSIC }.forEach {
+            assertEquals(it.name, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, pm.getComponentEnabledSetting(component(it)))
+        }
+        assertEquals(AppIcon.CLASSIC, AppIcons.current(context))
     }
 
     @Test
-    fun everyIconLayerComposesWithoutCrashing() {
-        compose.setContent {
-            Column {
-                AppIcon.entries.forEach { icon ->
-                    Image(painterResource(icon.background), null, Modifier.size(24.dp).testTag("app-icon-layer"))
-                    Image(painterResource(icon.foreground), null, Modifier.size(24.dp).testTag("app-icon-layer"))
-                }
-            }
-        }
-        compose.waitForIdle()
-        compose.onAllNodesWithTag("app-icon-layer").assertCountEquals(AppIcon.entries.size * 2)
+    fun obsoletePickerCallsCannotSelectAnAlternativeIcon() {
+        AppIcons.set(context, AppIcon.NEON)
+        assertEquals(AppIcon.CLASSIC, AppIcons.current(context))
+        val classicState = pm.getComponentEnabledSetting(component(AppIcon.CLASSIC))
+        org.junit.Assert.assertTrue(classicState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || classicState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT)
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, pm.getComponentEnabledSetting(component(AppIcon.NEON)))
     }
 }

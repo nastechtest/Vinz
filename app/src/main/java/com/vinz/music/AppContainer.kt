@@ -89,6 +89,9 @@ class VinzApp : Application(), coil3.SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // One-time-safe upgrade migration: Classic is available before old launcher aliases are retired. It never
+        // changes media-service components, so playback started under a legacy icon continues uninterrupted.
+        com.vinz.music.ui.theme.AppIcons.migrateToClassic(this)
         // Before anything shows a word: Vinz's text in the listener's language (Strings.kt).
         Strings.resources = resources
         language = AppLanguage.shown(this)

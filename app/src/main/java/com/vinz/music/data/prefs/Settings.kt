@@ -1406,6 +1406,8 @@ data class AppSettings(
     val navStyle: NavBarStyle = NavBarStyle.FLOATING,
     val navLabels: NavLabels = NavLabels.ALWAYS,
     val navHideOnScroll: Boolean = true,
+    /** Explicit opt-in; Looks must never enable experimental navigation. */
+    val experimentalSplitNavigation: Boolean = false,
     val navTabs: List<NavTab> = listOf(NavTab.HOME, NavTab.LIBRARY, NavTab.SEARCH, NavTab.REPLAY),
     /** Tabs given their own names (1.7.6); the rest keep theirs. */
     val tabNames: Map<NavTab, String> = emptyMap(),
@@ -1781,6 +1783,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val navStyle = stringPreferencesKey("nav_style")
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
+        val experimentalSplitNavigation = booleanPreferencesKey("experimental_split_navigation")
         val navTabs = stringPreferencesKey("nav_tabs")
         val tabNames = stringPreferencesKey("tab_names")
         val navBarSize = stringPreferencesKey("nav_bar_size")
@@ -2026,6 +2029,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
+                "experimental_split_navigation",
                 "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
@@ -2368,6 +2372,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             navStyle = p.enum(K.navStyle, d.navStyle),
             navLabels = p.enum(K.navLabels, d.navLabels),
             navHideOnScroll = p[K.navHideOnScroll] ?: d.navHideOnScroll,
+            experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.experimentalSplitNavigation,
             navTabs = p[K.navTabs]?.split(",")?.mapNotNull { n -> NavTab.entries.firstOrNull { it.name == n } }?.takeIf { it.isNotEmpty() } ?: d.navTabs,
             tabNames = p[K.tabNames]?.let(::parseTabNames) ?: d.tabNames,
             navBarSize = p.enum(K.navBarSize, d.navBarSize),
@@ -2828,6 +2833,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
+    fun setExperimentalSplitNavigation(v: Boolean) = edit { it[K.experimentalSplitNavigation] = v }
     fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name } }
     /** A tab's own name; blank gives it back its own. */
     fun setTabName(tab: NavTab, name: String) = edit {
