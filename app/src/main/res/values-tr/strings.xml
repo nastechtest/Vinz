@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Diğer yüklü diller</string>
     <string name="bantu_translation_availability">Çeviri kullanılabilirliği sağlayıcıya bağlıdır.</string>
     <string name="bantu_language_groups">Bantu dilleri</string>
+    <string name="experimental_split_navigation">Bölünmüş oynatıcı gezintisi (deneysel)</string>
+    <string name="experimental_split_navigation_summary">Kapalıyken özgün Vinz gezintisi korunur.</string>
+    <string name="experimental_split_navigation_info">Kayan stil ve kaydırırken küçült etkin olduğunda oynatıcı, kaydırırken iki sekme grubu arasına sığar. Özgün gezinti dar ekranlarda, büyük metinde, tabletlerde veya Hareketi azalt ile kullanılır. Geri yüklemek için istediğiniz zaman kapatın.</string>
+    <string name="experimental_split_navigation_keywords">deneysel bölünmüş gezinti ortalanmış mini oynatıcı dönüşüm özgün</string>
+    <string name="icons_shapes_summary">Simge paketi ve kalınlığı, köşeler ve şekiller</string>
+    <string name="icons_shapes_keywords">simge paket kalınlık köşeler şekiller</string>
 </resources>

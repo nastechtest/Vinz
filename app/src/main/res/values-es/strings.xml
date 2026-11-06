@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">Otros idiomas instalados</string>
     <string name="bantu_translation_availability">La disponibilidad de traducción depende del servicio.</string>
     <string name="bantu_language_groups">Idiomas bantúes</string>
+    <string name="experimental_split_navigation">Navegación de reproductor dividido (experimental)</string>
+    <string name="experimental_split_navigation_summary">Desactivado mantiene la navegación original de Vinz.</string>
+    <string name="experimental_split_navigation_info">Con el estilo Flotante y Reducir al desplazarse activados, el reproductor encaja entre dos grupos de pestañas al desplazarte. La navegación original sigue disponible y se usa en pantallas estrechas, texto grande, tabletas o con Reducir movimiento. Desactívalo cuando quieras para restaurarla.</string>
+    <string name="experimental_split_navigation_keywords">experimental navegación dividida centrado minirreproductor transformar original</string>
+    <string name="icons_shapes_summary">Paquete y grosor de iconos, esquinas y formas</string>
+    <string name="icons_shapes_keywords">icono paquete grosor esquinas formas</string>
 </resources>

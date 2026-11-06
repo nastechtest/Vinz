@@ -1,0 +1,124 @@
+package com.vinz.music
+
+import com.vinz.music.data.prefs.AppSettings
+import com.vinz.music.data.prefs.BehaviorPrefs
+import com.vinz.music.data.prefs.Corners
+import com.vinz.music.data.prefs.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+
+/** The split navigation switch is an explicit preference, never a Look choice. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], application = android.app.Application::class)
+class ExperimentalNavigationTest {
+    private val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var repo: SettingsRepository? = null
+
+    private fun repository() = repo ?: SettingsRepository(
+        RuntimeEnvironment.getApplication(),
+        testScope,
+    ).also { repo = it }
+
+    @After
+    fun restoreDefaultAndCancelScope(): Unit = runBlocking {
+        try {
+            // Restore shared state even when a test assertion fails.
+            repo?.let { settings ->
+                settings.setExperimentalSplitNavigation(false)
+                withTimeout(5_000) { settings.flow.first { !it.experimentalSplitNavigation } }
+            }
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun freshSettingsKeepExperimentalSplitNavigationOff() {
+        assertFalse(AppSettings().experimentalSplitNavigation)
+    }
+
+    @Test
+    fun nestedOptInSurvivesCopiesWithoutChangingDefaults() {
+        val defaults = AppSettings()
+        val optedIn = defaults.copy(
+            behavior = defaults.behavior.copy(experimentalSplitNavigation = true),
+        )
+
+        assertFalse(BehaviorPrefs().experimentalSplitNavigation)
+        assertFalse(defaults.experimentalSplitNavigation)
+        assertTrue(optedIn.experimentalSplitNavigation)
+        assertTrue(optedIn.copy().experimentalSplitNavigation)
+        assertTrue(optedIn.copy(performanceMode = true).effective().experimentalSplitNavigation)
+        assertFalse(optedIn.copy(behavior = BehaviorPrefs()).experimentalSplitNavigation)
+    }
+
+    @Test
+    fun experimentalSplitNavigationPersistsInBothDirections(): Unit = runBlocking {
+        val repo = repository()
+
+        repo.setExperimentalSplitNavigation(true)
+        assertTrue(withTimeout(5_000) {
+            repo.flow.first { it.experimentalSplitNavigation }.experimentalSplitNavigation
+        })
+
+        repo.setExperimentalSplitNavigation(false)
+        assertFalse(withTimeout(5_000) {
+            repo.flow.first { !it.experimentalSplitNavigation }.experimentalSplitNavigation
+        })
+    }
+
+    @Test
+    fun experimentalSplitNavigationIsNotALookOrResetSetting() {
+        val repo = repository()
+
+        assertTrue("The opt-in is explicitly excluded from Looks", "experimental_split_navigation" in repo.notLookNames)
+        assertFalse("A Look must not carry the opt-in", "experimental_split_navigation" in repo.lookKinds)
+        assertFalse("Reset Look must not clear the opt-in", "experimental_split_navigation" in repo.resetNames)
+    }
+
+    @Test
+    fun applyingAndResettingLooksLeaveExperimentalSplitNavigationAlone(): Unit = runBlocking {
+        val repo = repository()
+        // This uses SettingsRepository directly, avoiding LookStore's independent restore timeout.
+        repo.setExperimentalSplitNavigation(false)
+        withTimeout(5_000) { repo.flow.first { !it.experimentalSplitNavigation } }
+
+        repo.applyLook(mapOf("corners" to "s:SHARP"))
+        assertFalse(withTimeout(5_000) {
+            repo.flow.first { it.corners == Corners.SHARP && !it.experimentalSplitNavigation }.experimentalSplitNavigation
+        })
+        repo.resetLook()
+        assertFalse(withTimeout(5_000) {
+            repo.flow.first {
+                it.corners == AppSettings().corners && !it.experimentalSplitNavigation
+            }.experimentalSplitNavigation
+        })
+
+        repo.setExperimentalSplitNavigation(true)
+        withTimeout(5_000) { repo.flow.first { it.experimentalSplitNavigation } }
+        repo.applyLook(mapOf("corners" to "s:SHARP"))
+        assertTrue(withTimeout(5_000) {
+            repo.flow.first { it.corners == Corners.SHARP && it.experimentalSplitNavigation }.experimentalSplitNavigation
+        })
+        repo.resetLook()
+        assertTrue(withTimeout(5_000) {
+            repo.flow.first {
+                it.corners == AppSettings().corners && it.experimentalSplitNavigation
+            }.experimentalSplitNavigation
+        })
+
+    }
+}

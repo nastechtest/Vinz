@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,6 +76,9 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     /** No surface of its own: it sits in the tab bar's glass ("Joined to the tab bar", 1.7.6). */
     bare: Boolean = false,
+    /** 0 is the familiar full row; 1 is Vinz's centred 64 dp split-chrome control. */
+    compactFraction: Float = 0f,
+    compactWidth: androidx.compose.ui.unit.Dp? = null,
     onOpen: () -> Unit,
 ) {
     val pc = LocalContainer.current.player
@@ -114,6 +122,11 @@ fun MiniPlayer(
     // Card: the full-width piece of glass over the tab bar, its progress line along the bottom.
     val bar = style == MiniPlayerStyle.CARD
     val height = when (style) { MiniPlayerStyle.CARD -> 64.dp; MiniPlayerStyle.SLIM -> 54.dp; MiniPlayerStyle.PILL -> 56.dp }
+    val compact = compactFraction.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+    // Retire skip controls early, before the continuously narrowing player can crowd its contents.
+    val compactMode = compactWidth != null && compact >= 0.25f
+    // The compact target never makes the required play/pause target shorter than 48 dp.
+    val visualHeight = androidx.compose.ui.unit.lerp(height, 48.dp, compact)
     val shape = when (style) {
         MiniPlayerStyle.CARD -> ui.card
         MiniPlayerStyle.SLIM -> ui.shape(16.dp)
@@ -136,16 +149,16 @@ fun MiniPlayer(
     surface(
         modifier
             .fillMaxWidth()
-            .height(height)
+            .height(visualHeight)
             .testTag("miniPlayer")
             .offset { IntOffset(drag.value.roundToInt(), pull.value.roundToInt()) }
             .graphicsLayer { alpha = 1f - (pull.value / (height.toPx() * 1.6f)).coerceIn(0f, 0.85f) }
             .pointerInput(Unit) {
-                val stopAt = height.toPx() * 0.9f
+                val stopAt = visualHeight.toPx() * 0.9f
                 // Up (#149, 1.7.7): the card lifts a little against the finger (a third of the drag, at most a third of its
                 // height) and opens the player, or does what's set, once lifted past [upAt].
-                val upAt = -height.toPx() * 0.22f
-                val upMost = -height.toPx() * 0.34f
+                val upAt = -visualHeight.toPx() * 0.22f
+                val upMost = -visualHeight.toPx() * 0.34f
                 var raw = 0f
                 detectVerticalDragGestures(
                     onDragStart = { raw = pull.value },
@@ -163,7 +176,7 @@ fun MiniPlayer(
                             if (pull.value > stopAt && down != PlayerGesture.NONE) {
                                 haptics.gestureEnd()
                                 if (down == PlayerGesture.STOP) {
-                                    pull.animateTo(height.toPx() * 1.6f)
+                                    pull.animateTo(visualHeight.toPx() * 1.6f)
                                     pc.stop()
                                     pull.snapTo(0f)
                                 } else {
@@ -229,13 +242,23 @@ fun MiniPlayer(
         )
         Row(
             // Holding it brings up the song's actions (like, add to playlist, share…) without opening the player.
-            Modifier.fillMaxSize().combinedClickable(onClick = onOpen, onLongClick = { haptics.click(); menu = true })
-                .padding(start = if (style == MiniPlayerStyle.PILL) 6.dp else if (bar) 16.dp else 8.dp, end = if (style == MiniPlayerStyle.PILL) 8.dp else if (bar) 8.dp else 4.dp),
+            Modifier.fillMaxSize()
+                .then(
+                    if (compactMode) Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "${s.title}, ${s.artistText}"
+                        role = Role.Button
+                    } else Modifier,
+                )
+                .combinedClickable(onClick = onOpen, onLongClick = { haptics.click(); menu = true })
+                .padding(start = if (compactMode) 0.dp else if (style == MiniPlayerStyle.PILL) 6.dp else if (bar) 16.dp else 8.dp, end = if (compactMode) 0.dp else if (style == MiniPlayerStyle.PILL) 8.dp else if (bar) 8.dp else 4.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (compactMode) Arrangement.Center else Arrangement.Start,
         ) {
-            Artwork(com.vinz.music.data.PlaylistCovers.artOf(s), with(CoverFlight) { Modifier.size(artSize).miniCover() }, artShape, size = 226)
-            Spacer(Modifier.width(12.dp))
-            AnimatedContent(
+            if (!compactMode || compact < 0.72f || !settings.view.miniPlayButton) {
+                Artwork(com.vinz.music.data.PlaylistCovers.artOf(s), with(CoverFlight) { Modifier.size(artSize).miniCover() }, artShape, size = 226)
+                Spacer(Modifier.width(12.dp))
+            }
+            if (!compactMode || compact < 0.5f) AnimatedContent(
                 s,
                 transitionSpec = { (slideInHorizontally { it / 3 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 3 } + fadeOut()) },
                 modifier = Modifier.weight(1f),
@@ -251,23 +274,23 @@ fun MiniPlayer(
                     )
                 }
             }
-            if (settings.miniPrevButton) {
+            if (!compactMode && settings.miniPrevButton) {
                 IconButton(onClick = { haptics.click(); pc.previous() }, modifier = Modifier.size(40.dp)) { Icon(VinzIcons.Previous, tr(R.string.widget_previous)) }
             }
             // Play / pause can be left off (Reddit, 1.8.1): a tap still opens the player.
             if (!settings.view.miniPlayButton) {
                 if (!settings.miniSkipButtons) Spacer(Modifier.width(8.dp))
-            } else if (style == MiniPlayerStyle.PILL) {
+            } else if (style == MiniPlayerStyle.PILL && !compactMode) {
                 Box(
                     Modifier.size(40.dp).clip(CircleShape).background(scheme.onSurface).clickable { haptics.click(); pc.togglePlay() },
                     contentAlignment = Alignment.Center,
                 ) { Icon(if (playing) VinzIcons.Pause else VinzIcons.Play, tr(R.string.play_pause), Modifier.size(24.dp), tint = scheme.surface) }
             } else {
-                IconButton(onClick = { haptics.click(); pc.togglePlay() }, modifier = Modifier.size(44.dp)) {
+                IconButton(onClick = { haptics.click(); pc.togglePlay() }, modifier = Modifier.size(if (compactMode) 48.dp else 44.dp)) {
                     Icon(if (playing) VinzIcons.Pause else VinzIcons.Play, tr(R.string.play_pause), Modifier.size(if (style == MiniPlayerStyle.SLIM) 26.dp else 28.dp))
                 }
             }
-            if (settings.miniSkipButtons) {
+            if (!compactMode && settings.miniSkipButtons) {
                 IconButton(onClick = { haptics.click(); pc.next() }, modifier = Modifier.size(40.dp)) { Icon(VinzIcons.Next, tr(R.string.widget_next)) }
             }
         }

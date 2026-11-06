@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Andra installerade språk</string>
     <string name="bantu_translation_availability">Tillgången till översättning beror på leverantören.</string>
     <string name="bantu_language_groups">Bantuspråk</string>
+    <string name="experimental_split_navigation">Delad spelarnavigering (experimentell)</string>
+    <string name="experimental_split_navigation_summary">Av behåller den ursprungliga Vinz-navigeringen.</string>
+    <string name="experimental_split_navigation_info">Med Flytande stil och Förminska vid rullning aktiverat ryms spelaren mellan två flikgrupper när du rullar. Ursprunglig navigering används på smala skärmar, med stor text, surfplattor eller Minska rörelse. Stäng av när som helst för att återställa den.</string>
+    <string name="experimental_split_navigation_keywords">experimentell delad navigering centrerad minispelare formförändring ursprunglig</string>
+    <string name="icons_shapes_summary">Ikonpaket och tjocklek, hörn och former</string>
+    <string name="icons_shapes_keywords">ikon paket tjocklek hörn former</string>
 </resources>

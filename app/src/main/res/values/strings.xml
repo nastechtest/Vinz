@@ -4670,4 +4670,10 @@
     <string name="bantu_installed_languages">Other installed languages</string>
     <string name="bantu_translation_availability">Translation availability depends on the provider.</string>
     <string name="bantu_language_groups">Bantu languages</string>
+    <string name="experimental_split_navigation">Split-player navigation (experimental)</string>
+    <string name="experimental_split_navigation_summary">Off keeps the original Vinz navigation.</string>
+    <string name="experimental_split_navigation_info">With Floating style and Shrink while scrolling enabled, the player fits between two tab groups as you scroll. Original navigation stays available and is used on narrow screens, large text, tablets, or with Reduce motion enabled. Switch this off at any time to restore the original.</string>
+    <string name="experimental_split_navigation_keywords">experimental split navigation centred center mini player morph original</string>
+    <string name="icons_shapes_summary">Icon pack and weight, corners and shapes</string>
+    <string name="icons_shapes_keywords">icon pack weight corners shapes</string>
 </resources>

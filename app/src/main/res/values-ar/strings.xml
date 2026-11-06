@@ -4885,4 +4885,10 @@
     <string name="bantu_installed_languages">لغات أخرى مثبتة</string>
     <string name="bantu_translation_availability">يعتمد توفر الترجمة على الخدمة.</string>
     <string name="bantu_language_groups">لغات البانتو</string>
+    <string name="experimental_split_navigation">تنقّل المشغّل المنقسم (تجريبي)</string>
+    <string name="experimental_split_navigation_summary">الإيقاف يبقي تنقّل Vinz الأصلي.</string>
+    <string name="experimental_split_navigation_info">مع نمط عائم وتمكين التصغير أثناء التمرير، يلائم المشغّل بين مجموعتي علامات التبويب أثناء التمرير. يبقى التنقّل الأصلي متاحاً ويُستخدم على الشاشات الضيقة أو مع النص الكبير أو الأجهزة اللوحية أو تقليل الحركة. أوقفه لاستعادة التنقّل الأصلي.</string>
+    <string name="experimental_split_navigation_keywords">تجريبي تنقل منقسم مشغل مركزي صغير تحويل أصلي</string>
+    <string name="icons_shapes_summary">حزمة الأيقونات ووزنها والزوايا والأشكال</string>
+    <string name="icons_shapes_keywords">أيقونة حزمة وزن زوايا أشكال</string>
 </resources>

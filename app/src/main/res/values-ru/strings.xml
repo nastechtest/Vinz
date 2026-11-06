@@ -4761,4 +4761,10 @@
     <string name="bantu_installed_languages">Другие установленные языки</string>
     <string name="bantu_translation_availability">Доступность перевода зависит от сервиса.</string>
     <string name="bantu_language_groups">Языки банту</string>
+    <string name="experimental_split_navigation">Раздельная навигация плеера (экспериментальная)</string>
+    <string name="experimental_split_navigation_summary">Выключение сохраняет исходную навигацию Vinz.</string>
+    <string name="experimental_split_navigation_info">При плавающем стиле и включенном уменьшении при прокрутке плеер помещается между двумя группами вкладок. Исходная навигация остаётся на узких экранах, при крупном тексте, на планшетах или с уменьшением движения. Выключите, чтобы вернуть её.</string>
+    <string name="experimental_split_navigation_keywords">экспериментальная раздельная навигация по центру мини плеер трансформация исходная</string>
+    <string name="icons_shapes_summary">Набор и толщина значков, углы и формы</string>
+    <string name="icons_shapes_keywords">значок набор толщина углы формы</string>
 </resources>

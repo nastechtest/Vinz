@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">دیگر نصب شدہ زبانیں</string>
     <string name="bantu_translation_availability">ترجمے کی دستیابی خدمت فراہم کنندہ پر منحصر ہے۔</string>
     <string name="bantu_language_groups">بنٹو زبانیں</string>
+    <string name="experimental_split_navigation">تقسیم شدہ پلیئر نیویگیشن (تجرباتی)</string>
+    <string name="experimental_split_navigation_summary">بند رکھنے سے Vinz کی اصل نیویگیشن رہتی ہے۔</string>
+    <string name="experimental_split_navigation_info">فلوٹنگ انداز اور اسکرول پر سکڑنا فعال ہونے پر پلیئر اسکرول کرتے وقت دو ٹیب گروپوں کے درمیان فٹ ہوتا ہے۔ تنگ اسکرین، بڑے متن، ٹیبلٹ یا حرکت کم کریں کے ساتھ اصل نیویگیشن استعمال ہوتی ہے۔ اسے بند کر کے اصل نیویگیشن بحال کریں۔</string>
+    <string name="experimental_split_navigation_keywords">تجرباتی تقسیم شدہ نیویگیشن مرکزی منی پلیئر تبدیلی اصل</string>
+    <string name="icons_shapes_summary">آئیکن پیک وزن کونے شکلیں</string>
+    <string name="icons_shapes_keywords">آئیکن پیک وزن کونے شکلیں</string>
 </resources>

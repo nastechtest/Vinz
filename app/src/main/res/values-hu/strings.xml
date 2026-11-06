@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Más telepített nyelvek</string>
     <string name="bantu_translation_availability">A fordítás elérhetősége a szolgáltatástól függ.</string>
     <string name="bantu_language_groups">Bantu nyelvek</string>
+    <string name="experimental_split_navigation">Osztott lejátszó-navigáció (kísérleti)</string>
+    <string name="experimental_split_navigation_summary">Kikapcsolva az eredeti Vinz-navigáció marad.</string>
+    <string name="experimental_split_navigation_info">Lebegő stílussal és görgetéskor zsugorítás mellett a lejátszó két lapcsoport közé illeszkedik. Keskeny kijelzőn, nagy szövegnél, táblagépen vagy Mozgáscsökkentéssel az eredeti navigáció marad. Kikapcsolással bármikor visszaállítható.</string>
+    <string name="experimental_split_navigation_keywords">kísérleti osztott navigáció középen mini lejátszó átalakulás eredeti</string>
+    <string name="icons_shapes_summary">Ikoncsomag és vastagság, sarkok és formák</string>
+    <string name="icons_shapes_keywords">ikon csomag vastagság sarkok formák</string>
 </resources>

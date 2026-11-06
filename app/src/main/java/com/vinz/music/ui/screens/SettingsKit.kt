@@ -227,10 +227,7 @@ fun ShowChips(options: List<ShowOption>) {
     }
 }
 
-/**
- * A row that opens another page: an icon, title, summary, chevron. With a [hue] (Settings' sections, red to violet in
- * the spectrum's order) the icon sits on a tile of that color.
- */
+/** Opens a settings page. Colour belongs to the symbol; its surrounding slot stays transparent. */
 @Composable
 fun NavRow(icon: ImageVector, title: String, subtitle: String?, selected: Boolean = false, hint: String? = null, hue: Color? = null, onClick: () -> Unit) {
     val ui = LocalUi.current
@@ -241,11 +238,14 @@ fun NavRow(icon: ImageVector, title: String, subtitle: String?, selected: Boolea
             .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = ui.gap(11.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (hue != null) androidx.compose.foundation.layout.Box(
-            Modifier.size(34.dp).clip(ui.smallArt).background(hue), contentAlignment = Alignment.Center,
-        ) { Icon(icon, null, Modifier.size(20.dp), tint = Color.White) }
-        else Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(if (hue != null) 14.dp else 18.dp))
+        val ink = settingsIconColor(
+            hue ?: com.vinz.music.ui.theme.VinzTokens.spectrumAt(((icon.name.hashCode() ushr 1) % 101) / 100f),
+            MaterialTheme.colorScheme.surface,
+        )
+        androidx.compose.foundation.layout.Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(22.dp), tint = ink)
+        }
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -278,8 +278,10 @@ fun SliderSetting(
     info: String? = null,
     onSave: (Float) -> Unit,
 ) {
-    var v by remember { mutableFloatStateOf(value) }
-    LaunchedEffect(value) { v = value }
+    // Do not pass malformed imported preferences to either the label formatter or the slider.
+    val safeValue = value.takeIf { it.isFinite() }?.coerceIn(range.start, range.endInclusive) ?: range.start
+    var v by remember { mutableFloatStateOf(safeValue) }
+    LaunchedEffect(safeValue) { v = safeValue }
     var open by androidx.compose.runtime.saveable.rememberSaveable(title, "slider") { androidx.compose.runtime.mutableStateOf(false) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

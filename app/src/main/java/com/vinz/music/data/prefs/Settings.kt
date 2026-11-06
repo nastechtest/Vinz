@@ -316,6 +316,8 @@ data class BehaviorPrefs(
     val playCountSeconds: Int = 10,
     /** #263: YouTube Music's history waits for the same; off, it's told as a song starts (as before). */
     val playCountOnAccount: Boolean = false,
+    /** Explicit opt-in; Looks must never enable experimental navigation. */
+    val experimentalSplitNavigation: Boolean = false,
 )
 
 /**
@@ -1535,6 +1537,9 @@ data class AppSettings(
 ) {
     val isLoggedIn: Boolean get() = cookie.contains("SAPISID")
 
+    /** Nested with behavior settings to leave room under the JVM constructor limit. */
+    val experimentalSplitNavigation: Boolean get() = behavior.experimentalSplitNavigation
+
     // The lyrics' look, read as before (1.7.7 moved them into [lyricsLook]; see [LyricsLookPrefs]).
     val lyricsStyle: LyricsStyle get() = lyricsLook.style
     val lyricsBlurAmount: Float get() = lyricsLook.blurAmount
@@ -1781,6 +1786,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val navStyle = stringPreferencesKey("nav_style")
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
+        val experimentalSplitNavigation = booleanPreferencesKey("experimental_split_navigation")
         val navTabs = stringPreferencesKey("nav_tabs")
         val tabNames = stringPreferencesKey("tab_names")
         val navBarSize = stringPreferencesKey("nav_bar_size")
@@ -2026,6 +2032,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
+                "experimental_split_navigation",
                 "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
@@ -2281,7 +2288,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             textScale = p[K.textScale] ?: d.textScale,
             corners = p.enum(K.corners, d.corners),
             shapes = ShapeLook(
-                cornerScale = p[K.cornerScale],
+                cornerScale = p[K.cornerScale]?.takeIf { it.isFinite() }?.coerceIn(0f, 2f),
                 songs = p.enum(K.songShape, d.shapes.songs),
                 albums = p.enum(K.albumShape, d.shapes.albums),
                 artists = p.enum(K.artistShape, d.shapes.artists),
@@ -2352,6 +2359,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 historyPausedUntil = p[K.historyPausedUntil] ?: d.behavior.historyPausedUntil,
                 playCountSeconds = (p[K.playCountSeconds] ?: d.behavior.playCountSeconds).coerceIn(0, 600),
                 playCountOnAccount = p[K.playCountOnAccount] ?: d.behavior.playCountOnAccount,
+                experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.behavior.experimentalSplitNavigation,
             ),
             tv = TvPrefs(
                 ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
@@ -2803,7 +2811,10 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setTextScale(v: Float) = edit { it[K.textScale] = v }
     /** A corners step: the slider goes back to following it. */
     fun setCorners(v: Corners) = edit { it[K.corners] = v.name; it.remove(K.cornerScale) }
-    fun setCornerScale(v: Float) = edit { it[K.cornerScale] = v.coerceIn(0f, 2f) }
+    fun setCornerScale(v: Float) {
+        if (!v.isFinite()) return
+        edit { it[K.cornerScale] = v.coerceIn(0f, 2f) }
+    }
     fun setCoverShape(which: String, v: CoverShape) = edit { p ->
         val key = when (which) { "songs" -> K.songShape; "albums" -> K.albumShape; "artists" -> K.artistShape; "player" -> K.playerShape; else -> return@edit }
         p[key] = v.name
@@ -2825,6 +2836,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
+    fun setExperimentalSplitNavigation(v: Boolean) = edit { it[K.experimentalSplitNavigation] = v }
     fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name } }
     /** A tab's own name; blank gives it back its own. */
     fun setTabName(tab: NavTab, name: String) = edit {

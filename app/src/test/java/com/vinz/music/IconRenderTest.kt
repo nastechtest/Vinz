@@ -216,9 +216,8 @@ class IconRenderTest {
     }
 
     /**
-     * The launcher icons (every Settings → Appearance → App icon choice) as a launcher shows them: full bleed, in a
-     * circle and in a rounded square, their themed (monochrome) layer on a pale tint, and the notification icon at
-     * status-bar size; onto icon-previews/launcher.png.
+     * The shipped default launcher icon at presentation sizes and masks. The launcher picker is removed;
+     * in-app icon-pack review sheets above remain independent and unchanged.
      */
     @Test
     fun launcherIconLarge() {
@@ -237,11 +236,9 @@ class IconRenderTest {
             val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
             val c = android.graphics.Canvas(bmp)
             c.clipPath(clip)
-            for (res in listOf(com.vinz.music.ui.theme.AppIcon.CLASSIC.background, com.vinz.music.ui.theme.AppIcon.CLASSIC.foreground)) {
-                val d = ctx.getDrawable(res)!!.mutate()
-                d.setBounds(-px / 4, -px / 4, px + px / 4, px + px / 4)
-                d.draw(c)
-            }
+            val drawable = requireNotNull(ctx.getDrawable(R.mipmap.ic_launcher)).mutate()
+            drawable.setBounds(0, 0, px, px)
+            drawable.draw(c)
             File(dir, name).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
@@ -251,28 +248,28 @@ class IconRenderTest {
         val ctx = org.robolectric.RuntimeEnvironment.getApplication()
         val px = 216
         val gap = 24
-        val icons = com.vinz.music.ui.theme.AppIcon.entries
-        val bmp = Bitmap.createBitmap(icons.size * (px + gap) + gap, 4 * (px + gap) + 140, Bitmap.Config.ARGB_8888)
+        val launcherResources = listOf(R.mipmap.ic_launcher)
+        val bmp = Bitmap.createBitmap(launcherResources.size * (px + gap) + gap, 4 * (px + gap) + 140, Bitmap.Config.ARGB_8888)
         val c = android.graphics.Canvas(bmp)
         c.drawColor(0xFF2A2A30.toInt())
         fun layer(res: Int, x: Int, y: Int, clip: android.graphics.Path?, tint: Int? = null) {
             c.save()
             c.translate(x.toFloat(), y.toFloat())
             clip?.let { c.clipPath(it) }
-            // The adaptive layers are 108 dp with the visible 72 dp in the middle: draw them 1.5× and centre.
+            // Draw the complete adaptive launcher resource, not the removed picker-preview layers.
             val d = ctx.getDrawable(res)!!.mutate()
             tint?.let { d.setTint(it) }
-            d.setBounds(-px / 4, -px / 4, px + px / 4, px + px / 4)
+            d.setBounds(0, 0, px, px)
             d.draw(c)
             c.restore()
         }
         val circle = android.graphics.Path().apply { addCircle(px / 2f, px / 2f, px / 2f, android.graphics.Path.Direction.CW) }
         val squircle = android.graphics.Path().apply { addRoundRect(0f, 0f, px.toFloat(), px.toFloat(), px * 0.28f, px * 0.28f, android.graphics.Path.Direction.CW) }
-        icons.forEachIndexed { i, icon ->
+        launcherResources.forEachIndexed { i, resource ->
             val x = gap + i * (px + gap)
-            layer(icon.background, x, gap, null); layer(icon.foreground, x, gap, null)
-            layer(icon.background, x, gap * 2 + px, circle); layer(icon.foreground, x, gap * 2 + px, circle)
-            layer(icon.background, x, gap * 3 + px * 2, squircle); layer(icon.foreground, x, gap * 3 + px * 2, squircle)
+            layer(resource, x, gap, null)
+            layer(resource, x, gap * 2 + px, circle)
+            layer(resource, x, gap * 3 + px * 2, squircle)
             // Themed icons: Android draws the monochrome layer in a dark tint on a pale one.
             val y = gap * 4 + px * 3
             c.save(); c.translate(x.toFloat(), y.toFloat()); c.drawPath(circle, android.graphics.Paint().apply { color = 0xFFDCE3F5.toInt(); isAntiAlias = true }); c.restore()

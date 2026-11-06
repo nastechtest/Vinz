@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Andere geïnstalleerde talen</string>
     <string name="bantu_translation_availability">De beschikbaarheid van vertalingen hangt af van de service.</string>
     <string name="bantu_language_groups">Bantoetalen</string>
+    <string name="experimental_split_navigation">Gesplitste spelernavigatie (experimenteel)</string>
+    <string name="experimental_split_navigation_summary">Uit behoudt de oorspronkelijke Vinz-navigatie.</string>
+    <string name="experimental_split_navigation_info">Met de stijl Zwevend en Krimpen tijdens scrollen ingeschakeld past de speler tijdens het scrollen tussen twee tabgroepen. De oorspronkelijke navigatie blijft beschikbaar op smalle schermen, met grote tekst, tablets of Beweging verminderen. Schakel dit uit om die te herstellen.</string>
+    <string name="experimental_split_navigation_keywords">experimenteel gesplitst navigatie gecentreerd minispeler vervormen oorspronkelijk</string>
+    <string name="icons_shapes_summary">Icoonpakket en gewicht, hoeken en vormen</string>
+    <string name="icons_shapes_keywords">icoon pakket gewicht hoeken vormen</string>
 </resources>

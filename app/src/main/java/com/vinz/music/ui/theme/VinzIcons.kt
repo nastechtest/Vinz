@@ -70,10 +70,15 @@ object IconStyle {
         weight = w; rounded = r
         pack = savedPack(context)
         likeStar = savedLikeStar(context)
-        fill = savedFill(context)    }
+        fill = savedFill(context)
+    }
+
+    // Old installs/imports can contain a different preference type. Typed getters throw on those values.
+    private fun savedValues(context: android.content.Context): Map<String, *> =
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).all
 
     fun savedFill(context: android.content.Context): IconFill =
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString("fill", null)
+        (savedValues(context)["fill"] as? String)
             ?.let { n -> IconFill.entries.firstOrNull { it.name == n } } ?: IconFill.OUTLINE
 
     fun saveFill(context: android.content.Context, f: IconFill) {
@@ -81,15 +86,15 @@ object IconStyle {
     }
 
     fun savedLikeStar(context: android.content.Context): Boolean =
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getBoolean("like_star", false)
+        savedValues(context)["like_star"] as? Boolean ?: false
 
     fun saveLikeStar(context: android.content.Context, on: Boolean) {
         context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean("like_star", on).apply()
     }
 
     fun savedPack(context: android.content.Context): IconPack {
-        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-        return IconPack.entries.firstOrNull { it.name == p.getString("pack", null) } ?: IconPack.VINZ
+        val name = savedValues(context)["pack"] as? String
+        return IconPack.entries.firstOrNull { it.name == name } ?: IconPack.VINZ
     }
 
     fun savePack(context: android.content.Context, pack: IconPack) {
@@ -98,9 +103,10 @@ object IconStyle {
 
     /** What's saved (it may differ from what's drawn until a restart). */
     fun saved(context: android.content.Context): Pair<IconWeight, Boolean> {
-        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-        val w = IconWeight.entries.firstOrNull { it.name == p.getString("weight", null) } ?: IconWeight.REGULAR
-        return w to p.getBoolean("rounded", true)
+        val values = savedValues(context)
+        val name = values["weight"] as? String
+        val w = IconWeight.entries.firstOrNull { it.name == name } ?: IconWeight.REGULAR
+        return w to (values["rounded"] as? Boolean ?: true)
     }
 
     fun save(context: android.content.Context, weight: IconWeight, rounded: Boolean) {

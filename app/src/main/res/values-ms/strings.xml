@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">Bahasa lain yang dipasang</string>
     <string name="bantu_translation_availability">Ketersediaan terjemahan bergantung pada perkhidmatan.</string>
     <string name="bantu_language_groups">Bahasa Bantu</string>
+    <string name="experimental_split_navigation">Navigasi pemain terpisah (eksperimental)</string>
+    <string name="experimental_split_navigation_summary">Mati mengekalkan navigasi Vinz asal.</string>
+    <string name="experimental_split_navigation_info">Dengan gaya Terapung dan Kecil ketika menatal dihidupkan, pemain muat antara dua kumpulan tab semasa anda menatal. Navigasi asal digunakan pada skrin sempit, teks besar, tablet atau Kurangkan gerakan. Matikan pada bila-bila masa untuk memulihkannya.</string>
+    <string name="experimental_split_navigation_keywords">eksperimental navigasi terpisah tengah pemain mini berubah asal</string>
+    <string name="icons_shapes_summary">Pek dan berat ikon, bucu dan bentuk</string>
+    <string name="icons_shapes_keywords">ikon pek berat bucu bentuk</string>
 </resources>

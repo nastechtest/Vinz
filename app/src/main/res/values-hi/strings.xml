@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">अन्य स्थापित भाषाएँ</string>
     <string name="bantu_translation_availability">अनुवाद की उपलब्धता सेवा पर निर्भर करती है।</string>
     <string name="bantu_language_groups">बांटू भाषाएँ</string>
+    <string name="experimental_split_navigation">विभाजित प्लेयर नेविगेशन (प्रायोगिक)</string>
+    <string name="experimental_split_navigation_summary">बंद रखने पर Vinz का मूल नेविगेशन बना रहता है।</string>
+    <string name="experimental_split_navigation_info">Floating शैली और स्क्रॉल करते समय सिकोड़ें चालू होने पर, स्क्रॉल करते हुए प्लेयर दो टैब समूहों के बीच फिट होता है। संकरी स्क्रीन, बड़े टेक्स्ट, टैबलेट या Reduce motion चालू होने पर मूल नेविगेशन उपलब्ध रहता है। मूल नेविगेशन वापस पाने के लिए इसे कभी भी बंद करें।</string>
+    <string name="experimental_split_navigation_keywords">प्रायोगिक विभाजित नेविगेशन केंद्रित मिनी प्लेयर रूपांतरण मूल</string>
+    <string name="icons_shapes_summary">आइकन पैक और मोटाई, कोने और आकार</string>
+    <string name="icons_shapes_keywords">आइकन पैक मोटाई कोने आकार</string>
 </resources>

@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.onNodeWithText
 import com.vinz.music.playback.toMediaItem
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,6 +30,19 @@ class Requests181Test {
     @get:org.junit.Rule val compose = androidx.compose.ui.test.junit4.createComposeRule()
 
     private val eps = 1e-4f
+    private lateinit var settingsScope: kotlinx.coroutines.CoroutineScope
+
+    @org.junit.Before fun startSettingsScope() {
+        settingsScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+        )
+    }
+
+    @org.junit.After fun stopSettingsScope() {
+        kotlinx.coroutines.runBlocking {
+            settingsScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+        }
+    }
 
     // ------------------------------------------------ #310 album names in Downloads
 
@@ -53,7 +67,7 @@ class Requests181Test {
 
     private fun repo() = com.vinz.music.data.prefs.SettingsRepository(
         org.robolectric.RuntimeEnvironment.getApplication(),
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
+        settingsScope,
     )
 
     // ------------------------------------------------ #309 Show background at 0% = fully dark
@@ -220,6 +234,11 @@ class Requests181Test {
         val repo = repo()
         repo.setExplicitContent(HIDE)
         kotlinx.coroutines.withTimeout(5_000) { repo.flow.first { it.behavior.explicitContent == HIDE } }
+        // A second repository must observe the persisted value, not the first StateFlow's cached emission.
+        val recreated = com.vinz.music.data.prefs.SettingsRepository(
+            org.robolectric.RuntimeEnvironment.getApplication(), settingsScope,
+        )
+        kotlinx.coroutines.withTimeout(5_000) { recreated.flow.first { it.behavior.explicitContent == HIDE } }
         repo.setExplicitContent(SHOW)
         kotlinx.coroutines.withTimeout(5_000) { repo.flow.first { it.behavior.explicitContent == SHOW } }
     }

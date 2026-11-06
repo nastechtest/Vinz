@@ -113,6 +113,33 @@ expect_fail "rejects an APK that does not exist" "$ci/verify-apk.sh" /nonexisten
 echo "install-android-sdk.sh"
 expect_fail "fails without ANDROID_HOME" bash -c "unset ANDROID_HOME; '$ci/install-android-sdk.sh'"
 
+echo "install-emulator-runtime.sh"
+runtime_bin="$fixture/emulator-runtime-bin"
+runtime_log="$fixture/emulator-runtime.log"
+mkdir -p "$runtime_bin"
+cat > "$runtime_bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+exec "$@"
+EOF
+cat > "$runtime_bin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$EMULATOR_RUNTIME_LOG"
+EOF
+cat > "$runtime_bin/ldconfig" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'libpulse.so.0 (libc6,x86-64) => /lib/x86_64-linux-gnu/libpulse.so.0'
+EOF
+chmod +x "$runtime_bin/sudo" "$runtime_bin/apt-get" "$runtime_bin/ldconfig"
+runtime_output=$(PATH="$runtime_bin:$PATH" EMULATOR_RUNTIME_LOG="$runtime_log" "$ci/install-emulator-runtime.sh")
+expect_contains "installs libpulse0 for the emulator" "$(<"$runtime_log")" "install --no-install-recommends -y libpulse0"
+expect_contains "confirms the emulator runtime library" "$runtime_output" "libpulse.so.0"
+cat > "$runtime_bin/ldconfig" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$runtime_bin/ldconfig"
+expect_fail "fails when libpulse.so.0 is absent after install" env PATH="$runtime_bin:$PATH" EMULATOR_RUNTIME_LOG="$runtime_log" "$ci/install-emulator-runtime.sh"
+
 echo "apply-github-settings.sh"
 output=$("$repo_root/scripts/apply-github-settings.sh" --repo example/repo --dry-run 2>&1)
 expect_contains "dry run lists the branch ruleset"  "$output" "protect-main-and-stable"
@@ -121,6 +148,25 @@ expect_contains "dry run requires the lint check"   "$output" '"Lint"'
 expect_contains "dry run requires the test check"   "$output" '"Unit tests and debug build"'
 
 echo "workflows"
+if grep -Fq './scripts/ci/install-emulator-runtime.sh' "$repo_root/.github/workflows/icons-shapes.yml"; then
+  pass "icons workflow installs emulator runtime libraries"
+else
+  fail "icons workflow installs emulator runtime libraries" "runtime installer is not invoked"
+fi
+icons_workflow=$(<"$repo_root/.github/workflows/icons-shapes.yml")
+expect_contains "emulator RAM meets the API 34 floor and cores are bounded" "$icons_workflow" "-memory 2560 -cores 2"
+expect_contains "emulator uses the Mesa software renderer" "$icons_workflow" "-gpu lavapipe -feature -Vulkan"
+if grep -Eq -- '-gpu swiftshader(_indirect)?([[:space:]]|$)' <<< "$icons_workflow"; then
+  fail "emulator avoids the crashing SwiftShader backend" "SwiftShader remains configured after native SIGSEGVs"
+else
+  pass "emulator avoids the crashing SwiftShader backend"
+fi
+expect_contains "emulator build avoids a retained Kotlin daemon" "$icons_workflow" "-Pkotlin.compiler.execution.strategy=in-process"
+expect_contains "emulator Gradle concurrency is bounded" "$icons_workflow" "--no-daemon --no-parallel --max-workers=2"
+expect_contains "emulator test Gradle heap is bounded" "$icons_workflow" '-Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"'
+expect_contains "emulator failure records host memory evidence" "$icons_workflow" "memory.current memory.max memory.events"
+expect_contains "emulator failure records process exit status" "$icons_workflow" "emulator-logs/emulator-exit-code.txt"
+expect_contains "emulator captures logs before a disconnect" "$icons_workflow" "emulator-logs/logcat-live.txt"
 for workflow in "$repo_root"/.github/workflows/*.yml; do
   if grep -qE '^\s*permissions:' "$workflow"; then pass "$(basename "$workflow") declares permissions"; else fail "$(basename "$workflow") declares permissions" "no permissions block"; fi
 done
