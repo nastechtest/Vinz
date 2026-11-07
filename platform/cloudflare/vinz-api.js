@@ -142,13 +142,13 @@ async function updateProfile(request, config, auth) {
     update.username = input.username;
   }
   if ("display_name" in input) {
-    if (typeof input.display_name !== "string" || input.display_name.trim().length < 1 || input.display_name.length > 48) {
+    if (typeof input.display_name !== "string" || input.display_name.trim().length < 1 || input.display_name.length > 60) {
       return { error: "invalid_display_name", status: 400 };
     }
     update.display_name = input.display_name.trim();
   }
   if ("bio" in input) {
-    if (typeof input.bio !== "string" || input.bio.length > 240) return { error: "invalid_bio", status: 400 };
+    if (typeof input.bio !== "string" || input.bio.length > 160) return { error: "invalid_bio", status: 400 };
     update.bio = input.bio;
   }
   if ("avatar_path" in input) {
@@ -214,7 +214,7 @@ async function uploadBackup(request, env, config, auth, requestId, ctx) {
   const appVersion = request.headers.get("x-vinz-app-version") || "";
   const scope = request.headers.get("x-vinz-backup-scope") || "full";
   const expectedHash = (request.headers.get("x-vinz-sha256") || "").toLowerCase();
-  if (!Number.isInteger(formatVersion) || formatVersion < 1 || appVersion.length > 50 || scope !== "full" || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+  if (!Number.isInteger(formatVersion) || formatVersion < 1 || appVersion.length > 50 || !["full", "library", "settings", "history"].includes(scope) || !/^[a-f0-9]{64}$/.test(expectedHash)) {
     return json({ error: "invalid_backup_metadata", request_id: requestId }, 400);
   }
   const bytes = await request.arrayBuffer();
