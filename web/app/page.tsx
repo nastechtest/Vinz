@@ -55,7 +55,7 @@ export default function Home() {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+          options: { emailRedirectTo: new URL("/auth/callback", process.env.NEXT_PUBLIC_VINZ_SITE_URL || "https://vinz-web-liart.vercel.app").toString() },
         });
         if (error) throw error;
         setNeedsOtp(true);
