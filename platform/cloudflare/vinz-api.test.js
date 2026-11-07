@@ -435,3 +435,35 @@ test("friend request response only accepts accepted or declined", async (t) => {
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "invalid_friend_request_status");
 });
+
+
+test("username availability normalizes case before the authenticated RPC", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = String(input);
+    if (url.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), { status: 200 });
+    assert.match(url, /\/rest\/v1\/rpc\/vinz_username_available$/);
+    const init = arguments;
+    return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const response = await handleRequest(new Request("https://api.vinz.example/v1/usernames/Artist_Name/availability", {
+    headers: { authorization: "Bearer test-token" },
+  }), SUPABASE_ENV);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { username: "artist_name", available: true });
+});
+
+test("profile updates canonicalize username before the database write", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    if (String(input).endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), { status: 200 });
+    assert.match(String(input), /\/rest\/v1\/vinz_profiles\?/);
+    assert.equal(JSON.parse(init.body).username, "artist_name");
+    return new Response(JSON.stringify([{ id: "11111111-1111-4111-8111-111111111111", username: "artist_name" }]), { status: 200 });
+  });
+  const response = await handleRequest(new Request("https://api.vinz.example/v1/me", {
+    method: "PATCH",
+    headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+    body: JSON.stringify({ username: " Artist_Name " }),
+  }), SUPABASE_ENV);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).profile.username, "artist_name");
+});
