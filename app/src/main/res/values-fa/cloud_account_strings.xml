@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">نمایه شما ذخیره نشد. جزئیات و اتصال خود را بررسی کنید، سپس دوباره امتحان کنید.</string>
     <string name="cloud_account_recovery_failed">درخواست بازیابی تکمیل نشد. بعداً دوباره امتحان کنید.</string>
     <string name="cloud_account_sign_out_failed">خروج از سیستم کامل نشد. دوباره امتحان کنید.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
