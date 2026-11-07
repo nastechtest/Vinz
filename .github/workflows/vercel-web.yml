@@ -32,5 +32,5 @@ jobs:
           NEXT_PUBLIC_VINZ_API_URL: ${{ vars.NEXT_PUBLIC_VINZ_API_URL }}
         run: |
           set -euo pipefail
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
