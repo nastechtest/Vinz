@@ -682,7 +682,7 @@ async function publicRestRequest(config, path) {
     signal: AbortSignal.timeout(8000),
   });
 }
-\nasync function readShareLink(config, id) {
+async function readShareLink(config, id) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "share_not_found" }, 404);
   const query = new URLSearchParams({
     select: "id,provider,external_url,title,artist,artwork_url,created_at,expires_at",
