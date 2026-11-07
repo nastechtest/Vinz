@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -149,7 +150,7 @@ private fun AvatarPicker(selected: String?, photoChosen: Boolean, onPhotos: () -
  * it's the account's own page: change it, copy a YouTube Music library into Vinz, or remove it (the music stays).
  */
 @Composable
-fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit) {
+fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, cloudExpanded: Boolean = false, onDone: () -> Unit) {
     val c = LocalContainer.current
     val s = LocalAppSettings.current
     val context = LocalContext.current
@@ -190,7 +191,7 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
     )
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).then(if (onboarding) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier)
+        Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).then(if (onboarding) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier)
             .padding(bottom = bottomPadding + 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -310,6 +311,10 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
                 Spacer(Modifier.height(18.dp))
                 VinzTextButton({ removing = true }) { Text(tr(R.string.remove_vinz_account), color = MaterialTheme.colorScheme.error) }
             }
+        }
+        // Optional cloud controls belong to this existing profile page, never to local-only onboarding.
+        if (!onboarding) Column(Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(horizontal = 28.dp, vertical = 24.dp)) {
+            VinzCloudAccountSection(initiallyExpanded = cloudExpanded)
         }
     }
 }
