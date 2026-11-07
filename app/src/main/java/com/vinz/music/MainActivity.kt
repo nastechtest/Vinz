@@ -688,9 +688,12 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
                             )
                         }
+                        // Compatibility destination: old cloud links open the existing account hub, not a second account screen.
                         composable(Routes.VINZ_CLOUD_ACCOUNT) {
                             ScreenBackdrop(BackdropScreen.SETTINGS) {
-                                com.vinz.music.ui.screens.VinzCloudAccountScreen { navController.popBackStack() }
+                                com.vinz.music.ui.screens.VinzAccountScreen(false, bottomPadding, cloudExpanded = true) {
+                                    navController.popBackStack()
+                                }
                             }
                         }
                         composable(
