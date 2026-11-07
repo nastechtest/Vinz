@@ -31,7 +31,30 @@ export default function Home() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive) setUser(session?.user ?? null);
     });
-    return () => { alive = false; listener.subscription.unsubscribe(); };
+    async function googleSignIn() {
+    if (!supabase) return;
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + "/auth/callback" } });
+    if (error) { setMessage(error.message); setBusy(false); }
+  }
+
+  async function resendOtp() {
+    if (!supabase) return;
+    setBusy(true);
+    const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+    setMessage(error?.message ?? "A new verification code has been sent.");
+    setBusy(false);
+  }
+
+  async function recoverPassword() {
+    if (!supabase || !email.trim()) { setMessage("Enter your email address first."); return; }
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin + "/auth/reset-password" });
+    setMessage(error?.message ?? "If the account exists, a password reset email has been sent.");
+    setBusy(false);
+  }
+
+  return () => { alive = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   useEffect(() => {
