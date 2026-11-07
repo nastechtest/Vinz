@@ -31,10 +31,10 @@ The API URL remains:
 ## GitHub Actions configuration
 
 Repository/environment variables:
-- `CLOUDFLARE_ACCOUNT_ID` — Vinz Cloudflare account.
-- `NEXT_PUBLIC_SUPABASE_URL` — `https://iszghebmetrbkfhnnoqq.supabase.co`.
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — Supabase publishable key.
-- `NEXT_PUBLIC_VINZ_API_URL` — `https://api.vinzmusic.workers.dev`.
+Cloudflare account ID is pinned in `web/cloudflare.config.ts` to the verified Vinz account; it is not a GitHub variable.
+- `NEXT_PUBLIC_SUPABASE_URL` — optional override; defaults to `https://iszghebmetrbkfhnnoqq.supabase.co` in the workflow.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — Supabase publishable key (required as a GitHub Actions variable).
+- `NEXT_PUBLIC_VINZ_API_URL` — optional override; defaults to `https://api.vinzmusic.workers.dev` in the workflow.
 
 GitHub environment secret:
 - `CLOUDFLARE_API_TOKEN` — scoped to deploy Workers scripts and read required account metadata. Never put it in repository variables or source files.
