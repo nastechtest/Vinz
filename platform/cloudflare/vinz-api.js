@@ -815,7 +815,85 @@ async function lyricsGet(url, requestId) {
     return json({ error: "lyrics_provider_unavailable", provider: "lrclib", request_id: requestId }, 502);
   }
 }
-export async function handleRequest(request, env = {}, ctx = undefined) {
+
+async function searchCommunity(url, config, auth, requestId) {
+  const term = (url.searchParams.get("q") || "").trim();
+  if (term.length < 2 || term.length > 40 || !/^[\p{L}\p{N}_ -]+$/u.test(term)) {
+    return json({ error: "invalid_community_search", request_id: requestId }, 400);
+  }
+  const safe = "*" + term + "*";
+  const query = new URLSearchParams({
+    select: "username,display_name,bio,avatar_path",
+    is_public: "eq.true",
+    discoverable: "eq.true",
+    or: "(username.ilike." + safe + ",display_name.ilike." + safe + ")",
+    order: "username.asc",
+    limit: "25",
+  });
+  const response = await restRequest(config, auth.authorization, "vinz_profiles?" + query);
+  if (!response.ok) return json({ error: "community_search_failed", request_id: requestId }, 502);
+  return json({ profiles: await response.json() });
+}
+
+async function listFriendRequests(url, config, auth) {
+  const direction = url.searchParams.get("direction") || "incoming";
+  if (!["incoming", "outgoing", "all"].includes(direction)) return json({ error: "invalid_friend_request_direction" }, 400);
+  const filters = { select: "id,sender_id,recipient_id,status,created_at,updated_at", order: "created_at.desc", limit: "50" };
+  if (direction === "incoming") filters.recipient_id = "eq." + auth.user.id;
+  if (direction === "outgoing") filters.sender_id = "eq." + auth.user.id;
+  if (direction === "all") filters.or = "(sender_id.eq." + auth.user.id + ",recipient_id.eq." + auth.user.id + ")";
+  const query = new URLSearchParams(filters);
+  const response = await restRequest(config, auth.authorization, "vinz_friend_requests?" + query);
+  if (!response.ok) return json({ error: "friend_requests_lookup_failed" }, 502);
+  return json({ requests: await response.json() });
+}
+
+async function sendFriendRequest(request, config, auth) {
+  const input = await bodyJson(request);
+  if (!input || typeof input.username !== "string" || !/^[a-z0-9_]{3,24}$/.test(input.username)) {
+    return json({ error: "invalid_friend_username" }, 400);
+  }
+  const profileQuery = new URLSearchParams({
+    select: "id,username",
+    username: "eq." + input.username,
+    is_public: "eq.true",
+    discoverable: "eq.true",
+    limit: "1",
+  });
+  const profileResponse = await restRequest(config, auth.authorization, "vinz_profiles?" + profileQuery);
+  if (!profileResponse.ok) return json({ error: "friend_profile_lookup_failed" }, 502);
+  const profiles = await profileResponse.json();
+  const target = Array.isArray(profiles) ? profiles[0] : null;
+  if (!target) return json({ error: "discoverable_user_not_found" }, 404);
+  if (target.id === auth.user.id) return json({ error: "cannot_friend_self" }, 400);
+
+  const response = await restRequest(config, auth.authorization, "vinz_friend_requests", {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({ sender_id: auth.user.id, recipient_id: target.id, status: "pending" }),
+  });
+  if (response.status === 409) return json({ error: "friend_request_already_exists" }, 409);
+  if (!response.ok) return json({ error: "friend_request_create_failed" }, 502);
+  const rows = await response.json();
+  return json({ request: Array.isArray(rows) ? rows[0] || null : null }, 201);
+}
+
+async function respondFriendRequest(request, config, auth, id) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "invalid_friend_request_id" }, 400);
+  const input = await bodyJson(request);
+  if (!input || !["accepted", "declined"].includes(input.status)) return json({ error: "invalid_friend_request_status" }, 400);
+  const query = new URLSearchParams({ id: "eq." + id, recipient_id: "eq." + auth.user.id, status: "eq.pending" });
+  const response = await restRequest(config, auth.authorization, "vinz_friend_requests?" + query, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({ status: input.status }),
+  });
+  if (!response.ok) return json({ error: "friend_request_update_failed" }, 502);
+  const rows = await response.json();
+  if (!Array.isArray(rows) || !rows.length) return json({ error: "friend_request_not_found" }, 404);
+  return json({ request: rows[0] });
+}
+\nexport async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
   if (origin === false) return json({ error: "origin_not_allowed", request_id: requestId }, 403);
@@ -862,6 +940,23 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     if (auth.error) {
       recordApiError(env, ctx, url.pathname, auth.error, auth.status);
       return json({ error: auth.error, request_id: requestId }, auth.status, headers);
+    }
+
+    if (url.pathname === "/v1/community/search" && request.method === "GET") {
+      return withHeaders(await searchCommunity(url, config, auth, requestId), headers);
+    }
+    if (url.pathname === "/v1/friends/requests" && request.method === "GET") {
+      return withHeaders(await listFriendRequests(url, config, auth), headers);
+    }
+    if (url.pathname === "/v1/friends/requests" && request.method === "POST") {
+      return withHeaders(await sendFriendRequest(request, config, auth), headers);
+    }
+    const friendRequestMatch = url.pathname.match(/^\/v1\/friends\/requests\/([^/]+)$/);
+    if (friendRequestMatch && request.method === "PATCH") {
+      return withHeaders(await respondFriendRequest(request, config, auth, friendRequestMatch[1]), headers);
+    }
+    if (friendRequestMatch && request.method === "DELETE") {
+      return withHeaders(await deleteOwnedRow(config, auth, "vinz_friend_requests", friendRequestMatch[1]), headers);
     }
 
     if (url.pathname === "/v1/shares" && request.method === "POST") {
