@@ -54,6 +54,10 @@ All `/v1/*` routes require a Supabase access token in `Authorization: Bearer <to
 - `GET /v1/usernames/:username/availability` — boolean availability result without revealing the account that owns a name.
 - `GET/PATCH /v1/me/settings` — caller's privacy and notification preferences.
 - `GET /v1/profiles/:username` — discoverable public profile fields only.
+- `GET /v1/community/search?q=...` — search only public, discoverable profiles.
+- `GET/POST /v1/friends/requests` — list incoming/outgoing requests and send a request by username.
+- `PATCH /v1/friends/requests/:id` — accept or decline an incoming request.
+- `DELETE /v1/friends/requests/:id` — cancel an outgoing pending request.
 - `POST /v1/shares` — create a public music share record for allowlisted provider URLs; returns a share path and `vinz://` deep link.
 - `GET /s/:id` — public share metadata lookup subject to expiry and RLS.
 - `DELETE /v1/shares/:id` — remove a share created by the caller.
@@ -90,7 +94,7 @@ The `vinz-discovery` Edge Function:
 
 The scheduler's shared token is stored in Supabase Vault and checked by a service-role-only RPC. The Edge Function is not exposed as an unauthenticated job runner.
 
-The username-availability RPC is intentionally `SECURITY DEFINER` because it must test usernames across private profiles without exposing those rows. It has an empty `search_path`, fixed read-only SQL, returns only a boolean, and is executable only by authenticated/service roles. Supabase flags this as a review warning; add edge rate limiting before public rollout.
+The discovery, notification and share tables have explicit grants in addition to RLS; anonymous share readers can select only share metadata columns and cannot read the owner ID or write rows. Friend requests are participant-only, with recipients able to update status and senders able to cancel pending requests.\n\nThe username-availability RPC is intentionally `SECURITY DEFINER` because it must test usernames across private profiles without exposing those rows. It has an empty `search_path`, fixed read-only SQL, returns only a boolean, and is executable only by authenticated/service roles. Supabase flags this as a review warning; add edge rate limiting before public rollout.
 
 ## Worker bindings
 
