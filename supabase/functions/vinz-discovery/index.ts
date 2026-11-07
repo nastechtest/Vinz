@@ -1,4 +1,7 @@
+import { XMLParser } from "npm:fast-xml-parser@4.5.3";
+
 const MAX_WATCHES_PER_RUN = 15;
+const MAX_PODCASTS_PER_RUN = 20;
 const MIN_REQUEST_GAP_MS = 3100;
 
 function response(body: unknown, status = 200): Response {
@@ -43,6 +46,119 @@ async function rest(
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+function xmlText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (value && typeof value === "object" && "#text" in value) return String((value as Record<string, unknown>)["#text"] || "");
+  return "";
+}
+
+function feedLink(item: Record<string, unknown>): string {
+  const link = item.link;
+  if (typeof link === "string") return link;
+  if (Array.isArray(link)) {
+    const preferred = link.find((entry) => entry && typeof entry === "object" &&
+      ((entry as Record<string, unknown>)["@_rel"] === "alternate" || !(entry as Record<string, unknown>)["@_rel"]));
+    return preferred && typeof preferred === "object" ? String((preferred as Record<string, unknown>)["@_href"] || "") : "";
+  }
+  if (link && typeof link === "object") return String((link as Record<string, unknown>)["@_href"] || "");
+  return "";
+}
+
+function safePublicFeedUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (url.protocol !== "https:" || url.username || url.password ||
+        (url.port && url.port !== "443") ||
+        host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") ||
+        !host.includes(".") ||
+        /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ||
+        host.includes(":") || host === "0.0.0.0") return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+async function readFeedBody(response: Response): Promise<string> {
+  if (!response.body) throw new Error("empty_feed_body");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > 2 * 1024 * 1024) {
+      await reader.cancel();
+      throw new Error("feed_too_large");
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(joined);
+}
+
+async function parsePodcastFeed(feedUrl: string) {
+  let url = safePublicFeedUrl(feedUrl);
+  if (!url) throw new Error("unsafe_feed_url");
+  let response = await fetch(url, {
+    redirect: "manual",
+    headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
+    signal: AbortSignal.timeout(12000),
+  });
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("location");
+    if (!location) throw new Error("invalid_feed_redirect");
+    const redirected = safePublicFeedUrl(new URL(location, url).toString());
+    if (!redirected || redirected.hostname !== url.hostname) throw new Error("unsafe_feed_redirect");
+    url = redirected;
+    response = await fetch(url, {
+      redirect: "manual",
+      headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
+      signal: AbortSignal.timeout(12000),
+    });
+  }
+  if (!response.ok) throw new Error(`feed_http_${response.status}`);
+  const xml = await readFeedBody(response);
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_",
+    textNodeName: "#text",
+    parseTagValue: false,
+    trimValues: true,
+  });
+  const document = parser.parse(xml);
+  const raw = document?.rss?.channel?.item ?? document?.feed?.entry ?? [];
+  const items = (Array.isArray(raw) ? raw : [raw])
+    .filter((item) => item && typeof item === "object")
+    .map((item: Record<string, unknown>) => {
+      const title = xmlText(item.title);
+      const published = xmlText(item.pubDate || item.published || item.updated);
+      const guid = xmlText(item.guid || item.id) || feedLink(item) || `${title}:${published}`;
+      const enclosure = item.enclosure && typeof item.enclosure === "object"
+        ? String((item.enclosure as Record<string, unknown>)["@_url"] || "")
+        : "";
+      return {
+        guid,
+        title: title || "New episode",
+        published_at: published,
+        published_ms: Date.parse(published) || 0,
+        link: feedLink(item),
+        enclosure_url: enclosure,
+      };
+    })
+    .filter((item) => item.guid)
+    .sort((a, b) => b.published_ms - a.published_ms);
+  return items.slice(0, 30);
 }
 
 Deno.serve(async (request: Request) => {
@@ -189,10 +305,106 @@ Deno.serve(async (request: Request) => {
     await delay(MIN_REQUEST_GAP_MS);
   }
 
+
+  const podcastCutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+  const podcastQuery = new URLSearchParams({
+    select: "id,user_id,provider,provider_podcast_id,feed_url,title,last_checked_at,last_seen_episode_guid",
+    notify_new_episodes: "eq.true",
+    or: `(last_checked_at.is.null,last_checked_at.lt.${podcastCutoff})`,
+    order: "last_checked_at.asc.nullsfirst",
+    limit: String(MAX_PODCASTS_PER_RUN),
+  });
+  const podcastResponse = await rest(base, serviceKey, `vinz_podcast_subscriptions?${podcastQuery}`);
+  if (!podcastResponse.ok) errors.push("podcast_subscription_query_failed");
+  const subscriptions = podcastResponse.ok ? await podcastResponse.json() : [];
+  let podcastsChecked = 0;
+  let podcastNotifications = 0;
+
+  for (const subscription of subscriptions as Array<Record<string, unknown>>) {
+    try {
+      const settingsQuery = new URLSearchParams({
+        select: "notify_podcast_updates",
+        user_id: `eq.${String(subscription.user_id)}`,
+        limit: "1",
+      });
+      const settingsResponse = await rest(base, serviceKey, `vinz_account_settings?${settingsQuery}`);
+      if (!settingsResponse.ok) throw new Error("podcast_settings_lookup_failed");
+      const settings = await settingsResponse.json();
+      const allowed = Array.isArray(settings) && settings[0]?.notify_podcast_updates === true;
+
+      const episodes = await parsePodcastFeed(String(subscription.feed_url || ""));
+      const newest = episodes[0];
+      if (!newest) {
+        await rest(base, serviceKey, `vinz_podcast_subscriptions?id=eq.${subscription.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json", prefer: "return=minimal" },
+          body: JSON.stringify({ last_checked_at: new Date().toISOString() }),
+        });
+        podcastsChecked++;
+        continue;
+      }
+
+      const previousGuid = subscription.last_seen_episode_guid ? String(subscription.last_seen_episode_guid) : null;
+      const previousCheck = subscription.last_checked_at ? Date.parse(String(subscription.last_checked_at)) : 0;
+      let fresh = [] as typeof episodes;
+      if (previousGuid) {
+        const index = episodes.findIndex((episode) => episode.guid === previousGuid);
+        fresh = index >= 0
+          ? episodes.slice(0, index)
+          : episodes.filter((episode) => episode.published_ms > previousCheck && episode.published_ms > 0);
+      }
+
+      if (allowed && fresh.length) {
+        const rows = fresh.map((episode) => ({
+          user_id: subscription.user_id,
+          kind: "podcast_new_episode",
+          title: `New episode: ${episode.title}`,
+          body: String(subscription.title || "Podcast"),
+          deep_link: `vinz://podcast/${String(subscription.provider_podcast_id)}/episode/${encodeURIComponent(episode.guid)}`,
+          dedupe_key: `podcast-episode:${String(subscription.provider)}:${String(subscription.provider_podcast_id)}:${episode.guid}`,
+          payload: {
+            provider: String(subscription.provider),
+            podcast_id: String(subscription.provider_podcast_id),
+            episode_guid: episode.guid,
+            published_at: episode.published_at,
+            episode_url: episode.link,
+            enclosure_url: episode.enclosure_url,
+          },
+        }));
+        const insertQuery = new URLSearchParams({ on_conflict: "user_id,dedupe_key" });
+        const insertResponse = await rest(base, serviceKey, `vinz_notifications?${insertQuery}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            prefer: "resolution=ignore-duplicates,return=minimal",
+          },
+          body: JSON.stringify(rows),
+        });
+        if (!insertResponse.ok) throw new Error("podcast_notification_insert_failed");
+        podcastNotifications += rows.length;
+      }
+
+      const update = await rest(base, serviceKey, `vinz_podcast_subscriptions?id=eq.${subscription.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", prefer: "return=minimal" },
+        body: JSON.stringify({
+          last_checked_at: new Date().toISOString(),
+          last_seen_episode_guid: newest.guid,
+        }),
+      });
+      if (!update.ok) throw new Error("podcast_subscription_update_failed");
+      podcastsChecked++;
+    } catch (error) {
+      errors.push(String(error).slice(0, 120));
+    }
+  }
+
   return response({
     success: errors.length === 0,
     checked,
     notifications,
+    podcasts_checked: podcastsChecked,
+    podcast_notifications: podcastNotifications,
     skipped,
     failed: errors.length,
     errors,
