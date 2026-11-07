@@ -781,7 +781,7 @@ async function lyricsGet(url, requestId) {
     return json({ error: "lyrics_provider_unavailable", provider: "lrclib", request_id: requestId }, 502);
   }
 }
-\nexport async function handleRequest(request, env = {}, ctx = undefined) {
+export async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
   if (origin === false) return json({ error: "origin_not_allowed", request_id: requestId }, 403);
