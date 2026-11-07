@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">آپ کا پروفائل محفوظ نہیں ہو سکا۔ اپنی تفصیلات اور کنکشن چیک کریں، پھر دوبارہ کوشش کریں۔</string>
     <string name="cloud_account_recovery_failed">بازیابی کی درخواست مکمل نہیں ہو سکی۔ بعد میں دوبارہ کوشش کریں۔</string>
     <string name="cloud_account_sign_out_failed">سائن آؤٹ مکمل نہیں ہو سکا۔ دوبارہ کوشش کریں۔</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
