@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Meld u aan en beheer uw cloudprofiel</string>
     <string name="cloud_account_intro">Je cloudprofiel staat los van YouTube Music. Lokale muziek en afspelen werken zonder inloggen.</string>
     <string name="cloud_account_email">E-mailadres</string>
