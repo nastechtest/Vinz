@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_account_summary">Sign in and manage your cloud profile</string>
-    <string name="cloud_account_intro">Your cloud profile is separate from YouTube Music. Local music and playback work without signing in.</string>
+    <string name="cloud_account_summary">Sign in and manage your Vinz Account</string>
+    <string name="cloud_account_intro">Sign in to your Vinz Account with email and password. YouTube Music has its own separate login. Local music and playback work without signing in.</string>
     <string name="cloud_account_email">Email address</string>
     <string name="cloud_account_password">Password</string>
     <string name="cloud_account_username">Username</string>
@@ -30,4 +30,6 @@
     <string name="cloud_account_save_failed">Your profile could not be saved. Check your details and connection, then try again.</string>
     <string name="cloud_account_recovery_failed">The recovery request could not be completed. Try again later.</string>
     <string name="cloud_account_sign_out_failed">Sign-out could not be completed. Try again.</string>
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
