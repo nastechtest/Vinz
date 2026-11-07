@@ -677,11 +677,11 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     }
 
     if (url.pathname === "/v1/catalog/search" && request.method === "GET") {
-      return searchCatalog(url, env, requestId);
+      return withHeaders(await searchCatalog(url, env, requestId), headers);
     }
     const artistReleasesMatch = url.pathname.match(/^\/v1\/catalog\/artists\/([0-9]+)\/releases$/);
     if (artistReleasesMatch && request.method === "GET") {
-      return artistReleases(url, env, artistReleasesMatch[1], requestId);
+      return withHeaders(await artistReleases(url, env, artistReleasesMatch[1], requestId), headers);
     }
 
     if (url.pathname === "/v1/me" && request.method === "GET") {
@@ -715,10 +715,10 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     }
 
     if (url.pathname === "/v1/backups" && request.method === "GET") {
-      return listBackups(config, auth);
+      return withHeaders(await listBackups(config, auth), headers);
     }
     if (url.pathname === "/v1/backups" && request.method === "PUT") {
-      try { return await uploadBackup(request, env, config, auth, requestId, ctx); }
+      try { return withHeaders(await uploadBackup(request, env, config, auth, requestId, ctx), headers); }
       catch {
         recordApiError(env, ctx, "/v1/backups", "backup_upload_failed", 502);
         return json({ error: "backup_upload_failed", request_id: requestId }, 502, headers);
@@ -726,14 +726,14 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     }
     const backupMatch = url.pathname.match(/^\/v1\/backups\/([^/]+)$/);
     if (backupMatch && request.method === "GET") {
-      try { return await downloadBackup(env, config, auth, backupMatch[1], requestId); }
+      try { return withHeaders(await downloadBackup(env, config, auth, backupMatch[1], requestId), headers); }
       catch {
         recordApiError(env, ctx, "/v1/backups/:id", "backup_download_failed", 502);
         return json({ error: "backup_download_failed", request_id: requestId }, 502, headers);
       }
     }
     if (backupMatch && request.method === "DELETE") {
-      try { return await deleteBackup(env, config, auth, backupMatch[1], requestId); }
+      try { return withHeaders(await deleteBackup(env, config, auth, backupMatch[1], requestId), headers); }
       catch {
         recordApiError(env, ctx, "/v1/backups/:id", "backup_delete_failed", 502);
         return json({ error: "backup_delete_failed", request_id: requestId }, 502, headers);
