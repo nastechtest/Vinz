@@ -1,0 +1,108 @@
+name: Publish approved Sing model packages
+
+on:
+  push:
+    branches: [publish/sing-models-v1-approved]
+    paths: [.github/workflows/publish-sing-models-approved.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sing-models-v1-publication
+  cancel-in-progress: false
+
+jobs:
+  publish-models:
+    if: github.repository == 'nastechtest/Vinz' && github.ref == 'refs/heads/publish/sing-models-v1-approved'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      APPROVED_SOURCE: be6b3f6083549d932b86e442324f5b8ebb50209e
+    steps:
+      - name: Check out exact reviewed package source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: be6b3f6083549d932b86e442324f5b8ebb50209e
+          persist-credentials: false
+
+      - name: Test packaging guards
+        run: python3 scripts/tests/test_sing_packages.py
+
+      - name: Rebuild identical approved packages
+        run: |
+          python3 scripts/models/package_sing.py \
+            --source-dir "$RUNNER_TEMP/sing-sources" \
+            --output-dir dist/sing-models \
+            --check-source app/src/main/java/com/vinz/music/data/ModelStore.kt
+          cp scripts/models/{sources,packages}.json dist/sing-models/
+          python3 - <<'PY'
+          import hashlib, json, pathlib, zipfile
+          root = pathlib.Path('dist/sing-models')
+          manifest = json.loads((root/'packages.json').read_text())
+          expected = {'sing-spleeter-2stems-fp16.zip', 'onnxruntime-1.31.0-arm64-v8a.zip', 'onnxruntime-1.31.0-armeabi-v7a.zip', 'onnxruntime-1.31.0-x86_64.zip'}
+          assert {p['filename'] for p in manifest['packages']} == expected
+          for p in manifest['packages']:
+              f = root/p['filename']
+              assert f.stat().st_size == p['download_bytes']
+              assert hashlib.sha256(f.read_bytes()).hexdigest() == p['sha256']
+              with zipfile.ZipFile(f) as z:
+                  assert z.testzip() is None
+                  assert sorted(z.namelist()) == sorted(p['file_list'])
+          (root/'SHA256SUMS').write_text(''.join(p['sha256']+'  '+p['filename']+'\n' for p in manifest['packages']))
+          (root/'README.md').write_text('''# Sing model packages v1
+
+          Models and native runtime packages only. This is not an app release, code merge, or claim of working phone inference.
+          Rebuilt without training or conversion from the exact reviewed source commit be6b3f6083549d932b86e442324f5b8ebb50209e (draft PR #36).
+          All four ZIPs must match packages.json and SHA256SUMS. sources.json records pinned upstream provenance. Original payload bytes are unchanged by repackaging.
+
+          ## Licensing evidence
+          Deezer's authors explicitly state that Spleeter source code and pre-trained models are distributed under MIT in their published paper:
+          https://joss.theoj.org/papers/10.21105/joss.02154
+          https://github.com/deezer/spleeter/blob/master/paper.md
+          The sherpa-onnx conversion source carries Apache-2.0 attribution. The model ZIP retains Deezer MIT and sherpa-onnx Apache-2.0 notices.
+          ONNX Runtime ZIPs retain Microsoft MIT and the full version-pinned third-party notices. See sources.json and notices inside every ZIP.
+          These relay upstream licensing statements, not an independent legal certification or rights to input recordings.
+
+          ## Compatibility and validation
+          These rebuilt ZIPs do not match legacy package hashes. The reviewed repair APK with updated metadata is required; publishing alone does not repair older APKs.
+          Physical-phone download, verified installation, native runtime loading and real-song vocal separation remain mandatory and unverified.
+          Keep PR #36 draft; no app merge, app release or production deployment is authorised by this models-only publication.
+          ''')
+          PY
+
+      - name: Stage every asset and publish models only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: nastechtest/Vinz
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.error
+          base = 'https://api.github.com/repos/nastechtest/Vinz/'
+          for path in ('releases/tags/models-v1', 'git/ref/tags/models-v1'):
+              try:
+                  with urllib.request.urlopen(base+path, timeout=30) as response:
+                      raise SystemExit('Refusing to overwrite existing models-v1 release/tag')
+              except urllib.error.HTTPError as error:
+                  if error.code != 404: raise
+          PY
+          gh release create models-v1 dist/sing-models/* \
+            --target "$APPROVED_SOURCE" --draft --latest=false \
+            --title 'Sing model packages v1' --notes-file dist/sing-models/README.md
+          gh api repos/nastechtest/Vinz/releases/tags/models-v1 > "$RUNNER_TEMP/staged-release.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path('dist/sing-models')
+          release = json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'staged-release.json').read_text())
+          assert release['draft'] is True
+          actual = {a['name']:a for a in release['assets']}
+          assert set(actual) == {f.name for f in root.iterdir() if f.is_file()}
+          for filename, asset in actual.items():
+              assert asset['state'] == 'uploaded'
+              assert asset['size'] == (root/filename).stat().st_size
+          print('All eight assets staged and verified; publishing models only.')
+          PY
+          gh release edit models-v1 --draft=false --latest=false
