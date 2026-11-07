@@ -697,7 +697,91 @@ async function readShareLink(config, id) {
     },
   });
 }
-export async function handleRequest(request, env = {}, ctx = undefined) {
+
+async function lrclibRequest(url) {
+  return fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "Vinz/1.0 (https://github.com/nastechtest/Vinz)",
+    },
+    signal: AbortSignal.timeout(9000),
+  });
+}
+
+async function lyricsSearch(url, requestId) {
+  const query = (url.searchParams.get("q") || "").trim();
+  const track = (url.searchParams.get("track_name") || "").trim();
+  const artist = (url.searchParams.get("artist_name") || "").trim();
+  const album = (url.searchParams.get("album_name") || "").trim();
+  if ((!query && !track) || query.length > 120 || track.length > 120 || artist.length > 120 || album.length > 120) {
+    return json({ error: "invalid_lyrics_search", request_id: requestId }, 400);
+  }
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  else {
+    params.set("track_name", track);
+    if (artist) params.set("artist_name", artist);
+    if (album) params.set("album_name", album);
+  }
+  try {
+    const response = await lrclibRequest("https://lrclib.net/api/search?" + params);
+    if (response.status === 429) {
+      return json({
+        error: "lyrics_provider_rate_limited",
+        retry_after: response.headers.get("retry-after") || "1",
+        provider: "lrclib",
+        request_id: requestId,
+      }, 429);
+    }
+    if (!response.ok) return json({ error: "lyrics_provider_unavailable", provider: "lrclib", request_id: requestId }, 502);
+    const records = await response.json();
+    return json({
+      provider: "lrclib",
+      attribution: "LRCLIB",
+      results: Array.isArray(records) ? records.slice(0, 20) : [],
+      cached: false,
+      storage: "not_stored",
+    });
+  } catch {
+    return json({ error: "lyrics_provider_unavailable", provider: "lrclib", request_id: requestId }, 502);
+  }
+}
+
+async function lyricsGet(url, requestId) {
+  const track = (url.searchParams.get("track_name") || "").trim();
+  const artist = (url.searchParams.get("artist_name") || "").trim();
+  const album = (url.searchParams.get("album_name") || "").trim();
+  const duration = Number(url.searchParams.get("duration") || 0);
+  if (!track || !artist || track.length > 120 || artist.length > 120 || album.length > 120 ||
+      (url.searchParams.has("duration") && (!Number.isFinite(duration) || duration < 1 || duration > 3600))) {
+    return json({ error: "invalid_lyrics_signature", request_id: requestId }, 400);
+  }
+  const params = new URLSearchParams({ track_name: track, artist_name: artist });
+  if (album) params.set("album_name", album);
+  if (duration) params.set("duration", String(Math.round(duration)));
+  try {
+    const response = await lrclibRequest("https://lrclib.net/api/get?" + params);
+    if (response.status === 404) return json({ error: "lyrics_not_found", provider: "lrclib" }, 404);
+    if (response.status === 429) {
+      return json({
+        error: "lyrics_provider_rate_limited",
+        retry_after: response.headers.get("retry-after") || "1",
+        provider: "lrclib",
+        request_id: requestId,
+      }, 429);
+    }
+    if (!response.ok) return json({ error: "lyrics_provider_unavailable", provider: "lrclib", request_id: requestId }, 502);
+    return json({
+      provider: "lrclib",
+      attribution: "LRCLIB",
+      lyrics: await response.json(),
+      storage: "not_stored",
+    });
+  } catch {
+    return json({ error: "lyrics_provider_unavailable", provider: "lrclib", request_id: requestId }, 502);
+  }
+}
+\nexport async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
   if (origin === false) return json({ error: "origin_not_allowed", request_id: requestId }, 403);
@@ -790,6 +874,13 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     const notificationMatch = url.pathname.match(/^\/v1\/notifications\/([^/]+)$/);
     if (notificationMatch && request.method === "PATCH") {
       return withHeaders(await markNotificationRead(config, auth, notificationMatch[1]), headers);
+    }
+
+    if (url.pathname === "/v1/lyrics/search" && request.method === "GET") {
+      return withHeaders(await lyricsSearch(url, requestId), headers);
+    }
+    if (url.pathname === "/v1/lyrics/get" && request.method === "GET") {
+      return withHeaders(await lyricsGet(url, requestId), headers);
     }
 
     if (url.pathname === "/v1/catalog/search" && request.method === "GET") {
