@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -47,6 +48,7 @@ class CloudAccountScreenTest {
     private var renderControllerState by mutableStateOf(false)
     private var onContinue by mutableStateOf<(() -> Unit)?>(null)
     private var fontScale by mutableStateOf(1f)
+    private var backCalls = 0
 
     @Before fun renderOnce() {
         // A Compose rule accepts one root per test. Each assertion below changes observable state instead
@@ -59,7 +61,7 @@ class CloudAccountScreenTest {
                     CloudAccountContent(
                         state = if (renderControllerState) controllerState else renderedState,
                         actions = controller,
-                        onBack = {},
+                        onBack = { backCalls++ },
                         onContinue = onContinue,
                         bottomPadding = 0.dp,
                     )
@@ -117,16 +119,27 @@ class CloudAccountScreenTest {
     @Test fun onboardingShowsSkipInsteadOfBackAndDisablesSkipWhileBusy() {
         var skipped = 0
         render(CloudAccountState(), continuation = { skipped++ })
-        compose.onNodeWithTag("cloud-account-skip").assertIsEnabled().performClick()
+        compose.onNodeWithTag("cloud-account-skip").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithTag("cloud-account-back").assertDoesNotExist()
-        compose.runOnIdle { assertEquals(1, skipped) }
+        compose.runOnIdle {
+            assertEquals(1, skipped)
+            assertEquals(0, backCalls)
+        }
 
-        render(CloudAccountState(busy = true), continuation = {})
+        render(CloudAccountState(busy = true), continuation = { skipped++ })
         compose.onNodeWithTag("cloud-account-skip").assertIsNotEnabled()
+        compose.runOnIdle {
+            assertEquals(1, skipped)
+            assertEquals(0, backCalls)
+        }
 
         render(CloudAccountState())
-        compose.onNodeWithTag("cloud-account-back").assertExists()
+        compose.onNodeWithTag("cloud-account-back").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithTag("cloud-account-skip").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(1, skipped)
+            assertEquals(1, backCalls)
+        }
     }
 
     @Test fun onboardingContinueRequiresLoadedSignedInProfile() {
@@ -148,9 +161,12 @@ class CloudAccountScreenTest {
         var continued = 0
         render(CloudAccountState(
             identity = CloudAccountIdentity("test-user", "test@example.test"), profileReady = true,
-        ), continuation = { continued++ })
-        compose.onNodeWithTag("cloud-account-continue").assertIsEnabled().performClick()
-        compose.runOnIdle { assertEquals(1, continued) }
+        ), continuation = { continued++ }, scale = 2f)
+        compose.onNodeWithTag("cloud-account-continue").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(1, continued)
+            assertEquals(0, backCalls)
+        }
     }
 
     @Test fun credentialInputsRemainEditableWithoutRequestsOrKeystore() {
