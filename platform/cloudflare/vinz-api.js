@@ -671,14 +671,25 @@ async function createShareLink(request, config, auth) {
   }, 201);
 }
 
-async function readShareLink(config, id) {
+
+async function publicRestRequest(config, path) {
+  return fetch(`${config.url}/rest/v1/${path}`, {
+    method: "GET",
+    headers: {
+      apikey: config.key,
+      accept: "application/json",
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+}
+\nasync function readShareLink(config, id) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "share_not_found" }, 404);
   const query = new URLSearchParams({
     select: "id,provider,external_url,title,artist,artwork_url,created_at,expires_at",
     id: "eq." + id,
     limit: "1",
   });
-  const response = await restRequest(config, config.key, "vinz_share_links?" + query);
+  const response = await publicRestRequest(config, "vinz_share_links?" + query);
   if (!response.ok) return json({ error: "share_lookup_failed" }, 502);
   const rows = await response.json();
   const share = Array.isArray(rows) ? rows[0] : null;
