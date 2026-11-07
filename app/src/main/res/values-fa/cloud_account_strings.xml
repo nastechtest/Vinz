@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">وارد شوید و نمایه ابری خود را مدیریت کنید</string>
+    <string name="cloud_account_intro">نمایه ابری شما جدا از YouTube Music است. موسیقی محلی و پخش بدون ورود به سیستم کار می کند.</string>
+    <string name="cloud_account_email">آدرس ایمیل</string>
+    <string name="cloud_account_password">رمز عبور</string>
+    <string name="cloud_account_username">نام کاربری</string>
+    <string name="cloud_account_display_name">نام نمایشی</string>
+    <string name="cloud_account_username_hint">3 تا 24 حروف کوچک، اعداد یا زیرخط</string>
+    <string name="cloud_account_password_hint">حداقل از 8 کاراکتر استفاده کنید.</string>
+    <string name="cloud_account_create">ایجاد حساب ابری</string>
+    <string name="cloud_account_existing">من قبلا یک حساب کاربری دارم</string>
+    <string name="cloud_account_forgot">رمز عبور را فراموش کرده اید؟</string>
+    <string name="cloud_account_recovery">ارسال ایمیل بازیابی</string>
+    <string name="cloud_account_recovery_sent">اگر حسابی برای این آدرس وجود داشته باشد، یک ایمیل بازیابی ارسال شده است.</string>
+    <string name="cloud_account_confirmation">ایمیل خود را بررسی کنید تا حساب خود را تأیید کنید، سپس برای ورود به سیستم بازگردید.</string>
+    <string name="cloud_account_setup">راه اندازی نمایه خود را تمام کنید.</string>
+    <string name="cloud_account_bio">بیوگرافی</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">نمایه عمومی</string>
+    <string name="cloud_account_public_hint">به سایر کاربران Vinz اجازه دهید نمایه شما را مشاهده کنند.</string>
+    <string name="cloud_account_discoverable">قابل کشف</string>
+    <string name="cloud_account_discoverable_hint">به نمایه شما اجازه دهید در کاوش کاربر ظاهر شود.</string>
+    <string name="cloud_account_saved">نمایه ابری شما ذخیره شده است.</string>
+    <string name="cloud_account_signed_out">شما از حساب ابری خود خارج شده اید.</string>
+    <string name="cloud_account_signed_in">به عنوان %1$s وارد سیستم شده‌اید</string>
+    <string name="cloud_account_load_failed">نمایه شما بارگیری نشد. قبل از ویرایش دوباره امتحان کنید.</string>
+    <string name="cloud_account_request_failed">این درخواست حساب تکمیل نشد. اتصال خود را بررسی کنید و دوباره امتحان کنید.</string>
+    <string name="cloud_account_sign_in_failed">ورود به سیستم تکمیل نشد. جزئیات و اتصال خود را بررسی کنید، سپس دوباره امتحان کنید.</string>
+    <string name="cloud_account_save_failed">نمایه شما ذخیره نشد. جزئیات و اتصال خود را بررسی کنید، سپس دوباره امتحان کنید.</string>
+    <string name="cloud_account_recovery_failed">درخواست بازیابی تکمیل نشد. بعداً دوباره امتحان کنید.</string>
+    <string name="cloud_account_sign_out_failed">خروج از سیستم کامل نشد. دوباره امتحان کنید.</string>
+</resources>
