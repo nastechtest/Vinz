@@ -75,12 +75,13 @@ def build(source_dir, output_dir):
     deezer = source_bytes(source_dir, by_id["deezer_mit"])
     sherpa = source_bytes(source_dir, by_id["sherpa_apache"])
     ort = source_bytes(source_dir, by_id["onnxruntime_mit"])
+    notices = source_bytes(source_dir, by_id["onnxruntime_third_party"])
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     e = dict(spleeter); e["LICENSE-DEEZER-MIT.txt"] = deezer; e["LICENSE-SHERPA-ONNX-APACHE-2.0.txt"] = sherpa
     p = output_dir / "sing-spleeter-2stems-fp16.zip"; make_zip(p, e); results.append(details(p, e))
     for abi in ABIS:
-        e = {"libonnxruntime.so": runtime["jni/%s/libonnxruntime.so" % abi], "LICENSE-ONNXRUNTIME-MIT.txt": ort}
+        e = {"libonnxruntime.so": runtime["jni/%s/libonnxruntime.so" % abi], "LICENSE-ONNXRUNTIME-MIT.txt": ort, "ThirdPartyNotices.txt": notices}
         p = output_dir / ("onnxruntime-1.31.0-%s.zip" % abi); make_zip(p, e); results.append(details(p, e))
     return {"format": 1, "provenance": {"sources_manifest": "sources.json", "weights_license": "Source attribution only; trained-weight licence has not been independently validated."}, "packages": results}
 
