@@ -38,6 +38,8 @@ Required Worker bindings:
 - `SUPABASE_URL` — public project URL (non-secret configuration).
 - `SUPABASE_PUBLISHABLE_KEY` — Supabase publishable/anon key (public client key; still store as a Worker binding).
 - `ALLOWED_ORIGINS` — comma-separated exact browser origins if a web client is later introduced. Native Android calls need no browser CORS origin.
+- `POSTHOG_PROJECT_KEY` — PostHog project ingestion key for fixed operational error events only; optional until telemetry is enabled.
+- `POSTHOG_HOST` — optional PostHog ingestion host; defaults to `https://us.i.posthog.com`.
 
 Never configure a Supabase service-role key in the mobile app or this Worker. Do not deploy authenticated routes until the public key binding is present and the RLS policies have been reviewed.
 
