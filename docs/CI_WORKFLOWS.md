@@ -28,14 +28,14 @@ Add these under **Repository → Settings → Secrets and variables → Actions*
 | Cloudflare | `CLOUDFLARE_API_TOKEN` | `CLOUDFLARE_ACCOUNT_ID` |
 | Supabase | `SUPABASE_ACCESS_TOKEN` | `SUPABASE_PROJECT_REF` |
 | Linear | `LINEAR_API_KEY` | — |
-| PostHog | `POSTHOG_PERSONAL_API_KEY` | `POSTHOG_HOST` (for example `https://us.i.posthog.com`) |
+| PostHog | `POSTHOG_PERSONAL_API_KEY` | `POSTHOG_HOST` (for example `https://us.i.posthog.com`), `POSTHOG_PROJECT_KEY` (public ingestion key) |
 | Vercel | `VERCEL_TOKEN` | `VERCEL_PROJECT_ID`, `VERCEL_ORG_ID` |
 
 The health workflow checks each provider independently. Configure only the integrations Vinz is authorized to use; unconfigured providers are reported as skipped.
 
 ### Cloudflare staging deployment
 
-The manual staging deploy additionally needs the `CLOUDFLARE_ACCOUNT_ID` repository variable. The Worker URL, publishable Supabase key, PostHog host, R2 bucket, KV namespace and compatibility date are maintained in `platform/cloudflare/wrangler.jsonc`, which CI validates and the deployment workflow reads as its source of truth.
+The manual staging deploy additionally needs the `CLOUDFLARE_ACCOUNT_ID` and `POSTHOG_PROJECT_KEY` repository variables. The Worker URL, publishable Supabase key, PostHog host, R2 bucket, KV namespace and compatibility date are maintained in `platform/cloudflare/wrangler.jsonc`, which CI validates and the deployment workflow reads as its source of truth. The deploy injects the public PostHog project ingestion key at deploy time; it is not committed to source.
 
 It reuses `CLOUDFLARE_API_TOKEN` from the provider health section. The Cloudflare token must be scoped to the Vinz account and have permission to edit Workers scripts. The workflow binds the existing `vinz-backups` R2 bucket and `VINZ_CATALOG_CACHE` KV namespace, then deploys only `vinz-api-staging`.
 
