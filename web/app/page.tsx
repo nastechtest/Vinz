@@ -67,7 +67,7 @@ export default function Home() {
     if (!supabase || !email.trim()) { setMessage("Enter your email address first."); return; }
     setBusy(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: window.location.origin + "/auth/reset-password",
+      redirectTo: window.location.origin + "/auth/callback?next=%2Fauth%2Freset-password",
     });
     setMessage(error?.message ?? "If the account exists, a password reset email has been sent.");
     setBusy(false);
