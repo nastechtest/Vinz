@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">আপনার প্রোফাইল সংরক্ষণ করা যায়নি. আপনার বিশদ বিবরণ এবং সংযোগ পরীক্ষা করুন, তারপর আবার চেষ্টা করুন।</string>
     <string name="cloud_account_recovery_failed">পুনরুদ্ধারের অনুরোধ সম্পূর্ণ করা যায়নি। পরে আবার চেষ্টা করুন.</string>
     <string name="cloud_account_sign_out_failed">সাইন-আউট সম্পূর্ণ করা যায়নি। আবার চেষ্টা করুন</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
