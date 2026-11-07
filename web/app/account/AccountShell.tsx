@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { vinzClient } from "@/lib/vinz";
-const links = [["/account","Overview"],["/account/profile","Profile"],["/account/security","Security"],["/account/connections","Connections"]] as const;
+const links = [["/account","Overview"],["/account/profile","Profile"],["/account/security","Security"],["/account/connections","Connections"],["/account/preferences","Preferences"]] as const;
 export default function AccountShell({ children }: { children: React.ReactNode }) {
  const [user,setUser]=useState<User|null>(null); const [ready,setReady]=useState(false); const router=useRouter(); const path=usePathname();
  useEffect(()=>{ const client=vinzClient(); if(!client){setReady(true);return;} let active=true;
