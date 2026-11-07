@@ -1,0 +1,14 @@
+"use client";
+import Link from "next/link";
+import { useEffect,useState } from "react";
+import { vinzClient } from "@/lib/vinz";
+type Profile={username:string;display_name:string;avatar_path:string|null;bio:string};
+export default function AccountOverview(){
+ const [profile,setProfile]=useState<Profile|null>(null);const [settings,setSettings]=useState<Record<string,boolean>|null>(null);const [busy,setBusy]=useState(true);const [error,setError]=useState("");
+ useEffect(()=>{const client=vinzClient();if(!client){setError("Account service is not configured.");setBusy(false);return;}let active=true;
+  (async()=>{const [{data:auth},{data:p,error:pe},{data:s,error:se}]=await Promise.all([client.auth.getUser(),client.from("vinz_profiles").select("username,display_name,avatar_path,bio").single(),client.from("vinz_account_settings").select("allow_friend_requests,show_listening_activity,notify_new_releases,notify_friend_activity,notify_podcast_updates").single()]);if(!active)return;if(!auth.user){setError("Sign in to view your account.");setBusy(false);return;}if(pe)setError(pe.message);else setProfile(p);if(!se)setSettings(s);setBusy(false);})();return()=>{active=false;};},[]);
+ return <><div className="page-heading"><p className="eyebrow">YOUR VINZ IDENTITY</p><h2>Account overview</h2><p className="muted">Your account, your profile and the services connected to your music world.</p></div>{busy?<p className="muted">Loading account details…</p>:error?<p className="message warning">{error}</p>:<>
+ <article className="account-card profile-summary"><div className="avatar-large">{profile?.display_name?.slice(0,1).toUpperCase()||"V"}</div><div><h3>{profile?.display_name}</h3><p className="muted">@{profile?.username}</p><Link href={"/u/"+(profile?.username||"")}>View public profile ↗</Link></div><Link className="secondary-action" href="/account/profile">Edit profile</Link></article>
+ <div className="account-grid"><article className="account-card"><p className="eyebrow">PROFILE</p><h3>Make it yours</h3><p className="muted">Update username, display name, bio, avatar and profile visibility.</p><Link href="/account/profile">Manage profile →</Link></article><article className="account-card"><p className="eyebrow">SECURITY</p><h3>Stay in control</h3><p className="muted">Change your password and revoke active sessions.</p><Link href="/account/security">Security settings →</Link></article><article className="account-card"><p className="eyebrow">CONNECTIONS</p><h3>Connected services</h3><p className="muted">Manage Google identity and separately authorize YouTube music import.</p><Link href="/account/connections">Manage connections →</Link></article><article className="account-card"><p className="eyebrow">PREFERENCES</p><h3>Account preferences</h3><p className="muted">{settings?"Your private account preferences are active.":"Preferences are not available yet."}</p></article></div>
+ </>}</>;
+}
