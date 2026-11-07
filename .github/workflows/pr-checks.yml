@@ -172,7 +172,7 @@ jobs:
       - name: Assemble debug APK and baseline profile module
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleDebug :baselineprofile:assemble \
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :baselineprofile:assemble \
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
             -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
             --no-daemon --stacktrace
