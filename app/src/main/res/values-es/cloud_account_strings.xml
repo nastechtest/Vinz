@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">No se pudo guardar tu perfil. Verifique sus datos y conexión, luego inténtelo nuevamente.</string>
     <string name="cloud_account_recovery_failed">No se pudo completar la solicitud de recuperación. Vuelve a intentarlo más tarde.</string>
     <string name="cloud_account_sign_out_failed">No se pudo completar el cierre de sesión. Intentar otra vez.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
