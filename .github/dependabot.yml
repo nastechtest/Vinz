@@ -4,9 +4,40 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 8
+    groups:
+      android-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /platform/cloudflare
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:15"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    groups:
+      worker-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+      time: "06:30"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 8
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
