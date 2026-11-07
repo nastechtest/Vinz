@@ -73,7 +73,9 @@ internal class CloudAccountController(
                 return@request
             }
             mutable.value = mutable.value.copy(
-                draft = profile?.draft() ?: CloudProfileDraft(), originalUsername = profile?.username.orEmpty(),\n                usernameAvailability = if (profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,\n                profileReady = true, profileLoadFailed = false,
+                draft = profile?.draft() ?: CloudProfileDraft(), originalUsername = profile?.username.orEmpty(),
+                usernameAvailability = if (profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,
+                profileReady = true, profileLoadFailed = false,
                 message = if (profile == null) R.string.cloud_account_setup else null,
             )
         }
@@ -108,7 +110,9 @@ internal class CloudAccountController(
                         } else {
                             mutable.value = CloudAccountState(
                                 identity = identity, email = identity.email, busy = true, profileReady = true,
-                                draft = result.profile?.draft() ?: if (before.mode == CloudAccountMode.SIGN_UP) before.draft else CloudProfileDraft(),\n                                originalUsername = result.profile?.username.orEmpty(),\n                                usernameAvailability = if (result.profile == null) UsernameAvailability.AVAILABLE else UsernameAvailability.UNCHANGED,
+                                draft = result.profile?.draft() ?: if (before.mode == CloudAccountMode.SIGN_UP) before.draft else CloudProfileDraft(),
+                                originalUsername = result.profile?.username.orEmpty(),
+                                usernameAvailability = if (result.profile == null) UsernameAvailability.AVAILABLE else UsernameAvailability.UNCHANGED,
                                 message = if (result.profile == null) R.string.cloud_account_setup else null,
                             )
                         }
