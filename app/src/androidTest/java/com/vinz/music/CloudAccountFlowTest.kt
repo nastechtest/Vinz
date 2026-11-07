@@ -64,11 +64,15 @@ class CloudAccountFlowTest {
         start(fontScale = 2f)
         compose.runOnIdle { controller.mode(CloudAccountMode.SIGN_UP) }
 
-        compose.onNodeWithTag("cloud-account-email").performScrollTo().performTextInput("signup@example.test").performImeAction()
+        compose.onNodeWithTag("cloud-account-email").performScrollTo().performTextInput("signup@example.test")
+        compose.onNodeWithTag("cloud-account-email").performImeAction()
         // The account fields deliberately give a form-friendly Next path rather than hiding the keyboard.
-        compose.onNodeWithTag("cloud-account-password").assertIsFocused().performScrollTo().performTextInput("safe-password").performImeAction()
-        compose.onNodeWithTag("cloud-account-username").assertIsFocused().performScrollTo().performTextInput("test_artist").performImeAction()
-        compose.onNodeWithTag("cloud-account-display-name").assertIsFocused().performScrollTo().performTextInput("Test Artist").performImeAction()
+        compose.onNodeWithTag("cloud-account-password").assertIsFocused().performScrollTo().performTextInput("safe-password")
+        compose.onNodeWithTag("cloud-account-password").performImeAction()
+        compose.onNodeWithTag("cloud-account-username").assertIsFocused().performScrollTo().performTextInput("test_artist")
+        compose.onNodeWithTag("cloud-account-username").performImeAction()
+        compose.onNodeWithTag("cloud-account-display-name").assertIsFocused().performScrollTo().performTextInput("Test Artist")
+        compose.onNodeWithTag("cloud-account-display-name").performImeAction()
         compose.waitUntil(5_000) { gateway.signUpCalls == 1 }
         assertEquals("signup@example.test", gateway.signUpEmail)
     }
