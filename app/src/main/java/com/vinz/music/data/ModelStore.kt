@@ -39,15 +39,15 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
         /** ONNX Runtime's native libraries (Microsoft, MIT), which Sing runs Spleeter on, one per kind of processor. */
         SING_RUNTIME_ARM64(
             "onnxruntime-arm64-v8a", "onnxruntime-1.31.0-arm64-v8a.zip",
-            "5a6c18c7958797caafa1cd7e6f30334e99cf5b6022cdc5ca1f047c9d94552d7a", 12864089, tr(R.string.sing_s_engine), 34209753,
+            "bd993a5b14035b57d9edaf4994491dbb87de4034781852f9e16540d9100b10f5", 12896594, tr(R.string.sing_s_engine), 34547841,
         ),
         SING_RUNTIME_ARMV7(
             "onnxruntime-armeabi-v7a", "onnxruntime-1.31.0-armeabi-v7a.zip",
-            "9d6ca9234650753b0b7137af5db4ef35520cda6796fd49b2d13b58cfaacc1eaf", 11623545, tr(R.string.sing_s_engine), 24183085,
+            "ff278a1cbd09d243b30cfe590f30c55c174c828d943edbe35c6e0fa1aac4ac3e", 11656050, tr(R.string.sing_s_engine), 24521173,
         ),
         SING_RUNTIME_X86_64(
             "onnxruntime-x86_64", "onnxruntime-1.31.0-x86_64.zip",
-            "07fee2427e8939edd05d0371ce4c15adc57917fbcf39dc07ce5afe76426aec95", 14935078, tr(R.string.sing_s_engine), 40829017,
+            "a03df391fb77786f8a3a9f358110c16dc9559e059dd45127859524c4b7871044", 14967583, tr(R.string.sing_s_engine), 41167105,
         ),
         ;
 
