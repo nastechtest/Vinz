@@ -71,6 +71,9 @@ jobs:
       - name: Test the CI scripts
         run: ./scripts/tests/ci-scripts-test.sh
 
+      - name: Verify the Nastech Research gallery codes
+        run: python3 scripts/generate-nastech-looks.py --check
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
