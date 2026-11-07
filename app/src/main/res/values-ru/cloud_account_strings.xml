@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Ваш профиль не удалось сохранить. Проверьте свои данные и соединение, затем повторите попытку.</string>
     <string name="cloud_account_recovery_failed">Запрос на восстановление не может быть выполнен. Повторите попытку позже.</string>
     <string name="cloud_account_sign_out_failed">Не удалось завершить выход. Попробуйте еще раз.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
