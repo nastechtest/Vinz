@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Hesabı</string>
     <string name="cloud_account_summary">Oturum açın ve bulut profilinizi yönetin</string>
     <string name="cloud_account_intro">Bulut profiliniz YouTube Music\'ten ayrıdır. Yerel müzik ve oynatma oturum açmadan çalışır.</string>
     <string name="cloud_account_email">E-posta adresi</string>

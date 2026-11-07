@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Увійдіть і керуйте своїм хмарним профілем</string>
     <string name="cloud_account_intro">Ваш хмарний профіль відокремлений від YouTube Music. Місцева музика та відтворення працюють без входу.</string>
     <string name="cloud_account_email">Адреса електронної пошти</string>
