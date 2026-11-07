@@ -46,8 +46,10 @@ create policy "Vinz account settings update own"
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
 
-grant select, update on public.vinz_profiles to authenticated;
-grant select, update on public.vinz_account_settings to authenticated;
+grant select on public.vinz_profiles to authenticated;
+grant update (username, display_name, bio, avatar_path, is_public, discoverable) on public.vinz_profiles to authenticated;
+grant select on public.vinz_account_settings to authenticated;
+grant update (allow_friend_requests, show_listening_activity, notify_new_releases, notify_friend_activity, notify_podcast_updates) on public.vinz_account_settings to authenticated;
 grant all on public.vinz_profiles to service_role;
 grant all on public.vinz_account_settings to service_role;
 
