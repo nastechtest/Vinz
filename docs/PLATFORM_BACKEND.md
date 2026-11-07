@@ -54,6 +54,9 @@ All `/v1/*` routes require a Supabase access token in `Authorization: Bearer <to
 - `GET /v1/usernames/:username/availability` — boolean availability result without revealing the account that owns a name.
 - `GET/PATCH /v1/me/settings` — caller's privacy and notification preferences.
 - `GET /v1/profiles/:username` — discoverable public profile fields only.
+- `POST /v1/shares` — create a public music share record for allowlisted provider URLs; returns a share path and `vinz://` deep link.
+- `GET /s/:id` — public share metadata lookup subject to expiry and RLS.
+- `DELETE /v1/shares/:id` — remove a share created by the caller.
 - `GET/POST/DELETE /v1/watches/artists` — manage the caller's artist watchlist.
 - `GET/POST/DELETE /v1/podcasts/subscriptions` — manage podcast subscriptions.
 - `POST/DELETE /v1/devices` — register/remove the caller's push token.
@@ -84,6 +87,8 @@ The `vinz-discovery` Edge Function:
 - Stores in-app notifications. Push delivery is not yet enabled; it needs Firebase Cloud Messaging credentials and an agreed delivery policy.
 
 The scheduler's shared token is stored in Supabase Vault and checked by a service-role-only RPC. The Edge Function is not exposed as an unauthenticated job runner.
+
+The username-availability RPC is intentionally `SECURITY DEFINER` because it must test usernames across private profiles without exposing those rows. It has an empty `search_path`, fixed read-only SQL, returns only a boolean, and is executable only by authenticated/service roles. Supabase flags this as a review warning; add edge rate limiting before public rollout.
 
 ## Worker bindings
 
