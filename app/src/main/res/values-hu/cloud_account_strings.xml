@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Jelentkezzen be, és kezelje felhőprofilját</string>
     <string name="cloud_account_intro">Felhőprofilod elkülönül a YouTube Music-tól. A helyi zene és lejátszás bejelentkezés nélkül is működik.</string>
     <string name="cloud_account_email">E-mail cím</string>

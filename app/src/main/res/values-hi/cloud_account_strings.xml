@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">साइन इन करें और अपनी क्लाउड प्रोफ़ाइल प्रबंधित करें</string>
     <string name="cloud_account_intro">आपकी क्लाउड प्रोफ़ाइल YouTube Music से अलग है। साइन इन किए बिना स्थानीय संगीत और प्लेबैक काम करता है।</string>
     <string name="cloud_account_email">मेल पता</string>
