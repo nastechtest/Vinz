@@ -708,7 +708,7 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
   if (url.pathname === "/health" && request.method === "GET") {
     return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET) }, 200, headers);
   }
-  const publicShareMatch = url.pathname.match(/^\\/s\\/([^/]+)$/);
+  const publicShareMatch = url.pathname.match(/^\/s\/([^/]+)$/);
   if (publicShareMatch && request.method === "GET") {
     const publicConfig = configuration(env);
     if (!publicConfig) return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
@@ -749,7 +749,7 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     if (url.pathname === "/v1/shares" && request.method === "POST") {
       return withHeaders(await createShareLink(request, config, auth), headers);
     }
-    const ownedShareMatch = url.pathname.match(/^\\/v1\\/shares\\/([^/]+)$/);
+    const ownedShareMatch = url.pathname.match(/^\/v1\/shares\/([^/]+)$/);
     if (ownedShareMatch && request.method === "DELETE") {
       return withHeaders(await deleteOwnedRow(config, auth, "vinz_share_links", ownedShareMatch[1]), headers);
     }
