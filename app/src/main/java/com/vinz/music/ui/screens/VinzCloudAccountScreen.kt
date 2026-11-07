@@ -79,10 +79,10 @@ internal fun CloudAccountContent(
                 }
             }
             supplementalContent()
+            if (state.identity != null) VinzTextButton(
+                onClick = { actions.signOut() }, modifier = Modifier.testTag("cloud-account-sign-out"), enabled = !state.busy,
+            ) { Text(tr(R.string.sign_out)) }
         }
-    }
-    VinzTextButton(onClick = { actions.signOut() }, modifier = Modifier.testTag("cloud-account-sign-out"), enabled = !state.busy) {
-        Text(tr(R.string.sign_out))
     }
 }
 
