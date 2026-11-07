@@ -1,0 +1,37 @@
+name: Materialize transparent branding
+on:
+  push:
+    branches: [feat/transparent-logo-assets]
+    paths: [.github/workflows/logo-assets-bootstrap.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Download checksum-verified branding archive
+        run: |
+          curl -fSL --retry 3 --max-time 120 -o /tmp/branding.zip https://house-attorneys-doom-measurement.trycloudflare.com/transparent-branding.zip
+          echo 'd524d17628c7bf48b327230850816d09a09904b8d25b7be3834b0834d9af7d1b  /tmp/branding.zip' | sha256sum -c -
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('/tmp/branding.zip') as archive:
+              for name in archive.namelist():
+                  path = Path(name)
+                  assert not path.is_absolute() and '..' not in path.parts
+                  assert name.startswith(('app/', 'design/', 'docs/', 'scripts/', '.github/')) or name == '.gitignore'
+                  path.parent.mkdir(parents=True, exist_ok=True)
+                  path.write_bytes(archive.read(name))
+          PY
+          python3 scripts/ci/check_branding.py
+          python3 -m unittest discover -s scripts/tests -p 'test_brand_assets.py'
+      - name: Commit verified review assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Apply verified transparent branding assets and tests'
+          git push origin HEAD:feat/transparent-logo-assets
