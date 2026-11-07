@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
+const VINZ_SITE_URL = process.env.NEXT_PUBLIC_VINZ_SITE_URL || "https://vinz.nastechresearch.com";
+
 function getSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -52,10 +54,11 @@ export default function Home() {
     setMessage("");
     try {
       if (mode === "signup") {
+        const callbackUrl = new URL("/auth/callback", VINZ_SITE_URL).toString();
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+          options: { emailRedirectTo: callbackUrl },
         });
         if (error) throw error;
         setNeedsOtp(true);
