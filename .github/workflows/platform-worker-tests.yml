@@ -6,7 +6,7 @@ on:
       - "platform/cloudflare/**"
       - ".github/workflows/platform-worker-tests.yml"
   push:
-    branches: [main]
+    branches: ["**"]
     paths:
       - "platform/cloudflare/**"
       - ".github/workflows/platform-worker-tests.yml"
