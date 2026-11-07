@@ -18,6 +18,7 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("signup");
   const [needsOtp, setNeedsOtp] = useState(false);
   const [message, setMessage] = useState("");
@@ -58,8 +59,10 @@ export default function Home() {
           options: { emailRedirectTo: new URL("/auth/callback", process.env.NEXT_PUBLIC_VINZ_SITE_URL || "https://vinz-web-liart.vercel.app").toString() },
         });
         if (error) throw error;
+        setOtpEmail(email.trim().toLowerCase());
+        setOtp("");
         setNeedsOtp(true);
-        setMessage("Check your email for the verification code, then enter it below.");
+        setMessage("Check your email for the 6-digit verification code.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
@@ -75,16 +78,18 @@ export default function Home() {
   async function verifyEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
+    if (!/^\\d{6}$/.test(otp.trim())) { setMessage("Enter the 6-digit code from your email."); return; }
     setBusy(true);
     setMessage("");
     try {
       const { error } = await supabase.auth.verifyOtp({
-        email: email.trim(),
+        email: otpEmail || email.trim().toLowerCase(),
         token: otp.trim(),
         type: "signup",
       });
       if (error) throw error;
       setNeedsOtp(false);
+      setOtp("");
       setMessage("Email verified. Your Vinz account is ready.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Verification failed.");
@@ -93,7 +98,7 @@ export default function Home() {
     }
   }
 
-  async function signOut() {
+  async function resendOtp() {\n    if (!supabase || !otpEmail) return;\n    setBusy(true);\n    setMessage("");\n    try {\n      const { error } = await supabase.auth.resend({ type: "signup", email: otpEmail });\n      if (error) throw error;\n      setOtp("");\n      setMessage("A new 6-digit verification code has been sent.");\n    } catch (error) {\n      setMessage(error instanceof Error ? error.message : "Could not resend the verification code.");\n    } finally {\n      setBusy(false);\n    }\n  }\n\n  async function signOut() {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     setMessage(error?.message ?? "Signed out.");
@@ -128,10 +133,10 @@ export default function Home() {
           <form onSubmit={verifyEmail}>
             <p className="eyebrow">EMAIL VERIFICATION</p>
             <h2>Check your inbox.</h2>
-            <p className="muted">Enter the verification code sent to {email}.</p>
+            <p className="muted">Enter the 6-digit code sent to {otpEmail || email}.</p>
             <label htmlFor="otp">Verification code</label>
-            <input id="otp" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => setOtp(e.target.value)} required maxLength={8} />
-            <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify email"}</button>
+            <input id="otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="000000" value={otp} onChange={e => setOtp(e.target.value.replace(/\\D/g, "").slice(0, 6))} required maxLength={6} aria-label="6-digit email verification code" />
+            <button className="primary" disabled={busy || otp.length !== 6}>{busy ? "Verifying…" : "Verify email"}</button>\n            <button type="button" className="text-button" onClick={resendOtp} disabled={busy}>Resend code</button>
             <button type="button" className="text-button" onClick={() => { setNeedsOtp(false); setMessage(""); }}>Back</button>
           </form>
         ) : (
