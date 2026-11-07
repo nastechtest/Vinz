@@ -43,6 +43,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          POSTHOG_PROJECT_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
         run: |
           node <<'NODE'
           const fs = require("node:fs/promises");
@@ -59,6 +60,7 @@ jobs:
             if (config.name !== "vinz-api-staging" || config.workers_dev !== true) {
               throw new Error("Refusing deployment: Wrangler config is not the staging Worker.");
             }
+            config.vars = { ...(config.vars || {}), POSTHOG_PROJECT_KEY: posthogProjectKey };
             const bindings = [
               ...(config.kv_namespaces || []).map((item) => ({
                 type: "kv_namespace", name: item.binding, namespace_id: item.id,
