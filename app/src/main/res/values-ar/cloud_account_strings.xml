@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">قم بتسجيل الدخول وإدارة ملفك الشخصي السحابي</string>
+    <string name="cloud_account_intro">ملفك الشخصي على السحابة منفصل عن YouTube Music. تعمل الموسيقى المحلية وتشغيلها دون تسجيل الدخول.</string>
+    <string name="cloud_account_email">عنوان البريد الإلكتروني</string>
+    <string name="cloud_account_password">كلمة المرور</string>
+    <string name="cloud_account_username">اسم المستخدم</string>
+    <string name="cloud_account_display_name">اسم العرض</string>
+    <string name="cloud_account_username_hint">3-24 حرفًا صغيرًا أو أرقامًا أو شرطات سفلية</string>
+    <string name="cloud_account_password_hint">استخدم 8 أحرف على الأقل.</string>
+    <string name="cloud_account_create">إنشاء حساب سحابي</string>
+    <string name="cloud_account_existing">لدي حساب بالفعل</string>
+    <string name="cloud_account_forgot">هل نسيت كلمة السر؟</string>
+    <string name="cloud_account_recovery">إرسال البريد الإلكتروني للاسترداد</string>
+    <string name="cloud_account_recovery_sent">إذا كان هناك حساب لهذا العنوان، فسيتم إرسال بريد إلكتروني مخصص للاسترداد.</string>
+    <string name="cloud_account_confirmation">تحقق من بريدك الإلكتروني لتأكيد حسابك، ثم قم بالعودة لتسجيل الدخول.</string>
+    <string name="cloud_account_setup">الانتهاء من إعداد ملف التعريف الخاص بك.</string>
+    <string name="cloud_account_bio">السيرة الذاتية</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">الملف الشخصي العام</string>
+    <string name="cloud_account_public_hint">اسمح لمستخدمي Vinz الآخرين بمشاهدة ملفك الشخصي.</string>
+    <string name="cloud_account_discoverable">قابل للاكتشاف</string>
+    <string name="cloud_account_discoverable_hint">اسمح لملفك الشخصي بالظهور في اكتشاف المستخدم.</string>
+    <string name="cloud_account_saved">يتم حفظ ملف التعريف السحابي الخاص بك.</string>
+    <string name="cloud_account_signed_out">لقد قمت بتسجيل الخروج من حسابك السحابي.</string>
+    <string name="cloud_account_signed_in">تم تسجيل الدخول كـ %1$s</string>
+    <string name="cloud_account_load_failed">لا يمكن تحميل ملف التعريف الخاص بك. حاول مرة أخرى قبل التحرير.</string>
+    <string name="cloud_account_request_failed">لا يمكن إكمال طلب الحساب هذا. تحقق من اتصالك وحاول مرة أخرى.</string>
+    <string name="cloud_account_sign_in_failed">لا يمكن إكمال تسجيل الدخول. تحقق من التفاصيل والاتصال، ثم حاول مرة أخرى.</string>
+    <string name="cloud_account_save_failed">لا يمكن حفظ ملف التعريف الخاص بك. تحقق من التفاصيل والاتصال، ثم حاول مرة أخرى.</string>
+    <string name="cloud_account_recovery_failed">لا يمكن إكمال طلب الاسترداد. حاول مرة أخرى لاحقًا.</string>
+    <string name="cloud_account_sign_out_failed">لا يمكن إكمال تسجيل الخروج. حاول ثانية.</string>
+</resources>
