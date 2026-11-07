@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Mag-sign in at pamahalaan ang iyong cloud profile</string>
     <string name="cloud_account_intro">Ang iyong cloud profile ay hiwalay sa YouTube Music. Gumagana ang lokal na musika at pag-playback nang hindi nagsa-sign in.</string>
     <string name="cloud_account_email">Address ng email</string>

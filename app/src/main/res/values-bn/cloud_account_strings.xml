@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">সাইন ইন করুন এবং আপনার ক্লাউড প্রোফাইল পরিচালনা করুন</string>
     <string name="cloud_account_intro">আপনার ক্লাউড প্রোফাইল YouTube Music থেকে আলাদা। সাইন ইন না করেই স্থানীয় সঙ্গীত এবং প্লেব্যাক কাজ করে।</string>
     <string name="cloud_account_email">ইমেইল ঠিকানা</string>
