@@ -15,13 +15,6 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 function restHeaders(serviceKey: string, extra: Record<string, string> = {}) {
   return {
     apikey: serviceKey,
@@ -40,7 +33,7 @@ async function rest(
   return fetch(`${base}/rest/v1/${path}`, {
     ...init,
     headers: restHeaders(serviceKey, (init.headers || {}) as Record<string, string>),
-    signal: AbortSignal.timeout(7000),
+    signal: AbortSignal.timeout(12000),
   });
 }
 
@@ -113,7 +106,7 @@ async function parsePodcastFeed(feedUrl: string) {
   let response = await fetch(url, {
     redirect: "manual",
     headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(7000),
   });
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
@@ -124,7 +117,7 @@ async function parsePodcastFeed(feedUrl: string) {
     response = await fetch(url, {
       redirect: "manual",
       headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(7000),
     });
   }
   if (!response.ok) throw new Error(`feed_http_${response.status}`);
@@ -224,7 +217,7 @@ Deno.serve(async (request: Request) => {
           accept: "application/json",
           "user-agent": "Vinz/1.0 (https://github.com/nastechtest/Vinz)",
         },
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(7000),
       });
       if (!appleResponse.ok) throw new Error(`apple_http_${appleResponse.status}`);
       const apple = await appleResponse.json();
