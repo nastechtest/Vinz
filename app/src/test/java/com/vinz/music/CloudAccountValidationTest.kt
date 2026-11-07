@@ -22,13 +22,19 @@ class CloudAccountValidationTest {
             }
         }
         val base = entries(java.io.File(res, "values/cloud_account_strings.xml"))
-        assertEquals(31, base.size)
-        val tables = res.listFiles().orEmpty().filter { it.isDirectory && it.name.startsWith("values-") }
-            .map { java.io.File(it, "cloud_account_strings.xml") }.filter { it.exists() }
+        assertEquals(30, base.size)
+        val tables = res.listFiles().orEmpty().filter {
+            it.isDirectory && (it.name == "values" || it.name.startsWith("values-")) &&
+                java.io.File(it, "strings.xml").isFile
+        }.map { java.io.File(it, "cloud_account_strings.xml") }
         assertTrue(tables.isNotEmpty())
         val argument = Regex("%[0-9]+\\$[a-zA-Z]")
         tables.forEach { table ->
+            assertTrue("Missing account table: ${table.path}", table.isFile)
             val translated = entries(table)
+            val otherKeys = table.parentFile.listFiles().orEmpty()
+                .filter { it != table && it.extension == "xml" }.flatMap { entries(it).keys }.toSet()
+            assertTrue("Duplicate account resources: ${table.path}", translated.keys.none { it in otherKeys })
             assertEquals(table.path, base.keys, translated.keys)
             base.forEach { (key, value) ->
                 assertEquals("${table.path}:$key", argument.findAll(value).map { it.value }.toList(),
