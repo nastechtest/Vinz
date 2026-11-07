@@ -60,7 +60,7 @@ jobs:
           const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
           assert.equal(config.name, "vinz-api-staging");
           assert.equal(config.main, "vinz-api.js");
-          assert.match(config.compatibility_date, /^\\d{4}-\\d{2}-\\d{2}$/);
+          assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(config.compatibility_date));
           assert.ok(config.kv_namespaces?.some((binding) => binding.binding === "CATALOG_CACHE" && binding.id));
           assert.ok(config.r2_buckets?.some((binding) => binding.binding === "BACKUPS_BUCKET" && binding.bucket_name));
           assert.equal(config.observability?.enabled, true);
@@ -98,7 +98,7 @@ jobs:
           for path in files:
               if path.stat().st_size == 0:
                   raise SystemExit(f"Empty migration: {path}")
-              match = re.match(r"^(\d{14})_[a-z0-9_]+\.sql$", path.name)
+              match = re.match(r"^([0-9]{14})_[a-z0-9_]+[.]sql$", path.name)
               if not match:
                   raise SystemExit(f"Migration must use YYYYMMDDHHMMSS_name.sql: {path.name}")
               versions.append(match.group(1))
