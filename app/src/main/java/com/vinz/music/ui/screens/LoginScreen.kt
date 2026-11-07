@@ -465,7 +465,7 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
             com.vinz.music.ui.components.VinzOutlinedButton(onClick = onSignIn, Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.sign_in_with_google), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(tr(R.string.sign_in_to_youtube_music), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             VinzTextButton(onClick = onSkip, Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 Text(tr(R.string.skip_for_now), color = Color.White.copy(alpha = 0.8f))
