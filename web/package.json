@@ -12,7 +12,7 @@
     "dev:vinext": "vinext dev",
     "build:vinext": "vinext build",
     "start:vinext": "vinext start",
-    "deploy:cloudflare": "@vinext/cloudflare deploy"
+    "deploy:cloudflare": "vinext-cloudflare deploy"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",
