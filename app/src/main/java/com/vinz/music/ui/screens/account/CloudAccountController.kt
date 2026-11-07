@@ -23,6 +23,8 @@ internal class CloudAccountController(
     fun mode(mode: CloudAccountMode) = edit { copy(mode = mode, password = "", message = null, error = null) }
     fun email(value: String) = edit { copy(email = value, message = null, error = null) }
     fun password(value: String) = edit { copy(password = value, message = null, error = null) }
+    /** Release typed secrets when the account screen is disposed. */
+    fun clearPassword() { mutable.value = mutable.value.copy(password = "") }
     fun username(value: String) = edit { copy(draft = draft.copy(username = CloudAccountValidation.username(value)), message = null, error = null) }
     fun displayName(value: String) = edit { copy(draft = draft.copy(displayName = value.take(60)), message = null, error = null) }
     fun bio(value: String) = edit { copy(draft = draft.copy(bio = value.take(160)), message = null, error = null) }
