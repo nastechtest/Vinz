@@ -49,6 +49,18 @@ class AccountNavigationGuardTest {
         assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.LOGIN) }"))
     }
 
+    @Test fun cloudControllerIsLazyAndRetainedOutsideCollapsibleContent() {
+        val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
+        val section = cloud.substringAfter("fun VinzCloudAccountSection(")
+            .substringBefore("internal fun CloudAccountContent(")
+        assertTrue(section.contains("var activated by remember { mutableStateOf(initiallyExpanded) }"))
+        assertTrue(section.indexOf("if (activated)") < section.indexOf("LocalContainer.current"))
+        assertTrue(section.indexOf("CloudAccountController(") < section.indexOf("if (expanded)"))
+        assertTrue(section.contains("LaunchedEffect(controller) { controller.loadProfile() }"))
+        assertTrue(section.contains("if (!expanded) activated = true"))
+        assertTrue(section.contains("if (expanded) activeAccount?.let"))
+    }
+
     @Test fun cloudPresentationCannotMutateLocalOrYoutubeIdentity() {
         val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
         listOf("settings.logout(", "settings.saveAccount(", "CookieManager", "account.delete(",
