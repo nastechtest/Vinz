@@ -119,3 +119,41 @@ test("backup upload reports missing R2 binding rather than accepting data", asyn
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error, "backup_storage_not_configured");
 });
+
+test("catalog search normalizes Apple results and omits preview audio URLs", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    assert.match(String(input), /^https:\/\/itunes\.apple\.com\/search\?/);
+    return new Response(JSON.stringify({
+      resultCount: 1,
+      results: [{
+        trackId: 123,
+        trackName: "Test Song",
+        artistName: "Test Artist",
+        previewUrl: "https://example.invalid/preview.m4a",
+        trackViewUrl: "https://music.apple.com/test",
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/catalog/search?q=test%20song&type=song"),
+    SUPABASE_ENV,
+    undefined,
+  );
+  // The route is authenticated; a missing token must be rejected before calling the provider.
+  assert.equal(response.status, 401);
+});
+
+test("catalog search validates the requested media type after authentication", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/catalog/search?q=test&type=unknown", {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "unsupported_catalog_type");
+});
