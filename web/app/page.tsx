@@ -78,7 +78,7 @@ export default function Home() {
   async function verifyEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
-    if (!/^\\d{6}$/.test(otp.trim())) { setMessage("Enter the 6-digit code from your email."); return; }
+    if (!/^\d{6}$/.test(otp.trim())) { setMessage("Enter the 6-digit code from your email."); return; }
     setBusy(true);
     setMessage("");
     try {
@@ -98,7 +98,23 @@ export default function Home() {
     }
   }
 
-  async function resendOtp() {\n    if (!supabase || !otpEmail) return;\n    setBusy(true);\n    setMessage("");\n    try {\n      const { error } = await supabase.auth.resend({ type: "signup", email: otpEmail });\n      if (error) throw error;\n      setOtp("");\n      setMessage("A new 6-digit verification code has been sent.");\n    } catch (error) {\n      setMessage(error instanceof Error ? error.message : "Could not resend the verification code.");\n    } finally {\n      setBusy(false);\n    }\n  }\n\n  async function signOut() {
+  async function resendOtp() {
+    if (!supabase || !otpEmail) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const { error } = await supabase.auth.resend({ type: "signup", email: otpEmail });
+      if (error) throw error;
+      setOtp("");
+      setMessage("A new 6-digit verification code has been sent.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not resend the verification code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signOut() {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     setMessage(error?.message ?? "Signed out.");
@@ -135,8 +151,9 @@ export default function Home() {
             <h2>Check your inbox.</h2>
             <p className="muted">Enter the 6-digit code sent to {otpEmail || email}.</p>
             <label htmlFor="otp">Verification code</label>
-            <input id="otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="000000" value={otp} onChange={e => setOtp(e.target.value.replace(/\\D/g, "").slice(0, 6))} required maxLength={6} aria-label="6-digit email verification code" />
-            <button className="primary" disabled={busy || otp.length !== 6}>{busy ? "Verifying…" : "Verify email"}</button>\n            <button type="button" className="text-button" onClick={resendOtp} disabled={busy}>Resend code</button>
+            <input id="otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="000000" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} required maxLength={6} aria-label="6-digit email verification code" />
+            <button className="primary" disabled={busy || otp.length !== 6}>{busy ? "Verifying…" : "Verify email"}</button>
+            <button type="button" className="text-button" onClick={resendOtp} disabled={busy}>Resend code</button>
             <button type="button" className="text-button" onClick={() => { setNeedsOtp(false); setMessage(""); }}>Back</button>
           </form>
         ) : (
