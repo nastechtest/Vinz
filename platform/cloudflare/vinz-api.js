@@ -322,6 +322,138 @@ async function deleteBackup(env, config, auth, backupId, requestId) {
   return json({ deleted: true, id: backupId }, 200);
 }
 
+
+const ITUNES_TYPES = {
+  song: { media: "music", entity: "song" },
+  album: { media: "music", entity: "album" },
+  artist: { media: "music", entity: "musicArtist" },
+  podcast: { media: "podcast", entity: "podcast" },
+};
+
+async function cacheRead(env, key) {
+  if (!env.CATALOG_CACHE) return null;
+  const value = await env.CATALOG_CACHE.get(key);
+  if (!value) return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+async function cacheWrite(env, key, value, ttl) {
+  if (!env.CATALOG_CACHE) return;
+  await env.CATALOG_CACHE.put(key, JSON.stringify(value), { expirationTtl: ttl }).catch(() => undefined);
+}
+
+async function cacheKey(prefix, value) {
+  return `${prefix}:${hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))}`;
+}
+
+function normalizeAppleResult(item, type) {
+  if (type === "artist") return {
+    provider: "apple_itunes",
+    provider_id: String(item.artistId || item.artistName || ""),
+    title: item.artistName || "",
+    genre: item.primaryGenreName || null,
+    artwork_url: item.artworkUrl100 || null,
+    store_url: item.artistViewUrl || null,
+  };
+  if (type === "podcast") return {
+    provider: "apple_itunes",
+    provider_id: String(item.collectionId || ""),
+    title: item.collectionName || "",
+    publisher: item.artistName || "",
+    episode_count: item.trackCount || null,
+    artwork_url: item.artworkUrl600 || item.artworkUrl100 || null,
+    store_url: item.collectionViewUrl || null,
+    feed_url: item.feedUrl || null,
+    genre: item.primaryGenreName || null,
+  };
+  return {
+    provider: "apple_itunes",
+    provider_id: String(item.trackId || item.collectionId || ""),
+    title: item.trackName || item.collectionName || "",
+    artist: item.artistName || "",
+    album: item.collectionName || null,
+    release_date: item.releaseDate || null,
+    duration_ms: item.trackTimeMillis || null,
+    artwork_url: item.artworkUrl100 || null,
+    store_url: item.trackViewUrl || item.collectionViewUrl || null,
+    genre: item.primaryGenreName || null,
+    explicit: item.trackExplicitness === "explicit" || item.collectionExplicitness === "explicit",
+  };
+}
+
+async function appleRequest(url) {
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "Vinz/1.0 (https://github.com/nastechtest/Vinz)",
+    },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!response.ok) throw new Error(`apple_catalog_http_${response.status}`);
+  return response.json();
+}
+
+async function searchCatalog(url, env, requestId) {
+  const term = (url.searchParams.get("q") || "").trim();
+  const type = (url.searchParams.get("type") || "song").toLowerCase();
+  const country = (url.searchParams.get("country") || "").toLowerCase();
+  const limit = Math.min(25, Math.max(1, Number(url.searchParams.get("limit") || 20)));
+  if (term.length < 2 || term.length > 100) return json({ error: "invalid_search_term", request_id: requestId }, 400);
+  if (!ITUNES_TYPES[type]) return json({ error: "unsupported_catalog_type", supported: Object.keys(ITUNES_TYPES), request_id: requestId }, 400);
+  if (country && !/^[a-z]{2}$/.test(country)) return json({ error: "invalid_storefront", request_id: requestId }, 400);
+
+  const cacheId = await cacheKey("itunes-search-v1", JSON.stringify({ term: term.toLowerCase(), type, country, limit }));
+  const cached = await cacheRead(env, cacheId);
+  if (cached) return json({ ...cached, cached: true });
+
+  const options = ITUNES_TYPES[type];
+  const params = new URLSearchParams({ term, media: options.media, entity: options.entity, limit: String(limit) });
+  if (country) params.set("country", country);
+  try {
+    const result = await appleRequest(`https://itunes.apple.com/search?${params}`);
+    const payload = {
+      provider: "apple_itunes",
+      attribution: "Apple iTunes Search API",
+      result_count: Number(result.resultCount || 0),
+      results: (Array.isArray(result.results) ? result.results : []).map((item) => normalizeAppleResult(item, type)),
+    };
+    await cacheWrite(env, cacheId, payload, 21600);
+    return json({ ...payload, cached: false });
+  } catch {
+    return json({ error: "catalog_provider_unavailable", provider: "apple_itunes", request_id: requestId }, 502);
+  }
+}
+
+async function artistReleases(url, env, artistId, requestId) {
+  if (!/^[0-9]{1,20}$/.test(artistId)) return json({ error: "invalid_artist_id", request_id: requestId }, 400);
+  const country = (url.searchParams.get("country") || "").toLowerCase();
+  if (country && !/^[a-z]{2}$/.test(country)) return json({ error: "invalid_storefront", request_id: requestId }, 400);
+  const cacheId = await cacheKey("itunes-artist-releases-v1", `${artistId}:${country}`);
+  const cached = await cacheRead(env, cacheId);
+  if (cached) return json({ ...cached, cached: true });
+
+  const params = new URLSearchParams({ id: artistId, entity: "album", limit: "200" });
+  if (country) params.set("country", country);
+  try {
+    const result = await appleRequest(`https://itunes.apple.com/lookup?${params}`);
+    const results = (Array.isArray(result.results) ? result.results : [])
+      .filter((item) => item.wrapperType === "collection" || item.collectionId)
+      .map((item) => normalizeAppleResult(item, "album"))
+      .sort((a, b) => String(b.release_date || "").localeCompare(String(a.release_date || "")));
+    const payload = {
+      provider: "apple_itunes",
+      attribution: "Apple iTunes Search API",
+      artist_id: artistId,
+      result_count: results.length,
+      releases: results,
+    };
+    await cacheWrite(env, cacheId, payload, 43200);
+    return json({ ...payload, cached: false });
+  } catch {
+    return json({ error: "catalog_provider_unavailable", provider: "apple_itunes", request_id: requestId }, 502);
+  }
+}
+
 export async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
@@ -362,6 +494,14 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     if (auth.error) {
       recordApiError(env, ctx, url.pathname, auth.error, auth.status);
       return json({ error: auth.error, request_id: requestId }, auth.status, headers);
+    }
+
+    if (url.pathname === "/v1/catalog/search" && request.method === "GET") {
+      return searchCatalog(url, env, requestId);
+    }
+    const artistReleasesMatch = url.pathname.match(/^\/v1\/catalog\/artists\/([0-9]+)\/releases$/);
+    if (artistReleasesMatch && request.method === "GET") {
+      return artistReleases(url, env, artistReleasesMatch[1], requestId);
     }
 
     if (url.pathname === "/v1/me" && request.method === "GET") {
