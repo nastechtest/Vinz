@@ -49,6 +49,17 @@ class AccountNavigationGuardTest {
         assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.LOGIN) }"))
     }
 
+    @Test fun canonicalYoutubeLoginRetainsWebViewAndCookieLifecycle() {
+        val login = read("ui/screens/LoginScreen.kt")
+        assertTrue(login.contains("fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit, addAccount: Boolean = false)"))
+        assertTrue(login.contains("AndroidView("))
+        assertTrue(login.contains("WebView(ctx).apply"))
+        assertTrue(login.contains("CookieManager.getInstance().flush()"))
+        assertTrue(login.contains("CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)"))
+        assertTrue(login.contains("onDone()"))
+        assertTrue(login.contains("R.string.sign_in_to_youtube_music"))
+    }
+
     @Test fun cloudControllerIsLazyAndRetainedOutsideCollapsibleContent() {
         val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
         val section = cloud.substringAfter("fun VinzCloudAccountSection(")
