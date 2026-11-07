@@ -175,14 +175,42 @@ class CloudAccountFlowTest {
         }
     }
 
-    private fun start(identity: CloudAccountIdentity? = null, fontScale: Float = 1f, configure: FakeGateway.() -> Unit = {}) {
+    @Test fun onboardingSkipInvokesContinuationInsteadOfBack() {
+        var continued = 0
+        var back = 0
+        start(onBack = { back++ }, onContinue = { continued++ })
+        compose.onNodeWithTag("cloud-account-skip").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(1, continued)
+            assertEquals(0, back)
+        }
+    }
+
+    @Test fun onboardingDoneAtLargeFontScrollsAndInvokesContinuation() {
+        var continued = 0
+        var back = 0
+        start(identity = CloudAccountIdentity("signed-in", "profile@example.test"), fontScale = 2f,
+            onBack = { back++ }, onContinue = { continued++ }) {
+            profile = profile("signed-in", "artist", "Artist")
+        }
+        compose.runOnIdle { controller.loadProfile() }
+        compose.waitUntil(5_000) { controller.state.value.profileReady && !controller.state.value.busy }
+        compose.onNodeWithTag("cloud-account-continue").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(1, continued)
+            assertEquals(0, back)
+        }
+    }
+
+    private fun start(identity: CloudAccountIdentity? = null, fontScale: Float = 1f,
+        onBack: () -> Unit = {}, onContinue: (() -> Unit)? = null, configure: FakeGateway.() -> Unit = {}) {
         gateway = FakeGateway(identity).apply(configure)
         controller = CloudAccountController(gateway, scope)
         compose.setContent {
             val state by controller.state.collectAsState()
             val deviceDensity = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density = deviceDensity, fontScale = fontScale)) {
-                MaterialTheme { CloudAccountContent(state, controller, onBack = {}, bottomPadding = 0.dp) }
+                MaterialTheme { CloudAccountContent(state, controller, onBack = onBack, onContinue = onContinue, bottomPadding = 0.dp) }
             }
         }
     }
