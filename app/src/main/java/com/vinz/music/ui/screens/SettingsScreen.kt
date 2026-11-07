@@ -635,8 +635,8 @@ private fun AccountCard() {
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("Vinz Account", style = MaterialTheme.typography.titleMedium, color = ink)
-            Text("Sign in, create your cloud profile and manage privacy", style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
+            Text(tr(R.string.vinz_account), style = MaterialTheme.typography.titleMedium, color = ink)
+            Text(tr(R.string.cloud_account_summary), style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
         }
         Icon(VinzIcons.ChevronRight, null, tint = ink)
     }
