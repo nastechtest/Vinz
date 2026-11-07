@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">وارد شوید و نمایه ابری خود را مدیریت کنید</string>
     <string name="cloud_account_intro">نمایه ابری شما جدا از YouTube Music است. موسیقی محلی و پخش بدون ورود به سیستم کار می کند.</string>
     <string name="cloud_account_email">آدرس ایمیل</string>

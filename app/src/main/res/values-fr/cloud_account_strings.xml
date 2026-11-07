@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Connectez-vous et gérez votre profil cloud</string>
     <string name="cloud_account_intro">Votre profil cloud est distinct de YouTube Music. La musique locale et la lecture fonctionnent sans connexion.</string>
     <string name="cloud_account_email">Adresse email</string>
