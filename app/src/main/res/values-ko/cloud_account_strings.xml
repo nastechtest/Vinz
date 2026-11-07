@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">로그인하여 클라우드 프로필을 관리하세요</string>
     <string name="cloud_account_intro">클라우드 프로필은 YouTube Music과 별개입니다. 로그인하지 않고도 로컬 음악 및 재생이 작동합니다.</string>
     <string name="cloud_account_email">이메일 주소</string>
