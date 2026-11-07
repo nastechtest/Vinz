@@ -157,3 +157,36 @@ test("catalog search validates the requested media type after authentication", a
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "unsupported_catalog_type");
 });
+
+test("catalog search returns normalized Apple metadata without media previews", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = String(input);
+    if (url.endsWith("/auth/v1/user")) {
+      return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    assert.match(url, /^https:\/\/itunes\.apple\.com\/search\?/);
+    return new Response(JSON.stringify({
+      resultCount: 1,
+      results: [{
+        trackId: 123,
+        trackName: "Test Song",
+        artistName: "Test Artist",
+        previewUrl: "https://example.invalid/preview.m4a",
+        trackViewUrl: "https://music.apple.com/test",
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/catalog/search?q=test%20song&type=song", {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.results[0].title, "Test Song");
+  assert.equal(body.results[0].artist, "Test Artist");
+  assert.equal("previewUrl" in body.results[0], false);
+});
