@@ -94,6 +94,23 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         true
     }
 
+    /** Checks username availability through the authenticated Supabase RPC; the unique index still decides saves. */
+    suspend fun checkUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
+        require(username.matches(Regex("^[a-z0-9_]{3,24}$"))) { "Invalid username." }
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val body = JSONObject().put("p_username", username).toString()
+        val request = Request.Builder().url(SUPABASE_URL + "/rest/v1/rpc/vinz_username_available")
+            .header("apikey", SUPABASE_PUBLISHABLE_KEY)
+            .header("Authorization", "Bearer ${s.accessToken}")
+            .header("Content-Type", "application/json")
+            .post(body.toRequestBody(jsonType)).build()
+        http.newCall(request).execute().use { response ->
+            val value = response.body?.string().orEmpty().trim()
+            if (!response.isSuccessful) error("Username availability service is unavailable.")
+            value.toBooleanStrictOrNull() ?: error("Username availability service returned an invalid response.")
+        }
+    }
+
     suspend fun loadProfile(): Profile? = withContext(Dispatchers.IO) {
         val s = session ?: return@withContext null
         val response = request("/rest/v1/vinz_profiles?select=*&id=eq.${s.userId}", "GET")
