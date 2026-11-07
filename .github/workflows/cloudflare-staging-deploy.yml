@@ -39,60 +39,54 @@ jobs:
           node --check vinz-api.js
           npm test
 
-      - name: Deploy only the staging Worker
+      - name: Deploy only the staging Worker from wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          SUPABASE_URL: ${{ vars.VINZ_SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ vars.VINZ_SUPABASE_PUBLISHABLE_KEY }}
-          POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: |
           node <<'NODE'
-          const required = [
-            "CLOUDFLARE_API_TOKEN",
-            "CLOUDFLARE_ACCOUNT_ID",
-            "SUPABASE_URL",
-            "SUPABASE_PUBLISHABLE_KEY",
-            "POSTHOG_HOST",
-          ];
-          const missing = required.filter((key) => !process.env[key]);
-          if (missing.length) {
-            console.error("Missing GitHub secrets/variables:", missing.join(", "));
+          const fs = require("node:fs/promises");
+          const path = require("node:path");
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          if (!token || !account) {
+            console.error("Missing CLOUDFLARE_API_TOKEN secret or CLOUDFLARE_ACCOUNT_ID variable.");
             process.exit(1);
           }
 
-          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-          const metadata = {
-            main_module: "worker.js",
-            compatibility_date: "2026-11-07",
-            workers_dev: true,
-            preview_urls: false,
-            bindings: [
-              { type: "r2_bucket", name: "BACKUPS_BUCKET", bucket_name: "vinz-backups" },
-              { type: "kv_namespace", name: "CATALOG_CACHE", namespace_id: "3e172dca32ca48e9be8d09b30f6a2a96" },
-              { type: "plain_text", name: "SUPABASE_URL", text: process.env.SUPABASE_URL },
-              { type: "plain_text", name: "SUPABASE_PUBLISHABLE_KEY", text: process.env.SUPABASE_PUBLISHABLE_KEY },
-              { type: "plain_text", name: "POSTHOG_HOST", text: process.env.POSTHOG_HOST },
-            ],
-            observability: {
-              enabled: true,
-              head_sampling_rate: 1,
-              redact_query_string: true,
-              logs: { enabled: true, head_sampling_rate: 1, persist: true, invocation_logs: true },
-              traces: { enabled: true, head_sampling_rate: 0.1, persist: true },
-            },
-          };
-
           (async () => {
-            const source = await (await import("node:fs/promises")).readFile("platform/cloudflare/vinz-api.js", "utf8");
+            const config = JSON.parse(await fs.readFile("platform/cloudflare/wrangler.jsonc", "utf8"));
+            if (config.name !== "vinz-api-staging" || config.workers_dev !== true) {
+              throw new Error("Refusing deployment: Wrangler config is not the staging Worker.");
+            }
+            const bindings = [
+              ...(config.kv_namespaces || []).map((item) => ({
+                type: "kv_namespace", name: item.binding, namespace_id: item.id,
+              })),
+              ...(config.r2_buckets || []).map((item) => ({
+                type: "r2_bucket", name: item.binding, bucket_name: item.bucket_name,
+              })),
+              ...Object.entries(config.vars || {}).map(([name, text]) => ({
+                type: "plain_text", name, text,
+              })),
+            ];
+            const metadata = {
+              main_module: path.basename(config.main),
+              compatibility_date: config.compatibility_date,
+              workers_dev: config.workers_dev,
+              preview_urls: config.preview_urls === true,
+              bindings,
+              observability: config.observability,
+            };
+            const source = await fs.readFile(path.join("platform/cloudflare", config.main), "utf8");
             const form = new FormData();
             form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-            form.append("worker.js", new Blob([source], { type: "application/javascript+module" }), "worker.js");
+            form.append(path.basename(config.main), new Blob([source], { type: "application/javascript+module" }), path.basename(config.main));
             const response = await fetch(
-              `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/vinz-api-staging`,
+              `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${config.name}`,
               {
                 method: "PUT",
-                headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` },
+                headers: { authorization: `Bearer ${token}` },
                 body: form,
                 signal: AbortSignal.timeout(60000),
               },
@@ -100,10 +94,10 @@ jobs:
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result.success !== true) {
               console.error("Cloudflare staging deployment failed:", response.status,
-                (result.errors || []).map((e) => e.code).join(", "));
+                (result.errors || []).map((error) => error.code).join(", "));
               process.exit(1);
             }
-            console.log("Deployed vinz-api-staging successfully. Production Worker was not modified.");
+            console.log(`Deployed ${config.name} using wrangler.jsonc. Production Worker was not modified.`);
           })().catch((error) => {
             console.error("Deployment failed:", error.name || "unknown_error");
             process.exitCode = 1;
