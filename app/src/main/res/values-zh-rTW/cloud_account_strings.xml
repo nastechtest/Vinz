@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">登入並管理您的雲端個人資料</string>
+    <string name="cloud_account_intro">您的雲端個人資料與 YouTube Music 是分開的。本地音樂和播放無需登入即可使用。</string>
+    <string name="cloud_account_email">電子郵件</string>
+    <string name="cloud_account_password">密碼</string>
+    <string name="cloud_account_username">使用者名稱</string>
+    <string name="cloud_account_display_name">顯示名稱</string>
+    <string name="cloud_account_username_hint">3–24 個小寫字母、數字或底線</string>
+    <string name="cloud_account_password_hint">至少使用 8 個字元。</string>
+    <string name="cloud_account_create">建立雲端帳戶</string>
+    <string name="cloud_account_existing">我已經有一個帳戶</string>
+    <string name="cloud_account_forgot">忘記密碼？</string>
+    <string name="cloud_account_recovery">發送恢復電子郵件</string>
+    <string name="cloud_account_recovery_sent">如果該地址存在帳戶，則會發送一封恢復電子郵件。</string>
+    <string name="cloud_account_confirmation">檢查您的電子郵件以確認您的帳戶，然後返回登入。</string>
+    <string name="cloud_account_setup">完成您的個人資料設定。</string>
+    <string name="cloud_account_bio">簡介</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">公開資料</string>
+    <string name="cloud_account_public_hint">允許其他 Vinz 用戶查看您的個人資料。</string>
+    <string name="cloud_account_discoverable">可發現的</string>
+    <string name="cloud_account_discoverable_hint">允許您的個人資料出現在用戶發現中。</string>
+    <string name="cloud_account_saved">您的雲端設定檔已儲存。</string>
+    <string name="cloud_account_signed_out">您已登出您的雲端帳戶。</string>
+    <string name="cloud_account_signed_in">以 %1$s 登入</string>
+    <string name="cloud_account_load_failed">無法載入您的個人資料。編輯前重試。</string>
+    <string name="cloud_account_request_failed">無法完成此帳戶請求。檢查您的連線並重試。</string>
+    <string name="cloud_account_sign_in_failed">無法完成登入。檢查您的詳細資訊和連接，然後重試。</string>
+    <string name="cloud_account_save_failed">無法儲存您的個人資料。檢查您的詳細資訊和連接，然後重試。</string>
+    <string name="cloud_account_recovery_failed">無法完成恢復請求。稍後再試。</string>
+    <string name="cloud_account_sign_out_failed">無法完成註銷。再試一次。</string>
+</resources>
