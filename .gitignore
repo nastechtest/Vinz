@@ -13,3 +13,7 @@ captures/
 .claude/settings.local.json
 keystore.properties
 CLAUDE.md
+
+# Python asset-validation caches
+__pycache__/
+*.py[cod]

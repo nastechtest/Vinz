@@ -71,6 +71,11 @@ jobs:
       - name: Test the CI scripts
         run: ./scripts/tests/ci-scripts-test.sh
 
+      - name: Verify transparent branding and all icon sizes
+        run: |
+          python3 scripts/ci/check_branding.py
+          python3 -m unittest discover -s scripts/tests -p 'test_brand_assets.py' -v
+
       - name: Verify the Nastech Research gallery codes
         run: python3 scripts/generate-nastech-looks.py --check
 

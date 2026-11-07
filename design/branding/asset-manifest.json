@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "master": {
+    "path": "design/branding/vinz-logo.png",
+    "sha256": "2e8d1c48f97b6ad428beacce6b85b1dceac5e949de7e9fc56ecbe0f4bcb5ff07"
+  },
+  "assets": [
+    {
+      "path": "app/src/main/res/drawable-nodpi/vinz_logo.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "2e8d1c48f97b6ad428beacce6b85b1dceac5e949de7e9fc56ecbe0f4bcb5ff07",
+      "kind": "logo"
+    },
+    {
+      "path": "app/src/main/assets/remote/icon.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "2e8d1c48f97b6ad428beacce6b85b1dceac5e949de7e9fc56ecbe0f4bcb5ff07",
+      "kind": "logo"
+    },
+    {
+      "path": "docs/branding/icon-preview.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "2e8d1c48f97b6ad428beacce6b85b1dceac5e949de7e9fc56ecbe0f4bcb5ff07",
+      "kind": "logo"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/vinz_notification_mark.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "1eccd8549398cfc09120ea3401dba101409e6fb2fdbe0afa1e686b121573a809",
+      "kind": "notification"
+    },
+    {
+      "path": "app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "a6835804ef09aa9fc88d00fece3587baafd854de48ccaa980d9fcad195ff4923",
+      "kind": "launcher"
+    },
+    {
+      "path": "app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "width": 72,
+      "height": 72,
+      "sha256": "371d77e160cbd961778663f32b2d61c9d5b7e165aa824039770b7dd424c34bf2",
+      "kind": "launcher"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "3177df8078475b2aed5f4004167e23aeb7c740dec0a8272813d12375d63d179e",
+      "kind": "launcher"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "width": 144,
+      "height": 144,
+      "sha256": "81f91f1afc57c3ffe8d3811c7afea924b24669420d426b0f0b8f151ba4cb66e8",
+      "kind": "launcher"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "a5b7bfc1d2ff11eda9bad698e49fd84402213f4fd61b61a547ea6184dd64d6cb",
+      "kind": "launcher"
+    },
+    {
+      "path": "app/src/main/assets/remote/favicon-16.png",
+      "width": 16,
+      "height": 16,
+      "sha256": "181adc6134cb33511404a1370526546b097e0ab33d9d1ad1aff4ba4a2dd4bf9a",
+      "kind": "favicon"
+    },
+    {
+      "path": "app/src/main/assets/remote/favicon-32.png",
+      "width": 32,
+      "height": 32,
+      "sha256": "79cf0540e36d11beab3d80df234b68f42dd28db32d426576320989405175551c",
+      "kind": "favicon"
+    },
+    {
+      "path": "app/src/main/assets/remote/favicon-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "a6835804ef09aa9fc88d00fece3587baafd854de48ccaa980d9fcad195ff4923",
+      "kind": "favicon"
+    },
+    {
+      "path": "app/src/main/assets/remote/icon-192.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "a5b7bfc1d2ff11eda9bad698e49fd84402213f4fd61b61a547ea6184dd64d6cb",
+      "kind": "favicon"
+    },
+    {
+      "path": "app/src/main/assets/remote/icon-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "c6f44838ae8ffd7fe95e61119c2bf92e6c71c3897dc043166c87bb36b84f5f96",
+      "kind": "favicon"
+    },
+    {
+      "path": "app/src/main/assets/remote/apple-touch-icon.png",
+      "width": 180,
+      "height": 180,
+      "sha256": "1ab10b3f51da5f02414896eacf2940098fc5cd96c3c7c969817beb1b4e1a3bd8",
+      "kind": "touch"
+    },
+    {
+      "path": "app/src/main/assets/remote/favicon.ico",
+      "width": 256,
+      "height": 256,
+      "sha256": "e6482218f9df9ae5e95e29d66030b21c25266536409162e90a3bace7a9d59c31",
+      "kind": "favicon"
+    }
+  ]
+}
