@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">आपकी प्रोफ़ाइल सहेजी नहीं जा सकी. अपना विवरण और कनेक्शन जांचें, फिर पुनः प्रयास करें।</string>
     <string name="cloud_account_recovery_failed">पुनर्प्राप्ति अनुरोध पूरा नहीं किया जा सका. बाद में पुन: प्रयास।</string>
     <string name="cloud_account_sign_out_failed">साइन-आउट पूरा नहीं किया जा सका. पुनः प्रयास करें।</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
