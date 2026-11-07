@@ -293,3 +293,24 @@ test("backup upload accepts existing non-full backup scopes", async (t) => {
   assert.equal(response.status, 201);
   assert.equal((await response.json()).backup.format_version, 1);
 });
+
+test("share creation rejects arbitrary external redirect hosts", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/shares", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: "spotify",
+        external_url: "https://evil.example/redirect",
+        title: "Song",
+      }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "unsupported_share_url");
+});
