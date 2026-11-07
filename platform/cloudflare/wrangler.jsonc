@@ -1,5 +1,4 @@
 {
-  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
   "name": "vinz-api-staging",
   "main": "vinz-api.js",
   "compatibility_date": "2026-11-07",
