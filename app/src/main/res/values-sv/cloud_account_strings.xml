@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">Logga in och hantera din molnprofil</string>
+    <string name="cloud_account_intro">Din molnprofil är separat från YouTube Music. Lokal musik och uppspelning fungerar utan att logga in.</string>
+    <string name="cloud_account_email">E-postadress</string>
+    <string name="cloud_account_password">Lösenord</string>
+    <string name="cloud_account_username">Användarnamn</string>
+    <string name="cloud_account_display_name">Visningsnamn</string>
+    <string name="cloud_account_username_hint">3–24 gemener, siffror eller understreck</string>
+    <string name="cloud_account_password_hint">Använd minst 8 tecken.</string>
+    <string name="cloud_account_create">Skapa ett molnkonto</string>
+    <string name="cloud_account_existing">Jag har redan ett konto</string>
+    <string name="cloud_account_forgot">Glömt lösenordet?</string>
+    <string name="cloud_account_recovery">Skicka återställningsmail</string>
+    <string name="cloud_account_recovery_sent">Om det finns ett konto för den här adressen har ett återställningsmeddelande skickats.</string>
+    <string name="cloud_account_confirmation">Kontrollera din e-post för att bekräfta ditt konto och återgå sedan för att logga in.</string>
+    <string name="cloud_account_setup">Slutför konfigureringen av din profil.</string>
+    <string name="cloud_account_bio">Biografi</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Offentlig profil</string>
+    <string name="cloud_account_public_hint">Tillåt andra Vinz-användare att se din profil.</string>
+    <string name="cloud_account_discoverable">Upptäckbar</string>
+    <string name="cloud_account_discoverable_hint">Tillåt att din profil visas i användarupptäckt.</string>
+    <string name="cloud_account_saved">Din molnprofil är sparad.</string>
+    <string name="cloud_account_signed_out">Du har loggat ut från ditt molnkonto.</string>
+    <string name="cloud_account_signed_in">Inloggad som %1$s</string>
+    <string name="cloud_account_load_failed">Din profil kunde inte laddas. Försök igen innan du redigerar.</string>
+    <string name="cloud_account_request_failed">Denna kontoförfrågan kunde inte slutföras. Kontrollera din anslutning och försök igen.</string>
+    <string name="cloud_account_sign_in_failed">Inloggningen kunde inte slutföras. Kontrollera dina uppgifter och anslutning och försök sedan igen.</string>
+    <string name="cloud_account_save_failed">Din profil kunde inte sparas. Kontrollera dina uppgifter och anslutning och försök sedan igen.</string>
+    <string name="cloud_account_recovery_failed">Återställningsbegäran kunde inte slutföras. Försök igen senare.</string>
+    <string name="cloud_account_sign_out_failed">Utloggningen kunde inte slutföras. Försök igen.</string>
+</resources>
