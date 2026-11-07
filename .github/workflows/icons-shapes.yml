@@ -170,7 +170,7 @@ jobs:
           logcat_pid=$!
           host_snapshot before-test
           ./gradlew :app:connectedDebugAndroidTest -PsideBySide \
-            -Pandroid.testInstrumentationRunnerArguments.class=com.vinz.music.IconsShapesScreenTest \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.vinz.music.IconsShapesScreenTest,com.vinz.music.CloudAccountFlowTest \
             --no-daemon --no-parallel --max-workers=2 \
             -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" \
             -Pkotlin.compiler.execution.strategy=in-process --stacktrace
