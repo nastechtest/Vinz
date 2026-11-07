@@ -18,7 +18,8 @@ export default function AuthCallback() {
       }
       const { data, error } = await supabase.auth.getSession();
       if (error || !data.session) { setMessage("No active session was created. Return to Vinz and sign in."); return; }
-      const next = new URLSearchParams(window.location.search).get("next");\n      window.location.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+      const next = new URLSearchParams(window.location.search).get("next");
+      window.location.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
     };
     void finish();
   }, []);
