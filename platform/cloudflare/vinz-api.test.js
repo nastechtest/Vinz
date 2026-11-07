@@ -442,7 +442,6 @@ test("username availability normalizes case before the authenticated RPC", async
     const url = String(input);
     if (url.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), { status: 200 });
     assert.match(url, /\/rest\/v1\/rpc\/vinz_username_available$/);
-    const init = arguments;
     return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
   });
   const response = await handleRequest(new Request("https://api.vinz.example/v1/usernames/Artist_Name/availability", {
