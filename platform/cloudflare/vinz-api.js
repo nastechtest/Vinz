@@ -1,9 +1,11 @@
 /**
  * Vinz API — Cloudflare Worker entry point.
  *
- * Supabase remains the source of truth. Never put a service-role key in
- * this Worker or the Android application.
+ * Supabase is the source of truth. User tokens are passed through to
+ * PostgREST so Row Level Security applies to every account operation.
+ * R2 stores opaque backup blobs; the database stores only their metadata.
  */
+const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -20,24 +22,20 @@ function json(data, status = 200, headers = {}) {
 
 function allowedOrigin(request, env) {
   const origin = request.headers.get("origin");
-  if (!origin) return null; // Native Android clients do not send browser Origin headers.
+  if (!origin) return null;
   const allowed = (env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+    .split(",").map((value) => value.trim()).filter(Boolean);
   return allowed.includes(origin) ? origin : false;
 }
 
 function corsHeaders(origin) {
-  return origin
-    ? {
-        "access-control-allow-origin": origin,
-        "access-control-allow-methods": "GET, OPTIONS",
-        "access-control-allow-headers": "authorization, content-type, apikey",
-        "access-control-max-age": "86400",
-        vary: "Origin",
-      }
-    : {};
+  return origin ? {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET, PUT, PATCH, DELETE, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type, apikey, x-vinz-format-version, x-vinz-app-version, x-vinz-sha256, x-vinz-backup-scope",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  } : {};
 }
 
 function configuration(env) {
@@ -52,120 +50,376 @@ function configuration(env) {
 }
 
 /**
- * Server-side operational telemetry only. The event/property allowlist is
- * deliberately fixed: no user IDs, tokens, email, music queries, lyrics,
- * track names, audio, or request bodies are sent to PostHog.
+ * Fixed operational telemetry allowlist. Never capture user IDs, emails,
+ * request bodies, tokens, music queries, track/artist names, lyrics or audio.
  */
-function recordApiError(env, ctx, errorType, status) {
-  if (!env.POSTHOG_PROJECT_KEY || typeof ctx?.waitUntil !== "function") return;
-  const host = (env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/+$/, "");
+function recordApiError(env, ctx, route, errorType, status) {
+  if (!env.POSTHOG_PROJECT_KEY || !env.POSTHOG_HOST || typeof ctx?.waitUntil !== "function") return;
+  let host;
+  try {
+    const parsed = new URL(env.POSTHOG_HOST);
+    if (parsed.protocol !== "https:") return;
+    host = parsed.origin;
+  } catch {
+    return;
+  }
   const payload = {
     api_key: env.POSTHOG_PROJECT_KEY,
     event: "vinz_api_error",
     distinct_id: "vinz-api",
     properties: {
       service: "cloudflare-worker",
-      route: "/v1/me",
+      route,
       error_type: errorType,
       status_code: status,
     },
   };
-  ctx.waitUntil(
-    fetch(`${host}/capture/`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch(() => undefined),
-  );
+  ctx.waitUntil(fetch(`${host}/capture/`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => undefined));
+}
+
+async function authenticate(request, config) {
+  const authorization = request.headers.get("authorization") || "";
+  if (!/^Bearer\s+\S+$/i.test(authorization)) return { error: "unauthorized", status: 401 };
+  const response = await fetch(`${config.url}/auth/v1/user`, {
+    method: "GET",
+    headers: { apikey: config.key, authorization, accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.status === 401 || response.status === 403) return { error: "unauthorized", status: 401 };
+  if (!response.ok) return { error: "identity_provider_unavailable", status: 502 };
+  const user = await response.json();
+  if (typeof user.id !== "string") return { error: "unauthorized", status: 401 };
+  return { user: { id: user.id }, authorization };
+}
+
+function restHeaders(config, authorization, extra = {}) {
+  return {
+    apikey: config.key,
+    authorization,
+    accept: "application/json",
+    ...extra,
+  };
+}
+
+async function restRequest(config, authorization, path, init = {}) {
+  return fetch(`${config.url}/rest/v1/${path}`, {
+    ...init,
+    headers: restHeaders(config, authorization, init.headers || {}),
+    signal: init.signal || AbortSignal.timeout(8000),
+  });
+}
+
+async function readOwnProfile(config, authorization, userId) {
+  const query = new URLSearchParams({
+    select: "id,username,display_name,bio,avatar_path,is_public,discoverable,created_at,updated_at",
+    id: `eq.${userId}`,
+    limit: "1",
+  });
+  const response = await restRequest(config, authorization, `vinz_profiles?${query}`);
+  if (!response.ok) throw new Error("profile_service_unavailable");
+  const rows = await response.json();
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function updateProfile(request, config, auth) {
+  let input;
+  try { input = await request.json(); } catch { return { error: "invalid_json", status: 400 }; }
+  if (!input || typeof input !== "object" || Array.isArray(input)) return { error: "invalid_profile", status: 400 };
+
+  const update = {};
+  const allowed = ["username", "display_name", "bio", "avatar_path", "is_public", "discoverable"];
+  for (const key of Object.keys(input)) {
+    if (!allowed.includes(key)) return { error: "field_not_allowed", status: 400 };
+  }
+  if ("username" in input) {
+    if (typeof input.username !== "string" || !/^[a-z0-9_]{3,24}$/.test(input.username)) {
+      return { error: "invalid_username", status: 400 };
+    }
+    update.username = input.username;
+  }
+  if ("display_name" in input) {
+    if (typeof input.display_name !== "string" || input.display_name.trim().length < 1 || input.display_name.length > 48) {
+      return { error: "invalid_display_name", status: 400 };
+    }
+    update.display_name = input.display_name.trim();
+  }
+  if ("bio" in input) {
+    if (typeof input.bio !== "string" || input.bio.length > 240) return { error: "invalid_bio", status: 400 };
+    update.bio = input.bio;
+  }
+  if ("avatar_path" in input) {
+    if (input.avatar_path !== null && (typeof input.avatar_path !== "string" || input.avatar_path.length > 512 || input.avatar_path.startsWith("http"))) {
+      return { error: "invalid_avatar_path", status: 400 };
+    }
+    update.avatar_path = input.avatar_path;
+  }
+  for (const key of ["is_public", "discoverable"]) {
+    if (key in input) {
+      if (typeof input[key] !== "boolean") return { error: "invalid_boolean", status: 400 };
+      update[key] = input[key];
+    }
+  }
+  if (Object.keys(update).length === 0) return { error: "empty_update", status: 400 };
+
+  const query = new URLSearchParams({ id: `eq.${auth.user.id}` });
+  const response = await restRequest(config, auth.authorization, `vinz_profiles?${query}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify(update),
+  });
+  if (response.status === 409) return { error: "username_taken", status: 409 };
+  if (!response.ok) return { error: "profile_update_failed", status: 502 };
+  const rows = await response.json();
+  return { profile: Array.isArray(rows) ? rows[0] || null : null };
+}
+
+async function updateSettings(request, config, auth) {
+  let input;
+  try { input = await request.json(); } catch { return { error: "invalid_json", status: 400 }; }
+  const allowed = [
+    "allow_friend_requests", "show_listening_activity", "notify_new_releases",
+    "notify_friend_activity", "notify_podcast_updates",
+  ];
+  if (!input || typeof input !== "object" || Array.isArray(input)) return { error: "invalid_settings", status: 400 };
+  const update = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!allowed.includes(key) || typeof value !== "boolean") return { error: "invalid_settings_field", status: 400 };
+    update[key] = value;
+  }
+  if (!Object.keys(update).length) return { error: "empty_update", status: 400 };
+  const query = new URLSearchParams({ user_id: `eq.${auth.user.id}` });
+  const response = await restRequest(config, auth.authorization, `vinz_account_settings?${query}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({ ...update, updated_at: new Date().toISOString() }),
+  });
+  if (!response.ok) return { error: "settings_update_failed", status: 502 };
+  const rows = await response.json();
+  return { settings: Array.isArray(rows) ? rows[0] || null : null };
+}
+
+function hex(buffer) {
+  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function uploadBackup(request, env, config, auth, requestId, ctx) {
+  if (!env.BACKUPS_BUCKET) return json({ error: "backup_storage_not_configured", request_id: requestId }, 503);
+  const length = Number(request.headers.get("content-length") || 0);
+  if (length > MAX_BACKUP_BYTES) return json({ error: "backup_too_large", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 413);
+  const formatVersion = Number(request.headers.get("x-vinz-format-version"));
+  const appVersion = request.headers.get("x-vinz-app-version") || "";
+  const scope = request.headers.get("x-vinz-backup-scope") || "full";
+  const expectedHash = (request.headers.get("x-vinz-sha256") || "").toLowerCase();
+  if (!Number.isInteger(formatVersion) || formatVersion < 1 || appVersion.length > 50 || scope !== "full" || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+    return json({ error: "invalid_backup_metadata", request_id: requestId }, 400);
+  }
+  const bytes = await request.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_BACKUP_BYTES) {
+    return json({ error: bytes.byteLength > MAX_BACKUP_BYTES ? "backup_too_large" : "empty_backup", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, bytes.byteLength > MAX_BACKUP_BYTES ? 413 : 400);
+  }
+  const actualHash = hex(await crypto.subtle.digest("SHA-256", bytes));
+  if (actualHash !== expectedHash) return json({ error: "backup_checksum_mismatch", request_id: requestId }, 422);
+
+  const id = crypto.randomUUID();
+  const objectPath = `${auth.user.id}/${id}.backup`;
+  await env.BACKUPS_BUCKET.put(objectPath, bytes, {
+    httpMetadata: { contentType: "application/octet-stream" },
+    customMetadata: { sha256: actualHash, formatVersion: String(formatVersion) },
+  });
+
+  const metadata = {
+    user_id: auth.user.id,
+    object_path: objectPath,
+    byte_size: bytes.byteLength,
+    sha256: actualHash,
+    format_version: formatVersion,
+    app_version: appVersion,
+    backup_scope: scope,
+  };
+  const response = await restRequest(config, auth.authorization, "vinz_backups", {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify(metadata),
+  });
+  if (!response.ok) {
+    await env.BACKUPS_BUCKET.delete(objectPath).catch(() => undefined);
+    recordApiError(env, ctx, "/v1/backups", "backup_metadata_write_failed", 502);
+    return json({ error: "backup_metadata_write_failed", request_id: requestId }, 502);
+  }
+  const rows = await response.json();
+  const record = Array.isArray(rows) ? rows[0] : null;
+  return json({ backup: record ? {
+    id: record.id,
+    byte_size: record.byte_size,
+    sha256: record.sha256,
+    format_version: record.format_version,
+    app_version: record.app_version,
+    created_at: record.created_at,
+  } : { id, byte_size: bytes.byteLength, sha256: actualHash, format_version: formatVersion } }, 201);
+}
+
+async function listBackups(config, auth) {
+  const query = new URLSearchParams({
+    select: "id,byte_size,sha256,format_version,app_version,backup_scope,created_at",
+    order: "created_at.desc",
+    limit: "20",
+  });
+  const response = await restRequest(config, auth.authorization, `vinz_backups?${query}`);
+  if (!response.ok) return json({ error: "backup_list_failed" }, 502);
+  return json({ backups: await response.json() });
+}
+
+async function downloadBackup(env, config, auth, backupId, requestId) {
+  if (!env.BACKUPS_BUCKET) return json({ error: "backup_storage_not_configured", request_id: requestId }, 503);
+  if (!/^[0-9a-f-]{36}$/i.test(backupId)) return json({ error: "invalid_backup_id", request_id: requestId }, 400);
+  const query = new URLSearchParams({
+    select: "id,object_path,byte_size,sha256,format_version,app_version,created_at",
+    id: `eq.${backupId}`,
+    limit: "1",
+  });
+  const response = await restRequest(config, auth.authorization, `vinz_backups?${query}`);
+  if (!response.ok) return json({ error: "backup_lookup_failed", request_id: requestId }, 502);
+  const rows = await response.json();
+  const record = Array.isArray(rows) ? rows[0] : null;
+  if (!record || !record.object_path.startsWith(`${auth.user.id}/`)) return json({ error: "backup_not_found", request_id: requestId }, 404);
+  const object = await env.BACKUPS_BUCKET.get(record.object_path);
+  if (!object) return json({ error: "backup_object_missing", request_id: requestId }, 410);
+  return new Response(object.body, {
+    status: 200,
+    headers: {
+      "content-type": "application/octet-stream",
+      "content-length": String(record.byte_size),
+      "content-disposition": `attachment; filename="vinz-backup-${record.id}.bin"`,
+      "cache-control": "no-store",
+      "x-vinz-sha256": record.sha256,
+      "x-vinz-format-version": String(record.format_version),
+      "x-vinz-app-version": record.app_version || "",
+      "x-request-id": requestId,
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+async function deleteBackup(env, config, auth, backupId, requestId) {
+  if (!env.BACKUPS_BUCKET) return json({ error: "backup_storage_not_configured", request_id: requestId }, 503);
+  if (!/^[0-9a-f-]{36}$/i.test(backupId)) return json({ error: "invalid_backup_id", request_id: requestId }, 400);
+  const query = new URLSearchParams({ select: "id,object_path", id: `eq.${backupId}`, limit: "1" });
+  const lookup = await restRequest(config, auth.authorization, `vinz_backups?${query}`);
+  if (!lookup.ok) return json({ error: "backup_lookup_failed", request_id: requestId }, 502);
+  const rows = await lookup.json();
+  const record = Array.isArray(rows) ? rows[0] : null;
+  if (!record || !record.object_path.startsWith(`${auth.user.id}/`)) return json({ error: "backup_not_found", request_id: requestId }, 404);
+  const removeQuery = new URLSearchParams({ id: `eq.${backupId}` });
+  const removed = await restRequest(config, auth.authorization, `vinz_backups?${removeQuery}`, { method: "DELETE" });
+  if (!removed.ok) return json({ error: "backup_delete_failed", request_id: requestId }, 502);
+  // Database metadata is removed first; a failed object cleanup leaves only an
+  // inaccessible orphan, never a visible backup record pointing at missing data.
+  await env.BACKUPS_BUCKET.delete(record.object_path).catch(() => undefined);
+  return json({ deleted: true, id: backupId }, 200);
 }
 
 export async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
-
   if (origin === false) return json({ error: "origin_not_allowed", request_id: requestId }, 403);
   const headers = { ...corsHeaders(origin), "x-request-id": requestId };
-
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers });
-  }
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
 
   const url = new URL(request.url);
   if (url.pathname === "/health" && request.method === "GET") {
-    return json(
-      { service: "vinz-api", status: "ok", configured: Boolean(configuration(env)) },
-      200,
-      headers,
-    );
+    return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET) }, 200, headers);
+  }
+  const config = configuration(env);
+  if (!config && url.pathname.startsWith("/v1/")) {
+    return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
   }
 
-  if (url.pathname === "/v1/me") {
-    if (request.method !== "GET") {
-      return json({ error: "method_not_allowed", request_id: requestId }, 405, {
-        ...headers,
-        allow: "GET, OPTIONS",
-      });
+  if (url.pathname === "/v1/profiles" || url.pathname.startsWith("/v1/profiles/")) {
+    if (request.method !== "GET") return json({ error: "method_not_allowed", request_id: requestId }, 405, { ...headers, allow: "GET, OPTIONS" });
+    const auth = await authenticate(request, config);
+    if (auth.error) return json({ error: auth.error, request_id: requestId }, auth.status, headers);
+    const username = decodeURIComponent(url.pathname.slice("/v1/profiles/".length));
+    if (!username || !/^[a-z0-9_]{3,24}$/.test(username)) return json({ error: "invalid_username", request_id: requestId }, 400, headers);
+    const query = new URLSearchParams({
+      select: "username,display_name,bio,avatar_path",
+      username: `eq.${username}`,
+      is_public: "eq.true",
+      discoverable: "eq.true",
+      limit: "1",
+    });
+    const response = await restRequest(config, auth.authorization, `vinz_profiles?${query}`);
+    if (!response.ok) return json({ error: "profile_lookup_failed", request_id: requestId }, 502, headers);
+    const rows = await response.json();
+    return json({ profile: Array.isArray(rows) ? rows[0] || null : null }, 200, headers);
+  }
+
+  if (url.pathname.startsWith("/v1/")) {
+    const auth = await authenticate(request, config);
+    if (auth.error) {
+      recordApiError(env, ctx, url.pathname, auth.error, auth.status);
+      return json({ error: auth.error, request_id: requestId }, auth.status, headers);
     }
 
-    const config = configuration(env);
-    if (!config) {
-      return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
-    }
-
-    try {
-      const authorization = request.headers.get("authorization") || "";
-      if (!/^Bearer\s+\S+$/i.test(authorization)) {
-        return json({ error: "unauthorized", request_id: requestId }, 401, headers);
-      }
-
-      const authResponse = await fetch(`${config.url}/auth/v1/user`, {
-        method: "GET",
-        headers: {
-          apikey: config.key,
-          authorization,
-          accept: "application/json",
-        },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (authResponse.status === 401 || authResponse.status === 403) {
-        return json({ error: "unauthorized", request_id: requestId }, 401, headers);
-      }
-      if (!authResponse.ok) {
-        recordApiError(env, ctx, "identity_provider_unavailable", 502);
-        return json({ error: "identity_provider_unavailable", request_id: requestId }, 502, headers);
-      }
-
-      const user = await authResponse.json();
-      if (typeof user.id !== "string") {
-        return json({ error: "unauthorized", request_id: requestId }, 401, headers);
-      }
-
-      const query = new URLSearchParams({
-        select: "id,username,display_name,bio,avatar_path,is_public,discoverable,created_at,updated_at",
-        id: `eq.${user.id}`,
-        limit: "1",
-      });
-      const profileResponse = await fetch(`${config.url}/rest/v1/vinz_profiles?${query}`, {
-        method: "GET",
-        headers: {
-          apikey: config.key,
-          authorization,
-          accept: "application/json",
-        },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!profileResponse.ok) {
-        recordApiError(env, ctx, "profile_service_unavailable", 502);
+    if (url.pathname === "/v1/me" && request.method === "GET") {
+      try {
+        const profile = await readOwnProfile(config, auth.authorization, auth.user.id);
+        return json({ user: auth.user, profile }, 200, headers);
+      } catch {
+        recordApiError(env, ctx, "/v1/me", "profile_service_unavailable", 502);
         return json({ error: "profile_service_unavailable", request_id: requestId }, 502, headers);
       }
-
-      const rows = await profileResponse.json();
-      const profile = Array.isArray(rows) ? rows[0] || null : null;
-      return json({ user: { id: user.id }, profile }, 200, headers);
-    } catch {
-      recordApiError(env, ctx, "upstream_timeout_or_failure", 502);
-      return json({ error: "upstream_timeout_or_failure", request_id: requestId }, 502, headers);
     }
+
+    if (url.pathname === "/v1/me" && request.method === "PATCH") {
+      const result = await updateProfile(request, config, auth);
+      if (result.error) return json({ error: result.error, request_id: requestId }, result.status, headers);
+      return json(result, 200, headers);
+    }
+
+    if (url.pathname === "/v1/me/settings" && request.method === "GET") {
+      const query = new URLSearchParams({ select: "user_id,allow_friend_requests,show_listening_activity,notify_new_releases,notify_friend_activity,notify_podcast_updates,updated_at", user_id: `eq.${auth.user.id}`, limit: "1" });
+      const response = await restRequest(config, auth.authorization, `vinz_account_settings?${query}`);
+      if (!response.ok) return json({ error: "settings_lookup_failed", request_id: requestId }, 502, headers);
+      const rows = await response.json();
+      return json({ settings: Array.isArray(rows) ? rows[0] || null : null }, 200, headers);
+    }
+
+    if (url.pathname === "/v1/me/settings" && request.method === "PATCH") {
+      const result = await updateSettings(request, config, auth);
+      if (result.error) return json({ error: result.error, request_id: requestId }, result.status, headers);
+      return json(result, 200, headers);
+    }
+
+    if (url.pathname === "/v1/backups" && request.method === "GET") {
+      return listBackups(config, auth);
+    }
+    if (url.pathname === "/v1/backups" && request.method === "PUT") {
+      try { return await uploadBackup(request, env, config, auth, requestId, ctx); }
+      catch {
+        recordApiError(env, ctx, "/v1/backups", "backup_upload_failed", 502);
+        return json({ error: "backup_upload_failed", request_id: requestId }, 502, headers);
+      }
+    }
+    const backupMatch = url.pathname.match(/^\/v1\/backups\/([^/]+)$/);
+    if (backupMatch && request.method === "GET") {
+      try { return await downloadBackup(env, config, auth, backupMatch[1], requestId); }
+      catch {
+        recordApiError(env, ctx, "/v1/backups/:id", "backup_download_failed", 502);
+        return json({ error: "backup_download_failed", request_id: requestId }, 502, headers);
+      }
+    }
+    if (backupMatch && request.method === "DELETE") {
+      try { return await deleteBackup(env, config, auth, backupMatch[1], requestId); }
+      catch {
+        recordApiError(env, ctx, "/v1/backups/:id", "backup_delete_failed", 502);
+        return json({ error: "backup_delete_failed", request_id: requestId }, 502, headers);
+      }
+    }
+    if (url.pathname.startsWith("/v1/")) return json({ error: "not_found", request_id: requestId }, 404, headers);
   }
 
   return json({ error: "not_found", request_id: requestId }, 404, headers);
