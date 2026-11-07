@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">لا يمكن حفظ ملف التعريف الخاص بك. تحقق من التفاصيل والاتصال، ثم حاول مرة أخرى.</string>
     <string name="cloud_account_recovery_failed">لا يمكن إكمال طلب الاسترداد. حاول مرة أخرى لاحقًا.</string>
     <string name="cloud_account_sign_out_failed">لا يمكن إكمال تسجيل الخروج. حاول ثانية.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
