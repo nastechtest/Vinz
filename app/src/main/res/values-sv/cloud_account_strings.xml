@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Din profil kunde inte sparas. Kontrollera dina uppgifter och anslutning och försök sedan igen.</string>
     <string name="cloud_account_recovery_failed">Återställningsbegäran kunde inte slutföras. Försök igen senare.</string>
     <string name="cloud_account_sign_out_failed">Utloggningen kunde inte slutföras. Försök igen.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
