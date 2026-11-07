@@ -20,11 +20,13 @@
 ## GitHub Actions configuration
 
 Secrets:
+- `SUPABASE_ACCESS_TOKEN` — Supabase personal access token for Edge Function deployment.
 - `CLOUDFLARE_API_TOKEN` — Workers edit/deploy permission for the account.
 - `POSTHOG_PROJECT_KEY` — optional PostHog ingestion key; distinct from the personal API token. Deploys work without it, but production telemetry stays disabled.
 - Existing provider-health credentials as documented in `docs/CI_WORKFLOWS.md`.
 
 Variables:
+- `SUPABASE_PROJECT_REF` — `iszghebmetrbkfhnnoqq`.
 - `CLOUDFLARE_ACCOUNT_ID`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
