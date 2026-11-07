@@ -45,10 +45,9 @@ jobs:
       - name: Build Cloudflare Worker
         working-directory: web
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://iszghebmetrbkfhnnoqq.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
-          NEXT_PUBLIC_VINZ_API_URL: ${{ vars.NEXT_PUBLIC_VINZ_API_URL }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          NEXT_PUBLIC_VINZ_API_URL: ${{ vars.NEXT_PUBLIC_VINZ_API_URL || 'https://api.vinzmusic.workers.dev' }}
         run: npm run build:vinext
 
   deploy-home:
@@ -75,14 +74,12 @@ jobs:
         working-directory: web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://iszghebmetrbkfhnnoqq.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
-          NEXT_PUBLIC_VINZ_API_URL: ${{ vars.NEXT_PUBLIC_VINZ_API_URL }}
+          NEXT_PUBLIC_VINZ_API_URL: ${{ vars.NEXT_PUBLIC_VINZ_API_URL || 'https://api.vinzmusic.workers.dev' }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$NEXT_PUBLIC_SUPABASE_URL"
           test -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
           test -n "$NEXT_PUBLIC_VINZ_API_URL"
