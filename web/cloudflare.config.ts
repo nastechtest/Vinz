@@ -1,6 +1,7 @@
 import { bindings, defineConfig, defineWorker } from "cf/config";
 
 export default defineConfig({
+  accountId: "6ac32c2af3e1d65a98b3733b29bee4ea",
   worker: defineWorker({
     // The workers.dev hostname is derived from this exact Worker name.
     // Account subdomain: vinzmusic => https://home.vinzmusic.workers.dev
