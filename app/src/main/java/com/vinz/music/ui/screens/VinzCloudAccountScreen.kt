@@ -59,7 +59,8 @@ internal fun CloudAccountContent(
                 .testTag("cloud-account-content"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            VinzTextButton(onClick = onBack, enabled = !state.busy,
+            // Onboarding Skip advances the setup flow; ordinary account Back only navigates away.
+            VinzTextButton(onClick = onContinue ?: onBack, enabled = !state.busy,
                 modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
                 Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
             }
