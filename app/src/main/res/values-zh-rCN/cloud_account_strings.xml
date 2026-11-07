@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">登录并管理您的云个人资料</string>
     <string name="cloud_account_intro">您的云个人资料与 YouTube Music 是分开的。本地音乐和播放无需登录即可使用。</string>
     <string name="cloud_account_email">电子邮件</string>
