@@ -218,6 +218,7 @@ class RecognitionWorker(context: Context, params: WorkerParameters) : CoroutineW
                     Notifications.post(
                         c.app, Notifications.RECOGNITION, (4200 + p.id % 1000).toInt(), tr(R.string.found_it_2, r.title), r.artist,
                         song?.let { "https://music.youtube.com/watch?v=${it.id}" } ?: "vinz://recognized",
+                        iconRes = R.drawable.ic_notification_recognition,
                     )
                 }
                 ShazamResult.NoMatch -> c.db.recognitions().put(p.copy(status = "none", signature = null))

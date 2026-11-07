@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Sign in and manage your Vinz Account</string>
+    <string name="cloud_account_intro">Sign in to your Vinz Account with email and password. YouTube Music has its own separate login. Local music and playback work without signing in.</string>
+    <string name="cloud_account_email">Email address</string>
+    <string name="cloud_account_password">Password</string>
+    <string name="cloud_account_username">Username</string>
+    <string name="cloud_account_display_name">Display name</string>
+    <string name="cloud_account_username_hint">3–24 lowercase letters, numbers or underscores</string>
+    <string name="cloud_account_password_hint">Use at least 8 characters.</string>
+    <string name="cloud_account_create">Create cloud account</string>
+    <string name="cloud_account_existing">I already have an account</string>
+    <string name="cloud_account_forgot">Forgot password?</string>
+    <string name="cloud_account_recovery">Send recovery email</string>
+    <string name="cloud_account_recovery_sent">If an account exists for this address, a recovery email has been sent.</string>
+    <string name="cloud_account_confirmation">Check your email to confirm your account, then return to sign in.</string>
+    <string name="cloud_account_setup">Finish setting up your profile.</string>
+    <string name="cloud_account_bio">Bio</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Public profile</string>
+    <string name="cloud_account_public_hint">Allow other Vinz users to view your profile.</string>
+    <string name="cloud_account_discoverable">Discoverable</string>
+    <string name="cloud_account_discoverable_hint">Allow your profile to appear in user discovery.</string>
+    <string name="cloud_account_saved">Your cloud profile is saved.</string>
+    <string name="cloud_account_signed_out">You have signed out of your cloud account.</string>
+    <string name="cloud_account_signed_in">Signed in as %1$s</string>
+    <string name="cloud_account_load_failed">Your profile could not be loaded. Try again before editing.</string>
+    <string name="cloud_account_request_failed">This account request could not be completed. Check your connection and try again.</string>
+    <string name="cloud_account_sign_in_failed">Sign-in could not be completed. Check your details and connection, then try again.</string>
+    <string name="cloud_account_save_failed">Your profile could not be saved. Check your details and connection, then try again.</string>
+    <string name="cloud_account_recovery_failed">The recovery request could not be completed. Try again later.</string>
+    <string name="cloud_account_sign_out_failed">Sign-out could not be completed. Try again.</string>
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>
