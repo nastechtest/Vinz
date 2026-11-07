@@ -1,0 +1,134 @@
+name: Platform backend checks
+
+on:
+  pull_request:
+    branches: [main, stable]
+    paths:
+      - "platform/cloudflare/**"
+      - "supabase/**"
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+  push:
+    branches: [main, stable]
+    paths:
+      - "platform/cloudflare/**"
+      - "supabase/**"
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloudflare-worker:
+    name: Cloudflare Worker syntax and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: platform/cloudflare/package.json
+
+      - name: Verify runtime and source syntax
+        working-directory: platform/cloudflare
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          node --check vinz-api.js
+          node --check vinz-api.test.js
+
+      - name: Validate Wrangler config and binding contracts
+        working-directory: platform/cloudflare
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const assert = require("node:assert/strict");
+          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+          assert.equal(config.name, "vinz-api-staging");
+          assert.equal(config.main, "vinz-api.js");
+          assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(config.compatibility_date));
+          assert.ok(config.kv_namespaces?.some((binding) => binding.binding === "CATALOG_CACHE" && binding.id));
+          assert.ok(config.r2_buckets?.some((binding) => binding.binding === "BACKUPS_BUCKET" && binding.bucket_name));
+          assert.equal(config.observability?.enabled, true);
+          assert.equal(config.observability?.traces?.enabled, true);
+          console.log("Wrangler config and Worker bindings are consistent.");
+          NODE
+
+      - name: Run Cloudflare API tests
+        working-directory: platform/cloudflare
+        run: npm test
+
+  supabase-migrations:
+    name: Supabase migration integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Validate migration ordering and non-empty SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("supabase/migrations")
+          files = sorted(root.glob("*.sql"))
+          if not files:
+              raise SystemExit("No Supabase migration files found")
+          versions = []
+          for path in files:
+              if path.stat().st_size == 0:
+                  raise SystemExit(f"Empty migration: {path}")
+              match = re.match(r"^([0-9]{14})_[a-z0-9_]+[.]sql$", path.name)
+              if not match:
+                  raise SystemExit(f"Migration must use YYYYMMDDHHMMSS_name.sql: {path.name}")
+              versions.append(match.group(1))
+          if len(versions) != len(set(versions)):
+              raise SystemExit("Duplicate Supabase migration version detected")
+          if versions != sorted(versions):
+              raise SystemExit("Supabase migrations are not ordered")
+          print(f"Validated {len(files)} timestamped Supabase migrations.")
+          PY
+
+      - name: Check Edge Function source is present
+        run: |
+          set -euo pipefail
+          test -s supabase/functions/vinz-discovery/index.ts
+          grep -q "MAX_WATCHES_PER_RUN" supabase/functions/vinz-discovery/index.ts
+          grep -q "MAX_PODCASTS_PER_RUN" supabase/functions/vinz-discovery/index.ts
+
+  workflow-hygiene:
+    name: Workflow and patch hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Check whitespace errors
+        run: git diff --check
+
+      - name: Validate YAML syntax
+        run: |
+          ruby -e 'require "yaml"; Dir.glob(".github/**/*.{yml,yaml}").each { |f| YAML.load_file(f, aliases: true); puts "valid YAML: #{f}" }'
