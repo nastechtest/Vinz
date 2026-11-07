@@ -11,40 +11,88 @@ class AccountNavigationGuardTest {
     private val source = File("src/main/java/com/vinz/music")
     private fun read(path: String) = File(source, path).readText()
 
-    @Test fun settingsHasOneCanonicalVinzAccountDestination() {
+    @Test fun settingsHasOneCanonicalCloudBackedVinzAccountDestination() {
         val settings = read("ui/screens/SettingsScreen.kt")
         assertEquals(1, Regex("nav\\.go\\(Routes\\.ACCOUNT\\)").findAll(settings).count())
         assertFalse(settings.contains("nav.go(Routes.VINZ_CLOUD_ACCOUNT)"))
-        assertTrue(settings.contains("Modifier.clickable { nav.go(Routes.LOGIN) }"))
-        assertTrue(settings.contains("nav.go(Routes.LOGIN_ADD)"))
+        assertTrue(settings.contains("R.string.your_vinz_account"))
+        assertTrue(settings.contains("ExistingCloudAccountGateway(c.vinzCloudAccount).identity"))
+        assertFalse(settings.contains("VinzCloudAccountSection"))
     }
 
-    @Test fun oldCloudDestinationUsesExistingAccountHubAndBackStack() {
-        val activity = read("MainActivity.kt")
-        val alias = activity.substringAfter("composable(Routes.VINZ_CLOUD_ACCOUNT)")
-            .substringBefore("composable(")
-        assertTrue(alias.contains("VinzAccountScreen(false, bottomPadding, cloudExpanded = true)"))
-        assertTrue(alias.contains("navController.popBackStack()"))
-        assertFalse(activity.contains(".VinzCloudAccountScreen"))
-    }
-
-    @Test fun onboardingKeepsExistingLocalProfileAndArtistSelection() {
+    @Test fun startupSettingsAndLegacyCloudRouteUseTheSameAccountHost() {
         val activity = read("MainActivity.kt")
         assertTrue(activity.contains("onAccount = { navController.navigate(Routes.ACCOUNT + \"?onboarding=true\") }"))
         assertTrue(activity.contains("onSkip = { navController.navigate(Routes.PICK_ARTISTS + \"?onboarding=true\") }"))
-        val account = read("ui/screens/AccountScreens.kt")
-        assertTrue(account.contains("if (!onboarding) Column"))
-        assertTrue(account.contains("VinzCloudAccountSection(initiallyExpanded = cloudExpanded)"))
-        assertTrue(account.contains("c.account.create(name)"))
-        assertTrue(account.contains("c.account.bringOver"))
-        assertTrue(account.contains("c.account.delete()"))
-        assertTrue(account.contains("Modifier.fillMaxSize().imePadding().verticalScroll"))
+
+        val legacyRoute = activity.substringAfter("composable(Routes.VINZ_CLOUD_ACCOUNT)")
+            .substringBefore("composable(")
+        assertTrue(legacyRoute.contains("VinzAccountScreen(false, bottomPadding)"))
+        assertTrue(legacyRoute.contains("navController.popBackStack()"))
+        assertFalse(activity.contains(".VinzCloudAccountScreen"))
     }
 
-    @Test fun welcomeNamesTheExistingYoutubeSignInExplicitly() {
+    @Test fun accountHostIsRouteScopedCloudOnlyAndCleansUpPasswords() {
+        val account = read("ui/screens/AccountScreens.kt")
+        val host = account.substringAfter("fun VinzAccountScreen(")
+            .substringBefore("private fun LocalMusicSummary")
+        assertTrue(account.contains("fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit)"))
+        assertTrue(host.contains("CloudAccountController(ExistingCloudAccountGateway(cloud), scope)"))
+        assertTrue(host.contains("if (onboarding) it.mode(CloudAccountMode.SIGN_UP)"))
+        assertTrue(host.contains("LaunchedEffect(controller) { controller.loadProfile() }"))
+        assertTrue(host.contains("DisposableEffect(controller) { onDispose { controller.clearPassword() } }"))
+        assertTrue(host.contains("BackHandler(enabled = state.busy)"))
+        assertTrue(host.contains("onContinue = if (onboarding) onDone else null"))
+        assertTrue(host.contains("bottomPadding = bottomPadding"))
+        assertFalse(host.contains("VinzCloudAccountSection"))
+        listOf("c.account.create(", "c.account.delete(", "c.account.name", "c.account.avatar").forEach {
+            assertFalse("Account host must not mutate local identity through $it", host.contains(it))
+        }
+    }
+
+    @Test fun localSummaryOnlyRetainsLegacyImportBookkeeping() {
+        val account = read("ui/screens/AccountScreens.kt")
+        val summary = account.substringAfter("private fun LocalMusicSummary()")
+        assertTrue(summary.contains("val legacyImport by c.account.profile.collectAsState()"))
+        assertTrue(summary.contains("c.account.bringOver"))
+        listOf("c.account.create(", "c.account.delete(", "c.account.name", "c.account.avatar").forEach {
+            assertFalse("Local summary must not mutate identity through $it", summary.contains(it))
+        }
+    }
+
+    @Test fun cloudContentHasNoEmbeddedSectionAndGatesOnboardingContinue() {
+        val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
+        assertFalse(cloud.contains("fun VinzCloudAccountSection("))
+        assertTrue(cloud.contains("fun CloudAccountContent("))
+        assertTrue(cloud.contains("onContinue: (() -> Unit)? = null"))
+        assertTrue(cloud.contains("bottomPadding: Dp = 0.dp"))
+        assertTrue(cloud.contains("supplementalContent: @Composable () -> Unit = {}"))
+        assertTrue(cloud.contains("cloud-account-skip"))
+        assertTrue(cloud.contains("cloud-account-back"))
+        assertTrue(cloud.contains("cloud-account-continue"))
+        assertTrue(cloud.contains("if (onContinue != null && state.canContinue)"))
+        assertTrue(cloud.contains("enabled = !state.busy"))
+        assertFalse(cloud.contains("embedded: Boolean"))
+    }
+
+    @Test fun credentialsHaveExplicitHintsAndSignupFieldsFollowCredentials() {
+        val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
+        assertTrue(cloud.contains("R.string.cloud_account_email_hint"))
+        assertTrue(cloud.contains("R.string.cloud_account_password_hint"))
+        assertTrue(cloud.contains("R.string.cloud_account_password_sign_in_hint"))
+        val unsigned = cloud.substringAfter("if (state.identity == null)")
+            .substringBefore("VinzButton(onClick = { actions.submit() }")
+        assertTrue(unsigned.indexOf("cloud-account-email") < unsigned.indexOf("CloudProfileFields(state, actions)"))
+        assertTrue(unsigned.indexOf("cloud-account-password") < unsigned.indexOf("CloudProfileFields(state, actions)"))
+    }
+
+    @Test fun welcomeUsesCloudAccountCopyAndKeepsCanonicalYoutubeSignIn() {
         val welcome = read("ui/screens/LoginScreen.kt").substringAfter("fun WelcomeScreen(")
-        assertTrue(welcome.contains("Text(tr(R.string.sign_in_to_youtube_music)"))
-        assertFalse(welcome.contains("Text(tr(R.string.sign_in_with_google)"))
+        assertTrue(welcome.contains("R.string.cloud_account_intro"))
+        assertFalse(welcome.contains("R.string.no_email"))
+        assertFalse(welcome.contains("on_this_phone"))
+        assertTrue(welcome.contains("R.string.sign_in_to_youtube_music"))
+
         val activity = read("MainActivity.kt")
         assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.LOGIN) }"))
     }
@@ -60,25 +108,14 @@ class AccountNavigationGuardTest {
         assertTrue(login.contains("R.string.sign_in_to_youtube_music"))
     }
 
-    @Test fun cloudControllerIsLazyAndRetainedOutsideCollapsibleContent() {
-        val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
-        val section = cloud.substringAfter("fun VinzCloudAccountSection(")
-            .substringBefore("internal fun CloudAccountContent(")
-        assertTrue(section.contains("var activated by remember { mutableStateOf(initiallyExpanded) }"))
-        assertTrue(section.indexOf("if (activated)") < section.indexOf("LocalContainer.current"))
-        assertTrue(section.indexOf("CloudAccountController(") < section.indexOf("if (expanded)"))
-        assertTrue(section.contains("LaunchedEffect(controller) { controller.loadProfile() }"))
-        assertTrue(section.contains("if (!expanded) activated = true"))
-        assertTrue(section.contains("if (expanded) activeAccount?.let"))
-    }
-
     @Test fun cloudPresentationCannotMutateLocalOrYoutubeIdentity() {
         val cloud = read("ui/screens/VinzCloudAccountScreen.kt")
-        listOf("settings.logout(", "settings.saveAccount(", "CookieManager", "account.delete(",
-            "account.create(", "bringOver(", "Routes.LOGIN", "rememberSaveable").forEach {
+        listOf(
+            "settings.logout(", "settings.saveAccount(", "CookieManager", "account.delete(",
+            "account.create(", "bringOver(", "Routes.LOGIN", "rememberSaveable",
+        ).forEach {
             assertFalse("Cloud presentation must not use $it", cloud.contains(it))
         }
         assertFalse(cloud.contains("fun VinzCloudAccountScreen("))
-        assertTrue(cloud.contains("enabled = activeAccount?.second?.busy != true"))
     }
 }
