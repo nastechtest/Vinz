@@ -34,7 +34,7 @@ export default function Home() {
     async function googleSignIn() {
     if (!supabase) return;
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + "/auth/callback" } });
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + "/auth/callback?next=%2Faccount" } });
     if (error) { setMessage(error.message); setBusy(false); }
   }
 
