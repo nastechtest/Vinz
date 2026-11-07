@@ -52,7 +52,7 @@ jobs:
         run: npm run build:vinext
 
   deploy-home:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_deploy == 'deploy-home-production' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_deploy == 'deploy-home-production' }}
     needs: web-build
     runs-on: ubuntu-24.04
     timeout-minutes: 25
