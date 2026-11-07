@@ -688,6 +688,11 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
                             )
                         }
+                        composable(Routes.VINZ_CLOUD_ACCOUNT) {
+                            ScreenBackdrop(BackdropScreen.SETTINGS) {
+                                com.vinz.music.ui.screens.VinzCloudAccountScreen { navController.popBackStack() }
+                            }
+                        }
                         composable(
                             Routes.ACCOUNT + "?onboarding={onboarding}",
                             listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false }),

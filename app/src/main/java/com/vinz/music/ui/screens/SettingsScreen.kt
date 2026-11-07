@@ -625,7 +625,22 @@ private fun AccountCard() {
         dismissButton = { VinzTextButton({ confirmSignOut = false; signOut() }) { Text(tr(R.string.just_sign_out)) } },
     )
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
-    // The Vinz Account: who the listener is in Vinz, on this phone.
+    // Cloud identity is distinct from the on-device profile and YouTube Music sign-in.
+    Row(
+        Modifier.fillMaxWidth().clickable { nav.go(Routes.VINZ_CLOUD_ACCOUNT) }.padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(42.dp).clip(CircleShape).background(if (frosted) com.vinz.music.ui.components.frostFill(1.6f) else scheme.surface.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+            Icon(VinzIcons.Person, null, tint = if (frosted) scheme.primary else ink)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Vinz Account", style = MaterialTheme.typography.titleMedium, color = ink)
+            Text("Sign in, create your cloud profile and manage privacy", style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
+        }
+        Icon(VinzIcons.ChevronRight, null, tint = ink)
+    }
+    // The on-device profile: who the listener is on this phone.
     Row(
         Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
