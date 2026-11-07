@@ -50,11 +50,16 @@ Deno.serve(async (request: Request) => {
 
   const base = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  if (!base || !serviceKey || !cronSecret) return response({ error: "discovery_not_configured" }, 503);
+  if (!base || !serviceKey) return response({ error: "discovery_not_configured" }, 503);
 
   const supplied = request.headers.get("x-vinz-cron-secret") || "";
-  if (!constantTimeEqual(supplied, cronSecret)) return response({ error: "unauthorized" }, 401);
+  if (supplied.length < 32 || supplied.length > 256) return response({ error: "unauthorized" }, 401);
+  const verifyResponse = await rest(base, serviceKey, "rpc/vinz_verify_discovery_secret", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ p_secret: supplied }),
+  });
+  if (!verifyResponse.ok || await verifyResponse.json() !== true) return response({ error: "unauthorized" }, 401);
 
   const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
   const watchQuery = new URLSearchParams({
