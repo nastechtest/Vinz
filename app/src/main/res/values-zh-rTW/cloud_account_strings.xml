@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">無法儲存您的個人資料。檢查您的詳細資訊和連接，然後重試。</string>
     <string name="cloud_account_recovery_failed">無法完成恢復請求。稍後再試。</string>
     <string name="cloud_account_sign_out_failed">無法完成註銷。再試一次。</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
