@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Je profiel kan niet worden opgeslagen. Controleer uw gegevens en verbinding en probeer het opnieuw.</string>
     <string name="cloud_account_recovery_failed">Het herstelverzoek kan niet worden voltooid. Probeer het later opnieuw.</string>
     <string name="cloud_account_sign_out_failed">Het afmelden kon niet worden voltooid. Probeer het opnieuw.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
