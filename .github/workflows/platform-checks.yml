@@ -51,6 +51,23 @@ jobs:
           node --check vinz-api.js
           node --check vinz-api.test.js
 
+      - name: Validate Wrangler config and binding contracts
+        working-directory: platform/cloudflare
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const assert = require("node:assert/strict");
+          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+          assert.equal(config.name, "vinz-api-staging");
+          assert.equal(config.main, "vinz-api.js");
+          assert.match(config.compatibility_date, /^\\d{4}-\\d{2}-\\d{2}$/);
+          assert.ok(config.kv_namespaces?.some((binding) => binding.binding === "CATALOG_CACHE" && binding.id));
+          assert.ok(config.r2_buckets?.some((binding) => binding.binding === "BACKUPS_BUCKET" && binding.bucket_name));
+          assert.equal(config.observability?.enabled, true);
+          assert.equal(config.observability?.traces?.enabled, true);
+          console.log("Wrangler config and Worker bindings are consistent.");
+          NODE
+
       - name: Run Cloudflare API tests
         working-directory: platform/cloudflare
         run: npm test
