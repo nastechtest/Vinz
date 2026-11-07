@@ -361,3 +361,28 @@ test("lyrics search rejects empty queries", async (t) => {
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "invalid_lyrics_search");
 });
+
+test("public share lookup uses the anonymous Supabase role", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    assert.match(String(input), /\/rest\/v1\/vinz_share_links/);
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("authorization"), null);
+    assert.ok(headers.get("apikey"));
+    return new Response(JSON.stringify([{
+      id: "11111111-1111-4111-8111-111111111111",
+      provider: "spotify",
+      external_url: "https://open.spotify.com/track/test",
+      title: "Test Song",
+      artist: "Test Artist",
+      artwork_url: null,
+      created_at: "2026-11-07T00:00:00Z",
+      expires_at: null,
+    }]), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/s/11111111-1111-4111-8111-111111111111"),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).share.title, "Test Song");
+});
