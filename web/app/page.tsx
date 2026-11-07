@@ -31,10 +31,27 @@ export default function Home() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive) setUser(session?.user ?? null);
     });
-    async function googleSignIn() {
+  return () => { alive = false; listener.subscription.unsubscribe(); };
+  }, [supabase]);
+
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_VINZ_API_URL;
+    if (!api) { setApiStatus("offline"); return; }
+    fetch(new URL("/health", api), { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        setApiStatus(response.ok && payload.status === "ok" && payload.configured ? "online" : "offline");
+      })
+      .catch(() => setApiStatus("offline"));
+  }, []);
+
+  async function googleSignIn() {
     if (!supabase) return;
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + "/auth/callback?next=%2Faccount" } });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + "/auth/callback?next=%2Faccount" },
+    });
     if (error) { setMessage(error.message); setBusy(false); }
   }
 
@@ -49,24 +66,12 @@ export default function Home() {
   async function recoverPassword() {
     if (!supabase || !email.trim()) { setMessage("Enter your email address first."); return; }
     setBusy(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin + "/auth/reset-password" });
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin + "/auth/reset-password",
+    });
     setMessage(error?.message ?? "If the account exists, a password reset email has been sent.");
     setBusy(false);
   }
-
-  return () => { alive = false; listener.subscription.unsubscribe(); };
-  }, [supabase]);
-
-  useEffect(() => {
-    const api = process.env.NEXT_PUBLIC_VINZ_API_URL;
-    if (!api) { setApiStatus("offline"); return; }
-    fetch(new URL("/health", api), { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json();
-        setApiStatus(response.ok && payload.status === "ok" && payload.configured ? "online" : "offline");
-      })
-      .catch(() => setApiStatus("offline"));
-  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
