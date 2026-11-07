@@ -65,6 +65,8 @@ All `/v1/*` routes require a Supabase access token in `Authorization: Bearer <to
 ### Catalog
 - `GET /v1/catalog/search?q=...&type=song|album|artist|podcast` — Apple iTunes Search API with normalized metadata and KV caching.
 - `GET /v1/catalog/artists/:itunesArtistId/releases` — Apple artist album catalogue/discography with KV caching.
+- `GET /v1/lyrics/search?q=...` or structured `track_name`/`artist_name`/`album_name` — LRCLIB lyrics search.
+- `GET /v1/lyrics/get?track_name=...&artist_name=...&album_name=...&duration=...` — best-match lyrics lookup. Lyrics responses are proxied only, never stored in Supabase, KV or PostHog; 429 responses preserve `Retry-After`.
 - Search results omit preview-audio URLs. Apple artwork/store links remain attributed and must be used under Apple's Search API promotional-use terms.
 
 ### Backups
@@ -111,8 +113,8 @@ Never place the Supabase service-role key in the Android app or public API Worke
 - Apple iTunes is the initial no-key provider for metadata, artwork, podcast discovery and artist discographies.
 - MusicBrainz remains a planned enrichment adapter. Its public API is limited to one request per second and must not be polled for metadata changes; use controlled queued refreshes.
 - Podcast Index requires its registered API authentication headers. RSS is the initial episode-update path.
-- LRCLIB availability does not grant redistribution or translation rights. Use a licensed lyrics source or user-provided/authorized lyrics; do not mirror copyrighted lyrics without permission.
-- Recognition needs a separate tested adapter (e.g. platform ShazamKit or AcoustID/Chromaprint) and explicit fallback/terms review before enabling it at scale.
+- LRCLIB is the first no-key lyrics lookup provider. Its docs require a descriptive User-Agent, sequential requests with 200–500 ms spacing for batches, and honoring `Retry-After` on 429. Its availability does not grant redistribution or translation rights. Use a licensed translation provider or user-provided/authorized translations; do not mirror copyrighted lyrics without permission.
+- Recognition should use the official ShazamKit Android SDK as the primary device-side path; the app needs its Android AAR integration and ShazamKit media identifier/private key setup. AcoustID + Chromaprint is a non-commercial-only alternative unless a commercial agreement is obtained; it requires an application API key and must stay below three requests per second.
 - Every external provider needs timeouts, bounded retries, usage budgets and graceful fallback.
 
 ## Remaining integration gates
