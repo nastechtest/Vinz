@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Ihr Profil konnte nicht gespeichert werden. Überprüfen Sie Ihre Angaben und Ihre Verbindung und versuchen Sie es dann erneut.</string>
     <string name="cloud_account_recovery_failed">Die Wiederherstellungsanfrage konnte nicht abgeschlossen werden. Versuchen Sie es später noch einmal.</string>
     <string name="cloud_account_sign_out_failed">Die Abmeldung konnte nicht abgeschlossen werden. Versuchen Sie es erneut.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
