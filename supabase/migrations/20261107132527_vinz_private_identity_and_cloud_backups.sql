@@ -61,7 +61,8 @@ create policy "Vinz backups delete own"
   on public.vinz_backups for delete to authenticated
   using ((select auth.uid()) = user_id);
 
-grant select, update on public.vinz_account_private to authenticated;
+grant select on public.vinz_account_private to authenticated;
+grant update (full_name) on public.vinz_account_private to authenticated;
 grant select, insert, delete on public.vinz_backups to authenticated;
 grant all on public.vinz_account_private to service_role;
 grant all on public.vinz_backups to service_role;
