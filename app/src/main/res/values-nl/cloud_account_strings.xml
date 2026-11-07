@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">Meld u aan en beheer uw cloudprofiel</string>
+    <string name="cloud_account_intro">Je cloudprofiel staat los van YouTube Music. Lokale muziek en afspelen werken zonder inloggen.</string>
+    <string name="cloud_account_email">E-mailadres</string>
+    <string name="cloud_account_password">Wachtwoord</string>
+    <string name="cloud_account_username">Gebruikersnaam</string>
+    <string name="cloud_account_display_name">Weergavenaam</string>
+    <string name="cloud_account_username_hint">3–24 kleine letters, cijfers of onderstrepingstekens</string>
+    <string name="cloud_account_password_hint">Gebruik minimaal 8 tekens.</string>
+    <string name="cloud_account_create">Maak een cloudaccount aan</string>
+    <string name="cloud_account_existing">Ik heb al een account</string>
+    <string name="cloud_account_forgot">Wachtwoord vergeten?</string>
+    <string name="cloud_account_recovery">Herstelmail verzenden</string>
+    <string name="cloud_account_recovery_sent">Als er een account bestaat voor dit adres, is er een herstel-e-mail verzonden.</string>
+    <string name="cloud_account_confirmation">Controleer uw e-mail om uw account te bevestigen en ga vervolgens terug om in te loggen.</string>
+    <string name="cloud_account_setup">Voltooi het instellen van uw profiel.</string>
+    <string name="cloud_account_bio">Biografie</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Openbaar profiel</string>
+    <string name="cloud_account_public_hint">Sta andere Vinz-gebruikers toe uw profiel te bekijken.</string>
+    <string name="cloud_account_discoverable">Vindbaar</string>
+    <string name="cloud_account_discoverable_hint">Laat uw profiel verschijnen in gebruikersdetectie.</string>
+    <string name="cloud_account_saved">Uw cloudprofiel is opgeslagen.</string>
+    <string name="cloud_account_signed_out">U bent afgemeld bij uw cloudaccount.</string>
+    <string name="cloud_account_signed_in">Aangemeld als %1$s</string>
+    <string name="cloud_account_load_failed">Je profiel kon niet worden geladen. Probeer het opnieuw voordat je gaat bewerken.</string>
+    <string name="cloud_account_request_failed">Dit accountverzoek kan niet worden voltooid. Controleer uw verbinding en probeer het opnieuw.</string>
+    <string name="cloud_account_sign_in_failed">Het inloggen kon niet worden voltooid. Controleer uw gegevens en verbinding en probeer het opnieuw.</string>
+    <string name="cloud_account_save_failed">Je profiel kan niet worden opgeslagen. Controleer uw gegevens en verbinding en probeer het opnieuw.</string>
+    <string name="cloud_account_recovery_failed">Het herstelverzoek kan niet worden voltooid. Probeer het later opnieuw.</string>
+    <string name="cloud_account_sign_out_failed">Het afmelden kon niet worden voltooid. Probeer het opnieuw.</string>
+</resources>
