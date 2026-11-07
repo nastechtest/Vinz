@@ -57,7 +57,7 @@ internal fun CloudAccountContent(
     bottomPadding: Dp = 0.dp,
     supplementalContent: @Composable () -> Unit = {},
 ) {
-    var section by remember(state.identity?.userId) { mutableStateOf("overview") }
+    var section by remember(state.identity?.userId) { mutableStateOf("profile") }
     Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState())
@@ -80,6 +80,9 @@ internal fun CloudAccountContent(
             }
             supplementalContent()
         }
+    }
+    VinzTextButton(onClick = { actions.signOut() }, modifier = Modifier.testTag("cloud-account-sign-out"), enabled = !state.busy) {
+        Text(tr(R.string.sign_out))
     }
 }
 
@@ -202,9 +205,6 @@ private fun CloudAccountFormBody(
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             VinzButton(onClick = { actions.sendPasswordReset() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-send-reset"), enabled = !state.busy) {
                 Text("Send password reset email")
-            }
-            VinzButton(onClick = { actions.signOut() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-sign-out"), enabled = !state.busy) {
-                Text(tr(R.string.sign_out))
             }
         }
         "connections" -> {
