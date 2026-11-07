@@ -12,6 +12,7 @@ import com.vinz.music.ui.theme.Backdrop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -23,6 +24,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import java.io.File
 
@@ -30,10 +32,16 @@ import java.io.File
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [34], application = android.app.Application::class)
 class NastechResearchLooksTest {
+    private val scopes = mutableListOf<CoroutineScope>()
     private fun repo() = SettingsRepository(
         org.robolectric.RuntimeEnvironment.getApplication(),
-        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it },
     )
+    @After
+    fun stopRepositoryCollectors() {
+        scopes.forEach { it.cancel() }
+    }
+
     private val profiles get() = Json.parseToJsonElement(File("../themes/nastech-research.json").readText()).jsonObject
     private val rawEntries get() = Json.parseToJsonElement(File("../themes/index.json").readText())
         .jsonObject.getValue("looks").jsonArray.map { it.jsonObject }
@@ -158,11 +166,13 @@ class NastechResearchLooksTest {
     fun switchingEveryPresetPreservesAccessibilityPlaybackAndExperimentalOptIn(): Unit = runBlocking {
         val r = repo()
         val seed = mapOf(
-            "reduce_motion" to "b:1", "performance_mode" to "b:1", "audio_quality" to "s:LOW",
-            "normalize" to "b:1", "music_speed" to "f:1.25", "lyrics_translate" to "b:1",
-            "experimental_split_navigation" to "b:1", "queue_locked" to "b:1",
+            "reduce_motion" to "b:true", "performance_mode" to "b:true", "audio_quality" to "s:LOW",
+            "normalize" to "b:true", "music_speed" to "f:1.25", "lyrics_translate" to "b:true",
+            "experimental_split_navigation" to "b:true", "queue_locked" to "b:true",
         )
         r.fromBackup(seed, settings = true, accounts = false)
+        val restored = r.forBackup(settings = true, accounts = false)
+        seed.forEach { (key, value) -> assertEquals("Seed was not restored: $key", value, restored[key]) }
         withTimeout(5_000) { r.flow.first { it.reduceMotion && it.experimentalSplitNavigation } }
         val before = r.forBackup(settings = true, accounts = true).filterKeys { it !in r.lookKinds }
         pack(r).forEach { g ->
