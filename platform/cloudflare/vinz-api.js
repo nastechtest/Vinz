@@ -601,7 +601,103 @@ async function markNotificationRead(config, auth, id) {
   return json({ updated: true, id });
 }
 
-export async function handleRequest(request, env = {}, ctx = undefined) {
+
+const SHARE_HOSTS = {
+  youtube_music: ["music.youtube.com"],
+  apple_music: ["music.apple.com"],
+  spotify: ["open.spotify.com"],
+  soundcloud: ["soundcloud.com", "www.soundcloud.com"],
+  youtube: ["youtube.com", "www.youtube.com", "youtu.be"],
+  vinz: [],
+};
+
+function validateShareUrl(provider, value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+    if (!(SHARE_HOSTS[provider] || []).includes(url.hostname.toLowerCase())) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function createShareLink(request, config, auth) {
+  const input = await bodyJson(request);
+  if (!input || !Object.hasOwn(SHARE_HOSTS, input.provider) ||
+      typeof input.title !== "string" || !input.title.trim() || input.title.length > 200 ||
+      (input.artist !== undefined && (typeof input.artist !== "string" || input.artist.length > 200))) {
+    return json({ error: "invalid_share_link" }, 400);
+  }
+  const externalUrl = validateShareUrl(input.provider, input.external_url);
+  if (!externalUrl) return json({ error: "unsupported_share_url" }, 400);
+  let artworkUrl = null;
+  if (typeof input.artwork_url === "string") {
+    try {
+      const art = new URL(input.artwork_url);
+      if (art.protocol === "https:" && !art.username && !art.password && !art.port) artworkUrl = art.toString();
+    } catch { /* omit invalid artwork */ }
+  }
+  const expiresAt = input.expires_in_days === 7
+    ? new Date(Date.now() + 7 * 86400000).toISOString()
+    : null;
+  const response = await restRequest(config, auth.authorization, "vinz_share_links", {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({
+      user_id: auth.user.id,
+      provider: input.provider,
+      external_url: externalUrl,
+      title: input.title.trim(),
+      artist: input.artist || "",
+      artwork_url: artworkUrl,
+      expires_at: expiresAt,
+    }),
+  });
+  if (!response.ok) return json({ error: "share_link_create_failed" }, 502);
+  const rows = await response.json();
+  const share = Array.isArray(rows) ? rows[0] : null;
+  if (!share) return json({ error: "share_link_create_failed" }, 502);
+  return json({
+    share: {
+      id: share.id,
+      title: share.title,
+      artist: share.artist,
+      provider: share.provider,
+      share_path: "/s/" + share.id,
+      app_link: "vinz://share/" + share.id,
+      expires_at: share.expires_at,
+    },
+  }, 201);
+}
+
+async function readShareLink(config, id) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "share_not_found" }, 404);
+  const query = new URLSearchParams({
+    select: "id,provider,external_url,title,artist,artwork_url,created_at,expires_at",
+    id: "eq." + id,
+    limit: "1",
+  });
+  const response = await restRequest(config, config.key, "vinz_share_links?" + query);
+  if (!response.ok) return json({ error: "share_lookup_failed" }, 502);
+  const rows = await response.json();
+  const share = Array.isArray(rows) ? rows[0] : null;
+  if (!share) return json({ error: "share_not_found" }, 404);
+  return json({
+    share: {
+      id: share.id,
+      provider: share.provider,
+      external_url: share.external_url,
+      title: share.title,
+      artist: share.artist,
+      artwork_url: share.artwork_url,
+      created_at: share.created_at,
+      expires_at: share.expires_at,
+      app_link: "vinz://share/" + share.id,
+    },
+  });
+}
+\nexport async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
   if (origin === false) return json({ error: "origin_not_allowed", request_id: requestId }, 403);
@@ -612,6 +708,13 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
   if (url.pathname === "/health" && request.method === "GET") {
     return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET) }, 200, headers);
   }
+  const publicShareMatch = url.pathname.match(/^\\/s\\/([^/]+)$/);
+  if (publicShareMatch && request.method === "GET") {
+    const publicConfig = configuration(env);
+    if (!publicConfig) return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
+    return withHeaders(await readShareLink(publicConfig, publicShareMatch[1]), headers);
+  }
+
   const config = configuration(env);
   if (!config && url.pathname.startsWith("/v1/")) {
     return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
@@ -641,6 +744,14 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     if (auth.error) {
       recordApiError(env, ctx, url.pathname, auth.error, auth.status);
       return json({ error: auth.error, request_id: requestId }, auth.status, headers);
+    }
+
+    if (url.pathname === "/v1/shares" && request.method === "POST") {
+      return withHeaders(await createShareLink(request, config, auth), headers);
+    }
+    const ownedShareMatch = url.pathname.match(/^\\/v1\\/shares\\/([^/]+)$/);
+    if (ownedShareMatch && request.method === "DELETE") {
+      return withHeaders(await deleteOwnedRow(config, auth, "vinz_share_links", ownedShareMatch[1]), headers);
     }
 
     if (url.pathname === "/v1/watches/artists" && request.method === "GET") {
