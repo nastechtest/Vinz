@@ -386,3 +386,52 @@ test("public share lookup uses the anonymous Supabase role", async (t) => {
   assert.equal(response.status, 200);
   assert.equal((await response.json()).share.title, "Test Song");
 });
+
+test("community search rejects unsafe or oversized search input", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/community/search?q=alice%2Cadmin", {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_community_search");
+});
+
+test("friend request creation validates usernames before profile lookup", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/friends/requests", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ username: "invalid name" }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_friend_username");
+});
+
+test("friend request response only accepts accepted or declined", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/friends/requests/11111111-1111-4111-8111-111111111111", {
+      method: "PATCH",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ status: "admin" }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_friend_request_status");
+});
