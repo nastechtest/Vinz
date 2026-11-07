@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">ไม่สามารถบันทึกโปรไฟล์ของคุณได้ ตรวจสอบรายละเอียดและการเชื่อมต่อของคุณ แล้วลองอีกครั้ง</string>
     <string name="cloud_account_recovery_failed">ไม่สามารถดำเนินการตามคำขอกู้คืนได้ ลองอีกครั้งในภายหลัง</string>
     <string name="cloud_account_sign_out_failed">ไม่สามารถออกจากระบบได้ ลองอีกครั้ง</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
