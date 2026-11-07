@@ -73,36 +73,45 @@ jobs:
           ''')
           PY
 
-      - name: Stage every asset and publish models only
+      - name: Stage all assets in the explicitly approved draft
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: nastechtest/Vinz
         run: |
-          set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.request, urllib.error
+          import hashlib, json, os, pathlib, urllib.request, urllib.parse
+          release_id = 437552467
           base = 'https://api.github.com/repos/nastechtest/Vinz/'
-          for path in ('releases/tags/models-v1', 'git/ref/tags/models-v1'):
-              try:
-                  with urllib.request.urlopen(base+path, timeout=30) as response:
-                      raise SystemExit('Refusing to overwrite existing models-v1 release/tag')
-              except urllib.error.HTTPError as error:
-                  if error.code != 404: raise
-          PY
-          gh release create models-v1 dist/sing-models/* \
-            --target "$APPROVED_SOURCE" --draft --latest=false \
-            --title 'Sing model packages v1' --notes-file dist/sing-models/README.md
-          gh api repos/nastechtest/Vinz/releases/tags/models-v1 > "$RUNNER_TEMP/staged-release.json"
-          python3 - <<'PY'
-          import json, os, pathlib
+          headers = {'Authorization': 'Bearer '+os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'User-Agent': 'vinz-approved-model-publisher'}
+          def get_release():
+              request = urllib.request.Request(base+'releases/'+str(release_id), headers=headers)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          release = get_release()
+          assert release['id'] == release_id
+          assert release['draft'] is True and release['tag_name'] == 'models-v1'
+          assert release['target_commitish'] == os.environ['APPROVED_SOURCE']
+          assert release['name'] == 'Sing model packages v1'
+          assert not release['assets'], 'Refusing to overwrite existing assets'
           root = pathlib.Path('dist/sing-models')
-          release = json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'staged-release.json').read_text())
+          files = sorted(f for f in root.iterdir() if f.is_file())
+          assert len(files) == 8
+          for f in files:
+              data = f.read_bytes()
+              endpoint = 'https://uploads.github.com/repos/nastechtest/Vinz/releases/'+str(release_id)+'/assets?name='+urllib.parse.quote(f.name)
+              upload_headers = dict(headers, **{'Content-Type': 'application/octet-stream'})
+              request = urllib.request.Request(endpoint, data=data, headers=upload_headers, method='POST')
+              with urllib.request.urlopen(request, timeout=180) as response:
+                  asset = json.load(response)
+              assert asset['name'] == f.name and asset['state'] == 'uploaded'
+              assert asset['size'] == len(data)
+              if asset.get('digest'):
+                  assert asset['digest'] == 'sha256:'+hashlib.sha256(data).hexdigest()
+              print(f.name+': staged and verified')
+          release = get_release()
           assert release['draft'] is True
           actual = {a['name']:a for a in release['assets']}
-          assert set(actual) == {f.name for f in root.iterdir() if f.is_file()}
-          for filename, asset in actual.items():
-              assert asset['state'] == 'uploaded'
-              assert asset['size'] == (root/filename).stat().st_size
-          print('All eight assets staged and verified; publishing models only.')
+          assert set(actual) == {f.name for f in files}
+          for f in files:
+              assert actual[f.name]['size'] == f.stat().st_size
+          print('All eight verified assets are staged. Publication requires the authorised browser session. No app release or merge.')
           PY
-          gh release edit models-v1 --draft=false --latest=false
