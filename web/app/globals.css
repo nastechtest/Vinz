@@ -1,0 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+:root{color-scheme:dark;--bg:#070809;--panel:#101214;--line:#252a2d;--text:#f5f7f7;--muted:#929b9e;--accent:#b9f36a}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:"DM Sans",sans-serif}
+body{background:radial-gradient(ellipse at 25% 18%,rgba(125,176,65,.13),transparent 36%),radial-gradient(ellipse at 88% 70%,rgba(37,106,100,.12),transparent 34%),var(--bg)}
+button,input{font:inherit}
+.shell{max-width:1120px;min-height:100vh;margin:0 auto;padding:30px 7vw 24px;display:grid;grid-template-columns:1fr 410px;grid-template-rows:auto 1fr auto;gap:32px 8vw}
+.nav{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}
+.brand{display:inline-flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font:700 25px "Space Grotesk",sans-serif;letter-spacing:-1.5px}
+.brand-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--accent);color:#111;font:700 22px "Space Grotesk",sans-serif;box-shadow:0 0 28px #b9f36333}
+.nav-note,.eyebrow{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--muted)}
+.hero{align-self:center;padding-bottom:45px}
+.eyebrow{display:flex;align-items:center;gap:10px;color:var(--accent)}
+.pulse,.status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px #b9f36a}
+h1{font:600 clamp(48px,6.2vw,76px)/.99 "Space Grotesk",sans-serif;letter-spacing:-5px;margin:28px 0 20px}
+h1 span{color:var(--accent)}
+.intro{max-width:410px;color:#aab2b4;font-size:16px;line-height:1.8}
+.status-row{display:flex;align-items:center;gap:10px;margin-top:42px;color:var(--muted);font-size:12px}
+.status-dot{background:#60696b;box-shadow:none}.status-dot.good{background:var(--accent);box-shadow:0 0 12px #b9f36a}
+.auth-card{align-self:center;background:linear-gradient(145deg,#15191a,#0d1011);border:1px solid var(--line);border-radius:24px;padding:30px;box-shadow:0 30px 100px #0009}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin-bottom:28px}
+.tab{border:0;background:transparent;color:var(--muted);padding:0 0 14px;cursor:pointer;font-weight:600}
+.tab.active{color:var(--accent);border-bottom:2px solid var(--accent)}
+h2{font:600 29px "Space Grotesk",sans-serif;letter-spacing:-1.3px;margin:12px 0 8px}
+.muted{font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 24px}
+label{display:block;margin:17px 0 8px;color:#d9dfdf;font-size:12px;font-weight:600}
+input{width:100%;height:48px;border:1px solid #303739;border-radius:10px;background:#090c0d;color:white;padding:0 13px;outline:none}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px #b9f36a19}
+.primary{width:100%;height:49px;margin-top:22px;border:0;border-radius:10px;background:var(--accent);color:#10140c;font-weight:700;cursor:pointer}
+.primary:disabled{opacity:.55;cursor:wait}
+.text-button{display:block;margin:16px auto 0;background:none;border:0;color:var(--muted);cursor:pointer}
+.message{margin:17px 0 0;padding:12px;border:1px solid #40513a;border-radius:9px;color:#d7edc0;font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.message.warning{border-color:#655b37;color:#e6d7a7}
+.legal{margin:22px 0 0;color:#6f797c;font-size:10px;line-height:1.6}
+.signed-in{text-align:center;padding:20px 0}
+.signed-in .eyebrow{justify-content:center}
+.success-icon{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;margin:0 auto 20px;background:#b9f36a1c;color:var(--accent);font-size:26px}
+footer{grid-column:1/-1;display:flex;justify-content:space-between;color:#626c6e;font-size:11px}
+.callback{min-height:100vh;display:grid;place-content:center;justify-items:center;gap:18px;padding:24px;text-align:center}
+.callback p{color:var(--muted)}
+.callback a{color:var(--accent);font-size:13px}
+@media(max-width:800px){.shell{grid-template-columns:1fr;grid-template-rows:auto auto auto auto;gap:35px;padding:24px 22px}.hero{padding:35px 0 0}.hero h1{font-size:58px}.status-row{margin-top:22px}.auth-card{width:100%;max-width:460px;justify-self:center}.nav-note{font-size:8px;letter-spacing:1px}footer{padding:10px 0 0}}
