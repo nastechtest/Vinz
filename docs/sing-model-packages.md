@@ -12,7 +12,7 @@ This branch and its workflows publish **CI review artifacts only**. No workflow 
 
 `scripts/models/sources.json` records the exact public upstream URLs, sizes and SHA-256 pins for the sherpa-onnx Spleeter fp16 source archive, Microsoft's ONNX Runtime 1.31.0 Android AAR, and full licence notices. The builder reads only the two named ONNX files and the three supported ABI libraries, without extracting arbitrary source paths. It copies their bytes unchanged. `packages.json` records every original payload hash, ZIP layout, compressed/unpacked sizes and output SHA-256.
 
-Model ZIP: Deezer MIT notice and sherpa-onnx Apache-2.0 notice. Runtime ZIPs: Microsoft MIT notice. Those are source attribution records, not an independent legal determination of trained-weight redistribution rights. Confirm those rights and whether any additional upstream third-party notices are required before approving public redistribution. No model binary is committed to this repository.
+Model ZIP: Deezer MIT notice and sherpa-onnx Apache-2.0 notice. Runtime ZIPs: Microsoft MIT notice and the full version-pinned ONNX Runtime ThirdPartyNotices.txt. Those are source attribution records, not an independent legal determination of trained-weight redistribution rights. Confirm trained-weight redistribution rights before approving public redistribution. No model binary is committed to this repository.
 
 ## Rebuild and verify
 
