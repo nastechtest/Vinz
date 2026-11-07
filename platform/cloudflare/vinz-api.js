@@ -1,8 +1,8 @@
 /**
  * Vinz API — Cloudflare Worker entry point.
  *
- * This is an edge API for account/profile operations. Supabase remains the
- * source of truth. Never put a service-role key in this Worker or the app.
+ * Supabase remains the source of truth. Never put a service-role key in
+ * this Worker or the Android application.
  */
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -20,7 +20,7 @@ function json(data, status = 200, headers = {}) {
 
 function allowedOrigin(request, env) {
   const origin = request.headers.get("origin");
-  if (!origin) return null; // Native clients do not send browser Origin headers.
+  if (!origin) return null; // Native Android clients do not send browser Origin headers.
   const allowed = (env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((value) => value.trim())
@@ -51,46 +51,35 @@ function configuration(env) {
   }
 }
 
-async function currentUser(request, config) {
-  const authorization = request.headers.get("authorization") || "";
-  if (!/^Bearer\s+\S+$/i.test(authorization)) return null;
-
-  const response = await fetch(`${config.url}/auth/v1/user`, {
-    method: "GET",
-    headers: {
-      apikey: config.key,
-      authorization,
-      accept: "application/json",
+/**
+ * Server-side operational telemetry only. The event/property allowlist is
+ * deliberately fixed: no user IDs, tokens, email, music queries, lyrics,
+ * track names, audio, or request bodies are sent to PostHog.
+ */
+function recordApiError(env, ctx, errorType, status) {
+  if (!env.POSTHOG_PROJECT_KEY || typeof ctx?.waitUntil !== "function") return;
+  const host = (env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/+$/, "");
+  const payload = {
+    api_key: env.POSTHOG_PROJECT_KEY,
+    event: "vinz_api_error",
+    distinct_id: "vinz-api",
+    properties: {
+      service: "cloudflare-worker",
+      route: "/v1/me",
+      error_type: errorType,
+      status_code: status,
     },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!response.ok) return null;
-
-  const user = await response.json();
-  return typeof user.id === "string" ? user : null;
+  };
+  ctx.waitUntil(
+    fetch(`${host}/capture/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => undefined),
+  );
 }
 
-async function getOwnProfile(user, config) {
-  const query = new URLSearchParams({
-    select: "id,username,display_name,bio,avatar_path,is_public,discoverable,created_at,updated_at",
-    id: `eq.${user.id}`,
-    limit: "1",
-  });
-  const response = await fetch(`${config.url}/rest/v1/vinz_profiles?${query}`, {
-    method: "GET",
-    headers: {
-      apikey: config.key,
-      authorization: `Bearer ${user.access_token || ""}`,
-      accept: "application/json",
-    },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!response.ok) throw new Error("profile_upstream_error");
-  const rows = await response.json();
-  return Array.isArray(rows) ? rows[0] || null : null;
-}
-
-export async function handleRequest(request, env = {}) {
+export async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
 
@@ -142,6 +131,7 @@ export async function handleRequest(request, env = {}) {
         return json({ error: "unauthorized", request_id: requestId }, 401, headers);
       }
       if (!authResponse.ok) {
+        recordApiError(env, ctx, "identity_provider_unavailable", 502);
         return json({ error: "identity_provider_unavailable", request_id: requestId }, 502, headers);
       }
 
@@ -165,6 +155,7 @@ export async function handleRequest(request, env = {}) {
         signal: AbortSignal.timeout(8000),
       });
       if (!profileResponse.ok) {
+        recordApiError(env, ctx, "profile_service_unavailable", 502);
         return json({ error: "profile_service_unavailable", request_id: requestId }, 502, headers);
       }
 
@@ -172,6 +163,7 @@ export async function handleRequest(request, env = {}) {
       const profile = Array.isArray(rows) ? rows[0] || null : null;
       return json({ user: { id: user.id }, profile }, 200, headers);
     } catch {
+      recordApiError(env, ctx, "upstream_timeout_or_failure", 502);
       return json({ error: "upstream_timeout_or_failure", request_id: requestId }, 502, headers);
     }
   }
@@ -180,7 +172,7 @@ export async function handleRequest(request, env = {}) {
 }
 
 export default {
-  fetch(request, env) {
-    return handleRequest(request, env);
+  fetch(request, env, ctx) {
+    return handleRequest(request, env, ctx);
   },
 };
