@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Conectați-vă și gestionați-vă profilul cloud</string>
     <string name="cloud_account_intro">Profilul dvs. cloud este separat de YouTube Music. Muzica locală și redarea funcționează fără a vă conecta.</string>
     <string name="cloud_account_email">Adresa de e-mail</string>

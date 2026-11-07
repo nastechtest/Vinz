@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Войдите и управляйте своим облачным профилем</string>
     <string name="cloud_account_intro">Ваш облачный профиль отделен от YouTube Music. Локальная музыка и воспроизведение работают без входа в систему.</string>
     <string name="cloud_account_email">Адрес электронной почты</string>
