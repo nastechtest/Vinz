@@ -625,22 +625,8 @@ private fun AccountCard() {
         dismissButton = { VinzTextButton({ confirmSignOut = false; signOut() }) { Text(tr(R.string.just_sign_out)) } },
     )
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
-    // Cloud identity is distinct from the on-device profile and YouTube Music sign-in.
-    Row(
-        Modifier.fillMaxWidth().clickable { nav.go(Routes.VINZ_CLOUD_ACCOUNT) }.padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(42.dp).clip(CircleShape).background(if (frosted) com.vinz.music.ui.components.frostFill(1.6f) else scheme.surface.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-            Icon(VinzIcons.Person, null, tint = if (frosted) scheme.primary else ink)
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(tr(R.string.vinz_account), style = MaterialTheme.typography.titleMedium, color = ink)
-            Text(tr(R.string.cloud_account_summary), style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
-        }
-        Icon(VinzIcons.ChevronRight, null, tint = ink)
-    }
-    // The on-device profile: who the listener is on this phone.
+    // One Vinz account destination: the existing local profile, with optional cloud controls inside.
+    // YouTube Music retains its own established sign-in and session controls below.
     Row(
         Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
