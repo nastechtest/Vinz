@@ -684,6 +684,21 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
       return withHeaders(await artistReleases(url, env, artistReleasesMatch[1], requestId), headers);
     }
 
+    const usernameAvailability = url.pathname.match(/^\/v1\/usernames\/([^/]+)\/availability$/);
+    if (usernameAvailability && request.method === "GET") {
+      const username = decodeURIComponent(usernameAvailability[1]);
+      if (!/^[a-z0-9_]{3,24}$/.test(username)) {
+        return json({ error: "invalid_username", available: false, request_id: requestId }, 400, headers);
+      }
+      const availability = await restRequest(config, auth.authorization, "rpc/vinz_username_available", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ p_username: username }),
+      });
+      if (!availability.ok) return json({ error: "username_check_failed", request_id: requestId }, 502, headers);
+      return json({ username, available: await availability.json() === true }, 200, headers);
+    }
+
     if (url.pathname === "/v1/me" && request.method === "GET") {
       try {
         const profile = await readOwnProfile(config, auth.authorization, auth.user.id);
