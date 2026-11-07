@@ -1,144 +1,91 @@
 package com.vinz.music.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinz.music.R
 import com.vinz.music.tr
-import com.vinz.music.ui.components.Eyebrow
 import com.vinz.music.ui.components.VinzButton
-import com.vinz.music.ui.components.VinzOutlinedButton
 import com.vinz.music.ui.components.VinzTextButton
 import com.vinz.music.ui.components.VinzTextField
-import com.vinz.music.ui.components.glassFill
 import com.vinz.music.ui.screens.account.CloudAccountController
 import com.vinz.music.ui.screens.account.CloudAccountMode
 import com.vinz.music.ui.screens.account.CloudAccountState
 import com.vinz.music.ui.screens.account.CloudPrivacySwitch
 import com.vinz.music.ui.screens.account.CloudProfileFields
-import com.vinz.music.ui.screens.account.ExistingCloudAccountGateway
-import com.vinz.music.ui.theme.LocalContainer
-import com.vinz.music.ui.theme.LocalUi
-import com.vinz.music.ui.theme.VinzIcons
 
-/**
- * Collapsible cloud-profile panel for a parent account screen. The controller is deliberately created only after the
- * panel expands, so simply visiting account settings does not start cloud work.
- */
-@Composable
-fun VinzCloudAccountSection(initiallyExpanded: Boolean = false) {
-    var expanded by remember { mutableStateOf(initiallyExpanded) }
-    // Keep this latched after the first expansion: collapsing content must not cancel an in-flight cloud request.
-    var activated by remember { mutableStateOf(initiallyExpanded) }
-    val ui = LocalUi.current
-    val activeAccount = if (activated) {
-        val cloud = LocalContainer.current.vinzCloudAccount
-        val scope = rememberCoroutineScope()
-        val controller = remember(cloud, scope) { CloudAccountController(ExistingCloudAccountGateway(cloud), scope) }
-        val state by controller.state.collectAsStateWithLifecycle()
-        LaunchedEffect(controller) { controller.loadProfile() }
-        controller to state
-    } else {
-        null
-    }
-    Column(
-        Modifier.fillMaxWidth().clip(ui.card).background(glassFill(1.2f)).padding(18.dp).testTag("cloud-account-section"),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(36.dp).clip(CircleShape).background(glassFill(1.8f)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(VinzIcons.Person, null, Modifier.size(20.dp)) }
-            Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                Eyebrow(tr(R.string.cloud_account_summary))
-                Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        VinzOutlinedButton(
-            onClick = {
-                if (!expanded) activated = true
-                expanded = !expanded
-            },
-            modifier = Modifier.fillMaxWidth().testTag("cloud-account-toggle"),
-            enabled = activeAccount?.second?.busy != true,
-        ) { Text(tr(if (expanded) R.string.hide_this_section else R.string.cloud_account_summary)) }
-        if (expanded) activeAccount?.let { (controller, state) ->
-            CloudAccountContent(state, controller, onBack = {}, embedded = true)
-        }
-    }
-}
-
-/** Separate rendering from the existing transport so frontend states can be exercised offline. */
+/** One full-page renderer shared by startup, Settings and the legacy route alias. */
 @Composable
 internal fun CloudAccountContent(
     state: CloudAccountState,
     actions: CloudAccountController,
     onBack: () -> Unit,
-    embedded: Boolean = false,
+    onContinue: (() -> Unit)? = null,
+    bottomPadding: Dp = 0.dp,
+    supplementalContent: @Composable () -> Unit = {},
 ) {
-    if (embedded) {
-        // The parent owns scrolling, insets and the page title.
+    Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
         Column(
-            Modifier.fillMaxWidth().testTag("cloud-account-content"),
+            Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = bottomPadding + 24.dp)
+                .testTag("cloud-account-content"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) { CloudAccountFormBody(state, actions) }
-    } else {
-        Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
-            Column(
-                Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 20.dp).testTag("cloud-account-content"),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                VinzTextButton(onClick = onBack, modifier = Modifier.testTag("cloud-account-back")) { Text(tr(R.string.back)) }
-                Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
-                Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                CloudAccountFormBody(state, actions)
-                Spacer(Modifier.height(18.dp))
+        ) {
+            VinzTextButton(onClick = onBack, enabled = !state.busy,
+                modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
+                Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
             }
+            Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
+            Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CloudAccountFormBody(state, actions)
+            if (onContinue != null && state.canContinue) {
+                VinzButton(onClick = onContinue, modifier = Modifier.fillMaxWidth().testTag("cloud-account-continue")) {
+                    Text(tr(R.string.done))
+                }
+            }
+            supplementalContent()
         }
     }
 }
 
 @Composable
 private fun CloudAccountFormBody(state: CloudAccountState, actions: CloudAccountController) {
+    val focus = LocalFocusManager.current
+    val submitFromKeyboard: () -> Unit = {
+        if (state.canSubmit) {
+            focus.clearFocus()
+            actions.submit()
+        }
+    }
     if (state.busy) {
         CircularProgressIndicator(Modifier.testTag("cloud-account-progress"))
         Text(tr(R.string.loading_2), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -155,22 +102,33 @@ private fun CloudAccountFormBody(state: CloudAccountState, actions: CloudAccount
     if (state.identity == null) {
         val recovery = state.mode == CloudAccountMode.RECOVERY
         val registering = state.mode == CloudAccountMode.SIGN_UP
-        if (registering) CloudProfileFields(state, actions)
         VinzTextField(
             state.email, actions::email, Modifier.fillMaxWidth().testTag("cloud-account-email"),
             enabled = !state.busy, label = { Text(tr(R.string.cloud_account_email)) }, singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            supportingText = { Text(tr(R.string.cloud_account_email_hint)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email,
+                imeAction = if (recovery) ImeAction.Done else ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = { focus.moveFocus(FocusDirection.Next) },
+                onDone = { submitFromKeyboard() },
+            ),
         )
         if (!recovery) {
             // Password transformation is applied by the existing Material field; never save its value.
             androidx.compose.material3.OutlinedTextField(
                 state.password, actions::password, Modifier.fillMaxWidth().testTag("cloud-account-password"),
                 enabled = !state.busy, label = { Text(tr(R.string.cloud_account_password)) },
+                supportingText = { Text(tr(if (registering) R.string.cloud_account_password_hint else R.string.cloud_account_password_sign_in_hint)) },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password,
+                    imeAction = if (registering) ImeAction.Next else ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onNext = { focus.moveFocus(FocusDirection.Next) },
+                    onDone = { submitFromKeyboard() },
+                ),
             )
-            if (registering) Text(tr(R.string.cloud_account_password_hint), style = MaterialTheme.typography.bodySmall)
         }
+        if (registering) CloudProfileFields(state, actions)
         VinzButton(onClick = { actions.submit() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-submit"), enabled = state.canSubmit) {
             Text(tr(when (state.mode) {
                 CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery
