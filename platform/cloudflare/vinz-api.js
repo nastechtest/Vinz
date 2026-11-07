@@ -206,7 +206,31 @@ function hex(buffer) {
   return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function uploadBackup(request, env, config, auth, requestId, ctx) {
+
+async function readBoundedBody(request, maxBytes) {
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+\nasync function uploadBackup(request, env, config, auth, requestId, ctx) {
   if (!env.BACKUPS_BUCKET) return json({ error: "backup_storage_not_configured", request_id: requestId }, 503);
   const length = Number(request.headers.get("content-length") || 0);
   if (length > MAX_BACKUP_BYTES) return json({ error: "backup_too_large", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 413);
@@ -217,10 +241,9 @@ async function uploadBackup(request, env, config, auth, requestId, ctx) {
   if (!Number.isInteger(formatVersion) || formatVersion < 1 || appVersion.length > 50 || !["full", "library", "settings", "history"].includes(scope) || !/^[a-f0-9]{64}$/.test(expectedHash)) {
     return json({ error: "invalid_backup_metadata", request_id: requestId }, 400);
   }
-  const bytes = await request.arrayBuffer();
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_BACKUP_BYTES) {
-    return json({ error: bytes.byteLength > MAX_BACKUP_BYTES ? "backup_too_large" : "empty_backup", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, bytes.byteLength > MAX_BACKUP_BYTES ? 413 : 400);
-  }
+  const bytes = await readBoundedBody(request, MAX_BACKUP_BYTES);
+  if (bytes === null) return json({ error: "backup_too_large", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 413);
+  if (bytes.byteLength === 0) return json({ error: "empty_backup", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 400);
   const actualHash = hex(await crypto.subtle.digest("SHA-256", bytes));
   if (actualHash !== expectedHash) return json({ error: "backup_checksum_mismatch", request_id: requestId }, 422);
 
