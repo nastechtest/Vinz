@@ -38,7 +38,7 @@ internal class CloudAccountController(
         return request(R.string.cloud_account_load_failed) {
             val profile = gateway.loadProfile()
             // An external account change must not paint the old user's private profile.
-            if (gateway.identity?.userId != identity.userId) {
+            if (gateway.identity?.userId != identity.userId || (profile != null && profile.id != identity.userId)) {
                 resetForCurrentIdentity()
                 return@request
             }
@@ -72,6 +72,9 @@ internal class CloudAccountController(
                         val identity = gateway.identity
                         if (identity == null) {
                             mutable.value = mutable.value.copy(password = "", error = failure)
+                        } else if (!identity.email.trim().equals(email, ignoreCase = true) ||
+                            (result.profile != null && result.profile.id != identity.userId)) {
+                            resetForCurrentIdentity()
                         } else {
                             mutable.value = CloudAccountState(
                                 identity = identity, email = identity.email, busy = true, profileReady = true,
@@ -94,7 +97,7 @@ internal class CloudAccountController(
                 return@request
             }
             val saved = gateway.save(before.draft.copy(displayName = before.draft.displayName.trim()))
-            if (gateway.identity?.userId != before.identity?.userId) {
+            if (gateway.identity?.userId != before.identity?.userId || saved.id != before.identity?.userId) {
                 resetForCurrentIdentity()
                 return@request
             }
