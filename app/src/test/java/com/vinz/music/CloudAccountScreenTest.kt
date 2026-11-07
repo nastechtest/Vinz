@@ -4,15 +4,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.LocalDensity
+import androidx.compose.ui.platform.LocalDensity
 import com.vinz.music.data.VinzCloudAccount
 import com.vinz.music.ui.screens.CloudAccountContent
 import com.vinz.music.ui.screens.VinzCloudAccountSection
