@@ -288,7 +288,12 @@ async function downloadBackup(env, config, auth, backupId, requestId) {
   if (!record || !record.object_path.startsWith(`${auth.user.id}/`)) return json({ error: "backup_not_found", request_id: requestId }, 404);
   const object = await env.BACKUPS_BUCKET.get(record.object_path);
   if (!object) return json({ error: "backup_object_missing", request_id: requestId }, 410);
-  return new Response(object.body, {
+  const bytes = await object.arrayBuffer();
+  if (bytes.byteLength !== Number(record.byte_size) ||
+      hex(await crypto.subtle.digest("SHA-256", bytes)) !== String(record.sha256).toLowerCase()) {
+    return json({ error: "backup_integrity_check_failed", request_id: requestId }, 422);
+  }
+  return new Response(bytes, {
     status: 200,
     headers: {
       "content-type": "application/octet-stream",
