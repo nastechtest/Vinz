@@ -21,7 +21,7 @@
 
 Secrets:
 - `CLOUDFLARE_API_TOKEN` — Workers edit/deploy permission for the account.
-- `POSTHOG_PROJECT_KEY` — PostHog ingestion key; distinct from the personal API token.
+- `POSTHOG_PROJECT_KEY` — optional PostHog ingestion key; distinct from the personal API token. Deploys work without it, but production telemetry stays disabled.
 - Existing provider-health credentials as documented in `docs/CI_WORKFLOWS.md`.
 
 Variables:
