@@ -80,7 +80,6 @@ jobs:
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$POSTHOG_PROJECT_KEY"
           if [ "${{ inputs.target }}" = "production" ]; then
             CONFIG=wrangler.production.jsonc
             WORKER=vinz
@@ -89,7 +88,11 @@ jobs:
             WORKER=vinz-api-staging
           fi
           npx --yes wrangler@4 deploy --config "$CONFIG"
-          printf '%s' "$POSTHOG_PROJECT_KEY" | npx --yes wrangler@4 secret put POSTHOG_PROJECT_KEY --name "$WORKER" --config "$CONFIG"
+          if [ -n "$POSTHOG_PROJECT_KEY" ]; then
+            printf '%s' "$POSTHOG_PROJECT_KEY" | npx --yes wrangler@4 secret put POSTHOG_PROJECT_KEY --name "$WORKER" --config "$CONFIG"
+          else
+            echo "POSTHOG_PROJECT_KEY not configured; deploying without optional error telemetry."
+          fi
           echo "Deployed $WORKER. No Supabase migrations or production auth redirect settings were changed."
 
   smoke-test:
