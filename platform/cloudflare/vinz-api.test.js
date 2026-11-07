@@ -262,11 +262,20 @@ test("username availability rejects malformed names before the RPC", async (t) =
   assert.equal((await response.json()).available, false);
 });
 
-test("backup scope accepts all existing backup formats", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  ));
+test("backup upload accepts existing non-full backup scopes", async (t) => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  t.mock.method(globalThis, "fetch", async (input) => {
+    if (String(input).endsWith("/auth/v1/user")) {
+      return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify([]), {
+      status: 201, headers: { "content-type": "application/json" },
+    });
+  });
   const response = await handleRequest(
     new Request("https://api.vinz.example/v1/backups", {
       method: "PUT",
@@ -274,13 +283,13 @@ test("backup scope accepts all existing backup formats", async (t) => {
         authorization: "Bearer test-token",
         "x-vinz-format-version": "1",
         "x-vinz-app-version": "1.0",
-        "x-vinz-sha256": "a".repeat(64),
+        "x-vinz-sha256": sha256,
         "x-vinz-backup-scope": "library",
       },
-      body: new Uint8Array([1, 2, 3]),
+      body: bytes,
     }),
-    SUPABASE_ENV,
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { put: async () => {}, delete: async () => {} } },
   );
-  assert.equal(response.status, 503);
-  assert.equal((await response.json()).error, "backup_storage_not_configured");
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).backup.format_version, 1);
 });
