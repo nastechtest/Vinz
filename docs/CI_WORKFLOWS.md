@@ -35,16 +35,11 @@ The health workflow checks each provider independently. Configure only the integ
 
 ### Cloudflare staging deployment
 
-The manual staging deploy additionally needs these repository variables:
+The manual staging deploy additionally needs the `CLOUDFLARE_ACCOUNT_ID` repository variable. The Worker URL, publishable Supabase key, PostHog host, R2 bucket, KV namespace and compatibility date are maintained in `platform/cloudflare/wrangler.jsonc`, which CI validates and the deployment workflow reads as its source of truth.
 
-- `VINZ_SUPABASE_URL`
-- `VINZ_SUPABASE_PUBLISHABLE_KEY`
-- `POSTHOG_HOST`
-- `CLOUDFLARE_ACCOUNT_ID`
+It reuses `CLOUDFLARE_API_TOKEN` from the provider health section. The Cloudflare token must be scoped to the Vinz account and have permission to edit Workers scripts. The workflow binds the existing `vinz-backups` R2 bucket and `VINZ_CATALOG_CACHE` KV namespace, then deploys only `vinz-api-staging`.
 
-It reuses `CLOUDFLARE_API_TOKEN` from the provider health section. The Cloudflare token must be scoped to the Vinz account and have permission to edit Workers scripts. The workflow binds the existing `vinz-backups` R2 bucket and `VINZ_CATALOG_CACHE` KV namespace, then deploys the source to `vinz-api-staging`.
-
-The deployment workflow does not replace the production `vinz` Worker, create routes, change DNS, or deploy Supabase migrations. A GitHub Actions environment named `staging` can be protected with required reviewers under **Settings → Environments**.
+The deployment workflow does not replace the production `vinz` Worker, create routes, change DNS, or deploy Supabase migrations. A GitHub Actions environment named `staging` can be protected with required reviewers under **Settings → Environments**. The committed Wrangler config contains only public configuration and resource identifiers; never put service-role keys, access tokens, SMTP credentials or signing keys in it.
 
 ## Safe operating rules
 
