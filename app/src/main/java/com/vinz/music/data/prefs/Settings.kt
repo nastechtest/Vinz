@@ -1973,7 +1973,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         /** Everything the "Reset look" button puts back. */
         val look: List<Preferences.Key<*>> by lazy {
             listOf(
-                fontChoice, textScale, corners, uiDensity, titleSize, cardSize, reduceMotion, navStyle, navLabels, navHideOnScroll,
+                fontChoice, textScale, corners, uiDensity, titleSize, cardSize, navStyle, navLabels, navHideOnScroll,
                 navTabs, startTab, miniPlayerStyle, miniSkipButtons, miniPrevButton, miniPlayButton, miniProgress, miniProgressColor, miniFillStrength, playRing, playingInPageColor, playerBackground, playerBackdropShow, playerArtCorners, transportStyle,
                 coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
@@ -2004,7 +2004,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 spectrumStops to 's', spectrumBands to 'b', surfaceTint to 's', surfaceTintStrength to 'f', surfaceColor to 'i', contrast to 's',
                 artworkSwatch to 's', artworkVivid to 'b', artworkChange to 's', pageColors to 'b',
                 liquidGlass to 'b', glassKind to 's', frostedGlass to 'b', frostedPages to 'b', backdrops to 's', backdropDim to 'f',
-                backdropMotion to 'b', reduceMotion to 'b',
+                backdropMotion to 'b',
                 fontChoice to 's', appFontName to 's', lyricsFont to 's', textScale to 'f', corners to 's', uiDensity to 's', titleSize to 's', cardSize to 's',
                 navStyle to 's', navLabels to 's', navHideOnScroll to 'b', navTabs to 's', startTab to 's',
                 tabNames to 's', navBarSize to 's', navBarFill to 's', miniPlayerJoined to 'b',
@@ -2032,7 +2032,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
-                "experimental_split_navigation",
+                // Accessibility is the listener's choice, never a shared Look's or Reset look's.
+                // Old codes carrying reduce_motion are ignored by LookCode.sanitized.
+                "reduce_motion", "experimental_split_navigation",
                 "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
