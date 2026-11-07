@@ -2,13 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { handleRequest } from "./vinz-api.js";
 
-test("health endpoint reports missing backend configuration without exposing secrets", async () => {
+const SUPABASE_ENV = {
+  SUPABASE_URL: "https://example.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "public-test-key",
+};
+
+test("health endpoint reports configuration without exposing secrets", async () => {
   const response = await handleRequest(new Request("https://api.vinz.example/health"), {});
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     service: "vinz-api",
     status: "ok",
     configured: false,
+    backup_storage: false,
   });
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
@@ -19,7 +25,7 @@ test("unknown routes return a structured 404", async () => {
   assert.equal((await response.json()).error, "not_found");
 });
 
-test("profile endpoint fails closed until Supabase bindings exist", async () => {
+test("authenticated routes fail closed until Supabase bindings exist", async () => {
   const response = await handleRequest(
     new Request("https://api.vinz.example/v1/me", {
       headers: { authorization: "Bearer test-token" },
@@ -31,19 +37,85 @@ test("profile endpoint fails closed until Supabase bindings exist", async () => 
 });
 
 test("profile endpoint rejects missing bearer token", async () => {
-  const response = await handleRequest(
-    new Request("https://api.vinz.example/v1/me"),
-    { SUPABASE_URL: "https://example.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-test-key" },
-  );
+  const response = await handleRequest(new Request("https://api.vinz.example/v1/me"), SUPABASE_ENV);
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "unauthorized");
 });
 
 test("browser origins are denied unless explicitly allowlisted", async () => {
   const response = await handleRequest(
-    new Request("https://api.vinz.example/health", { headers: { origin: "https://evil.example" } }),
+    new Request("https://api.vinz.example/health", {
+      headers: { origin: "https://evil.example" },
+    }),
     { ALLOWED_ORIGINS: "https://app.vinz.example" },
   );
   assert.equal(response.status, 403);
   assert.equal((await response.json()).error, "origin_not_allowed");
+});
+
+test("preflight advertises only implemented API methods", async () => {
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/me", {
+      method: "OPTIONS",
+      headers: { origin: "https://app.vinz.example" },
+    }),
+    { ALLOWED_ORIGINS: "https://app.vinz.example" },
+  );
+  assert.equal(response.status, 204);
+  assert.match(response.headers.get("access-control-allow-methods"), /PATCH/);
+  assert.match(response.headers.get("access-control-allow-methods"), /DELETE/);
+});
+
+test("profile updates reject invalid usernames before touching the database", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    assert.match(String(input), /\/auth\/v1\/user$/);
+    return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/me", {
+      method: "PATCH",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ username: "bad username" }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_username");
+});
+
+test("settings updates reject unknown and non-boolean values", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/me/settings", {
+      method: "PATCH",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ notify_new_releases: "yes", admin: true }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_settings_field");
+});
+
+test("backup upload reports missing R2 binding rather than accepting data", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups", {
+      method: "PUT",
+      headers: { authorization: "Bearer test-token" },
+      body: new Uint8Array([1, 2, 3]),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "backup_storage_not_configured");
 });
