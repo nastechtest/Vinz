@@ -77,6 +77,55 @@ class LookTest {
     }
 
     @Test
+    fun reduceMotionIsAnAccessibilityChoiceNotALookSetting() {
+        val r = repo()
+        assertTrue("reduce_motion" in r.notLookNames)
+        assertTrue("reduce_motion" !in r.lookKinds)
+        assertTrue("reduce_motion" !in r.resetNames)
+    }
+
+    @Test
+    fun legacyLooksCannotOverrideEitherReduceMotionChoice(): Unit = runBlocking {
+        val r = repo()
+        for (enabled in listOf(true, false)) {
+            val saved = if (enabled) "b:1" else "b:0"
+            r.fromBackup(mapOf("reduce_motion" to saved), settings = true, accounts = false)
+            // Wait for previewLook's raw preferences as well as the public flow.
+            withTimeout(5_000) { r.flow.first { it.reduceMotion == enabled } }
+            val old = Look("legacy", "Old shared Look", mapOf(
+                "reduce_motion" to if (enabled) "b:0" else "b:1",
+                "backdrop_motion" to "b:1", "corners" to "s:SHARP",
+            ))
+            assertTrue("reduce_motion" !in LookCode.sanitized(old, r.lookKinds).values)
+            val decoded = LookCode.decode(LookCode.encode(old), r.lookKinds)!!
+            assertTrue("reduce_motion" !in decoded.values)
+            assertEquals(enabled, r.previewLook(old.values).reduceMotion)
+            r.applyLook(old.values)
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+            r.applyLook(decoded.values)
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+            r.applyLook(emptyMap())
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+        }
+    }
+
+    @Test
+    fun resettingAppearanceKeepsReduceMotion(): Unit = runBlocking {
+        val r = repo()
+        for (enabled in listOf(true, false)) {
+            val saved = if (enabled) "b:1" else "b:0"
+            r.fromBackup(mapOf("reduce_motion" to saved, "corners" to "s:SHARP", "accent" to "i:7"), settings = true, accounts = false)
+            withTimeout(5_000) { r.lookValues.first { it["corners"] == "s:SHARP" } }
+            r.resetLook()
+            withTimeout(5_000) { r.lookValues.first { "corners" !in it } }
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+            r.resetColors()
+            withTimeout(5_000) { r.lookValues.first { "accent" !in it } }
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+        }
+    }
+
+    @Test
     fun valuesKeepTheirKind() {
         assertEquals(true, LookValue.untag("b:1", 'b'))
         assertEquals(0.35f, LookValue.untag(LookValue.tag(0.35f)!!, 'f'))
