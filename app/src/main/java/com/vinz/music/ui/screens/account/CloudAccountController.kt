@@ -140,6 +140,14 @@ internal class CloudAccountController(
         }
     }
 
+    fun sendPasswordReset(): Job? {
+        val email = mutable.value.identity?.email?.takeIf { it.isNotBlank() } ?: return null
+        return request(R.string.cloud_account_recovery_failed) {
+            gateway.recover(email)
+            mutable.value = mutable.value.copy(message = R.string.cloud_account_recovery_sent)
+        }
+    }
+
     fun signOut(): Job? {
         if (mutable.value.identity == null) return null
         return request(R.string.cloud_account_sign_out_failed) {
