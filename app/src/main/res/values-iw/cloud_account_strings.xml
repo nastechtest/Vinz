@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">היכנס ונהל את פרופיל הענן שלך</string>
     <string name="cloud_account_intro">פרופיל הענן שלך נפרד מ-YouTube Music. מוזיקה והשמעה מקומיים פועלים ללא כניסה.</string>
     <string name="cloud_account_email">כתובת אימייל</string>
