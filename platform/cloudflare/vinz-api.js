@@ -596,8 +596,13 @@ async function registerDevice(request, config, auth) {
 async function deleteOwnedRow(config, auth, table, id) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "invalid_id" }, 400);
   const query = new URLSearchParams({ id: `eq.${id}` });
-  const response = await restRequest(config, auth.authorization, `${table}?${query}`, { method: "DELETE" });
+  const response = await restRequest(config, auth.authorization, `${table}?${query}`, {
+    method: "DELETE",
+    headers: { prefer: "return=representation" },
+  });
   if (!response.ok) return json({ error: "delete_failed" }, 502);
+  const rows = await response.json();
+  if (!Array.isArray(rows) || !rows.length) return json({ error: "record_not_found" }, 404);
   return json({ deleted: true, id });
 }
 
@@ -893,7 +898,7 @@ async function respondFriendRequest(request, config, auth, id) {
   if (!Array.isArray(rows) || !rows.length) return json({ error: "friend_request_not_found" }, 404);
   return json({ request: rows[0] });
 }
-\nexport async function handleRequest(request, env = {}, ctx = undefined) {
+export async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
   if (origin === false) return json({ error: "origin_not_allowed", request_id: requestId }, 403);
