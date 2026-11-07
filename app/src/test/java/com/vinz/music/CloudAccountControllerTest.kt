@@ -1,12 +1,3 @@
-@Test fun `clear password removes the typed secret only`() = runBlocking {
-        controller.email("user@example.test")
-        controller.password("test-password")
-        controller.clearPassword()
-    
-        assertEquals("user@example.test", controller.state.value.email)
-        assertEquals("", controller.state.value.password)
-        assertEquals(CloudAccountMode.SIGN_IN, controller.state.value.mode)
-}
 package com.vinz.music
 
 import com.vinz.music.R
@@ -42,6 +33,16 @@ class CloudAccountControllerTest {
     }
 
     @After fun tearDown() = runBlocking { scope.cancel() }
+
+    @Test fun `leaving account clears typed password without changing the email or mode`() {
+        controller.email("user@example.test")
+        controller.password("temporary-password")
+        controller.clearPassword()
+        assertEquals("", controller.state.value.password)
+        assertEquals("user@example.test", controller.state.value.email)
+        assertEquals(CloudAccountMode.SIGN_IN, controller.state.value.mode)
+    }
+
 
     @Test fun `duplicate requests are synchronously rejected while first is in flight`() = runBlocking {
         val started = CompletableDeferred<Unit>()
@@ -414,15 +415,4 @@ class CloudAccountControllerTest {
         }
         override suspend fun signOut() { identity = null }
     }
-@Test fun `clear password removes the typed secret only`() = runBlocking {
-        controller.email("user@example.test")
-            controller.password("test-password")
-                controller.clearPassword()
-
-                    assertEquals("user@example.test", controller.state.value.email)
-                        assertEquals("", controller.state.value.password)
-                            assertEquals(CloudAccountMode.SIGN_IN, controller.state.value.mode)
-}
-
-
 }
