@@ -1,0 +1,46 @@
+name: Deploy Vinz Supabase Edge Function
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: Type deploy-vinz-discovery to deploy the function
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinz-supabase-function-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    if: ${{ inputs.confirm_deploy == 'deploy-vinz-discovery' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: supabase-production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84cf3d7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Validate Edge Function source
+        run: |
+          set -euo pipefail
+          test -s supabase/functions/vinz-discovery/index.ts
+          grep -q "MAX_WATCHES_PER_RUN" supabase/functions/vinz-discovery/index.ts
+          grep -q "MAX_PODCASTS_PER_RUN" supabase/functions/vinz-discovery/index.ts
+      - name: Deploy only vinz-discovery
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test "$SUPABASE_PROJECT_REF" = "iszghebmetrbkfhnnoqq"
+          npx --yes supabase@3.0.0 functions deploy vinz-discovery --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
+          echo "Deployed vinz-discovery. Database migrations and Auth URL settings were not changed."
