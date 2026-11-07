@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">Connectez-vous et gérez votre profil cloud</string>
+    <string name="cloud_account_intro">Votre profil cloud est distinct de YouTube Music. La musique locale et la lecture fonctionnent sans connexion.</string>
+    <string name="cloud_account_email">Adresse email</string>
+    <string name="cloud_account_password">Mot de passe</string>
+    <string name="cloud_account_username">Nom d\'utilisateur</string>
+    <string name="cloud_account_display_name">Nom d\'affichage</string>
+    <string name="cloud_account_username_hint">3 à 24 lettres minuscules, chiffres ou traits de soulignement</string>
+    <string name="cloud_account_password_hint">Utilisez au moins 8 caractères.</string>
+    <string name="cloud_account_create">Créer un compte cloud</string>
+    <string name="cloud_account_existing">J\'ai déjà un compte</string>
+    <string name="cloud_account_forgot">Mot de passe oublié ?</string>
+    <string name="cloud_account_recovery">Envoyer un e-mail de récupération</string>
+    <string name="cloud_account_recovery_sent">Si un compte existe pour cette adresse, un email de récupération a été envoyé.</string>
+    <string name="cloud_account_confirmation">Vérifiez votre courrier électronique pour confirmer votre compte, puis revenez pour vous connecter.</string>
+    <string name="cloud_account_setup">Terminez la configuration de votre profil.</string>
+    <string name="cloud_account_bio">Biographie</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Profil public</string>
+    <string name="cloud_account_public_hint">Autorisez les autres utilisateurs de Vinz à consulter votre profil.</string>
+    <string name="cloud_account_discoverable">Découvrable</string>
+    <string name="cloud_account_discoverable_hint">Autorisez votre profil à apparaître dans la découverte des utilisateurs.</string>
+    <string name="cloud_account_saved">Votre profil cloud est enregistré.</string>
+    <string name="cloud_account_signed_out">Vous vous êtes déconnecté de votre compte cloud.</string>
+    <string name="cloud_account_signed_in">Connecté en tant que %1$s</string>
+    <string name="cloud_account_load_failed">Votre profil n\'a pas pu être chargé. Réessayez avant de modifier.</string>
+    <string name="cloud_account_request_failed">Cette demande de compte n\'a pas pu être complétée. Vérifiez votre connexion et réessayez.</string>
+    <string name="cloud_account_sign_in_failed">La connexion n\'a pas pu être complétée. Vérifiez vos coordonnées et votre connexion, puis réessayez.</string>
+    <string name="cloud_account_save_failed">Votre profil n\'a pas pu être enregistré. Vérifiez vos coordonnées et votre connexion, puis réessayez.</string>
+    <string name="cloud_account_recovery_failed">La demande de récupération n\'a pas pu être complétée. Réessayez plus tard.</string>
+    <string name="cloud_account_sign_out_failed">La déconnexion n\'a pas pu être effectuée. Essayer à nouveau.</string>
+</resources>
