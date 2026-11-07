@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Votre profil n\'a pas pu être enregistré. Vérifiez vos coordonnées et votre connexion, puis réessayez.</string>
     <string name="cloud_account_recovery_failed">La demande de récupération n\'a pas pu être complétée. Réessayez plus tard.</string>
     <string name="cloud_account_sign_out_failed">La déconnexion n\'a pas pu être effectuée. Essayer à nouveau.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
