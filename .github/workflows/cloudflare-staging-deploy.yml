@@ -50,6 +50,11 @@ jobs:
           const path = require("node:path");
           const token = process.env.CLOUDFLARE_API_TOKEN;
           const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const posthogProjectKey = process.env.POSTHOG_PROJECT_KEY;
+          if (!posthogProjectKey) {
+            console.error("Missing POSTHOG_PROJECT_KEY repository variable for Worker error telemetry.");
+            process.exit(1);
+          }
           if (!token || !account) {
             console.error("Missing CLOUDFLARE_API_TOKEN secret or CLOUDFLARE_ACCOUNT_ID variable.");
             process.exit(1);
