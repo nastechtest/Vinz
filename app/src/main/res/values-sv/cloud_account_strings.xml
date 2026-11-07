@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Logga in och hantera din molnprofil</string>
     <string name="cloud_account_intro">Din molnprofil är separat från YouTube Music. Lokal musik och uppspelning fungerar utan att logga in.</string>
     <string name="cloud_account_email">E-postadress</string>

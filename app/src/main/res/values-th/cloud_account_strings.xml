@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">ลงชื่อเข้าใช้และจัดการโปรไฟล์คลาวด์ของคุณ</string>
     <string name="cloud_account_intro">โปรไฟล์คลาวด์ของคุณแยกจาก YouTube Music เพลงและการเล่นในท้องถิ่นทำงานได้โดยไม่ต้องลงชื่อเข้าใช้</string>
     <string name="cloud_account_email">ที่อยู่อีเมล</string>
