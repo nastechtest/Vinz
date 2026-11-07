@@ -230,7 +230,7 @@ async function readBoundedBody(request, maxBytes) {
   }
   return bytes;
 }
-\nasync function uploadBackup(request, env, config, auth, requestId, ctx) {
+async function uploadBackup(request, env, config, auth, requestId, ctx) {
   if (!env.BACKUPS_BUCKET) return json({ error: "backup_storage_not_configured", request_id: requestId }, 503);
   const length = Number(request.headers.get("content-length") || 0);
   if (length > MAX_BACKUP_BYTES) return json({ error: "backup_too_large", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 413);
