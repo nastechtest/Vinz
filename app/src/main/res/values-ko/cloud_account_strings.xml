@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">프로필을 저장할 수 없습니다. 세부정보와 연결 상태를 확인한 후 다시 시도하세요.</string>
     <string name="cloud_account_recovery_failed">복구 요청을 완료할 수 없습니다. 나중에 다시 시도하세요.</string>
     <string name="cloud_account_sign_out_failed">로그아웃을 완료할 수 없습니다. 다시 시도해 보세요.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
