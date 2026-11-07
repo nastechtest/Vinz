@@ -1,0 +1,51 @@
+# Build review artifacts only. Publishing models remains a separate, explicitly approved action.
+name: Sing model packages
+
+on:
+  pull_request:
+    branches: [main, stable]
+    paths:
+      - scripts/models/**
+      - scripts/tests/test_sing_packages.py
+      - app/src/main/java/com/vinz/music/data/ModelStore.kt
+      - .github/workflows/sing-packages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sing-packages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packages:
+    name: Verify reproducible Sing packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out review source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Test package guards
+        run: python3 scripts/tests/test_sing_packages.py
+
+      - name: Rebuild and verify pinned packages
+        run: |
+          python3 scripts/models/package_sing.py \
+            --source-dir "$RUNNER_TEMP/sing-sources" \
+            --output-dir dist/sing-models \
+            --check-source app/src/main/java/com/vinz/music/data/ModelStore.kt
+          cp scripts/models/{sources,packages}.json dist/sing-models/
+          python3 -c 'import json,pathlib; m=json.load(open("scripts/models/packages.json")); pathlib.Path("dist/sing-models/SHA256SUMS").write_text("".join(p["sha256"]+"  "+p["filename"]+"\n" for p in m["packages"]))'
+          (cd dist/sing-models && sha256sum -c SHA256SUMS)
+
+      - name: Upload verified review packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sing-model-packages-${{ github.event.pull_request.number || github.run_id }}
+          path: dist/sing-models/
+          if-no-files-found: error
+          retention-days: 14
