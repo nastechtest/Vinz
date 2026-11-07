@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Hindi ma-save ang iyong profile. Suriin ang iyong mga detalye at koneksyon, pagkatapos ay subukang muli.</string>
     <string name="cloud_account_recovery_failed">Hindi makumpleto ang kahilingan sa pagbawi. Subukan ulit mamaya.</string>
     <string name="cloud_account_sign_out_failed">Hindi makumpleto ang pag-sign out. Subukan muli.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
