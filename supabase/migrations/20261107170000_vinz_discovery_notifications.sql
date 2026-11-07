@@ -70,7 +70,11 @@ create index if not exists vinz_notifications_inbox_idx
 alter table public.vinz_artist_watches enable row level security;
 alter table public.vinz_podcast_subscriptions enable row level security;
 alter table public.vinz_notification_devices enable row level security;
-alter table public.vinz_notifications enable row level security;\n\n-- Signed-in users may only mark their own notifications as read.\nrevoke update on table public.vinz_notifications from authenticated;\ngrant update (read_at) on table public.vinz_notifications to authenticated;
+alter table public.vinz_notifications enable row level security;
+
+-- Signed-in users may only mark their own notifications as read.
+revoke update on table public.vinz_notifications from authenticated;
+grant update (read_at) on table public.vinz_notifications to authenticated;
 
 drop policy if exists "Vinz artist watches own rows" on public.vinz_artist_watches;
 create policy "Vinz artist watches own rows"
