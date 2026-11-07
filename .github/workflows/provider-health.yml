@@ -71,7 +71,7 @@ jobs:
             });
 
             const posthog = process.env.POSTHOG_PERSONAL_API_KEY;
-            const host = (process.env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/$/, "");
+            const host = (process.env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/[/]+$/, "");
             await check("PostHog", !!posthog, `${host}/api/projects/`, {
               headers: bearer(posthog),
             });
