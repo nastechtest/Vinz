@@ -190,3 +190,59 @@ test("catalog search returns normalized Apple metadata without media previews", 
   assert.equal(body.results[0].artist, "Test Artist");
   assert.equal("previewUrl" in body.results[0], false);
 });
+
+test("artist watch endpoint validates provider identifiers", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/watches/artists", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ provider: "unknown", provider_artist_id: "1", artist_name: "Artist" }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_artist_watch");
+});
+
+test("podcast subscriptions reject insecure and local feed URLs", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/podcasts/subscriptions", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: "rss",
+        provider_podcast_id: "test",
+        feed_url: "http://127.0.0.1/private",
+        title: "Podcast",
+      }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_feed_url");
+});
+
+test("notification device registration rejects malformed push tokens", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/devices", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ platform: "android", push_token: "short" }),
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_notification_device");
+});
