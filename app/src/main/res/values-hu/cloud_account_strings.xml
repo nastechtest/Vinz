@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">A profilod nem menthető. Ellenőrizze adatait és kapcsolatát, majd próbálja újra.</string>
     <string name="cloud_account_recovery_failed">A helyreállítási kérelmet nem sikerült teljesíteni. Próbálja újra később.</string>
     <string name="cloud_account_sign_out_failed">A kijelentkezést nem sikerült befejezni. Próbáld újra.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
