@@ -195,7 +195,7 @@ async function updateSettings(request, config, auth) {
   const response = await restRequest(config, auth.authorization, `vinz_account_settings?${query}`, {
     method: "PATCH",
     headers: { "content-type": "application/json", prefer: "return=representation" },
-    body: JSON.stringify({ ...update, updated_at: new Date().toISOString() }),
+    body: JSON.stringify(update),
   });
   if (!response.ok) return { error: "settings_update_failed", status: 502 };
   const rows = await response.json();
