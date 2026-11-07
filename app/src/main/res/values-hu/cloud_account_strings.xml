@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">Jelentkezzen be, és kezelje felhőprofilját</string>
+    <string name="cloud_account_intro">Felhőprofilod elkülönül a YouTube Music-tól. A helyi zene és lejátszás bejelentkezés nélkül is működik.</string>
+    <string name="cloud_account_email">E-mail cím</string>
+    <string name="cloud_account_password">Jelszó</string>
+    <string name="cloud_account_username">Felhasználónév</string>
+    <string name="cloud_account_display_name">Megjelenítési név</string>
+    <string name="cloud_account_username_hint">3–24 kisbetű, szám vagy aláhúzás</string>
+    <string name="cloud_account_password_hint">Használjon legalább 8 karaktert.</string>
+    <string name="cloud_account_create">Hozzon létre felhőfiókot</string>
+    <string name="cloud_account_existing">Már van fiókom</string>
+    <string name="cloud_account_forgot">Elfelejtetted a jelszavad?</string>
+    <string name="cloud_account_recovery">Másodlagos e-mail küldése</string>
+    <string name="cloud_account_recovery_sent">Ha létezik fiók ehhez a címhez, egy helyreállítási e-mailt küldtünk.</string>
+    <string name="cloud_account_confirmation">Ellenőrizze e-mailjét a fiók megerősítéséhez, majd térjen vissza a bejelentkezéshez.</string>
+    <string name="cloud_account_setup">Fejezze be a profil beállítását.</string>
+    <string name="cloud_account_bio">Életrajz</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Nyilvános profil</string>
+    <string name="cloud_account_public_hint">Engedélyezze a többi Vinz-felhasználónak a profil megtekintését.</string>
+    <string name="cloud_account_discoverable">Felfedezhető</string>
+    <string name="cloud_account_discoverable_hint">Engedélyezze profilja megjelenését a felhasználókeresésben.</string>
+    <string name="cloud_account_saved">Felhőprofilja mentésre került.</string>
+    <string name="cloud_account_signed_out">Kijelentkezett felhőfiókjából.</string>
+    <string name="cloud_account_signed_in">Bejelentkezve mint %1$s</string>
+    <string name="cloud_account_load_failed">A profilod nem tölthető be. Szerkesztés előtt próbálkozzon újra.</string>
+    <string name="cloud_account_request_failed">Ez a fiókkérelem nem teljesíthető. Ellenőrizze a kapcsolatot, és próbálja újra.</string>
+    <string name="cloud_account_sign_in_failed">A bejelentkezést nem sikerült befejezni. Ellenőrizze adatait és kapcsolatát, majd próbálja újra.</string>
+    <string name="cloud_account_save_failed">A profilod nem menthető. Ellenőrizze adatait és kapcsolatát, majd próbálja újra.</string>
+    <string name="cloud_account_recovery_failed">A helyreállítási kérelmet nem sikerült teljesíteni. Próbálja újra később.</string>
+    <string name="cloud_account_sign_out_failed">A kijelentkezést nem sikerült befejezni. Próbáld újra.</string>
+</resources>
