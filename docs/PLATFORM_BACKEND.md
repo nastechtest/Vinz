@@ -26,7 +26,7 @@ A service being connected does not increase another provider's quota. The design
 - PostHog currently exposes one empty Default project. No Vinz events have been ingested.
 - Vercel currently returns no project associated with the Vinz repository. The repository is Android-only, so Vercel is reserved for an actual web control plane if one is introduced.
 
-## API contract (first slice)
+## Provisioned Cloudflare resources (not yet bound or deployed)\n\n- R2 bucket `vinz-backups` (EEUR, Standard) for opaque backup objects.\n- KV namespace `VINZ_CATALOG_CACHE` (EU) for public catalog metadata caching.\n- Queue `vinz-discovery-jobs` (EU) and dead-letter queue `vinz-discovery-jobs-dlq` (EU). The queue resources are empty until a scheduled producer/consumer is configured.\n- The existing `vinz` Worker remains the Hello World script until the reviewed PR is deployed. Resource creation alone does not make the API live.\n\n## API contract
 
 ### `GET /health`
 Returns service health and whether the required Supabase runtime bindings are present. It does not expose configuration values.
@@ -39,11 +39,11 @@ Required Worker bindings:
 - `SUPABASE_PUBLISHABLE_KEY` — Supabase publishable/anon key (public client key; still store as a Worker binding).
 - `ALLOWED_ORIGINS` — comma-separated exact browser origins if a web client is later introduced. Native Android calls need no browser CORS origin.
 - `POSTHOG_PROJECT_KEY` — PostHog project ingestion key for fixed operational error events only; optional until telemetry is enabled.
-- `POSTHOG_HOST` — optional PostHog ingestion host; defaults to `https://us.i.posthog.com`.
+- `POSTHOG_HOST` — PostHog ingestion host returned by the project settings; required when PostHog telemetry is enabled.\n- `BACKUPS_BUCKET` — R2 binding to bucket `vinz-backups`.\n- `CATALOG_CACHE` — KV binding to namespace `VINZ_CATALOG_CACHE`.
 
 Never configure a Supabase service-role key in the mobile app or this Worker. Do not deploy authenticated routes until the public key binding is present and the RLS policies have been reviewed.
 
-## Privacy and data boundaries
+## Discovery provider rules\n\n- Apple iTunes Search API is the initial no-key catalog/artwork/podcast discovery provider. Do not expose preview audio URLs; Apple promotional artwork/previews must only be used to promote Apple Store content and subject to Apple's terms.\n- MusicBrainz remains the metadata/discography enrichment provider, but its public API must be limited to one request per second and must not be polled for metadata changes. Use queued, jittered refresh jobs rather than synchronized periodic scans. See [MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API) and [rate limits](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting).\n- LRCLIB can be a lyrics lookup adapter, but its availability does not grant redistribution or translation rights. Licensed lyrics should use an approved rights provider; translations need explicit source/translation rights.\n- Podcast Index requires its registered API authentication headers. Direct RSS feeds must be fetched with strict URL/redirect/size/time limits and a safe public-host policy; no arbitrary feed URL is fetched by the public API.\n- Recognition remains a separate adapter: ShazamKit where its platform/data terms fit; AcoustID + Chromaprint for the open-source fingerprint path; paid recognition providers are optional fallbacks and must be budget-gated.\n\n## Privacy and data boundaries
 
 - Music library, listening history, recognition audio, lyrics content and personal playlists remain on-device by default.
 - PostHog events should be coarse events such as `feature_used`, `api_request_failed`, `backup_completed`, and `discovery_refresh_completed`; use allowlisted properties only.
@@ -65,7 +65,7 @@ Never configure a Supabase service-role key in the mobile app or this Worker. Do
 
 ## Operational safeguards
 
-- No production deployment or destructive database migration as part of scaffolding.
+- No production deployment or destructive database migration as part of scaffolding.\n- `20261107170000_vinz_discovery_notifications.sql` is additive but pending; apply only after recovering and versioning the three existing migration files.
 - No service-role key in client code, logs, analytics, or source control.
 - No shared cache for authenticated responses.
 - Add provider-level budgets and alert thresholds before enabling scheduled crawls.
