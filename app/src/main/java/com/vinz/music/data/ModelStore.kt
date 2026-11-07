@@ -1,1 +1,231 @@
-cGFja2FnZSBjb20udmluei5tdXNpYy5kYXRhCgppbXBvcnQgY29tLnZpbnoubXVzaWMuUgppbXBvcnQgY29tLnZpbnoubXVzaWMudHIKaW1wb3J0IGFuZHJvaWQuY29udGVudC5Db250ZXh0CmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuQ29yb3V0aW5lU2NvcGUKaW1wb3J0IGtvdGxpbnguY29yb3V0aW5lcy5EaXNwYXRjaGVycwppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLlN1cGVydmlzb3JKb2IKaW1wb3J0IGtvdGxpbnguY29yb3V0aW5lcy5hc3luYwppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuTXV0YWJsZVN0YXRlRmxvdwppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuU3RhdGVGbG93CmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuZmxvdy51cGRhdGUKaW1wb3J0IGtvdGxpbnguY29yb3V0aW5lcy5zeW5jLk11dGV4CmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuc3luYy53aXRoTG9jawppbXBvcnQgb2todHRwMy5Pa0h0dHBDbGllbnQKaW1wb3J0IG9raHR0cDMuUmVxdWVzdAppbXBvcnQgamF2YS5pby5GaWxlCmltcG9ydCBqYXZhLmlvLklPRXhjZXB0aW9uCmltcG9ydCBqYXZhLnNlY3VyaXR5Lk1lc3NhZ2VEaWdlc3QKaW1wb3J0IGphdmEudXRpbC56aXAuWmlwSW5wdXRTdHJlYW0KCi8qKgogKiBCaWcgZGF0YSBmaWxlcyBzb21lIGZlYXR1cmVzIG5lZWQsIGRvd25sb2FkZWQgdGhlIGZpcnN0IHRpbWUgdGhleSdyZSB1c2VkIHJhdGhlciB0aGFuIGNhcnJpZWQgaW4gZXZlcnkgQVBLOgogKiBlYWNoIG9uZSBhIHppcCBhdHRhY2hlZCB0byBWaW56J3Mgb3duIEdpdEh1YiByZWxlYXNlIGBtb2RlbHMtdjFgLCBjaGVja2VkIGFnYWluc3QgaXRzIFNIQS0yNTYgYmVmb3JlIHVzZSwgYW5kIGtlcHQKICogaW4gYGZpbGVzRGlyL21vZGVsc2AgKGxlZnQgb3V0IG9mIGJhY2t1cHM7IGl0IGNhbiBhbHdheXMgYmUgZG93bmxvYWRlZCBhZ2FpbikuCiAqLwpjbGFzcyBNb2RlbFN0b3JlKHByaXZhdGUgdmFsIGNvbnRleHQ6IENvbnRleHQsIHByaXZhdGUgdmFsIGh0dHA6IE9rSHR0cENsaWVudCkgewogICAgZW51bSBjbGFzcyBNb2RlbCh2YWwgaWQ6IFN0cmluZywgdmFsIGZpbGU6IFN0cmluZywgdmFsIHNoYTI1NjogU3RyaW5nLCB2YWwgYnl0ZXM6IExvbmcsIHZhbCB0aXRsZTogU3RyaW5nLCAvKiogSXRzIHNpemUgdW5wYWNrZWQgb24gdGhlIHBob25lLiAqLyB2YWwgdW5wYWNrZWQ6IExvbmcpIHsKICAgICAgICAvKiogS3Vyb21vamkncyBJUEFESUMgZGljdGlvbmFyeSAoQXBhY2hlLTIuMCAvIElQQURJQyBsaWNlbmNlKTogcmVhZGluZ3MgZm9yIEphcGFuZXNlIGx5cmljcycga2FuamkuICovCiAgICAgICAgSkFQQU5FU0UoCiAgICAgICAgICAgICJqYS1pcGFkaWMiLCAiamEtaXBhZGljLTAuOS4wLnppcCIsCiAgICAgICAgICAgICIyODZjMzcyNDMzMjE5NTQ4YzIwZmVkNDdmODEzYTg0YjMzNGE2OGE3ZWI2OTQ3ODczNjk3ODlkODAwOGYwYjJhIiwgMTNfMzMxXzAyMSwgdHIoUi5zdHJpbmcuamFwYW5lc2Vfa2FuamlfcmVhZGluZ3MpLCAzM180NDNfMTQzLAogICAgICAgICksCiAgICAgICAgLyoqIERlZXplcidzIFNwbGVldGVyLCAyIHN0ZW1zLCBhcyBzaGVycGEtb25ueCBleHBvcnRlZCBpdCAoZnAxNik6IFNpbmcncyB2b2NhbCBzZXBhcmF0aW9uLiAqLwogICAgICAgIFNJTkdfTU9ERUwoCiAgICAgICAgICAgICJzaW5nLXNwbGVldGVyIiwgInNpbmctc3BsZWV0ZXItMnN0ZW1zLWZwMTYuemlwIiwKICAgICAgICAgICAgIjY5NzE0MDgzYjZmZDVhODhhYTkzY2MwMjFiNGZiOTUzNDM4ODk2MGE1MzJmNmM5ODcwMzZlMzBmNTMzMmMxOTEiLCAzNjM3MDQ1NCwgdHIoUi5zdHJpbmcuc2luZ19zX3ZvaWNlX3NlcGFyYXRpb24pLCAzOTM3NDQ3NCwKICAgICAgICApLAogICAgICAgIC8qKiBPTk5YIFJ1bnRpbWUncyBuYXRpdmUgbGlicmFyaWVzIChNaWNyb3NvZnQsIE1JVCksIHdoaWNoIFNpbmcgcnVucyBTcGxlZXRlciBvbiwgb25lIHBlciBraW5kIG9mIHByb2Nlc3Nvci4gKi8KICAgICAgICBTSU5HX1JVTlRJTUVfQVJNNjQoCiAgICAgICAgICAgICJvbm54cnVudGltZS1hcm02NC12OGEiLCAib25ueHJ1bnRpbWUtMS4zMS4wLWFybTY0LXY4YS56aXAiLAogICAgICAgICAgICAiNWE2YzE4Yzc5NTg3OTdjYWFmYTFjZDdlNmYzMDMzNGU5OWNmNWI2MDIyY2RjNWNhMWYwNDdjOWQ5NDU1MmQ3YSIsIDEyODY0MDg5LCB0cihSLnN0cmluZy5zaW5nX3NfZW5naW5lKSwgMzQyMDk3NTMsCiAgICAgICAgKSwKICAgICAgICBTSU5HX1JVTlRJTUVfQVJNVjcoCiAgICAgICAgICAgICJvbm54cnVudGltZS1hcm1lYWJpLXY3YSIsICJvbm54cnVudGltZS0xLjMxLjAtYXJtZWFiaS12N2EuemlwIiwKICAgICAgICAgICAgIjlkNmNhOTIzNDY1MDc1M2IwYjcxMzdhZjVkYjRlZjM1NTIwY2RhNjc5NmZkNDliMmQxM2I1OGNmYWFjYzFlYWYiLCAxMTYyMzU0NSwgdHIoUi5zdHJpbmcuc2luZ19zX2VuZ2luZSksIDI0MTgzMDg1LAogICAgICAgICksCiAgICAgICAgU0lOR19SVU5USU1FX1g4Nl82NCgKICAgICAgICAgICAgIm9ubnhydW50aW1lLXg4Nl82NCIsICJvbm54cnVudGltZS0xLjMxLjAteDg2XzY0LnppcCIsCiAgICAgICAgICAgICIwN2ZlZTI0MjdlODkzOWVkZDA1ZDAzNzFjZTRjMTVhZGM1NzkxN2ZiY2YzOWRjMDdjZTVhZmU3NjQyNmFlYzk1IiwgMTQ5MzUwNzgsIHRyKFIuc3RyaW5nLnNpbmdfc19lbmdpbmUpLCA0MDgyOTAxNywKICAgICAgICApLAogICAgICAgIDsKCiAgICAgICAgY29tcGFuaW9uIG9iamVjdCB7CiAgICAgICAgICAgIC8qKiAiNDkgTUIgZG93bmxvYWQsIDc0IE1CIG9uIHRoZSBwaG9uZSI6IHRoZSBzYW1lIHdvcmRzIHdoZXJldmVyIHRoZSBzaXplIG9mIFttb2RlbHNdIGlzIHRvbGQuICovCiAgICAgICAgICAgIGZ1biBzaXplVGV4dCh2YXJhcmcgbW9kZWxzOiBNb2RlbCk6IFN0cmluZyA9CiAgICAgICAgICAgICAgICB0cihSLnN0cmluZy5tYl9kb3dubG9hZF9tYl9vbl90aGVfcGhvbmUsIG1vZGVscy5zdW1PZiB7IGl0LmJ5dGVzIH0gLyAxXzAwMF8wMDAsIG1vZGVscy5zdW1PZiB7IGl0LnVucGFja2VkIH0gLyAxXzAwMF8wMDApCgogICAgICAgICAgICAvKiogVGhlIGVuZ2luZSBidWlsZCBmb3IgdGhpcyBwaG9uZSdzIHByb2Nlc3NvciAobnVsbCBvbiBvbmUgU2luZyBjYW4ndCBydW4gb24pLiAqLwogICAgICAgICAgICBmdW4gc2luZ1J1bnRpbWUoKTogTW9kZWw/IHsKICAgICAgICAgICAgICAgIHZhbCBhYmlzID0gaWYgKGFuZHJvaWQub3MuUHJvY2Vzcy5pczY0Qml0KCkpIGFuZHJvaWQub3MuQnVpbGQuU1VQUE9SVEVEXzY0X0JJVF9BQklTIGVsc2UgYW5kcm9pZC5vcy5CdWlsZC5TVVBQT1JURURfMzJfQklUX0FCSVMKICAgICAgICAgICAgICAgIHJldHVybiB3aGVuIChhYmlzLmZpcnN0T3JOdWxsKCkpIHsKICAgICAgICAgICAgICAgICAgICAiYXJtNjQtdjhhIiAtPiBTSU5HX1JVTlRJTUVfQVJNNjQKICAgICAgICAgICAgICAgICAgICAiYXJtZWFiaS12N2EiIC0+IFNJTkdfUlVOVElNRV9BUk1WNwogICAgICAgICAgICAgICAgICAgICJ4ODZfNjQiIC0+IFNJTkdfUlVOVElNRV9YODZfNjQKICAgICAgICAgICAgICAgICAgICBlbHNlIC0+IG51bGwKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KCiAgICBzZWFsZWQgaW50ZXJmYWNlIFN0YXRlIHsKICAgICAgICBkYXRhIG9iamVjdCBNaXNzaW5nIDogU3RhdGUKICAgICAgICBkYXRhIGNsYXNzIERvd25sb2FkaW5nKHZhbCBmcmFjdGlvbjogRmxvYXQpIDogU3RhdGUKICAgICAgICBkYXRhIG9iamVjdCBSZWFkeSA6IFN0YXRlCiAgICAgICAgZGF0YSBjbGFzcyBGYWlsZWQodmFsIG1lc3NhZ2U6IFN0cmluZykgOiBTdGF0ZQogICAgfQoKICAgIHByaXZhdGUgdmFsIHJvb3QgYnkgbGF6eSB7IEZpbGUoY29udGV4dC5maWxlc0RpciwgIm1vZGVscyIpIH0KICAgIHByaXZhdGUgdmFsIF9zdGF0ZXMgPSBNdXRhYmxlU3RhdGVGbG93KE1vZGVsLmVudHJpZXMuYXNzb2NpYXRlV2l0aCB7IGlmIChyZWFkeShpdCkpIFN0YXRlLlJlYWR5IGVsc2UgU3RhdGUuTWlzc2luZyB9KQogICAgdmFsIHN0YXRlczogU3RhdGVGbG93PE1hcDxNb2RlbCwgU3RhdGU+PiA9IF9zdGF0ZXMKICAgIHByaXZhdGUgdmFsIGxvY2tzID0gTW9kZWwuZW50cmllcy5hc3NvY2lhdGVXaXRoIHsgTXV0ZXgoKSB9CgogICAgLyoqIExvb2tzIGF0IHdoYXQncyBvbiB0aGUgcGhvbmUgYWdhaW4gKGEgbW9kZWwgcmVtb3ZlZCBvciBwdXQgYmFjayBvdXRzaWRlIGEgZG93bmxvYWQpLiAqLwogICAgZnVuIHJlZnJlc2goKSA9IF9zdGF0ZXMudXBkYXRlIHsgc3RhdGVzIC0+CiAgICAgICAgc3RhdGVzLm1hcFZhbHVlcyB7IChtLCBzKSAtPiBpZiAocyBpcyBTdGF0ZS5Eb3dubG9hZGluZykgcyBlbHNlIGlmIChyZWFkeShtKSkgU3RhdGUuUmVhZHkgZWxzZSBpZiAocyBpcyBTdGF0ZS5GYWlsZWQpIHMgZWxzZSBTdGF0ZS5NaXNzaW5nIH0KICAgIH0KCiAgICBmdW4gZGlyKG06IE1vZGVsKSA9IEZpbGUocm9vdCwgbS5pZCkKCiAgICAvKiogQSBtYXJrZXIgYWxvbmUgaXMgbm90IGVub3VnaDogYSBkZWxldGVkIG9yIHplcm8tYnl0ZSBtb2RlbCBmaWxlIG11c3QgbWFrZSB0aGUgZmVhdHVyZSBkb3dubG9hZCBhZ2Fpbi4gKi8KICAgIGZ1biByZWFkeShtOiBNb2RlbCk6IEJvb2xlYW4gewogICAgICAgIHZhbCBkaXIgPSBkaXIobSkKICAgICAgICB2YWwgbWFya2VyID0gRmlsZShkaXIsIFJFQURZKQogICAgICAgIHJldHVybiBydW5DYXRjaGluZyB7CiAgICAgICAgICAgIHZhbCByZXF1aXJlZCA9IHJlcXVpcmVkRmlsZXMobSkKICAgICAgICAgICAgbWFya2VyLmlzRmlsZSAmJiBtYXJrZXIucmVhZFRleHQoKSA9PSBtLnNoYTI1NiAmJiByZXF1aXJlZC5pc05vdEVtcHR5KCkgJiYgcmVxdWlyZWQuYWxsIHsKICAgICAgICAgICAgICAgIEZpbGUoZGlyLCBpdCkubGV0IHsgZmlsZSAtPiBmaWxlLmlzRmlsZSAmJiBmaWxlLmxlbmd0aCgpID4gMEwgfQogICAgICAgICAgICB9CiAgICAgICAgfS5nZXRPckRlZmF1bHQoZmFsc2UpCiAgICB9CgogICAgLyoqCiAgICAgKiBEb3dubG9hZHMsIGNoZWNrcyBhbmQgdW5wYWNrcyBbbV0gKG9uY2UgYXQgYSB0aW1lOyBhdCBvbmNlIGlmIGl0J3MgYWxyZWFkeSB0aGVyZSkuIFRydWUgd2hlbiBpdCdzIHJlYWR5LgogICAgICogVGhlIGRvd25sb2FkIHJ1bnMgb24gdGhlIHN0b3JlJ3Mgb3duIHNjb3BlOiBjbG9zaW5nIHRoZSBzaGVldCB0aGF0IHN0YXJ0ZWQgaXQgKGFuZCBzbyBjYW5jZWxsaW5nIHRoZSBjYWxsZXIpCiAgICAgKiBsZWF2ZXMgaXQgZ29pbmcsIGFuZCBpdHMgc3RhdGUgZW5kcyB1cCBSZWFkeSwgbm90ICJmYWlsZWQiLCB3aGVuIGl0IGZpbmlzaGVzICgyMDI2LTEwLTIwOiBTaW5nJ3MgZW5naW5lIGhhZAogICAgICogZG93bmxvYWRlZCwgYnV0IFNldHRpbmdzIHN0aWxsIG9mZmVyZWQgdG8gZG93bmxvYWQgaXQpLgogICAgICovCiAgICBzdXNwZW5kIGZ1biBkb3dubG9hZChtOiBNb2RlbCk6IEJvb2xlYW4gPSB3b3JrLmFzeW5jIHsKICAgICAgICBsb2Nrcy5nZXRWYWx1ZShtKS53aXRoTG9jayB7CiAgICAgICAgICAgIGlmIChyZWFkeShtKSkgcmV0dXJuQHdpdGhMb2NrIHRydWUuYWxzbyB7IHNldChtLCBTdGF0ZS5SZWFkeSkgfQogICAgICAgICAgICBzZXQobSwgU3RhdGUuRG93bmxvYWRpbmcoMGYpKQogICAgICAgICAgICB2YWwgcmVzdWx0ID0gcnVuQ2F0Y2hpbmcgeyBmZXRjaChtKSB9CiAgICAgICAgICAgIHNldChtLCBpZiAocmVhZHkobSkpIFN0YXRlLlJlYWR5IGVsc2UgU3RhdGUuRmFpbGVkKHJlc3VsdC5leGNlcHRpb25Pck51bGwoKT8ubWVzc2FnZSA/OiB0cihSLnN0cmluZy5kb3dubG9hZF9mYWlsZWQpKSkKICAgICAgICAgICAgcmVhZHkobSkKICAgICAgICB9CiAgICB9LmF3YWl0KCkKCiAgICBwcml2YXRlIHZhbCB3b3JrID0gQ29yb3V0aW5lU2NvcGUoU3VwZXJ2aXNvckpvYigpICsgRGlzcGF0Y2hlcnMuSU8pCgogICAgLyoqIFJlbW92ZXMgW21dIGZyb20gdGhlIHBob25lIChTZXR0aW5ncywgdG8gZnJlZSB0aGUgc3BhY2UpLiAqLwogICAgZnVuIGRlbGV0ZShtOiBNb2RlbCkgewogICAgICAgIGRpcihtKS5kZWxldGVSZWN1cnNpdmVseSgpCiAgICAgICAgc2V0KG0sIFN0YXRlLk1pc3NpbmcpCiAgICB9CgogICAgZnVuIHNpemVPblBob25lKG06IE1vZGVsKTogTG9uZyA9IGRpcihtKS53YWxrVG9wRG93bigpLmZpbHRlciB7IGl0LmlzRmlsZSB9LnN1bU9mIHsgaXQubGVuZ3RoKCkgfQoKICAgIHByaXZhdGUgZnVuIHNldChtOiBNb2RlbCwgczogU3RhdGUpID0gX3N0YXRlcy51cGRhdGUgeyBpdCArIChtIHRvIHMpIH0KCiAgICBwcml2YXRlIGZ1biBmZXRjaChtOiBNb2RlbCkgewogICAgICAgIHJvb3QubWtkaXJzKCkKICAgICAgICB2YWwgcGFydCA9IEZpbGUocm9vdCwgbS5maWxlICsgIi5wYXJ0IikKICAgICAgICB0cnkgewogICAgICAgICAgICB2YWwgcmVxID0gUmVxdWVzdC5CdWlsZGVyKCkudXJsKCIkQkFTRS8ke20uZmlsZX0iKS5idWlsZCgpCiAgICAgICAgICAgIGh0dHAubmV3Q2FsbChyZXEpLmV4ZWN1dGUoKS51c2UgeyByZXNwIC0+CiAgICAgICAgICAgICAgICBpZiAoIXJlc3AuaXNTdWNjZXNzZnVsKSB0aHJvdyBJT0V4Y2VwdGlvbih0cihSLnN0cmluZy50aGVfZG93bmxvYWRfYW5zd2VyZWRfaHR0cCwgcmVzcC5jb2RlKSkKICAgICAgICAgICAgICAgIHZhbCBib2R5ID0gcmVzcC5ib2R5CiAgICAgICAgICAgICAgICB2YWwgdG90YWwgPSBib2R5LmNvbnRlbnRMZW5ndGgoKS50YWtlSWYgeyBpdCA+IDAgfSA/OiBtLmJ5dGVzCiAgICAgICAgICAgICAgICB2YWwgZGlnZXN0ID0gTWVzc2FnZURpZ2VzdC5nZXRJbnN0YW5jZSgiU0hBLTI1NiIpCiAgICAgICAgICAgICAgICBwYXJ0Lm91dHB1dFN0cmVhbSgpLnVzZSB7IG91dCAtPgogICAgICAgICAgICAgICAgICAgIGJvZHkuYnl0ZVN0cmVhbSgpLnVzZSB7IGlucHV0IC0+CiAgICAgICAgICAgICAgICAgICAgICAgIHZhbCBidWYgPSBCeXRlQXJyYXkoNjQgKiAxMDI0KQogICAgICAgICAgICAgICAgICAgICAgICB2YXIgZG9uZSA9IDBMCiAgICAgICAgICAgICAgICAgICAgICAgIHZhciBzaG93biA9IDBmCiAgICAgICAgICAgICAgICAgICAgICAgIHdoaWxlICh0cnVlKSB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICB2YWwgbiA9IGlucHV0LnJlYWQoYnVmKQogICAgICAgICAgICAgICAgICAgICAgICAgICAgaWYgKG4gPCAwKSBicmVhawogICAgICAgICAgICAgICAgICAgICAgICAgICAgZG9uZSArPSBuCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiAobSAhPSBNb2RlbC5KQVBBTkVTRSAmJiBkb25lID4gbS5ieXRlcykgdGhyb3cgSU9FeGNlcHRpb24odHIoUi5zdHJpbmcudGhlX2Rvd25sb2FkX2RpZG5fdF9jaGVja19vdXQpKQogICAgICAgICAgICAgICAgICAgICAgICAgICAgb3V0LndyaXRlKGJ1ZiwgMCwgbikKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRpZ2VzdC51cGRhdGUoYnVmLCAwLCBuKQogICAgICAgICAgICAgICAgICAgICAgICAgICAgdmFsIGYgPSAoZG9uZS50b0Zsb2F0KCkgLyB0b3RhbCkuY29lcmNlSW4oMGYsIDFmKQogICAgICAgICAgICAgICAgICAgICAgICAgICAgaWYgKGYgLSBzaG93biA+PSAwLjAxZikgeyBzaG93biA9IGY7IHNldChtLCBTdGF0ZS5Eb3dubG9hZGluZyhmKSkgfQogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgdmFsIHNoYSA9IGRpZ2VzdC5kaWdlc3QoKS5qb2luVG9TdHJpbmcoIiIpIHsgIiUwMngiLmZvcm1hdChpdCkgfQogICAgICAgICAgICAgICAgaWYgKHNoYSAhPSBtLnNoYTI1NikgdGhyb3cgSU9FeGNlcHRpb24odHIoUi5zdHJpbmcudGhlX2Rvd25sb2FkX2RpZG5fdF9jaGVja19vdXQpKQogICAgICAgICAgICB9CiAgICAgICAgICAgIGluc3RhbGwobSwgcGFydCkKICAgICAgICB9IGZpbmFsbHkgewogICAgICAgICAgICAvLyBBIHN0b3BwZWQgcmVxdWVzdCwgYSBmYWlsZWQgY2hlY2tzdW0gYW5kIGEgZmFpbGVkIHVucGFjayBhbGwgbGVhdmUgdGhlIG5leHQgYXR0ZW1wdCBjbGVhbi4KICAgICAgICAgICAgcGFydC5kZWxldGUoKQogICAgICAgIH0KICAgIH0KCiAgICAvKiogVW5wYWNrcyBhIGNoZWNrZWQgemlwIGludG8gdGhlIG1vZGVsJ3MgZm9sZGVyOyB0aGUgcmVhZHkgbWFya2VyIGdvZXMgbGFzdCwgc28gYSBoYWxmLXVucGFja2VkIG9uZSBuZXZlciBjb3VudHMuICovCiAgICBpbnRlcm5hbCBmdW4gaW5zdGFsbChtOiBNb2RlbCwgemlwOiBGaWxlKSB7CiAgICAgICAgdmFsIGRpciA9IGRpcihtKQogICAgICAgIHRyeSB7CiAgICAgICAgICAgIGlmICghemlwLmlzRmlsZSB8fCB6aXAubGVuZ3RoKCkgPT0gMEwpIHRocm93IElPRXhjZXB0aW9uKHRyKFIuc3RyaW5nLmRvd25sb2FkX2ZhaWxlZCkpCiAgICAgICAgICAgIGRpci5kZWxldGVSZWN1cnNpdmVseSgpCiAgICAgICAgICAgIGlmICghZGlyLm1rZGlycygpKSB0aHJvdyBJT0V4Y2VwdGlvbih0cihSLnN0cmluZy5kb3dubG9hZF9mYWlsZWQpKQogICAgICAgICAgICB2YWwgc3RyaWN0TmFtZXMgPSBtdXRhYmxlU2V0T2Y8U3RyaW5nPigpCiAgICAgICAgICAgIHZhciBleHBhbmRlZCA9IDBMCiAgICAgICAgICAgIFppcElucHV0U3RyZWFtKHppcC5pbnB1dFN0cmVhbSgpLmJ1ZmZlcmVkKCkpLnVzZSB7IHogLT4KICAgICAgICAgICAgICAgIHdoaWxlICh0cnVlKSB7CiAgICAgICAgICAgICAgICAgICAgdmFsIGUgPSB6Lm5leHRFbnRyeSA/OiBicmVhawogICAgICAgICAgICAgICAgICAgIGlmIChlLmlzRGlyZWN0b3J5KSBjb250aW51ZQogICAgICAgICAgICAgICAgICAgIC8vIE9sZCBLdXJvbW9qaSBhcmNoaXZlcyBoYXZlIHVzZWQgcmVzb3VyY2UgZm9sZGVycy4gS2VlcCB0aGVpciBvcmlnaW5hbCBiYXNlbmFtZSBmbGF0dGVuaW5nOwogICAgICAgICAgICAgICAgICAgIC8vIG5ldyBTaW5nIHBhY2thZ2VzIGFyZSBkZWxpYmVyYXRlbHkgZmxhdCwgc28gcmVqZWN0IHBhdGhzIGFuZCBkdXBsaWNhdGUgb3V0cHV0IG5hbWVzIHRoZXJlLgogICAgICAgICAgICAgICAgICAgIHZhbCBuYW1lID0gaWYgKG0gPT0gTW9kZWwuSkFQQU5FU0UpIEZpbGUoZS5uYW1lKS5uYW1lIGVsc2UgZS5uYW1lCiAgICAgICAgICAgICAgICAgICAgaWYgKG5hbWUuaXNCbGFuaygpIHx8IChtICE9IE1vZGVsLkpBUEFORVNFICYmICghc2FmZUVudHJ5TmFtZShuYW1lKSB8fCAhc3RyaWN0TmFtZXMuYWRkKG5hbWUpKSkpIHsKICAgICAgICAgICAgICAgICAgICAgICAgdGhyb3cgSU9FeGNlcHRpb24odHIoUi5zdHJpbmcuZG93bmxvYWRfZmFpbGVkKSkKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgRmlsZShkaXIsIG5hbWUpLm91dHB1dFN0cmVhbSgpLnVzZSB7IG91dHB1dCAtPgogICAgICAgICAgICAgICAgICAgICAgICB2YWwgYnVmZmVyID0gQnl0ZUFycmF5KDY0ICogMTAyNCkKICAgICAgICAgICAgICAgICAgICAgICAgd2hpbGUgKHRydWUpIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHZhbCBjb3VudCA9IHoucmVhZChidWZmZXIpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiAoY291bnQgPCAwKSBicmVhawogICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhwYW5kZWQgKz0gY291bnQKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGlmIChtICE9IE1vZGVsLkpBUEFORVNFICYmIGV4cGFuZGVkID4gbWF4RXhwYW5kZWQobSkpIHRocm93IElPRXhjZXB0aW9uKHRyKFIuc3RyaW5nLmRvd25sb2FkX2ZhaWxlZCkpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBvdXRwdXQud3JpdGUoYnVmZmVyLCAwLCBjb3VudCkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgICAgICB2YWwgcmVxdWlyZWQgPSByZXF1aXJlZEZpbGVzKG0pCiAgICAgICAgICAgIGlmIChyZXF1aXJlZC5pc0VtcHR5KCkgfHwgIXJlcXVpcmVkLmFsbCB7IEZpbGUoZGlyLCBpdCkubGV0IHsgZmlsZSAtPiBmaWxlLmlzRmlsZSAmJiBmaWxlLmxlbmd0aCgpID4gMEwgfSB9KSB7CiAgICAgICAgICAgICAgICB0aHJvdyBJT0V4Y2VwdGlvbih0cihSLnN0cmluZy5kb3dubG9hZF9mYWlsZWQpKQogICAgICAgICAgICB9CiAgICAgICAgICAgIC8vIE5hdGl2ZSBjb2RlIGxvYWRlZCBmcm9tIGhlcmUgaXMga2VwdCByZWFkLW9ubHkgKEFuZHJvaWQgMTQgYXNrcyB0aGF0IG9mIGFueXRoaW5nIGxvYWRlZCBhdCBydW4gdGltZSkuCiAgICAgICAgICAgIGRpci5saXN0RmlsZXMoKT8uZmlsdGVyIHsgaXQubmFtZS5lbmRzV2l0aCgiLnNvIikgfT8uZm9yRWFjaCB7IGl0LnNldFdyaXRhYmxlKGZhbHNlLCBmYWxzZSkgfQogICAgICAgICAgICBGaWxlKGRpciwgUkVBRFkpLndyaXRlVGV4dChtLnNoYTI1NikKICAgICAgICB9IGNhdGNoIChmYWlsdXJlOiBUaHJvd2FibGUpIHsKICAgICAgICAgICAgZGlyLmRlbGV0ZVJlY3Vyc2l2ZWx5KCkKICAgICAgICAgICAgdGhyb3cgZmFpbHVyZQogICAgICAgIH0gZmluYWxseSB7CiAgICAgICAgICAgIHppcC5kZWxldGUoKQogICAgICAgIH0KICAgIH0KCiAgICBwcml2YXRlIGZ1biByZXF1aXJlZEZpbGVzKG06IE1vZGVsKTogTGlzdDxTdHJpbmc+ID0gd2hlbiAobSkgewogICAgICAgIE1vZGVsLlNJTkdfTU9ERUwgLT4gbGlzdE9mKCJ2b2NhbHMuZnAxNi5vbm54IiwgImFjY29tcGFuaW1lbnQuZnAxNi5vbm54IikKICAgICAgICBNb2RlbC5TSU5HX1JVTlRJTUVfQVJNNjQsIE1vZGVsLlNJTkdfUlVOVElNRV9BUk1WNywgTW9kZWwuU0lOR19SVU5USU1FX1g4Nl82NCAtPiBsaXN0T2YoImxpYm9ubnhydW50aW1lLnNvIikKICAgICAgICAvLyBLdXJvbW9qaSBoYXMgc2V2ZXJhbCB2ZXJzaW9uZWQgZGljdGlvbmFyeSByZXNvdXJjZXM7IGEgY2hlY2tlZCBwYWNrYWdlIG11c3QgYXQgbGVhc3QgY29udGFpbiBkYXRhLgogICAgICAgIE1vZGVsLkpBUEFORVNFIC0+IGRpcihtKS5saXN0RmlsZXMoKT8uZmlsdGVyIHsgaXQubmFtZSAhPSBSRUFEWSB9Py5tYXAgeyBpdC5uYW1lIH0gPzogZW1wdHlMaXN0KCkKICAgIH0KCiAgICBwcml2YXRlIGZ1biBzYWZlRW50cnlOYW1lKG5hbWU6IFN0cmluZyk6IEJvb2xlYW4gPQogICAgICAgIG5hbWUuaXNOb3RCbGFuaygpICYmIG5hbWUgPT0gRmlsZShuYW1lKS5uYW1lICYmICFuYW1lLnN0YXJ0c1dpdGgoJy4nKSAmJiAhbmFtZS5jb250YWlucygnXFwnKQoKICAgIHByaXZhdGUgZnVuIG1heEV4cGFuZGVkKG06IE1vZGVsKTogTG9uZyA9IG1heE9mKG0udW5wYWNrZWQgKiAyLCBNSU5fRVhQQU5ERURfQllURVMpCgogICAgcHJpdmF0ZSBjb21wYW5pb24gb2JqZWN0IHsKICAgICAgICBjb25zdCB2YWwgQkFTRSA9ICJodHRwczovL2dpdGh1Yi5jb20vbmFzdGVjaHRlc3QvVmluei9yZWxlYXNlcy9kb3dubG9hZC9tb2RlbHMtdjEiCiAgICAgICAgY29uc3QgdmFsIFJFQURZID0gIi5yZWFkeSIKICAgICAgICBjb25zdCB2YWwgTUlOX0VYUEFOREVEX0JZVEVTID0gOEwgKiAxMDI0ICogMTAyNAogICAgfQp9Cg==
+package com.vinz.music.data
+
+import com.vinz.music.R
+import com.vinz.music.tr
+import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
+import java.io.IOException
+import java.security.MessageDigest
+import java.util.zip.ZipInputStream
+
+/**
+ * Big data files some features need, downloaded the first time they're used rather than carried in every APK:
+ * each one a zip attached to Vinz's own GitHub release `models-v1`, checked against its SHA-256 before use, and kept
+ * in `filesDir/models` (left out of backups; it can always be downloaded again).
+ */
+class ModelStore(private val context: Context, private val http: OkHttpClient) {
+    enum class Model(val id: String, val file: String, val sha256: String, val bytes: Long, val title: String, /** Its size unpacked on the phone. */ val unpacked: Long) {
+        /** Kuromoji's IPADIC dictionary (Apache-2.0 / IPADIC licence): readings for Japanese lyrics' kanji. */
+        JAPANESE(
+            "ja-ipadic", "ja-ipadic-0.9.0.zip",
+            "286c372433219548c20fed47f813a84b334a68a7eb694787369789d8008f0b2a", 13_331_021, tr(R.string.japanese_kanji_readings), 33_443_143,
+        ),
+        /** Deezer's Spleeter, 2 stems, as sherpa-onnx exported it (fp16): Sing's vocal separation. */
+        SING_MODEL(
+            "sing-spleeter", "sing-spleeter-2stems-fp16.zip",
+            "69714083b6fd5a88aa93cc021b4fb9534388960a532f6c987036e30f5332c191", 36370454, tr(R.string.sing_s_voice_separation), 39374474,
+        ),
+        /** ONNX Runtime's native libraries (Microsoft, MIT), which Sing runs Spleeter on, one per kind of processor. */
+        SING_RUNTIME_ARM64(
+            "onnxruntime-arm64-v8a", "onnxruntime-1.31.0-arm64-v8a.zip",
+            "5a6c18c7958797caafa1cd7e6f30334e99cf5b6022cdc5ca1f047c9d94552d7a", 12864089, tr(R.string.sing_s_engine), 34209753,
+        ),
+        SING_RUNTIME_ARMV7(
+            "onnxruntime-armeabi-v7a", "onnxruntime-1.31.0-armeabi-v7a.zip",
+            "9d6ca9234650753b0b7137af5db4ef35520cda6796fd49b2d13b58cfaacc1eaf", 11623545, tr(R.string.sing_s_engine), 24183085,
+        ),
+        SING_RUNTIME_X86_64(
+            "onnxruntime-x86_64", "onnxruntime-1.31.0-x86_64.zip",
+            "07fee2427e8939edd05d0371ce4c15adc57917fbcf39dc07ce5afe76426aec95", 14935078, tr(R.string.sing_s_engine), 40829017,
+        ),
+        ;
+
+        companion object {
+            /** "49 MB download, 74 MB on the phone": the same words wherever the size of [models] is told. */
+            fun sizeText(vararg models: Model): String =
+                tr(R.string.mb_download_mb_on_the_phone, models.sumOf { it.bytes } / 1_000_000, models.sumOf { it.unpacked } / 1_000_000)
+
+            /** The engine build for this phone's processor (null on one Sing can't run on). */
+            fun singRuntime(): Model? {
+                val abis = if (android.os.Process.is64Bit()) android.os.Build.SUPPORTED_64_BIT_ABIS else android.os.Build.SUPPORTED_32_BIT_ABIS
+                return when (abis.firstOrNull()) {
+                    "arm64-v8a" -> SING_RUNTIME_ARM64
+                    "armeabi-v7a" -> SING_RUNTIME_ARMV7
+                    "x86_64" -> SING_RUNTIME_X86_64
+                    else -> null
+                }
+            }
+        }
+    }
+
+    sealed interface State {
+        data object Missing : State
+        data class Downloading(val fraction: Float) : State
+        data object Ready : State
+        data class Failed(val message: String) : State
+    }
+
+    private val root by lazy { File(context.filesDir, "models") }
+    private val _states = MutableStateFlow(Model.entries.associateWith { if (ready(it)) State.Ready else State.Missing })
+    val states: StateFlow<Map<Model, State>> = _states
+    private val locks = Model.entries.associateWith { Mutex() }
+
+    /** Looks at what's on the phone again (a model removed or put back outside a download). */
+    fun refresh() = _states.update { states ->
+        states.mapValues { (m, s) -> if (s is State.Downloading) s else if (ready(m)) State.Ready else if (s is State.Failed) s else State.Missing }
+    }
+
+    fun dir(m: Model) = File(root, m.id)
+
+    /** A marker alone is not enough: a deleted or zero-byte model file must make the feature download again. */
+    fun ready(m: Model): Boolean {
+        val dir = dir(m)
+        val marker = File(dir, READY)
+        return runCatching {
+            val required = requiredFiles(m)
+            marker.isFile && marker.readText() == m.sha256 && required.isNotEmpty() && required.all {
+                File(dir, it).let { file -> file.isFile && file.length() > 0L }
+            }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Downloads, checks and unpacks [m] (once at a time; at once if it's already there). True when it's ready.
+     * The download runs on the store's own scope: closing the sheet that started it (and so cancelling the caller)
+     * leaves it going, and its state ends up Ready, not "failed", when it finishes (2026-10-20: Sing's engine had
+     * downloaded, but Settings still offered to download it).
+     */
+    suspend fun download(m: Model): Boolean = work.async {
+        locks.getValue(m).withLock {
+            if (ready(m)) return@withLock true.also { set(m, State.Ready) }
+            set(m, State.Downloading(0f))
+            val result = runCatching { fetch(m) }
+            set(m, if (ready(m)) State.Ready else State.Failed(result.exceptionOrNull()?.message ?: tr(R.string.download_failed)))
+            ready(m)
+        }
+    }.await()
+
+    private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Removes [m] from the phone (Settings, to free the space). */
+    fun delete(m: Model) {
+        dir(m).deleteRecursively()
+        set(m, State.Missing)
+    }
+
+    fun sizeOnPhone(m: Model): Long = dir(m).walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+    private fun set(m: Model, s: State) = _states.update { it + (m to s) }
+
+    private fun fetch(m: Model) {
+        root.mkdirs()
+        val part = File(root, m.file + ".part")
+        try {
+            val req = Request.Builder().url("$BASE/${m.file}").build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException(tr(R.string.the_download_answered_http, resp.code))
+                val body = resp.body
+                val total = body.contentLength().takeIf { it > 0 } ?: m.bytes
+                val digest = MessageDigest.getInstance("SHA-256")
+                part.outputStream().use { out ->
+                    body.byteStream().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        var done = 0L
+                        var shown = 0f
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            done += n
+                            if (m != Model.JAPANESE && done > m.bytes) throw IOException(tr(R.string.the_download_didn_t_check_out))
+                            out.write(buf, 0, n)
+                            digest.update(buf, 0, n)
+                            val f = (done.toFloat() / total).coerceIn(0f, 1f)
+                            if (f - shown >= 0.01f) { shown = f; set(m, State.Downloading(f)) }
+                        }
+                    }
+                }
+                val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                if (sha != m.sha256) throw IOException(tr(R.string.the_download_didn_t_check_out))
+            }
+            install(m, part)
+        } finally {
+            // A stopped request, a failed checksum and a failed unpack all leave the next attempt clean.
+            part.delete()
+        }
+    }
+
+    /** Unpacks a checked zip into the model's folder; the ready marker goes last, so a half-unpacked one never counts. */
+    internal fun install(m: Model, zip: File) {
+        val dir = dir(m)
+        try {
+            if (!zip.isFile || zip.length() == 0L) throw IOException(tr(R.string.download_failed))
+            dir.deleteRecursively()
+            if (!dir.mkdirs()) throw IOException(tr(R.string.download_failed))
+            val strictNames = mutableSetOf<String>()
+            var expanded = 0L
+            ZipInputStream(zip.inputStream().buffered()).use { z ->
+                while (true) {
+                    val e = z.nextEntry ?: break
+                    if (e.isDirectory) continue
+                    // Old Kuromoji archives have used resource folders. Keep their original basename flattening;
+                    // new Sing packages are deliberately flat, so reject paths and duplicate output names there.
+                    val name = if (m == Model.JAPANESE) File(e.name).name else e.name
+                    if (name.isBlank() || (m != Model.JAPANESE && (!safeEntryName(name) || !strictNames.add(name)))) {
+                        throw IOException(tr(R.string.download_failed))
+                    }
+                    File(dir, name).outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val count = z.read(buffer)
+                            if (count < 0) break
+                            expanded += count
+                            if (m != Model.JAPANESE && expanded > maxExpanded(m)) throw IOException(tr(R.string.download_failed))
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
+            }
+            val required = requiredFiles(m)
+            if (required.isEmpty() || !required.all { File(dir, it).let { file -> file.isFile && file.length() > 0L } }) {
+                throw IOException(tr(R.string.download_failed))
+            }
+            // Native code loaded from here is kept read-only (Android 14 asks that of anything loaded at run time).
+            dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { it.setWritable(false, false) }
+            File(dir, READY).writeText(m.sha256)
+        } catch (failure: Throwable) {
+            dir.deleteRecursively()
+            throw failure
+        } finally {
+            zip.delete()
+        }
+    }
+
+    private fun requiredFiles(m: Model): List<String> = when (m) {
+        Model.SING_MODEL -> listOf("vocals.fp16.onnx", "accompaniment.fp16.onnx")
+        Model.SING_RUNTIME_ARM64, Model.SING_RUNTIME_ARMV7, Model.SING_RUNTIME_X86_64 -> listOf("libonnxruntime.so")
+        // Kuromoji has several versioned dictionary resources; a checked package must at least contain data.
+        Model.JAPANESE -> dir(m).listFiles()?.filter { it.name != READY }?.map { it.name } ?: emptyList()
+    }
+
+    private fun safeEntryName(name: String): Boolean =
+        name.isNotBlank() && name == File(name).name && !name.startsWith('.') && !name.contains('\\')
+
+    private fun maxExpanded(m: Model): Long = maxOf(m.unpacked * 2, MIN_EXPANDED_BYTES)
+
+    private companion object {
+        const val BASE = "https://github.com/nastechtest/Vinz/releases/download/models-v1"
+        const val READY = ".ready"
+        const val MIN_EXPANDED_BYTES = 8L * 1024 * 1024
+    }
+}
