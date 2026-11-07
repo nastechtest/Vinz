@@ -454,6 +454,148 @@ async function artistReleases(url, env, artistId, requestId) {
   }
 }
 
+
+function withHeaders(response, extra) {
+  const merged = new Headers(response.headers);
+  for (const [key, value] of Object.entries(extra || {})) merged.set(key, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: merged });
+}
+
+async function bodyJson(request) {
+  try {
+    const value = await request.json();
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function collectionList(config, auth, table, select) {
+  const query = new URLSearchParams({ select, order: "created_at.desc", limit: "100" });
+  const response = await restRequest(config, auth.authorization, `${table}?${query}`);
+  if (!response.ok) return json({ error: "collection_lookup_failed" }, 502);
+  return json({ items: await response.json() });
+}
+
+async function createArtistWatch(request, config, auth) {
+  const input = await bodyJson(request);
+  if (!input || !["apple_itunes", "musicbrainz"].includes(input.provider) ||
+      typeof input.provider_artist_id !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(input.provider_artist_id) ||
+      typeof input.artist_name !== "string" || !input.artist_name.trim() || input.artist_name.length > 150 ||
+      (input.notify_new_releases !== undefined && typeof input.notify_new_releases !== "boolean")) {
+    return json({ error: "invalid_artist_watch" }, 400);
+  }
+  const payload = {
+    user_id: auth.user.id,
+    provider: input.provider,
+    provider_artist_id: input.provider_artist_id,
+    artist_name: input.artist_name.trim(),
+    notify_new_releases: input.notify_new_releases ?? true,
+  };
+  const response = await restRequest(config, auth.authorization, "vinz_artist_watches", {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 409) return json({ error: "artist_already_watched" }, 409);
+  if (!response.ok) return json({ error: "artist_watch_create_failed" }, 502);
+  const rows = await response.json();
+  return json({ watch: Array.isArray(rows) ? rows[0] || null : null }, 201);
+}
+
+async function createPodcastSubscription(request, config, auth) {
+  const input = await bodyJson(request);
+  if (!input || !["apple_itunes", "podcast_index", "rss"].includes(input.provider) ||
+      typeof input.provider_podcast_id !== "string" || !/^[a-zA-Z0-9._:-]{1,128}$/.test(input.provider_podcast_id) ||
+      typeof input.title !== "string" || !input.title.trim() || input.title.length > 200 ||
+      (input.publisher !== undefined && (typeof input.publisher !== "string" || input.publisher.length > 200)) ||
+      (input.notify_new_episodes !== undefined && typeof input.notify_new_episodes !== "boolean")) {
+    return json({ error: "invalid_podcast_subscription" }, 400);
+  }
+  let feed;
+  try {
+    feed = new URL(input.feed_url);
+    if (feed.protocol !== "https:" || feed.username || feed.password ||
+        ["localhost", "127.0.0.1", "::1"].includes(feed.hostname) ||
+        !feed.hostname.includes(".")) return json({ error: "invalid_feed_url" }, 400);
+  } catch {
+    return json({ error: "invalid_feed_url" }, 400);
+  }
+  const payload = {
+    user_id: auth.user.id,
+    provider: input.provider,
+    provider_podcast_id: input.provider_podcast_id,
+    feed_url: feed.toString(),
+    title: input.title.trim(),
+    publisher: input.publisher || "",
+    notify_new_episodes: input.notify_new_episodes ?? true,
+  };
+  const response = await restRequest(config, auth.authorization, "vinz_podcast_subscriptions", {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 409) return json({ error: "podcast_already_subscribed" }, 409);
+  if (!response.ok) return json({ error: "podcast_subscription_create_failed" }, 502);
+  const rows = await response.json();
+  return json({ subscription: Array.isArray(rows) ? rows[0] || null : null }, 201);
+}
+
+async function registerDevice(request, config, auth) {
+  const input = await bodyJson(request);
+  if (!input || !["android", "ios", "web"].includes(input.platform) ||
+      typeof input.push_token !== "string" || input.push_token.length < 20 || input.push_token.length > 4096 ||
+      (input.device_label !== undefined && (typeof input.device_label !== "string" || input.device_label.length > 100))) {
+    return json({ error: "invalid_notification_device" }, 400);
+  }
+  const payload = {
+    user_id: auth.user.id,
+    platform: input.platform,
+    push_token: input.push_token,
+    device_label: input.device_label || "",
+    last_seen_at: new Date().toISOString(),
+  };
+  const query = new URLSearchParams({ on_conflict: "user_id,push_token" });
+  const response = await restRequest(config, auth.authorization, `vinz_notification_devices?${query}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) return json({ error: "notification_device_register_failed" }, 502);
+  return json({ registered: true }, 201);
+}
+
+async function deleteOwnedRow(config, auth, table, id) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "invalid_id" }, 400);
+  const query = new URLSearchParams({ id: `eq.${id}` });
+  const response = await restRequest(config, auth.authorization, `${table}?${query}`, { method: "DELETE" });
+  if (!response.ok) return json({ error: "delete_failed" }, 502);
+  return json({ deleted: true, id });
+}
+
+async function listNotifications(config, auth) {
+  const query = new URLSearchParams({
+    select: "id,kind,title,body,deep_link,payload,read_at,created_at",
+    order: "created_at.desc",
+    limit: "50",
+  });
+  const response = await restRequest(config, auth.authorization, `vinz_notifications?${query}`);
+  if (!response.ok) return json({ error: "notifications_lookup_failed" }, 502);
+  return json({ notifications: await response.json() });
+}
+
+async function markNotificationRead(config, auth, id) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "invalid_notification_id" }, 400);
+  const query = new URLSearchParams({ id: `eq.${id}` });
+  const response = await restRequest(config, auth.authorization, `vinz_notifications?${query}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", prefer: "return=minimal" },
+    body: JSON.stringify({ read_at: new Date().toISOString() }),
+  });
+  if (!response.ok) return json({ error: "notification_update_failed" }, 502);
+  return json({ updated: true, id });
+}
+
 export async function handleRequest(request, env = {}, ctx = undefined) {
   const requestId = request.headers.get("cf-ray") || crypto.randomUUID();
   const origin = allowedOrigin(request, env);
@@ -494,6 +636,44 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     if (auth.error) {
       recordApiError(env, ctx, url.pathname, auth.error, auth.status);
       return json({ error: auth.error, request_id: requestId }, auth.status, headers);
+    }
+
+    if (url.pathname === "/v1/watches/artists" && request.method === "GET") {
+      return withHeaders(await collectionList(config, auth, "vinz_artist_watches", "id,provider,provider_artist_id,artist_name,notify_new_releases,last_checked_at,last_seen_release_id,last_seen_release_date,created_at"), headers);
+    }
+    if (url.pathname === "/v1/watches/artists" && request.method === "POST") {
+      return withHeaders(await createArtistWatch(request, config, auth), headers);
+    }
+    const artistWatchMatch = url.pathname.match(/^\/v1\/watches\/artists\/([^/]+)$/);
+    if (artistWatchMatch && request.method === "DELETE") {
+      return withHeaders(await deleteOwnedRow(config, auth, "vinz_artist_watches", artistWatchMatch[1]), headers);
+    }
+
+    if (url.pathname === "/v1/podcasts/subscriptions" && request.method === "GET") {
+      return withHeaders(await collectionList(config, auth, "vinz_podcast_subscriptions", "id,provider,provider_podcast_id,feed_url,title,publisher,notify_new_episodes,last_checked_at,last_seen_episode_guid,created_at"), headers);
+    }
+    if (url.pathname === "/v1/podcasts/subscriptions" && request.method === "POST") {
+      return withHeaders(await createPodcastSubscription(request, config, auth), headers);
+    }
+    const podcastSubMatch = url.pathname.match(/^\/v1\/podcasts\/subscriptions\/([^/]+)$/);
+    if (podcastSubMatch && request.method === "DELETE") {
+      return withHeaders(await deleteOwnedRow(config, auth, "vinz_podcast_subscriptions", podcastSubMatch[1]), headers);
+    }
+
+    if (url.pathname === "/v1/devices" && request.method === "POST") {
+      return withHeaders(await registerDevice(request, config, auth), headers);
+    }
+    const deviceMatch = url.pathname.match(/^\/v1\/devices\/([^/]+)$/);
+    if (deviceMatch && request.method === "DELETE") {
+      return withHeaders(await deleteOwnedRow(config, auth, "vinz_notification_devices", deviceMatch[1]), headers);
+    }
+
+    if (url.pathname === "/v1/notifications" && request.method === "GET") {
+      return withHeaders(await listNotifications(config, auth), headers);
+    }
+    const notificationMatch = url.pathname.match(/^\/v1\/notifications\/([^/]+)$/);
+    if (notificationMatch && request.method === "PATCH") {
+      return withHeaders(await markNotificationRead(config, auth, notificationMatch[1]), headers);
     }
 
     if (url.pathname === "/v1/catalog/search" && request.method === "GET") {
