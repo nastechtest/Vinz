@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Συνδεθείτε και διαχειριστείτε το προφίλ σας στο cloud</string>
     <string name="cloud_account_intro">Το προφίλ σας στο cloud είναι ξεχωριστό από το YouTube Music. Η τοπική μουσική και η αναπαραγωγή λειτουργούν χωρίς σύνδεση.</string>
     <string name="cloud_account_email">Διεύθυνση ηλεκτρονικού ταχυδρομείου</string>
