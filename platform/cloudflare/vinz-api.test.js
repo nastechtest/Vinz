@@ -246,3 +246,18 @@ test("notification device registration rejects malformed push tokens", async (t)
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "invalid_notification_device");
 });
+
+test("username availability rejects malformed names before the RPC", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  ));
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/usernames/bad%20name/availability", {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).available, false);
+});
