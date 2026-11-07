@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vinz_account">Vinz Account</string>
+    <string name="cloud_account_summary">Mag-sign in at pamahalaan ang iyong cloud profile</string>
+    <string name="cloud_account_intro">Ang iyong cloud profile ay hiwalay sa YouTube Music. Gumagana ang lokal na musika at pag-playback nang hindi nagsa-sign in.</string>
+    <string name="cloud_account_email">Address ng email</string>
+    <string name="cloud_account_password">Lihim na salita</string>
+    <string name="cloud_account_username">Pangalan ng gumagamit</string>
+    <string name="cloud_account_display_name">Pangalan sa display</string>
+    <string name="cloud_account_username_hint">3–24 maliliit na titik, numero o underscore</string>
+    <string name="cloud_account_password_hint">Gumamit ng hindi bababa sa 8 character.</string>
+    <string name="cloud_account_create">Gumawa ng cloud account</string>
+    <string name="cloud_account_existing">May account na ako</string>
+    <string name="cloud_account_forgot">Nakalimutan ang password?</string>
+    <string name="cloud_account_recovery">Magpadala ng email sa pagbawi</string>
+    <string name="cloud_account_recovery_sent">Kung mayroong account para sa address na ito, may ipinadalang email sa pagbawi.</string>
+    <string name="cloud_account_confirmation">Tingnan ang iyong email upang kumpirmahin ang iyong account, pagkatapos ay bumalik upang mag-sign in.</string>
+    <string name="cloud_account_setup">Tapusin ang pag-set up ng iyong profile.</string>
+    <string name="cloud_account_bio">Talambuhay</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Pampublikong profile</string>
+    <string name="cloud_account_public_hint">Payagan ang ibang mga user ng Vinz na tingnan ang iyong profile.</string>
+    <string name="cloud_account_discoverable">Natutuklasan</string>
+    <string name="cloud_account_discoverable_hint">Payagan ang iyong profile na lumitaw sa pagtuklas ng user.</string>
+    <string name="cloud_account_saved">Naka-save ang iyong cloud profile.</string>
+    <string name="cloud_account_signed_out">Nag-sign out ka sa iyong cloud account.</string>
+    <string name="cloud_account_signed_in">Naka-sign in bilang %1$s</string>
+    <string name="cloud_account_load_failed">Hindi ma-load ang iyong profile. Subukan muli bago mag-edit.</string>
+    <string name="cloud_account_request_failed">Hindi makumpleto ang kahilingan sa account na ito. Suriin ang iyong koneksyon at subukang muli.</string>
+    <string name="cloud_account_sign_in_failed">Hindi makumpleto ang pag-sign-in. Suriin ang iyong mga detalye at koneksyon, pagkatapos ay subukang muli.</string>
+    <string name="cloud_account_save_failed">Hindi ma-save ang iyong profile. Suriin ang iyong mga detalye at koneksyon, pagkatapos ay subukang muli.</string>
+    <string name="cloud_account_recovery_failed">Hindi makumpleto ang kahilingan sa pagbawi. Subukan ulit mamaya.</string>
+    <string name="cloud_account_sign_out_failed">Hindi makumpleto ang pag-sign out. Subukan muli.</string>
+</resources>
