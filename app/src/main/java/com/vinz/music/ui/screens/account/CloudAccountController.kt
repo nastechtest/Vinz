@@ -33,7 +33,8 @@ internal class CloudAccountController(
         usernameCheckJob?.cancel()
         val current = mutable.value
         val status = when {
-            current.identity != null && clean == current.originalUsername -> UsernameAvailability.UNCHANGED
+            current.identity == null -> if (clean.isEmpty()) UsernameAvailability.IDLE else UsernameAvailability.INVALID
+            clean == current.originalUsername -> UsernameAvailability.UNCHANGED
             !clean.matches(Regex("^[a-z0-9_]{3,24}$")) -> UsernameAvailability.INVALID
             else -> UsernameAvailability.CHECKING
         }
