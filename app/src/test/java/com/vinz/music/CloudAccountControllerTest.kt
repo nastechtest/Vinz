@@ -110,7 +110,7 @@ class CloudAccountControllerTest {
     @Test fun `successful sign in uses returned session and profile`() = runBlocking {
         gateway.onSignIn = { _, _ ->
             gateway.identityValue = identity("signed-in", "signed@example.test")
-            VinzCloudAccount.AuthResult.SignedIn(profile(username = "signed_in", displayName = "Signed", isPublic = false, discoverable = false))
+            VinzCloudAccount.AuthResult.SignedIn(profile(username = "signed_in", displayName = "Signed", isPublic = false, discoverable = false).copy(id = "signed-in"))
         }
         signIn("  signed@example.test  ", "test-password")
 
@@ -304,12 +304,70 @@ class CloudAccountControllerTest {
         controller.email(email)
     }
 
+    @Test fun `sign in never binds another users returned profile to active identity`() = runBlocking {
+        gateway.onSignIn = { _, _ ->
+            gateway.identityValue = identity("other-user")
+            VinzCloudAccount.AuthResult.SignedIn(profile(username = "private_artist"))
+        }
+        signIn("user@example.test", "test-password")
+        controller.submit()!!.join()
+        assertEquals(identity("other-user"), controller.state.value.identity)
+        assertForeignProfileBlocked()
+        assertNull(controller.save())
+        assertEquals(0, gateway.saveCalls)
+    }
+
+    @Test fun `sign up never carries its draft to a different account without returned profile`() = runBlocking {
+        gateway.onSignUp = { _, _, _, _ ->
+            gateway.identityValue = identity("other-user", "other@example.test")
+            VinzCloudAccount.AuthResult.SignedIn(null)
+        }
+        controller.mode(CloudAccountMode.SIGN_UP)
+        controller.email("user@example.test")
+        controller.password("test-password")
+        controller.username("private_artist")
+        controller.displayName("Private Artist")
+        controller.submit()!!.join()
+        assertEquals(identity("other-user", "other@example.test"), controller.state.value.identity)
+        assertForeignProfileBlocked()
+    }
+
+    @Test fun `load rejects profile owned by another identity even when session stays stable`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.profile = profile(username = "private_artist").copy(id = "other-user")
+        controller = CloudAccountController(gateway, scope)
+        controller.loadProfile()!!.join()
+        assertForeignProfileBlocked()
+        assertNull(controller.save())
+    }
+
+    @Test fun `save never paints response owned by another identity`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.profile = profile()
+        controller = CloudAccountController(gateway, scope)
+        controller.loadProfile()!!.join()
+        gateway.savedProfile = profile(username = "private_artist").copy(id = "other-user")
+        controller.save()!!.join()
+        assertEquals(1, gateway.saveCalls)
+        assertForeignProfileBlocked()
+        assertNull(controller.save())
+    }
+
+    private fun assertForeignProfileBlocked() {
+        assertEquals(CloudProfileDraft(), controller.state.value.draft)
+        assertFalse(controller.state.value.profileReady)
+        assertTrue(controller.state.value.profileLoadFailed)
+        assertFalse(controller.state.value.canSave)
+        assertEquals(R.string.cloud_account_load_failed, controller.state.value.error)
+        assertEquals("", controller.state.value.password)
+    }
+
     private fun identity(userId: String = "user-1", email: String = "user@example.test") = CloudAccountIdentity(userId, email)
 
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
         isPublic: Boolean = true, discoverable: Boolean = true,
-    ) = VinzCloudAccount.Profile("profile-1", username, displayName, bio, null, isPublic, discoverable)
+    ) = VinzCloudAccount.Profile("user-1", username, displayName, bio, null, isPublic, discoverable)
 
     private class FakeGateway : CloudAccountGateway {
         override var identity: CloudAccountIdentity? = null
