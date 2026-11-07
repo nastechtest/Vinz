@@ -30,4 +30,7 @@
     <string name="cloud_account_save_failed">Không thể lưu hồ sơ của bạn. Hãy kiểm tra thông tin chi tiết và kết nối của bạn rồi thử lại.</string>
     <string name="cloud_account_recovery_failed">Yêu cầu khôi phục không thể được hoàn thành. Hãy thử lại sau.</string>
     <string name="cloud_account_sign_out_failed">Không thể hoàn tất việc đăng xuất. Hãy thử lại.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
 </resources>
