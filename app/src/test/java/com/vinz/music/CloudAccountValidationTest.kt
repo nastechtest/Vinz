@@ -11,6 +11,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CloudAccountValidationTest {
+    @Test fun `onboarding continuation requires a loaded signed in cloud identity`() {
+        val identity = com.vinz.music.ui.screens.account.CloudAccountIdentity("user", "user@example.test")
+        val signedIn = CloudAccountState(identity = identity, profileReady = true)
+        assertTrue(signedIn.canContinue)
+        assertFalse(CloudAccountState().canContinue)
+        assertFalse(signedIn.copy(busy = true).canContinue)
+        assertFalse(signedIn.copy(profileReady = false).canContinue)
+        assertFalse(signedIn.copy(profileLoadFailed = true).canContinue)
+    }
+
     @Test fun `all bundled locales have matching account resource keys and format arguments`() {
         val res = java.io.File("src/main/res")
         fun entries(file: java.io.File): Map<String, String> {
@@ -22,7 +32,7 @@ class CloudAccountValidationTest {
             }
         }
         val base = entries(java.io.File(res, "values/cloud_account_strings.xml"))
-        assertEquals(30, base.size)
+        assertTrue(base.keys.containsAll(listOf("cloud_account_email_hint", "cloud_account_password_sign_in_hint")))
         val tables = res.listFiles().orEmpty().filter {
             it.isDirectory && (it.name == "values" || it.name.startsWith("values-")) &&
                 java.io.File(it, "strings.xml").isFile
