@@ -28,6 +28,7 @@ internal data class CloudAccountState(
     @param:StringRes val message: Int? = null,
     @param:StringRes val error: Int? = null,
 ) {
+    val canContinue: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed
     val canSubmit: Boolean get() = !busy && identity == null && CloudAccountValidation.canSubmit(this)
     val canSave: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed && CloudAccountValidation.validProfile(draft)
 }
