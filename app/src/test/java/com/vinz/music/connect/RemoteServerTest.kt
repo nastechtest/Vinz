@@ -158,6 +158,36 @@ class RemoteServerTest {
     }
 
     @Test
+    fun transparentBrandAssetsArePublicAndTypedWithoutOpeningApiAccess() {
+        val server = RemoteServer(RemoteAuth(MemoryStore()), FakePhone(), ::assets, port = 0, wrongDelayMs = 0)
+        assertTrue(server.start())
+        try {
+            val types = mapOf(
+                "favicon.ico" to "image/x-icon",
+                "favicon-16.png" to "image/png", "favicon-32.png" to "image/png",
+                "favicon-48.png" to "image/png", "icon-192.png" to "image/png",
+                "icon-512.png" to "image/png", "apple-touch-icon.png" to "image/png",
+                "manifest.json" to "application/manifest+json",
+            )
+            types.forEach { (name, type) ->
+                val answer = request(server.port, "GET", "/$name?v=transparent-1")
+                assertEquals(name, 200, answer.status)
+                assertEquals(name, type, answer.headers["content-type"])
+                assertTrue(name, answer.body.isNotEmpty())
+            }
+            val page = request(server.port, "GET", "/")
+            assertTrue(page.body.contains("sizes=\"16x16\""))
+            assertTrue(page.body.contains("sizes=\"32x32\""))
+            assertTrue(page.body.contains("apple-touch-icon"))
+            assertEquals(404, request(server.port, "GET", "/../favicon.ico").status)
+            assertEquals(404, request(server.port, "GET", "/missing.ico").status)
+            assertEquals(401, request(server.port, "GET", "/api/state").status)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun guessingIsSlowAndThenStopped() {
         var now = 1_000_000L
         val auth = RemoteAuth(MemoryStore()) { now }
