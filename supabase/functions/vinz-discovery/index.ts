@@ -1,7 +1,7 @@
 import { XMLParser } from "npm:fast-xml-parser@4.5.3";
 
-const MAX_WATCHES_PER_RUN = 15;
-const MAX_PODCASTS_PER_RUN = 20;
+const MAX_WATCHES_PER_RUN = 8;
+const MAX_PODCASTS_PER_RUN = 5;
 const MIN_REQUEST_GAP_MS = 3100;
 
 function response(body: unknown, status = 200): Response {
@@ -40,7 +40,7 @@ async function rest(
   return fetch(`${base}/rest/v1/${path}`, {
     ...init,
     headers: restHeaders(serviceKey, (init.headers || {}) as Record<string, string>),
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(7000),
   });
 }
 
