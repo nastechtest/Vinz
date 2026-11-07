@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">سائن ان کریں اور اپنے کلاؤڈ پروفائل کا نظم کریں۔</string>
     <string name="cloud_account_intro">آپ کا کلاؤڈ پروفائل YouTube Music سے الگ ہے۔ سائن ان کیے بغیر مقامی موسیقی اور پلے بیک کام کرتے ہیں۔</string>
     <string name="cloud_account_email">ای میل ایڈریس</string>

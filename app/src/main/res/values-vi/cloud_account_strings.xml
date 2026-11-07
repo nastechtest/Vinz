@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="vinz_account">Vinz Account</string>
     <string name="cloud_account_summary">Đăng nhập và quản lý hồ sơ đám mây của bạn</string>
     <string name="cloud_account_intro">Hồ sơ đám mây của bạn tách biệt với YouTube Music. Âm nhạc cục bộ và phát lại hoạt động mà không cần đăng nhập.</string>
     <string name="cloud_account_email">Địa chỉ email</string>
