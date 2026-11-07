@@ -62,6 +62,16 @@ PROTECTED_FILES = {
     "docs/branding/icon-preview.png",
 }
 PROTECTED_PREFIXES = (
+    "design/branding/",
+    "app/src/main/res/mipmap-mdpi/",
+    "app/src/main/res/mipmap-hdpi/",
+    "app/src/main/res/mipmap-xhdpi/",
+    "app/src/main/res/mipmap-xxhdpi/",
+    "app/src/main/res/mipmap-xxxhdpi/",
+    "app/src/main/assets/remote/favicon",
+    "app/src/main/assets/remote/icon-",
+    "app/src/main/assets/remote/apple-touch-icon",
+    "app/src/main/assets/remote/manifest.json",
     "app/src/main/res/mipmap-anydpi/",
     "app/src/main/res/drawable/ic_launcher_bg_",
 )
