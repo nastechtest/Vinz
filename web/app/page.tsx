@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
-const VINZ_SITE_URL = process.env.NEXT_PUBLIC_VINZ_SITE_URL || "https://vinz.nastechresearch.com";
+const VINZ_SITE_URL = process.env.NEXT_PUBLIC_VINZ_SITE_URL || "https://vinz-web-liart.vercel.app";
 
 function getSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
