@@ -54,7 +54,7 @@ function configuration(env) {
  * request bodies, tokens, music queries, track/artist names, lyrics or audio.
  */
 function recordApiError(env, ctx, route, errorType, status) {
-  if (!env.POSTHOG_PROJECT_KEY || !env.POSTHOG_HOST || typeof ctx?.waitUntil !== "function") return;
+  if (status < 500 || !env.POSTHOG_PROJECT_KEY || !env.POSTHOG_HOST || typeof ctx?.waitUntil !== "function") return;
   let host;
   try {
     const parsed = new URL(env.POSTHOG_HOST);
