@@ -150,4 +150,32 @@ class HeadphoneEqTest {
         println("[live] HD 650: preamp ${profile!!.preampDb} dB, ${profile.filters.size} filters")
         assertTrue(profile.filters.size >= 5)
     }
+
+    @Test
+    fun rejectsUnsafeImportedEqValues() {
+        val profile = EqProfile.parse(
+            "Untrusted",
+            """
+                Preamp: 999 dB
+                Filter 1: ON PK Fc 1000 Hz Gain 999 dB Q 1.0
+                Filter 2: ON PK Fc 1200 Hz Gain 3 dB Q 0
+                Filter 3: ON PK Fc 1400 Hz Gain 3 dB Q 1.0
+            """.trimIndent(),
+        )!!
+        // An unreasonable preamp is ignored, malformed gain/Q bands are discarded, and a valid band survives.
+        assertEquals(0.0, profile.preampDb, 0.0)
+        assertEquals(1, profile.filters.size)
+        assertEquals(1400.0, profile.filters.single().hz, 0.0)
+    }
+
+    @Test
+    fun biquadRejectsInvalidOrUnstableInputs() {
+        assertEquals(null, Biquad.of(EqFilter(EqFilter.Type.PEAK, Double.NaN, 3.0, 1.0), 48_000))
+        assertEquals(null, Biquad.of(EqFilter(EqFilter.Type.PEAK, 1000.0, Double.POSITIVE_INFINITY, 1.0), 48_000))
+        assertEquals(null, Biquad.of(EqFilter(EqFilter.Type.PEAK, 1000.0, 3.0, 0.0), 48_000))
+        assertEquals(null, Biquad.of(EqFilter(EqFilter.Type.PEAK, 1000.0, 3.0, 1.0), 0))
+        assertEquals(null, Biquad.of(EqFilter(EqFilter.Type.PEAK, 1000.0, 3.0, 1.0), 48_000, Double.NaN))
+        assertNotNull(Biquad.of(EqFilter(EqFilter.Type.PEAK, 1000.0, 3.0, 1.0), 48_000))
+    }
+
 }
