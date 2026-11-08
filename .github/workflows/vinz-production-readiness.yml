@@ -8,8 +8,8 @@ on:
       - "app/**"
       - "platform/cloudflare/**"
       - "supabase/**"
-      - ".github/workflows/vinz-production-readiness.yml"
-      - "scripts/ci/vinz-production-readiness.mjs"
+      - ".github/workflows/**"
+      - "scripts/ci/**"
   push:
     branches: [main]
     paths:
@@ -17,8 +17,8 @@ on:
       - "app/**"
       - "platform/cloudflare/**"
       - "supabase/**"
-      - ".github/workflows/vinz-production-readiness.yml"
-      - "scripts/ci/vinz-production-readiness.mjs"
+      - ".github/workflows/**"
+      - "scripts/ci/**"
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"
@@ -31,36 +31,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  production-readiness:
-    name: Live endpoint, URL and configuration audit
+  audit-tests:
+    name: Readiness audit unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "22"
+      - name: Test URL, duplicate and privacy classifiers
+        run: node --test scripts/ci/vinz-production-readiness.test.mjs
+
+  live-connectivity-and-config:
+    name: Live server connectivity and production configuration
+    needs: audit-tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout repository history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "22"
-
       - name: Verify live Vinz, Cloudflare and Supabase endpoints
         env:
           VINZ_HOME_URL: ${{ vars.VINZ_HOME_URL || 'https://home.vinzmusic.workers.dev' }}
           VINZ_API_URL: ${{ vars.VINZ_API_URL || 'https://api.vinzmusic.workers.dev' }}
           SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://iszghebmetrbkfhnnoqq.supabase.co' }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
         run: node scripts/ci/vinz-production-readiness.mjs
-
       - name: Upload machine-readable readiness report
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: vinz-production-readiness-${{ github.run_id }}
+          name: vinz-readiness-${{ github.run_id }}
           path: artifacts/vinz-readiness.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
