@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Weitere installierte Sprachen</string>
     <string name="bantu_translation_availability">Die Verfügbarkeit der Übersetzung hängt vom Dienst ab.</string>
     <string name="bantu_language_groups">Bantu-Sprachen</string>
+    <string name="experimental_split_navigation">Geteilte Player-Navigation (experimentell)</string>
+    <string name="experimental_split_navigation_summary">Aus lässt die ursprüngliche Vinz-Navigation bestehen.</string>
+    <string name="experimental_split_navigation_info">Mit dem Stil Schwebend und aktiviertem Beim Scrollen verkleinern passt sich der Player beim Scrollen zwischen zwei Tab-Gruppen ein. Die ursprüngliche Navigation bleibt verfügbar und wird auf schmalen Bildschirmen, bei großem Text, Tablets oder aktiviertem Bewegung reduzieren verwendet. Zum Wiederherstellen jederzeit ausschalten.</string>
+    <string name="experimental_split_navigation_keywords">experimentell geteilt navigation zentriert mini player verformen ursprünglich</string>
+    <string name="icons_shapes_summary">Icon-Paket und -stärke, Ecken und Formen</string>
+    <string name="icons_shapes_keywords">icon paket stärke ecken formen</string>
 </resources>

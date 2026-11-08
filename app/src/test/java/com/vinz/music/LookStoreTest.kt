@@ -46,6 +46,8 @@ class LookStoreTest {
         // Your own mix (Neon with round corners isn't any Look) is kept as "Before Paper" when Paper goes on.
         settings.setCorners(Corners.EXTRA)
         withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:EXTRA" } }
+        // apply() decides whether to save "Before Paper" from settings.current, not lookValues.
+        withTimeout(5_000) { settings.flow.first { it.corners == Corners.EXTRA } }
         val paper = BuiltInLooks.of("paper")!!
         assertEquals(true, looks.changes(paper)?.startsWith("Changes your theme, colors, type, backgrounds and layout"))
         looks.apply(paper)

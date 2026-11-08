@@ -1,0 +1,223 @@
+name: Icons & shapes regression
+on:
+  pull_request:
+    branches: [main, stable]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: icons-shapes-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+env:
+  JAVA_VERSION: "17"
+  VINZ_GIT_SHA: ${{ github.event.pull_request.head.sha }}
+  VINZ_BUILD_CHANNEL: pr
+jobs:
+  icons-shapes-screen:
+    name: Icons & shapes instrumented screen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Resolve the review build version
+        run: |
+          set -euo pipefail
+          echo "REVIEW_VERSION_NAME=$(./scripts/ci/version.sh development-name)" >> "$GITHUB_ENV"
+          echo "REVIEW_VERSION_CODE=$(./scripts/ci/version.sh bump-code)" >> "$GITHUB_ENV"
+
+      - name: Set shared AVD environment
+        run: |
+          set -euo pipefail
+          {
+            echo "ANDROID_AVD_HOME=$RUNNER_TEMP/vinz-android-user/avd"
+            echo "ANDROID_USER_HOME=$RUNNER_TEMP/vinz-android-user"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android emulator runtime libraries
+        run: ./scripts/ci/install-emulator-runtime.sh
+
+      - name: Install Android SDK packages
+        run: |
+          ./scripts/ci/install-android-sdk.sh
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+
+      - name: Create and verify the API 34 emulator
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" emulator-logs
+          exec > >(tee emulator-logs/avd-setup.log) 2>&1
+          trap "echo ::error::AVD_setup_failed" ERR
+          sdkmanager=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)
+          avdmanager=$(find "$ANDROID_HOME/cmdline-tools" -type f -name avdmanager | sort -V | tail -1)
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          test -n "$sdkmanager"
+          test -n "$avdmanager"
+          yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || true
+          "$sdkmanager" --sdk_root="$ANDROID_HOME" emulator "system-images;android-34;google_apis;x86_64"
+          test -x "$emulator_bin"
+          echo no | "$avdmanager" create avd --force --name vinz-api34 --package "system-images;android-34;google_apis;x86_64" --abi google_apis/x86_64 --path "$ANDROID_AVD_HOME/vinz-api34.avd"
+          test -f "$ANDROID_AVD_HOME/vinz-api34.ini"
+          test -d "$ANDROID_AVD_HOME/vinz-api34.avd"
+          "$emulator_bin" -list-avds | tee emulator-logs/available-avds.txt | grep -Fxq vinz-api34
+
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm || { echo "::error::This runner has no KVM device"; exit 1; }
+          sudo chmod a+rw /dev/kvm
+          test -w /dev/kvm
+
+      - name: Assemble the focused test APKs
+        run: |
+          # Compile before boot without leaving a Kotlin daemon competing with the emulator.
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PsideBySide \
+            -PciVersionName="$REVIEW_VERSION_NAME" -PciVersionCode="$REVIEW_VERSION_CODE" \
+            --no-daemon --no-parallel --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" \
+            -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+
+      - name: Run Icons & shapes screen test
+        env:
+          EMULATOR_SERIAL: emulator-5554
+          EMULATOR_PORT: "5554"
+        run: |
+          set -Eeuo pipefail
+          mkdir -p emulator-logs
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          export ANDROID_SERIAL="$EMULATOR_SERIAL"
+
+          fail() {
+            echo "::error::$1" >&2
+            tail -n 200 emulator-logs/emulator.log >&2 || true
+            exit 1
+          }
+
+          host_snapshot() {
+            {
+              date -u
+              free -m
+              for name in memory.current memory.max memory.events; do
+                echo "cgroup $name:"
+                cat "/sys/fs/cgroup/$name" 2>/dev/null || true
+              done
+              ps -eo pid,ppid,rss,comm --sort=-rss | head -30 || true
+              sudo -n dmesg --ctime 2>/dev/null | tail -200 || true
+            } > "emulator-logs/host-$1.txt" 2>&1
+          }
+
+          cleanup() {
+            exit_code=$?
+            trap - EXIT
+            set +e
+            host_snapshot after-test
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              wait "$emulator_pid"
+              echo "$?" > emulator-logs/emulator-exit-code.txt
+            fi
+            if [[ -n ${logcat_pid:-} ]]; then
+              kill "$logcat_pid" 2>/dev/null || true
+              wait "$logcat_pid" 2>/dev/null || true
+            fi
+            timeout 10s adb devices -l > emulator-logs/adb-devices.txt 2>&1 || true
+            timeout 15s adb -s "$EMULATOR_SERIAL" logcat -d -t 4000 > emulator-logs/logcat.txt 2>&1 || true
+            timeout 10s adb -s "$EMULATOR_SERIAL" emu kill > emulator-logs/emu-kill.log 2>&1 || true
+            kill "$emulator_pid" >/dev/null 2>&1 || true
+            for _ in $(seq 1 10); do
+              kill -0 "$emulator_pid" >/dev/null 2>&1 || break
+              sleep 1
+            done
+            kill -9 "$emulator_pid" >/dev/null 2>&1 || true
+            wait "$emulator_pid" >/dev/null 2>&1 || true
+            exit "$exit_code"
+          }
+
+          test -x "$emulator_bin" || fail "Android emulator executable is missing: $emulator_bin"
+          "$emulator_bin" -version > emulator-logs/emulator-version.txt 2>&1 || fail "Android emulator version check failed"
+          "$emulator_bin" -accel-check > emulator-logs/accel-check.txt 2>&1 || fail "Android emulator acceleration check failed"
+          timeout 15s adb start-server > emulator-logs/adb-start-server.txt 2>&1 || fail "adb server did not start within 15 seconds"
+          host_snapshot before-emulator
+          # API 34 raises smaller guest RAM requests to 2560 MB. Mesa software
+          # rendering avoids reproducible native SwiftShader SIGSEGVs (exit 139).
+          "$emulator_bin" -avd vinz-api34 -port "$EMULATOR_PORT" -memory 2560 -cores 2 -no-window -no-audio -no-boot-anim -gpu lavapipe -feature -Vulkan -no-snapshot -accel on > emulator-logs/emulator.log 2>&1 &
+          emulator_pid=$!
+          trap cleanup EXIT
+
+          sleep 5
+          kill -0 "$emulator_pid" >/dev/null 2>&1 || fail "Android emulator exited during startup"
+          timeout 120s adb -s "$EMULATOR_SERIAL" wait-for-device || fail "Android emulator did not connect to adb within 120 seconds"
+          timeout 10s adb -s "$EMULATOR_SERIAL" get-state | grep -qx device || fail "adb did not report the emulator as a device"
+
+          boot_deadline=$((SECONDS + 300))
+          boot_completed=""
+          while (( SECONDS < boot_deadline )); do
+            boot_completed="$(timeout 10s adb -s "$EMULATOR_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" || true)"
+            [[ "$boot_completed" == "1" ]] && break
+            kill -0 "$emulator_pid" >/dev/null 2>&1 || fail "Android emulator exited before boot completed"
+            sleep 5
+          done
+          [[ "$boot_completed" == "1" ]] || fail "Android emulator did not finish booting within 300 seconds"
+          timeout 10s adb -s "$EMULATOR_SERIAL" shell input keyevent 82 || fail "Could not unlock Android emulator"
+          adb -s "$EMULATOR_SERIAL" logcat -v threadtime > emulator-logs/logcat-live.txt 2>&1 &
+          logcat_pid=$!
+          host_snapshot before-test
+          ./gradlew :app:connectedDebugAndroidTest -PsideBySide \
+            -PciVersionName="$REVIEW_VERSION_NAME" -PciVersionCode="$REVIEW_VERSION_CODE" \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.vinz.music.IconsShapesScreenTest,com.vinz.music.CloudAccountFlowTest \
+            --no-daemon --no-parallel --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" \
+            -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+
+      - name: Verify and stage the side-by-side review APK
+        env:
+          ALLOW_DEBUG_SIGNATURE: "true"
+          EXPECTED_VERSION_NAME: ${{ env.REVIEW_VERSION_NAME }}
+          EXPECTED_VERSION_CODE: ${{ env.REVIEW_VERSION_CODE }}
+        run: |
+          set -euo pipefail
+          ./scripts/ci/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk com.vinz.music.dev
+          mkdir -p account-review
+          apk="Vinz-Account-PR-${{ github.event.pull_request.number }}-${VINZ_GIT_SHA:0:7}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "account-review/$apk"
+          (cd account-review && sha256sum "$apk" > "$apk.sha256")
+          printf '%s\n' "TEST BUILD - NOT AN OFFICIAL RELEASE" \
+            "commit: $VINZ_GIT_SHA" "package: com.vinz.music.dev" "version: $REVIEW_VERSION_NAME" \
+            "Installs as Vinz Dev beside the main app. Uses separate app data." \
+            "If a Vinz Dev signature conflicts, stop; do not uninstall any app containing your music data." \
+            > account-review/BUILD-INFO.txt
+
+      - name: Upload the side-by-side Account review APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vinz-account-review-pr-${{ github.event.pull_request.number }}
+          path: account-review/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload instrumented test reports and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: icons-shapes-screen-report-pr-${{ github.event.pull_request.number }}
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+            emulator-logs/
+          if-no-files-found: warn
+          retention-days: 7

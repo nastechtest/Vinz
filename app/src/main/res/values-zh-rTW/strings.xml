@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">其他已安裝的語言</string>
     <string name="bantu_translation_availability">翻譯可用性取決於服務提供者。</string>
     <string name="bantu_language_groups">班圖語言</string>
+    <string name="experimental_split_navigation">分離式播放器導覽（實驗性）</string>
+    <string name="experimental_split_navigation_summary">關閉後會保留原始 Vinz 導覽。</string>
+    <string name="experimental_split_navigation_info">啟用浮動樣式和捲動時縮小後，捲動時播放器會置於兩組分頁之間。窄螢幕、大型文字、平板電腦或啟用減少動態效果時仍使用原始導覽。隨時關閉即可還原。</string>
+    <string name="experimental_split_navigation_keywords">實驗性 分離 導覽 置中 迷你播放器 變形 原始</string>
+    <string name="icons_shapes_summary">圖示套件和粗細、圓角和形狀</string>
+    <string name="icons_shapes_keywords">圖示 套件 粗細 圓角 形狀</string>
 </resources>

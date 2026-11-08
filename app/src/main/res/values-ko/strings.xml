@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">기타 설치된 언어</string>
     <string name="bantu_translation_availability">번역 가능 여부는 서비스에 따라 다릅니다.</string>
     <string name="bantu_language_groups">반투어</string>
+    <string name="experimental_split_navigation">분할 플레이어 탐색 (실험적)</string>
+    <string name="experimental_split_navigation_summary">끔은 기존 Vinz 탐색을 유지합니다.</string>
+    <string name="experimental_split_navigation_info">플로팅 스타일과 스크롤할 때 축소를 켜면 스크롤 중 플레이어가 두 탭 그룹 사이에 들어갑니다. 좁은 화면, 큰 글자, 태블릿 또는 동작 줄이기에서는 기존 탐색을 사용합니다. 언제든 끄면 원래대로 돌아갑니다.</string>
+    <string name="experimental_split_navigation_keywords">실험적 분할 탐색 중앙 미니 플레이어 변형 기존</string>
+    <string name="icons_shapes_summary">아이콘 팩과 굵기, 모서리와 모양</string>
+    <string name="icons_shapes_keywords">아이콘 팩 굵기 모서리 모양</string>
 </resources>

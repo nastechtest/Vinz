@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Iba pang naka-install na wika</string>
     <string name="bantu_translation_availability">Nakadepende ang pagkakaroon ng pagsasalin sa serbisyo.</string>
     <string name="bantu_language_groups">Mga wikang Bantu</string>
+    <string name="experimental_split_navigation">Hating nabigasyon ng player (eksperimental)</string>
+    <string name="experimental_split_navigation_summary">Pinananatili ng naka-off ang orihinal na nabigasyon ng Vinz.</string>
+    <string name="experimental_split_navigation_info">Kapag naka-enable ang Floating style at Shrink habang nag-i-scroll, umaangkop ang player sa pagitan ng dalawang pangkat ng tab habang nag-i-scroll ka. Magagamit pa rin ang orihinal na nabigasyon sa makikitid na screen, malaking text, tablet, o Reduce motion. I-off ito upang ibalik ang orihinal.</string>
+    <string name="experimental_split_navigation_keywords">eksperimental hati nabigasyon gitnang mini player pagbabago orihinal</string>
+    <string name="icons_shapes_summary">Icon pack at bigat, mga sulok at hugis</string>
+    <string name="icons_shapes_keywords">icon pack bigat sulok hugis</string>
 </resources>

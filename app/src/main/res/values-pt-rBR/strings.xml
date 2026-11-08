@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">Outros idiomas instalados</string>
     <string name="bantu_translation_availability">A disponibilidade da tradução depende do serviço.</string>
     <string name="bantu_language_groups">Idiomas bantu</string>
+    <string name="experimental_split_navigation">Navegação com player dividido (experimental)</string>
+    <string name="experimental_split_navigation_summary">Desativado mantém a navegação original do Vinz.</string>
+    <string name="experimental_split_navigation_info">Com o estilo Flutuante e Encolher ao rolar ativados, o player se encaixa entre dois grupos de abas enquanto você rola. A navegação original continua em telas estreitas, texto grande, tablets ou com Reduzir movimento. Desative quando quiser para restaurá-la.</string>
+    <string name="experimental_split_navigation_keywords">experimental navegação dividida centralizado miniplayer transformação original</string>
+    <string name="icons_shapes_summary">Pacote e peso de ícones, cantos e formas</string>
+    <string name="icons_shapes_keywords">ícone pacote peso cantos formas</string>
 </resources>

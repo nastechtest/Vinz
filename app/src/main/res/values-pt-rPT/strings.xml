@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">Outros idiomas instalados</string>
     <string name="bantu_translation_availability">A disponibilidade da tradução depende do serviço.</string>
     <string name="bantu_language_groups">Idiomas bantu</string>
+    <string name="experimental_split_navigation">Navegação com leitor dividido (experimental)</string>
+    <string name="experimental_split_navigation_summary">Desligado mantém a navegação original do Vinz.</string>
+    <string name="experimental_split_navigation_info">Com o estilo Flutuante e Encolher ao deslocar ativos, o leitor encaixa entre dois grupos de separadores durante a deslocação. A navegação original mantém-se em ecrãs estreitos, texto grande, tablets ou com Reduzir movimento. Desligue para a repor.</string>
+    <string name="experimental_split_navigation_keywords">experimental navegação dividida centrado mini leitor transformação original</string>
+    <string name="icons_shapes_summary">Pacote e espessura de ícones, cantos e formas</string>
+    <string name="icons_shapes_keywords">ícone pacote espessura cantos formas</string>
 </resources>

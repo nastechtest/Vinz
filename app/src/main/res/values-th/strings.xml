@@ -4575,4 +4575,10 @@
     <string name="bantu_installed_languages">ภาษาอื่นที่ติดตั้งไว้</string>
     <string name="bantu_translation_availability">ความพร้อมใช้งานของการแปลขึ้นอยู่กับผู้ให้บริการ</string>
     <string name="bantu_language_groups">ภาษาบันตู</string>
+    <string name="experimental_split_navigation">การนำทางเครื่องเล่นแบบแยก (ทดลอง)</string>
+    <string name="experimental_split_navigation_summary">ปิดไว้จะใช้การนำทาง Vinz แบบเดิม</string>
+    <string name="experimental_split_navigation_info">เมื่อเปิดสไตล์ลอยและย่อขณะเลื่อน เครื่องเล่นจะอยู่ระหว่างกลุ่มแท็บสองกลุ่มขณะเลื่อน การนำทางเดิมยังใช้กับหน้าจอแคบ ข้อความใหญ่ แท็บเล็ต หรือเมื่อลดการเคลื่อนไหว ปิดได้ทุกเมื่อเพื่อคืนค่าเดิม</string>
+    <string name="experimental_split_navigation_keywords">ทดลอง แยก การนำทาง กึ่งกลาง มินิเพลเยอร์ เปลี่ยนรูป แบบเดิม</string>
+    <string name="icons_shapes_summary">ชุดและน้ำหนักไอคอน มุมและรูปทรง</string>
+    <string name="icons_shapes_keywords">ไอคอน ชุด น้ำหนัก มุม รูปทรง</string>
 </resources>

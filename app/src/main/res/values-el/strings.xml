@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">Άλλες εγκατεστημένες γλώσσες</string>
     <string name="bantu_translation_availability">Η διαθεσιμότητα μετάφρασης εξαρτάται από την υπηρεσία.</string>
     <string name="bantu_language_groups">Γλώσσες Μπαντού</string>
+    <string name="experimental_split_navigation">Διαιρεμένη πλοήγηση προγράμματος αναπαραγωγής (πειραματική)</string>
+    <string name="experimental_split_navigation_summary">Η απενεργοποίηση διατηρεί την αρχική πλοήγηση του Vinz.</string>
+    <string name="experimental_split_navigation_info">Με αιωρούμενο στυλ και ενεργή συρρίκνωση κατά την κύλιση, το πρόγραμμα αναπαραγωγής χωρά ανάμεσα σε δύο ομάδες καρτελών καθώς κυλίετε. Η αρχική πλοήγηση παραμένει διαθέσιμη σε στενές οθόνες, μεγάλο κείμενο, tablet ή με ενεργή μείωση κίνησης. Απενεργοποιήστε το για επαναφορά.</string>
+    <string name="experimental_split_navigation_keywords">πειραματικό διαιρεμένη πλοήγηση κεντρικό μίνι πρόγραμμα αλλαγή αρχικό</string>
+    <string name="icons_shapes_summary">Πακέτο και βάρος εικονιδίων, γωνίες και σχήματα</string>
+    <string name="icons_shapes_keywords">εικονίδιο πακέτο βάρος γωνίες σχήματα</string>
 </resources>

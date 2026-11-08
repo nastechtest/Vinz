@@ -125,4 +125,11 @@ class PlayerRound181Test {
         // The song's still there to open.
         assertTrue(compose.onAllNodes(hasText("Vinz mini player tone", substring = true)).fetchSemanticsNodes().isNotEmpty())
     }
+
+    /** The compact chrome has one player tree, never a visual duplicate with duplicate controls for accessibility. */
+    @Test fun theMiniPlayerHasOneSemanticsNode() {
+        play("Vinz one mini player tone")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("miniPlayer")).fetchSemanticsNodes().size == 1 }
+        assertEquals(1, compose.onAllNodes(hasTestTag("miniPlayer")).fetchSemanticsNodes().size)
+    }
 }

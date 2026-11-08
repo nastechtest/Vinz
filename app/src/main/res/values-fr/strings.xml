@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">Autres langues installées</string>
     <string name="bantu_translation_availability">La disponibilité des traductions dépend du service.</string>
     <string name="bantu_language_groups">Langues bantoues</string>
+    <string name="experimental_split_navigation">Navigation à lecteur séparé (expérimentale)</string>
+    <string name="experimental_split_navigation_summary">Désactivée, elle conserve la navigation Vinz d\'origine.</string>
+    <string name="experimental_split_navigation_info">Avec le style Flottant et Réduire au défilement activés, le lecteur s\'insère entre deux groupes d\'onglets pendant le défilement. La navigation d\'origine reste disponible sur les écrans étroits, avec du texte grand, sur tablette ou avec Réduire les animations. Désactivez-la à tout moment pour la restaurer.</string>
+    <string name="experimental_split_navigation_keywords">expérimental navigation séparée centrée mini lecteur morphose origine</string>
+    <string name="icons_shapes_summary">Pack et épaisseur des icônes, coins et formes</string>
+    <string name="icons_shapes_keywords">icône pack épaisseur coins formes</string>
 </resources>

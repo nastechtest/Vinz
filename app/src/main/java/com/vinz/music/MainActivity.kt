@@ -34,6 +34,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,6 +89,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -113,9 +119,11 @@ import com.vinz.music.data.prefs.NavBarStyle
 import com.vinz.music.data.prefs.NavLabels
 import com.vinz.music.data.prefs.NavTab
 import com.vinz.music.download.SmartDownloadWorker
+import com.vinz.music.ui.ChromeScrollAccumulator
 import com.vinz.music.ui.LocalNavigator
 import com.vinz.music.ui.Navigator
 import com.vinz.music.ui.Routes
+import com.vinz.music.ui.SplitChromeGeometry
 import com.vinz.music.ui.player.MiniPlayer
 import com.vinz.music.ui.player.NowPlayingScreen
 import com.vinz.music.ui.screens.ArtistScreen
@@ -537,24 +545,45 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             }
         }
 
-        // The tab bar shrinks while you scroll down a page and grows back as you scroll up.
+        // Keep the established pre-scroll threshold path unless the opt-in split chrome has actually fitted.
+        // The experimental path uses only child-consumed scroll, so overscroll cannot morph the player.
         var barCompact by remember { mutableStateOf(false) }
-        val barScroll = remember {
+        var splitChromeEligible by remember { mutableStateOf(false) }
+        val density = LocalDensity.current
+        val chromeScroll = remember(density) { ChromeScrollAccumulator(with(density) { 72.dp.toPx() }) }
+        var chromeTarget by remember { mutableFloatStateOf(0f) }
+        val chromeScrollEnabled = splitChromeEligible && settings.experimentalSplitNavigation &&
+            settings.navStyle == NavBarStyle.FLOATING && settings.navHideOnScroll && !settings.reduceMotion &&
+            song != null && !playerOpen && !useRail
+        val barScroll = remember(chromeScroll, chromeScrollEnabled) {
             object : NestedScrollConnection {
                 var acc = 0f
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (chromeScrollEnabled) return Offset.Zero
                     val dy = available.y
                     if (dy == 0f || abs(available.x) > abs(dy)) return Offset.Zero
                     acc = if ((acc < 0) == (dy < 0)) acc + dy else dy
                     if (acc < -28f) barCompact = true else if (acc > 28f) barCompact = false
                     return Offset.Zero
                 }
+
+                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                    if (!chromeScrollEnabled) return Offset.Zero
+                    val dy = consumed.y
+                    if (!dy.isFinite() || dy == 0f || abs(consumed.x) > abs(dy)) return Offset.Zero
+                    chromeTarget = chromeScroll.consume(dy, true)
+                    return Offset.Zero
+                }
             }
         }
         LaunchedEffect(route) { barCompact = false }
+        LaunchedEffect(route, chromeScrollEnabled) {
+            chromeTarget = if (chromeScrollEnabled) chromeScroll.reset() else 0f
+        }
         val barT by animateFloatAsState(
-            if (barCompact && settings.navHideOnScroll) 1f else 0f,
-            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow), label = "bar",
+            if (chromeScrollEnabled) chromeTarget else if (barCompact && settings.navHideOnScroll) 1f else 0f,
+            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+            label = "bar",
         )
 
         LaunchedEffect(Unit) {
@@ -653,11 +682,18 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
                                 onSignIn = { navController.navigate(Routes.LOGIN) },
-                                // A Vinz Account (on this phone), then a few artists, so the mixes and Release Radar have
-                                // something to start from.
+                                // One cloud-backed Vinz Account, followed by the existing artist selection.
                                 onAccount = { navController.navigate(Routes.ACCOUNT + "?onboarding=true") },
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
                             )
+                        }
+                        // Compatibility destination: old cloud links open the existing account hub, not a second account screen.
+                        composable(Routes.VINZ_CLOUD_ACCOUNT) {
+                            ScreenBackdrop(BackdropScreen.SETTINGS) {
+                                com.vinz.music.ui.screens.VinzAccountScreen(false, bottomPadding) {
+                                    navController.popBackStack()
+                                }
+                            }
                         }
                         composable(
                             Routes.ACCOUNT + "?onboarding={onboarding}",
@@ -823,32 +859,60 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                         }
                     }
                 }
-                // Floating chrome: mini player + tab bar
+                // Floating chrome stays exactly as before until its explicit experimental opt-in fits the live layout.
                 if (showChrome && !useRail) {
                     val docked = settings.navStyle == NavBarStyle.DOCKED
-                    Column(
-                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(underPlayer)
-                            .then(if (docked) Modifier else Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)),
+                    val experimentRequested = settings.experimentalSplitNavigation && settings.navStyle == NavBarStyle.FLOATING && settings.navHideOnScroll &&
+                        !settings.reduceMotion && song != null && !playerOpen
+                    BoxWithConstraints(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(underPlayer),
                     ) {
-                        AnimatedVisibility(inSession && !playerOpen && route != Routes.TOGETHER, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                            TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
+                        // maxWidth is the actual available layout width.
+                        val geometry = SplitChromeGeometry.from(
+                            maxWidth.value,
+                            LocalDensity.current.fontScale,
+                            tabs.size,
+                        )
+                        val split = geometry.takeIf { experimentRequested && it.enabled }
+                        androidx.compose.runtime.SideEffect { splitChromeEligible = split != null }
+                        androidx.compose.runtime.DisposableEffect(Unit) {
+                            onDispose { splitChromeEligible = false }
                         }
-                        // "Joined to the tab bar" (1.7.6): one piece of glass, the mini player on top of the tabs.
-                        val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING
-                        if (!joined) AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                            // Spectrum's bar (the Card style over the docked tab bar) sits right on the tab bar, edge to edge.
-                            val flush = docked && settings.miniPlayerStyle == MiniPlayerStyle.CARD && !(settings.liquidGlass || settings.frostedGlass)
-                            MiniPlayer(
-                                (if (flush) Modifier else Modifier.padding(bottom = 8.dp).then(if (docked) Modifier.padding(horizontal = 10.dp) else Modifier))
-                                    .customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER),
-                            ) { playerOpen = true }
-                        }
-                        val joinedMini: (@Composable () -> Unit)? = if (!joined) null else ({
-                            AnimatedVisibility(song != null && !playerOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                                MiniPlayer(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER), bare = true) { playerOpen = true }
+                        Column(
+                            Modifier.fillMaxWidth().then(
+                                if (docked) Modifier
+                                else Modifier.navigationBarsPadding().padding(
+                                    horizontal = if (split != null) 0.dp else 12.dp,
+                                    vertical = 8.dp,
+                                ),
+                            ),
+                        ) {
+                            AnimatedVisibility(inSession && !playerOpen && route != Routes.TOGETHER, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                                TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
                             }
-                        })
-                        Box(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.TAB_BAR)) { TabBar(tabs, route, barT, settings, joinedMini, selectTab) }
+                            if (split != null) {
+                                AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                                    SplitChrome(tabs, route, barT, settings, split, selectTab) { playerOpen = true }
+                                }
+                            } else {
+                                // "Joined to the tab bar" (1.7.6): one piece of glass, the mini player on top of the tabs.
+                                val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING
+                                if (!joined) AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                                    // Spectrum's bar (the Card style over the docked tab bar) sits right on the tab bar, edge to edge.
+                                    val flush = docked && settings.miniPlayerStyle == MiniPlayerStyle.CARD && !(settings.liquidGlass || settings.frostedGlass)
+                                    MiniPlayer(
+                                        (if (flush) Modifier else Modifier.padding(bottom = 8.dp).then(if (docked) Modifier.padding(horizontal = 10.dp) else Modifier))
+                                            .customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER),
+                                    ) { playerOpen = true }
+                                }
+                                val joinedMini: (@Composable () -> Unit)? = if (!joined) null else ({
+                                    AnimatedVisibility(song != null && !playerOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                                        MiniPlayer(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER), bare = true) { playerOpen = true }
+                                    }
+                                })
+                                Box(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.TAB_BAR)) { TabBar(tabs, route, barT, settings, joinedMini, selectTab) }
+                            }
+                        }
                     }
                 }
                 }
@@ -1068,6 +1132,72 @@ private fun TabBar(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Vinz's wide bottom chrome. It contains exactly one [MiniPlayer], so the same controller, gestures and accessibility
+ * tree are retained while the user-selected tab names/order are simply divided around it.
+ */
+@Composable
+private fun SplitChrome(
+    tabs: List<Tab>,
+    route: String?,
+    compact: Float,
+    settings: AppSettings,
+    geometry: SplitChromeGeometry,
+    onSelect: (String) -> Unit,
+    onOpenPlayer: () -> Unit,
+) {
+    val tabHeight = when (settings.navStyle) {
+        NavBarStyle.FLOATING -> lerp(settings.navBarSize.floating.dp, maxOf(48.dp, settings.navBarSize.floating.dp - 14.dp), compact)
+        NavBarStyle.MINIMAL -> maxOf(48.dp, settings.navBarSize.minimal.dp)
+        NavBarStyle.DOCKED -> return
+    }
+    val playerHeight = miniHeight(settings.miniPlayerStyle)
+    val density = LocalDensity.current
+    val gap = with(density) { 4.dp.roundToPx() }
+    val tint = navFill(settings.navBarFill)
+    val left = tabs.take(geometry.leftTabs)
+    val right = tabs.drop(geometry.leftTabs)
+    val tabGroup: @Composable (List<Tab>, String, Modifier) -> Unit = { group, tag, modifier ->
+        GlassSurface(modifier.testTag(tag), shape = RoundedCornerShape(tabHeight / 2), tint = tint) {
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                group.forEach { tab ->
+                    val selected = isSelected(tab, route)
+                    if (settings.navStyle == NavBarStyle.MINIMAL) MinimalTab(tab, selected, tabHeight - 8.dp) { onSelect(tab.route) }
+                    else TabItem(tab, selected, settings.navLabels, compact, Modifier.weight(1f).fillMaxHeight()) { onSelect(tab.route) }
+                }
+            }
+        }
+    }
+    // A single Layout owns all three children. At t=0 it is the existing stacked player + complete tab row;
+    // at t=1 its measured bounds meet on one row. Nothing is swapped while scrolling.
+    Layout(
+        modifier = Modifier.fillMaxWidth().customizable(com.vinz.music.ui.components.CustomizeTarget.TAB_BAR).testTag("splitChrome"),
+        content = {
+            tabGroup(left, "splitChromeLeft", Modifier)
+            MiniPlayer(
+                Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER),
+                compactFraction = compact,
+                compactWidth = 48.dp,
+                onOpen = onOpenPlayer,
+            )
+            tabGroup(right, "splitChromeRight", Modifier)
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val playerPx = playerHeight.roundToPx()
+        val tabPx = tabHeight.roundToPx()
+        val bounds = geometry.bounds(width, playerPx, tabPx, compact, gap)
+        val leftPlaceable = measurables[0].measure(Constraints.fixed(bounds.left.width.coerceAtLeast(0), bounds.left.height))
+        val playerPlaceable = measurables[1].measure(Constraints.fixed(bounds.player.width.coerceAtLeast(48.dp.roundToPx()), bounds.player.height))
+        val rightPlaceable = measurables[2].measure(Constraints.fixed(bounds.right.width.coerceAtLeast(0), bounds.right.height))
+        layout(width, bounds.hostHeight) {
+            leftPlaceable.placeRelative(bounds.left.x, bounds.left.y)
+            playerPlaceable.placeRelative(bounds.player.x, bounds.player.y)
+            rightPlaceable.placeRelative(bounds.right.x, bounds.right.y)
         }
     }
 }

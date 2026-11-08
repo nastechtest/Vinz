@@ -4761,4 +4761,10 @@
     <string name="bantu_installed_languages">Další nainstalované jazyky</string>
     <string name="bantu_translation_availability">Dostupnost překladu závisí na službě.</string>
     <string name="bantu_language_groups">Bantuské jazyky</string>
+    <string name="experimental_split_navigation">Rozdělené ovládání přehrávače (experimentální)</string>
+    <string name="experimental_split_navigation_summary">Vypnutí ponechá původní navigaci Vinz.</string>
+    <string name="experimental_split_navigation_info">Se stylem Plovoucí a zapnutým zmenšováním při posouvání se přehrávač při posouvání vejde mezi dvě skupiny karet. Původní navigace zůstává dostupná a použije se na úzkých obrazovkách, s velkým textem, na tabletech nebo při omezení pohybu. Vypnutím ji kdykoli obnovíte.</string>
+    <string name="experimental_split_navigation_keywords">experimentální rozdělená navigace vystředěný mini přehrávač proměna původní</string>
+    <string name="icons_shapes_summary">Sada ikon a tloušťka, rohy a tvary</string>
+    <string name="icons_shapes_keywords">ikona sada tloušťka rohy tvary</string>
 </resources>

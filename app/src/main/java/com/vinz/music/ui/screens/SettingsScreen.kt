@@ -172,7 +172,7 @@ enum class SettingsSection(val key: String, val title: String, val icon: ImageVe
             when (s.colorSource) { ColorSource.CUSTOM -> tr(R.string.accent_x, com.vinz.music.ui.theme.ColorMath.toHex(s.accent)); ColorSource.ARTWORK -> tr(R.string.accent_from_the_cover); ColorSource.DYNAMIC -> tr(R.string.accent_from_the_wallpaper) },
         ).joinToString(" · ")
         TEXT -> listOfNotNull(tr(R.string.font_x, s.fontChoice.label), if (s.textScale != 1f) tr(R.string.size_2, (s.textScale * 100).roundToInt()) else null).joinToString(" · ")
-        ICONS -> tr(R.string.icon_pack_and_weight_app_icon)
+        ICONS -> tr(R.string.icons_shapes_summary)
         GLASS -> listOfNotNull(when { s.liquidGlass -> tr(R.string.liquid_glass); s.frostedGlass -> tr(R.string.frosted_glass); else -> tr(R.string.solid_bars) }, if (s.backdrops.screensOnly.isEmpty()) null else tr(R.string.backgrounds), if (s.reduceMotion) tr(R.string.reduced_motion) else null).joinToString(" · ")
         LOOKS -> tr(R.string.save_switch_and_share_whole_looks)
     }
@@ -340,7 +340,7 @@ private fun SettingsPage(
                 }
                 item { AccountCard() }
                 item(key = "performance") { PerformanceGroup() }
-                // Every section's icon sits on its own color of the split light, red at the top to violet at the foot.
+                // Each section has its own coloured foreground, red at the top to violet at the foot.
                 val hubCount = hubGroups.sumOf { it.second.size }
                 var hubIndex = 0
                 hubGroups.forEach { (title, sections) ->
@@ -362,8 +362,14 @@ private fun SettingsPage(
             SettingsSection.LOOKS -> looksPage()
             SettingsSection.COLOR -> colorPage()
             SettingsSection.TEXT -> item(key = "text") { Column(verticalArrangement = Arrangement.spacedBy(22.dp)) { TypeSettings(); ResetPage(section) } }
-            SettingsSection.ICONS -> item(key = "icons") {
-                Column(verticalArrangement = Arrangement.spacedBy(22.dp)) { IconSettings(); AppIconSettings(); ShapeSettings(); HomeWidgetsGroup(); ResetPage(section) }
+            SettingsSection.ICONS -> {
+                // Keep expensive previews in separate lazy items, not one eagerly composed, oversized page.
+                item(key = "icons") { IconSettings() }
+                item(key = "icon-corners") { ShapeSettings(includeRelatedShapes = false) }
+                item(key = "cover-shapes") { CoverShapeGroup() }
+                item(key = "button-shapes") { ButtonShapeGroup() }
+                item(key = "home-widgets") { HomeWidgetsGroup() }
+                item(key = "reset-icons") { ResetPage(section) }
             }
             SettingsSection.GLASS -> item(key = "glass") { Column(verticalArrangement = Arrangement.spacedBy(22.dp)) { GlassSettings(); ResetPage(section) } }
             SettingsSection.INTERFACE -> layoutAndNavigation()
@@ -590,7 +596,8 @@ private fun AccountCard() {
     val ink = com.vinz.music.ui.components.featureInk()
     var switching by remember { mutableStateOf(false) }
     if (switching) AccountSwitcher { switching = false }
-    val profile by c.account.profile.collectAsState()
+    val legacyImport by c.account.profile.collectAsState()
+    val vinzIdentity = com.vinz.music.ui.screens.account.ExistingCloudAccountGateway(c.vinzCloudAccount).identity
     val context = androidx.compose.ui.platform.LocalContext.current
     var confirmSignOut by remember { mutableStateOf(false) }
     fun signOut() {
@@ -619,24 +626,22 @@ private fun AccountCard() {
         dismissButton = { VinzTextButton({ confirmSignOut = false; signOut() }) { Text(tr(R.string.just_sign_out)) } },
     )
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
-    // The Vinz Account: who the listener is in Vinz, on this phone.
+    // One cloud-backed Vinz Account destination, not a local profile editor.
+    // YouTube Music retains its own established sign-in and session controls below.
     Row(
         Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (profile != null || s.isLoggedIn) com.vinz.music.ui.screens.ProfilePicture(Modifier.size(56.dp))
-        else Box(Modifier.size(56.dp).clip(CircleShape).background(if (frosted) com.vinz.music.ui.components.frostFill(1.6f) else scheme.surface.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-            Icon(VinzIcons.Add, null, tint = if (frosted) scheme.primary else ink)
-        }
+        com.vinz.music.ui.screens.ProfilePicture(Modifier.size(56.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                profile?.name ?: tr(R.string.make_a_vinz_account),
+                tr(R.string.your_vinz_account),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), color = ink,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (profile != null) tr(R.string.vinz_account_on_this_phone) else tr(R.string.your_name_and_picture_kept_on),
+                vinzIdentity?.email ?: tr(R.string.cloud_account_summary),
                 style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f),
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
@@ -665,7 +670,7 @@ private fun AccountCard() {
                 style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        if (s.isLoggedIn) VinzOutlinedButton(onClick = { if (profile != null) confirmSignOut = true else signOut() }) {
+        if (s.isLoggedIn) VinzOutlinedButton(onClick = { if (legacyImport != null) confirmSignOut = true else signOut() }) {
             Icon(VinzIcons.Logout, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr(R.string.sign_out))
         }
         else Icon(VinzIcons.ChevronRight, null, tint = ink)
@@ -1032,9 +1037,7 @@ private fun IconSettings() {
             // The drawings' own names (design/icons), never words on the screen: translated, "Inicio" had no drawing and
             // the page closed Vinz in every language but English (#255).
             val icons = remember(f) { listOf("Home", "Library", "Heart").map { com.vinz.music.ui.theme.VinzIcons.preview(it, f) } }
-            Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                icons.forEach { Icon(it, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface) }
-            }
+            SettingsIconSamples(icons)
         }
         // "The tab you're on" is with the tab bar now (1.8.0: NavBarGroup).
         // Packs (1.7.7 adds Facet and Dots): each card draws the same four icons in its pack.
@@ -1053,9 +1056,7 @@ private fun IconSettings() {
                 // The drawings' own names, never translated words (#255).
                 else listOf("Home", "Search", "Heart", "Play").map { com.vinz.music.ui.theme.VinzIcons.preview(it, com.vinz.music.ui.theme.IconFill.OUTLINE, p) }
             }
-            Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                icons.forEach { Icon(it, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface) }
-            }
+            SettingsIconSamples(icons)
         }
         Label(tr(R.string.weight))
         Chips(com.vinz.music.ui.theme.IconWeight.entries, saved.first, { it.label }) { save(it to saved.second) }
@@ -1074,50 +1075,6 @@ private fun IconSettings() {
                     Runtime.getRuntime().exit(0)
                 }
             }) { Chevron() }
-        }
-    }
-}
-
-/** The launcher icon (#20), each shown as its own two layers in a rounded square. */
-@Composable
-private fun AppIconSettings() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val scheme = MaterialTheme.colorScheme
-    var current by remember { mutableStateOf(com.vinz.music.ui.theme.AppIcons.current(context)) }
-    Group(tr(R.string.app_icon), info = tr(R.string.your_launcher_may_take_a_moment)) {
-        // An even grid across the page (#194: fixed 72 dp cells left an empty column at the side with larger text, and
-        // cut "Spectrum" short): as many columns as fit, names made smaller rather than cut.
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-            val cell = 76.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
-            val columns = ((maxWidth + 8.dp) / (cell + 8.dp)).toInt().coerceIn(3, 6)
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                com.vinz.music.ui.theme.AppIcon.entries.chunked(columns).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { icon ->
-                            val on = icon == current
-                            Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable {
-                                    if (!on) { com.vinz.music.ui.theme.AppIcons.set(context, icon); current = icon }
-                                }.padding(4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Box(
-                                    Modifier.size(60.dp).then(if (on) Modifier.border(2.dp, com.vinz.music.ui.theme.VinzTokens.spectrum, RoundedCornerShape(18.dp)) else Modifier)
-                                        .padding(if (on) 4.dp else 0.dp).clip(RoundedCornerShape(15.dp)),
-                                ) {
-                                    // An adaptive icon's layers are 108 units with the visible 72 in the middle: draw them 1.5× and crop.
-                                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.background), null, Modifier.fillMaxSize().scale(1.5f))
-                                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.foreground), null, Modifier.fillMaxSize().scale(1.5f))
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                WholeWords(icon.label, MaterialTheme.typography.labelMedium, if (on) scheme.onSurface else scheme.onSurfaceVariant, maxLines = 1)
-                            }
-                        }
-                        // The last row keeps the others' column widths.
-                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
         }
     }
 }
@@ -1189,7 +1146,7 @@ private fun FontPicker(current: FontChoice, customName: String?, stamp: Long, on
 }
 
 @Composable
-private fun ShapeSettings() {
+private fun ShapeSettings(includeRelatedShapes: Boolean = true) {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     val scheme = MaterialTheme.colorScheme
@@ -1207,12 +1164,15 @@ private fun ShapeSettings() {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val ui = LocalUi.current
             listOf(scheme.primary, scheme.tertiary, scheme.secondary).forEach { col ->
-                Box(Modifier.weight(1f).aspectRatio(1.3f).clip(ui.tile).background(Brush.linearGradient(listOf(col, col.copy(alpha = 0.55f)))))
+                Box(Modifier.weight(1f).aspectRatio(1.3f).border(2.dp, settingsIconColor(col, scheme.surface), ui.tile))
             }
         }
     }
-    CoverShapeGroup()
-    ButtonShapeGroup()
+    // Other customizers still use this shared group as a complete shape section.
+    if (includeRelatedShapes) {
+        CoverShapeGroup()
+        ButtonShapeGroup()
+    }
 }
 
 /** Covers' shapes (1.7.7): which kind of cover, then each shape drawn as a cover would be. */
@@ -1353,6 +1313,10 @@ private fun NavBarGroup() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     Group(tr(R.string.navigation_bar)) {
+        Toggle(
+            tr(R.string.experimental_split_navigation), tr(R.string.experimental_split_navigation_summary),
+            s.experimentalSplitNavigation, info = tr(R.string.experimental_split_navigation_info),
+        ) { prefs.setExperimentalSplitNavigation(it) }
         Label(tr(R.string.style))
         Chips(NavBarStyle.entries, s.navStyle, { it.label }) { prefs.setNavStyle(it) }
         // The Minimal bar has no labels to show.

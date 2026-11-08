@@ -4699,4 +4699,10 @@
     <string name="bantu_installed_languages">Altre lingue installate</string>
     <string name="bantu_translation_availability">La disponibilità della traduzione dipende dal servizio.</string>
     <string name="bantu_language_groups">Lingue bantu</string>
+    <string name="experimental_split_navigation">Navigazione con lettore diviso (sperimentale)</string>
+    <string name="experimental_split_navigation_summary">Disattivata mantiene la navigazione Vinz originale.</string>
+    <string name="experimental_split_navigation_info">Con lo stile Fluttuante e Riduci durante lo scorrimento attivi, il lettore si inserisce fra due gruppi di schede durante lo scorrimento. La navigazione originale resta disponibile su schermi stretti, testo grande, tablet o con Riduci movimento. Disattivala per ripristinarla.</string>
+    <string name="experimental_split_navigation_keywords">sperimentale navigazione divisa centrata mini lettore trasformazione originale</string>
+    <string name="icons_shapes_summary">Pacchetto e spessore icone, angoli e forme</string>
+    <string name="icons_shapes_keywords">icona pacchetto spessore angoli forme</string>
 </resources>

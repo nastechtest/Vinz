@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out the pull request head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out the pull request head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -71,18 +71,26 @@ jobs:
       - name: Test the CI scripts
         run: ./scripts/tests/ci-scripts-test.sh
 
+      - name: Verify transparent branding and all icon sizes
+        run: |
+          python3 scripts/ci/check_branding.py
+          python3 -m unittest discover -s scripts/tests -p 'test_brand_assets.py' -v
+
+      - name: Verify the Nastech Research gallery codes
+        run: python3 scripts/generate-nastech-looks.py --check
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - name: Check out the pull request head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -91,7 +99,7 @@ jobs:
         run: ./scripts/ci/install-android-sdk.sh
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
 
@@ -118,14 +126,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out the pull request head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # All stable tags are needed even when the PR branch predates the latest release.
           fetch-depth: 0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -134,7 +142,7 @@ jobs:
         run: ./scripts/ci/install-android-sdk.sh
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           # Never write to the cache from a fork: a poisoned cache entry would be restored by later runs.
           cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
@@ -169,7 +177,7 @@ jobs:
       - name: Assemble debug APK and baseline profile module
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleDebug :baselineprofile:assemble \
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :baselineprofile:assemble \
             -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
             -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
             --no-daemon --stacktrace
@@ -202,7 +210,7 @@ jobs:
             echo
             echo "Install: adb install -r ${APK_NAME}"
             echo "This build uses the Android debug key and cannot update an official Vinz install:"
-            echo "uninstall Vinz (or build with -PsideBySide) before installing it."
+            echo "if Android reports a signature conflict, stop and preserve the official app's data; use a side-by-side build with -PsideBySide instead."
           } > dist/BUILD-INFO.txt
           cat dist/BUILD-INFO.txt
 
@@ -267,8 +275,8 @@ jobs:
               echo "adb install -r ${APK_NAME}"
               echo '```'
               echo
-              echo "Debug-signed, so it cannot be installed over an official Vinz. Uninstall Vinz first,"
-              echo "or build a side-by-side copy with \`-PsideBySide\`."
+              echo "Debug-signed, so it cannot be installed over an official Vinz. If Android reports a"
+              echo "signature conflict, stop and preserve user data; build a side-by-side copy with \`-PsideBySide\`."
               echo
               echo "Find it in the app under Settings -> About as \`${VERSION_NAME}\`."
             else

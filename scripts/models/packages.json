@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "packages": [
+    {
+      "download_bytes": 36370454,
+      "file_list": [
+        "LICENSE-DEEZER-MIT.txt",
+        "LICENSE-SHERPA-ONNX-APACHE-2.0.txt",
+        "accompaniment.fp16.onnx",
+        "vocals.fp16.onnx"
+      ],
+      "filename": "sing-spleeter-2stems-fp16.zip",
+      "original_payload_hashes": {
+        "LICENSE-DEEZER-MIT.txt": "b15e40c921ec6fe997e0d88ddab9c26fb915bebbbb9496530d3f98f317d4325a",
+        "LICENSE-SHERPA-ONNX-APACHE-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "accompaniment.fp16.onnx": "d14cea55793cc531a5875f5f4da08207d1c5ab9292e8e0099a104eecb014fcc0",
+        "vocals.fp16.onnx": "24cef84aedcd1fe87c0b743ef3370ad34dc1fabf6c9014d6128a75a538c7b668"
+      },
+      "sha256": "69714083b6fd5a88aa93cc021b4fb9534388960a532f6c987036e30f5332c191",
+      "unpacked_bytes": 39374474
+    },
+    {
+      "download_bytes": 12896594,
+      "file_list": [
+        "LICENSE-ONNXRUNTIME-MIT.txt",
+        "ThirdPartyNotices.txt",
+        "libonnxruntime.so"
+      ],
+      "filename": "onnxruntime-1.31.0-arm64-v8a.zip",
+      "original_payload_hashes": {
+        "LICENSE-ONNXRUNTIME-MIT.txt": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "ThirdPartyNotices.txt": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        "libonnxruntime.so": "8005a741e57117b4d7b476417706c0e9af13cf1b89db47e60f0cbc56e1af91e0"
+      },
+      "sha256": "bd993a5b14035b57d9edaf4994491dbb87de4034781852f9e16540d9100b10f5",
+      "unpacked_bytes": 34547841
+    },
+    {
+      "download_bytes": 11656050,
+      "file_list": [
+        "LICENSE-ONNXRUNTIME-MIT.txt",
+        "ThirdPartyNotices.txt",
+        "libonnxruntime.so"
+      ],
+      "filename": "onnxruntime-1.31.0-armeabi-v7a.zip",
+      "original_payload_hashes": {
+        "LICENSE-ONNXRUNTIME-MIT.txt": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "ThirdPartyNotices.txt": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        "libonnxruntime.so": "2a63f9a56b211511209dbf4b5bc143f18d0b365977dd7a0afd57d95c85479af6"
+      },
+      "sha256": "ff278a1cbd09d243b30cfe590f30c55c174c828d943edbe35c6e0fa1aac4ac3e",
+      "unpacked_bytes": 24521173
+    },
+    {
+      "download_bytes": 14967583,
+      "file_list": [
+        "LICENSE-ONNXRUNTIME-MIT.txt",
+        "ThirdPartyNotices.txt",
+        "libonnxruntime.so"
+      ],
+      "filename": "onnxruntime-1.31.0-x86_64.zip",
+      "original_payload_hashes": {
+        "LICENSE-ONNXRUNTIME-MIT.txt": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "ThirdPartyNotices.txt": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        "libonnxruntime.so": "068896846a7fe679cf780c1c532745286d9ef2e469f3dbde5bb9cf2c02095b18"
+      },
+      "sha256": "a03df391fb77786f8a3a9f358110c16dc9559e059dd45127859524c4b7871044",
+      "unpacked_bytes": 41167105
+    }
+  ],
+  "provenance": {
+    "sources_manifest": "sources.json",
+    "weights_license": "Source attribution only; trained-weight licence has not been independently validated."
+  }
+}

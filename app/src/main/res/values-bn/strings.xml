@@ -4637,4 +4637,10 @@
     <string name="bantu_installed_languages">অন্যান্য ইনস্টল করা ভাষা</string>
     <string name="bantu_translation_availability">অনুবাদের উপলভ্যতা পরিষেবার ওপর নির্ভর করে।</string>
     <string name="bantu_language_groups">বান্টু ভাষাসমূহ</string>
+    <string name="experimental_split_navigation">বিভক্ত প্লেয়ার নেভিগেশন (পরীক্ষামূলক)</string>
+    <string name="experimental_split_navigation_summary">বন্ধ রাখলে Vinz-এর মূল নেভিগেশন থাকে।</string>
+    <string name="experimental_split_navigation_info">Floating স্টাইল ও স্ক্রল করার সময় সঙ্কুচিত করা চালু থাকলে, স্ক্রল করার সময় প্লেয়ার দুটি ট্যাব গোষ্ঠীর মাঝে বসে। সরু স্ক্রিন, বড় লেখা, ট্যাবলেট বা Reduce motion চালু থাকলে মূল নেভিগেশন ব্যবহৃত হয়। মূল নেভিগেশন ফেরাতে এটি বন্ধ করুন।</string>
+    <string name="experimental_split_navigation_keywords">পরীক্ষামূলক বিভক্ত নেভিগেশন কেন্দ্রীয় মিনি প্লেয়ার রূপান্তর মূল</string>
+    <string name="icons_shapes_summary">আইকন প্যাক ও ওজন, কোণ ও আকার</string>
+    <string name="icons_shapes_keywords">আইকন প্যাক ওজন কোণ আকার</string>
 </resources>
