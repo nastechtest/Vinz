@@ -72,6 +72,13 @@ class CloudAccountScreenTest {
 
     @After fun tearDown() { scope.cancel() }
 
+    @Test fun accountEntryShowsOfficialVinzLogoAndBrandedHeader() {
+        render(CloudAccountState(mode = CloudAccountMode.SIGN_UP))
+        compose.onNodeWithTag("cloud-account-logo").assertExists()
+        compose.onNodeWithText("VINZ").assertExists()
+        compose.onNodeWithText("YOUR MUSIC. YOUR IDENTITY.").assertExists()
+    }
+
     @Test fun profileLoadFailureShowsRetryAndNeverEditableDefaultPrivacy() {
         render(CloudAccountState(
             identity = CloudAccountIdentity("test-user", "test@example.test"),
