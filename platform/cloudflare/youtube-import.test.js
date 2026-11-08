@@ -23,7 +23,7 @@ test("YouTube connect creates a short-lived PKCE state and uses the Vinz email a
   const response = await handleYouTubeRoute(
     new Request("https://api.vinzmusic.workers.dev/v1/integrations/youtube/connect"),
     new URL("https://api.vinzmusic.workers.dev/v1/integrations/youtube/connect"),
-    structuredClone(ENV),
+    ENV,
     CONFIG,
     AUTH,
   );
