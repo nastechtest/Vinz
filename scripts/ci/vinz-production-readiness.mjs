@@ -36,6 +36,10 @@ const requiredFiles = [
   "platform/cloudflare/vinz-api.js",
   "supabase/migrations/20261107131815_vinz_account_foundation.sql",
   "supabase/migrations/20261107200000_vinz_account_2_username_and_avatar_hardening.sql",\n  "supabase/tests/vinz_account_access_contract.sql",
+  "supabase/migrations/20261108100000_vinz_youtube_music_import.sql",
+  "platform/cloudflare/youtube-import.js",
+  "platform/cloudflare/youtube-import.test.js",
+  "docs/YOUTUBE_MUSIC_IMPORT.md",
   "web/app/account/page.tsx",
   "web/app/account/profile/page.tsx",
   "web/app/account/security/page.tsx",
@@ -209,6 +213,14 @@ const webConnections = read("web/app/account/connections/page.tsx") || "";
 if (webConnections.includes("/v1/integrations/youtube/") && /Import YouTube Music/i.test(webConnections) && !/disabled>\s*YouTube import setup pending/i.test(webConnections)) {
   add("Web YouTube Music import", "PASS", "Connections page calls the authenticated YouTube import service");
 } else fail("Web YouTube Music import", "YouTube import is still disabled or has no authenticated OAuth/import API route", "web/app/account/connections/page.tsx");
+const youtubeApi = read("platform/cloudflare/youtube-import.js") || "";
+const youtubeMigration = read("supabase/migrations/20261108100000_vinz_youtube_music_import.sql") || "";
+if (youtubeApi.includes("code_challenge_method") && youtubeApi.includes("AES-GCM") && youtubeApi.includes("youtube.readonly")) {
+  add("YouTube OAuth backend", "PASS", "PKCE, read-only scope and encrypted token storage are implemented");
+} else fail("YouTube OAuth backend", "OAuth backend is missing PKCE, read-only scope or token encryption", "platform/cloudflare/youtube-import.js");
+if (youtubeMigration.includes("enable row level security") && youtubeMigration.includes("Vinz YouTube connection owner access") && youtubeMigration.includes("Vinz YouTube imports owner access")) {
+  add("YouTube database security", "PASS", "Connection and imported metadata tables use owner-only RLS");
+} else fail("YouTube database security", "YouTube tables are missing owner-only RLS", "supabase/migrations/20261108100000_vinz_youtube_music_import.sql");
 const androidController = read("app/src/main/java/com/vinz/music/ui/screens/account/CloudAccountController.kt") || "";
 if (androidController.includes("/v1/integrations/youtube/") && /youtube/i.test(androidAccount)) {
   add("Android YouTube Music import", "PASS", "Native account flow is wired to the authenticated YouTube import service");
