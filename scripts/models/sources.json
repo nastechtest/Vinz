@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "sources": [
+    {
+      "id": "spleeter_archive",
+      "filename": "sherpa-onnx-spleeter-2stems-fp16.tar.bz2",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/source-separation-models/sherpa-onnx-spleeter-2stems-fp16.tar.bz2",
+      "bytes": 35271738,
+      "sha256": "d54561979bd2e08a51e7dbd99ac36bb47564e089eefd403636dbca93e811bba2",
+      "purpose": "Recovered Spleeter fp16 weights; only vocals.fp16.onnx and accompaniment.fp16.onnx are packaged.",
+      "download_if_missing": true
+    },
+    {
+      "id": "onnxruntime_aar",
+      "filename": "onnxruntime-android-1.31.0.aar",
+      "url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.31.0/onnxruntime-android-1.31.0.aar",
+      "bytes": 55138854,
+      "sha256": "72683787a80d0608a3121b967d8e1239aef48286826661c953211626690540a7",
+      "purpose": "Recovered ONNX Runtime Android AAR; only supported ABI libonnxruntime.so payloads are packaged.",
+      "download_if_missing": true
+    },
+    {
+      "id": "deezer_mit",
+      "filename": "deezer-spleeter-MIT.txt",
+      "url": "https://raw.githubusercontent.com/deezer/spleeter/v2.3.0/LICENSE",
+      "bytes": 1075,
+      "sha256": "b15e40c921ec6fe997e0d88ddab9c26fb915bebbbb9496530d3f98f317d4325a",
+      "download_if_missing": true,
+      "purpose": "Full Deezer/Spleeter MIT notice (source attribution; no trained-weight licence validation claim)."
+    },
+    {
+      "id": "sherpa_apache",
+      "filename": "sherpa-onnx-Apache-2.0.txt",
+      "url": "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/v1.12.17/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "download_if_missing": true,
+      "purpose": "Full sherpa-onnx Apache-2.0 notice pinned to v1.12.17."
+    },
+    {
+      "id": "onnxruntime_mit",
+      "filename": "onnxruntime-MIT.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/LICENSE",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "download_if_missing": true,
+      "purpose": "Full Microsoft ONNX Runtime MIT notice pinned to v1.31.0."
+    },
+    {
+      "id": "onnxruntime_third_party",
+      "filename": "ONNXRUNTIME-THIRD-PARTY-NOTICES.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/ThirdPartyNotices.txt",
+      "bytes": 338088,
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+      "download_if_missing": true
+    }
+  ]
+}

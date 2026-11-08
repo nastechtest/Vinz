@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -35,20 +34,20 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
         /** Deezer's Spleeter, 2 stems, as sherpa-onnx exported it (fp16): Sing's vocal separation. */
         SING_MODEL(
             "sing-spleeter", "sing-spleeter-2stems-fp16.zip",
-            "58d3320c8161d28d70e28b0cb10d05ff5c15a5c806a3581fb720a52c41cfccb1", 36_366_462, tr(R.string.sing_s_voice_separation), 39_362_285,
+            "69714083b6fd5a88aa93cc021b4fb9534388960a532f6c987036e30f5332c191", 36370454, tr(R.string.sing_s_voice_separation), 39374474,
         ),
         /** ONNX Runtime's native libraries (Microsoft, MIT), which Sing runs Spleeter on, one per kind of processor. */
         SING_RUNTIME_ARM64(
             "onnxruntime-arm64-v8a", "onnxruntime-1.31.0-arm64-v8a.zip",
-            "4e18871c3336a30adae8f6e7aad85b144337654c859b9e62bce2c449bcfb9995", 12_888_058, tr(R.string.sing_s_engine), 34_208_828,
+            "bd993a5b14035b57d9edaf4994491dbb87de4034781852f9e16540d9100b10f5", 12896594, tr(R.string.sing_s_engine), 34547841,
         ),
         SING_RUNTIME_ARMV7(
             "onnxruntime-armeabi-v7a", "onnxruntime-1.31.0-armeabi-v7a.zip",
-            "009139aff7b881ead3dd67127e2655791424c18c0e7d7f14775d8621adb05369", 11_640_311, tr(R.string.sing_s_engine), 24_182_160,
+            "ff278a1cbd09d243b30cfe590f30c55c174c828d943edbe35c6e0fa1aac4ac3e", 11656050, tr(R.string.sing_s_engine), 24521173,
         ),
         SING_RUNTIME_X86_64(
             "onnxruntime-x86_64", "onnxruntime-1.31.0-x86_64.zip",
-            "3627836c2fdc6837d4f6e5d32abfbbc2b0c3ee565ab249f8bb2c3aaa7b788bfa", 14_993_395, tr(R.string.sing_s_engine), 40_828_092,
+            "a03df391fb77786f8a3a9f358110c16dc9559e059dd45127859524c4b7871044", 14967583, tr(R.string.sing_s_engine), 41167105,
         ),
         ;
 
@@ -88,7 +87,18 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
     }
 
     fun dir(m: Model) = File(root, m.id)
-    fun ready(m: Model) = File(dir(m), READY).isFile
+
+    /** A marker alone is not enough: a deleted or zero-byte model file must make the feature download again. */
+    fun ready(m: Model): Boolean {
+        val dir = dir(m)
+        val marker = File(dir, READY)
+        return runCatching {
+            val required = requiredFiles(m)
+            marker.isFile && marker.readText() == m.sha256 && required.isNotEmpty() && required.all {
+                File(dir, it).let { file -> file.isFile && file.length() > 0L }
+            }
+        }.getOrDefault(false)
+    }
 
     /**
      * Downloads, checks and unpacks [m] (once at a time; at once if it's already there). True when it's ready.
@@ -121,55 +131,101 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
     private fun fetch(m: Model) {
         root.mkdirs()
         val part = File(root, m.file + ".part")
-        val req = Request.Builder().url("$BASE/${m.file}").build()
-        http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException(tr(R.string.the_download_answered_http, resp.code))
-            val body = resp.body
-            val total = body.contentLength().takeIf { it > 0 } ?: m.bytes
-            val digest = MessageDigest.getInstance("SHA-256")
-            part.outputStream().use { out ->
-                body.byteStream().use { input ->
-                    val buf = ByteArray(64 * 1024)
-                    var done = 0L
-                    var shown = 0f
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        digest.update(buf, 0, n)
-                        done += n
-                        val f = (done.toFloat() / total).coerceIn(0f, 1f)
-                        if (f - shown >= 0.01f) { shown = f; set(m, State.Downloading(f)) }
+        try {
+            val req = Request.Builder().url("$BASE/${m.file}").build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException(tr(R.string.the_download_answered_http, resp.code))
+                val body = resp.body
+                val total = body.contentLength().takeIf { it > 0 } ?: m.bytes
+                val digest = MessageDigest.getInstance("SHA-256")
+                part.outputStream().use { out ->
+                    body.byteStream().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        var done = 0L
+                        var shown = 0f
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            done += n
+                            if (m != Model.JAPANESE && done > m.bytes) throw IOException(tr(R.string.the_download_didn_t_check_out))
+                            out.write(buf, 0, n)
+                            digest.update(buf, 0, n)
+                            val f = (done.toFloat() / total).coerceIn(0f, 1f)
+                            if (f - shown >= 0.01f) { shown = f; set(m, State.Downloading(f)) }
+                        }
                     }
                 }
+                val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                if (sha != m.sha256) throw IOException(tr(R.string.the_download_didn_t_check_out))
             }
-            val sha = digest.digest().joinToString("") { "%02x".format(it) }
-            if (sha != m.sha256) { part.delete(); throw IOException(tr(R.string.the_download_didn_t_check_out)) }
+            install(m, part)
+        } finally {
+            // A stopped request, a failed checksum and a failed unpack all leave the next attempt clean.
+            part.delete()
         }
-        install(m, part)
     }
 
     /** Unpacks a checked zip into the model's folder; the ready marker goes last, so a half-unpacked one never counts. */
     internal fun install(m: Model, zip: File) {
         val dir = dir(m)
-        dir.deleteRecursively()
-        dir.mkdirs()
-        ZipInputStream(zip.inputStream().buffered()).use { z ->
-            while (true) {
-                val e = z.nextEntry ?: break
-                val name = File(e.name).name
-                if (e.isDirectory || name.isBlank()) continue
-                File(dir, name).outputStream().use { z.copyTo(it) }
+        try {
+            if (!zip.isFile || zip.length() == 0L) throw IOException(tr(R.string.download_failed))
+            dir.deleteRecursively()
+            if (!dir.mkdirs()) throw IOException(tr(R.string.download_failed))
+            val strictNames = mutableSetOf<String>()
+            var expanded = 0L
+            ZipInputStream(zip.inputStream().buffered()).use { z ->
+                while (true) {
+                    val e = z.nextEntry ?: break
+                    if (e.isDirectory) continue
+                    // Old Kuromoji archives have used resource folders. Keep their original basename flattening;
+                    // new Sing packages are deliberately flat, so reject paths and duplicate output names there.
+                    val name = if (m == Model.JAPANESE) File(e.name).name else e.name
+                    if (name.isBlank() || (m != Model.JAPANESE && (!safeEntryName(name) || !strictNames.add(name)))) {
+                        throw IOException(tr(R.string.download_failed))
+                    }
+                    File(dir, name).outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val count = z.read(buffer)
+                            if (count < 0) break
+                            expanded += count
+                            if (m != Model.JAPANESE && expanded > maxExpanded(m)) throw IOException(tr(R.string.download_failed))
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
             }
+            val required = requiredFiles(m)
+            if (required.isEmpty() || !required.all { File(dir, it).let { file -> file.isFile && file.length() > 0L } }) {
+                throw IOException(tr(R.string.download_failed))
+            }
+            // Native code loaded from here is kept read-only (Android 14 asks that of anything loaded at run time).
+            dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { it.setWritable(false, false) }
+            File(dir, READY).writeText(m.sha256)
+        } catch (failure: Throwable) {
+            dir.deleteRecursively()
+            throw failure
+        } finally {
+            zip.delete()
         }
-        // Native code loaded from here is kept read-only (Android 14 asks that of anything loaded at run time).
-        dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { it.setWritable(false, false) }
-        zip.delete()
-        File(dir, READY).writeText(m.sha256)
     }
+
+    private fun requiredFiles(m: Model): List<String> = when (m) {
+        Model.SING_MODEL -> listOf("vocals.fp16.onnx", "accompaniment.fp16.onnx")
+        Model.SING_RUNTIME_ARM64, Model.SING_RUNTIME_ARMV7, Model.SING_RUNTIME_X86_64 -> listOf("libonnxruntime.so")
+        // Kuromoji has several versioned dictionary resources; a checked package must at least contain data.
+        Model.JAPANESE -> dir(m).listFiles()?.filter { it.name != READY }?.map { it.name } ?: emptyList()
+    }
+
+    private fun safeEntryName(name: String): Boolean =
+        name.isNotBlank() && name == File(name).name && !name.startsWith('.') && !name.contains('\\')
+
+    private fun maxExpanded(m: Model): Long = maxOf(m.unpacked * 2, MIN_EXPANDED_BYTES)
 
     private companion object {
         const val BASE = "https://github.com/nastechtest/Vinz/releases/download/models-v1"
         const val READY = ".ready"
+        const val MIN_EXPANDED_BYTES = 8L * 1024 * 1024
     }
 }

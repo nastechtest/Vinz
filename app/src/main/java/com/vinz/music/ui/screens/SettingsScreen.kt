@@ -596,7 +596,8 @@ private fun AccountCard() {
     val ink = com.vinz.music.ui.components.featureInk()
     var switching by remember { mutableStateOf(false) }
     if (switching) AccountSwitcher { switching = false }
-    val profile by c.account.profile.collectAsState()
+    val legacyImport by c.account.profile.collectAsState()
+    val vinzIdentity = com.vinz.music.ui.screens.account.ExistingCloudAccountGateway(c.vinzCloudAccount).identity
     val context = androidx.compose.ui.platform.LocalContext.current
     var confirmSignOut by remember { mutableStateOf(false) }
     fun signOut() {
@@ -625,24 +626,22 @@ private fun AccountCard() {
         dismissButton = { VinzTextButton({ confirmSignOut = false; signOut() }) { Text(tr(R.string.just_sign_out)) } },
     )
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
-    // The Vinz Account: who the listener is in Vinz, on this phone.
+    // One cloud-backed Vinz Account destination, not a local profile editor.
+    // YouTube Music retains its own established sign-in and session controls below.
     Row(
         Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (profile != null || s.isLoggedIn) com.vinz.music.ui.screens.ProfilePicture(Modifier.size(56.dp))
-        else Box(Modifier.size(56.dp).clip(CircleShape).background(if (frosted) com.vinz.music.ui.components.frostFill(1.6f) else scheme.surface.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-            Icon(VinzIcons.Add, null, tint = if (frosted) scheme.primary else ink)
-        }
+        com.vinz.music.ui.screens.ProfilePicture(Modifier.size(56.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                profile?.name ?: tr(R.string.make_a_vinz_account),
+                tr(R.string.your_vinz_account),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), color = ink,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (profile != null) tr(R.string.vinz_account_on_this_phone) else tr(R.string.your_name_and_picture_kept_on),
+                vinzIdentity?.email ?: tr(R.string.cloud_account_summary),
                 style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f),
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
@@ -671,7 +670,7 @@ private fun AccountCard() {
                 style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        if (s.isLoggedIn) VinzOutlinedButton(onClick = { if (profile != null) confirmSignOut = true else signOut() }) {
+        if (s.isLoggedIn) VinzOutlinedButton(onClick = { if (legacyImport != null) confirmSignOut = true else signOut() }) {
             Icon(VinzIcons.Logout, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr(R.string.sign_out))
         }
         else Icon(VinzIcons.ChevronRight, null, tint = ink)

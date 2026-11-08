@@ -411,6 +411,8 @@ class AppContainer(val app: Application) {
     val vinzLibrary = com.vinz.music.data.VinzLibrary(java.io.File(app.filesDir, "library"))
     /** The listener's Vinz Account: a name and picture kept on this phone ([com.vinz.music.data.VinzAccount]). */
     val account by lazy { com.vinz.music.data.VinzAccount(this) }
+    /** Supabase-backed Vinz identity; independent from the YouTube Music cookie session. */
+    val vinzCloudAccount by lazy { com.vinz.music.data.VinzCloudAccount(app, http) }
 
     /**
      * What Vinz calls the listener: their Vinz Account's name, else their YouTube Music account's, else "".

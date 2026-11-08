@@ -38,11 +38,36 @@ class SingWaysTest {
         c.sing.rechoose()
     }
 
+    /** UI fixtures only: never pass these placeholder files to a real runtime or model session. */
+    private fun fakeReady(model: ModelStore.Model) {
+        val dir = c.models.dir(model).apply { mkdirs() }
+        val required = if (model == ModelStore.Model.SING_MODEL) {
+            listOf("vocals.fp16.onnx", "accompaniment.fp16.onnx")
+        } else {
+            listOf("libonnxruntime.so")
+        }
+        required.forEach { File(dir, it).writeText("fixture, not an inference artifact") }
+        File(dir, ".ready").writeText(model.sha256)
+    }
+
+    /** Explicit opt-in after asset publication. Real loading, but not a vocal-separation assertion. */
+    @Test fun liveSingDownloadsInstallAndLoadOnAnOptedInDevice() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("singVerifyLiveDownloads") == "true")
+        val runtime = ModelStore.Model.singRuntime()
+        org.junit.Assume.assumeTrue(runtime != null)
+        runtime ?: return
+        assertTrue(kotlinx.coroutines.runBlocking { c.models.download(runtime) })
+        assertTrue(kotlinx.coroutines.runBlocking { c.models.download(ModelStore.Model.SING_MODEL) })
+        assertTrue(c.models.ready(runtime))
+        assertTrue(c.models.ready(ModelStore.Model.SING_MODEL))
+        org.junit.Assert.assertNotNull(com.vinz.music.playback.sing.OrtLoader.environment(c.models.dir(runtime)))
+    }
+
     @Test fun aSlowPhoneSingsTheQuickWayAndSaysWhy() {
         Fixture.ready()
-        // Sing's download as if it were on the phone (only its ready marks: the quick way needs none of it).
+        // Readiness fixtures only; the quick way never loads their placeholder payloads.
         listOfNotNull(ModelStore.Model.singRuntime(), ModelStore.Model.SING_MODEL).forEach { m ->
-            c.models.dir(m).mkdirs(); File(c.models.dir(m), ".ready").writeText("test")
+            fakeReady(m)
         }
         c.models.refresh()
         // Timed here at less than the song's own speed, both ways.
@@ -105,7 +130,7 @@ class SingWaysTest {
     @Test fun aPhoneThatKeepsUpSaysNothingOfTheQuickWay() {
         Fixture.ready()
         listOfNotNull(ModelStore.Model.singRuntime(), ModelStore.Model.SING_MODEL).forEach { m ->
-            c.models.dir(m).mkdirs(); File(c.models.dir(m), ".ready").writeText("test")
+            fakeReady(m)
         }
         c.models.refresh()
         pace.edit().putFloat(Separation.FULL.name, 7.4f).commit()

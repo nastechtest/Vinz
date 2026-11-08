@@ -13,6 +13,7 @@ import com.vinz.music.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -20,6 +21,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.time.Instant
@@ -32,7 +35,21 @@ import kotlin.math.abs
 @org.robolectric.annotation.Config(sdk = [34], application = android.app.Application::class)
 class LookTest {
     private val context get() = org.robolectric.RuntimeEnvironment.getApplication()
-    private fun repo() = SettingsRepository(context, CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    private val scopes = mutableListOf<CoroutineScope>()
+    private fun repo() = SettingsRepository(context,
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it })
+
+    @Before
+    fun startFromVinzDefaults(): Unit = runBlocking {
+        val r = repo()
+        r.editNow { it.clear() }
+        withTimeout(5_000) { r.lookValues.first { it.isEmpty() } }
+    }
+
+    @After
+    fun stopRepositoryCollectors() {
+        scopes.forEach { it.cancel() }
+    }
 
     @Test
     fun everySettingIsInALookOrSaidNotToBe() {
@@ -74,6 +91,55 @@ class LookTest {
         assertEquals(null, now["pure_black"])
         assertEquals("", r.current.cookie)
         assertEquals(false, r.current.pureBlack)
+    }
+
+    @Test
+    fun reduceMotionIsAnAccessibilityChoiceNotALookSetting() {
+        val r = repo()
+        assertTrue("reduce_motion" in r.notLookNames)
+        assertTrue("reduce_motion" !in r.lookKinds)
+        assertTrue("reduce_motion" !in r.resetNames)
+    }
+
+    @Test
+    fun legacyLooksCannotOverrideEitherReduceMotionChoice(): Unit = runBlocking {
+        val r = repo()
+        for (enabled in listOf(true, false)) {
+            val saved = "b:$enabled" // Backup booleans are true/false, not Look-code 1/0.
+            r.fromBackup(mapOf("reduce_motion" to saved), settings = true, accounts = false)
+            // Wait for previewLook's raw preferences as well as the public flow.
+            withTimeout(5_000) { r.flow.first { it.reduceMotion == enabled } }
+            val old = Look("legacy", "Old shared Look", mapOf(
+                "reduce_motion" to if (enabled) "b:0" else "b:1",
+                "backdrop_motion" to "b:1", "corners" to "s:SHARP",
+            ))
+            assertTrue("reduce_motion" !in LookCode.sanitized(old, r.lookKinds).values)
+            val decoded = LookCode.decode(LookCode.encode(old), r.lookKinds)!!
+            assertTrue("reduce_motion" !in decoded.values)
+            assertEquals(enabled, r.previewLook(old.values).reduceMotion)
+            r.applyLook(old.values)
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+            r.applyLook(decoded.values)
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+            r.applyLook(emptyMap())
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+        }
+    }
+
+    @Test
+    fun resettingAppearanceKeepsReduceMotion(): Unit = runBlocking {
+        val r = repo()
+        for (enabled in listOf(true, false)) {
+            val saved = "b:$enabled" // Backup booleans are true/false, not Look-code 1/0.
+            r.fromBackup(mapOf("reduce_motion" to saved, "corners" to "s:SHARP", "accent" to "i:7"), settings = true, accounts = false)
+            withTimeout(5_000) { r.lookValues.first { it["corners"] == "s:SHARP" } }
+            r.resetLook()
+            withTimeout(5_000) { r.lookValues.first { "corners" !in it } }
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+            r.resetColors()
+            withTimeout(5_000) { r.lookValues.first { "accent" !in it } }
+            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
+        }
     }
 
     @Test

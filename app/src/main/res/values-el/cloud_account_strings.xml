@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Συνδεθείτε και διαχειριστείτε το προφίλ σας στο cloud</string>
+    <string name="cloud_account_intro">Το προφίλ σας στο cloud είναι ξεχωριστό από το YouTube Music. Η τοπική μουσική και η αναπαραγωγή λειτουργούν χωρίς σύνδεση.</string>
+    <string name="cloud_account_email">Διεύθυνση ηλεκτρονικού ταχυδρομείου</string>
+    <string name="cloud_account_password">Σύνθημα</string>
+    <string name="cloud_account_username">Όνομα χρήστη</string>
+    <string name="cloud_account_display_name">Εμφανιζόμενο όνομα</string>
+    <string name="cloud_account_username_hint">3–24 πεζά γράμματα, αριθμούς ή κάτω παύλες</string>
+    <string name="cloud_account_password_hint">Χρησιμοποιήστε τουλάχιστον 8 χαρακτήρες.</string>
+    <string name="cloud_account_create">Δημιουργία λογαριασμού cloud</string>
+    <string name="cloud_account_existing">Έχω ήδη λογαριασμό</string>
+    <string name="cloud_account_forgot">Ξεχάσατε τον κωδικό πρόσβασης;</string>
+    <string name="cloud_account_recovery">Αποστολή email ανάκτησης</string>
+    <string name="cloud_account_recovery_sent">Εάν υπάρχει λογαριασμός για αυτήν τη διεύθυνση, έχει σταλεί ένα email ανάκτησης.</string>
+    <string name="cloud_account_confirmation">Ελέγξτε το email σας για να επιβεβαιώσετε τον λογαριασμό σας και μετά επιστρέψτε για να συνδεθείτε.</string>
+    <string name="cloud_account_setup">Ολοκληρώστε τη ρύθμιση του προφίλ σας.</string>
+    <string name="cloud_account_bio">Βιογραφικό</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Δημόσιο προφίλ</string>
+    <string name="cloud_account_public_hint">Επιτρέψτε σε άλλους χρήστες της Vinz να δουν το προφίλ σας.</string>
+    <string name="cloud_account_discoverable">Ανακαλύψιμο</string>
+    <string name="cloud_account_discoverable_hint">Επιτρέψτε στο προφίλ σας να εμφανίζεται στην ανακάλυψη χρηστών.</string>
+    <string name="cloud_account_saved">Το προφίλ σας στο cloud έχει αποθηκευτεί.</string>
+    <string name="cloud_account_signed_out">Έχετε αποσυνδεθεί από τον λογαριασμό σας στο cloud.</string>
+    <string name="cloud_account_signed_in">Συνδεθήκατε ως %1$s</string>
+    <string name="cloud_account_load_failed">Δεν ήταν δυνατή η φόρτωση του προφίλ σας. Δοκιμάστε ξανά πριν την επεξεργασία.</string>
+    <string name="cloud_account_request_failed">Αυτό το αίτημα λογαριασμού δεν ήταν δυνατό να ολοκληρωθεί. Ελέγξτε τη σύνδεσή σας και δοκιμάστε ξανά.</string>
+    <string name="cloud_account_sign_in_failed">Δεν ήταν δυνατή η ολοκλήρωση της σύνδεσης. Ελέγξτε τα στοιχεία και τη σύνδεσή σας και δοκιμάστε ξανά.</string>
+    <string name="cloud_account_save_failed">Δεν ήταν δυνατή η αποθήκευση του προφίλ σας. Ελέγξτε τα στοιχεία και τη σύνδεσή σας και δοκιμάστε ξανά.</string>
+    <string name="cloud_account_recovery_failed">Δεν ήταν δυνατή η ολοκλήρωση του αιτήματος ανάκτησης. Δοκιμάστε ξανά αργότερα.</string>
+    <string name="cloud_account_sign_out_failed">Δεν ήταν δυνατή η ολοκλήρωση της αποσύνδεσης. Προσπαθήστε ξανά.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

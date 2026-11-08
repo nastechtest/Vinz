@@ -718,7 +718,7 @@ class VinzDownloadService : DownloadService(
             android.app.PendingIntent.getActivity(this, 0, it, android.app.PendingIntent.FLAG_IMMUTABLE)
         }
         return androidx.core.app.NotificationCompat.Builder(this, DOWNLOAD_CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification_download)
             .setContentTitle(com.vinz.music.trp(R.plurals.downloading_n_songs, active.size.coerceAtLeast(1)))
             .setContentText(waiting ?: title ?: tr(R.string.getting_ready))
             .setProgress(100, percent.coerceAtLeast(0), percent < 0 && waiting == null)

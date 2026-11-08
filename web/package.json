@@ -1,0 +1,40 @@
+{
+  "name": "vinz-web",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "check:vinext": "vinext check",
+    "dev:vinext": "vinext dev",
+    "build:vinext": "vinext build",
+    "start:vinext": "vinext start",
+    "deploy:cloudflare": "vinext-cloudflare deploy"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.80.0",
+    "next": "^15.5.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-805ec1ff3",
+    "@vinext/cloudflare": "1.3.3",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "cf": "1.0.0-beta.1",
+    "typescript": "^5.9.3",
+    "vinext": "1.4.4",
+    "vite": "8.3.3",
+    "@vitejs/plugin-rsc": "^0.5.38",
+    "@vitejs/plugin-react": "^6.1.0",
+    "react-server-dom-webpack": "^19.3.1"
+  },
+  "type": "module"
+}

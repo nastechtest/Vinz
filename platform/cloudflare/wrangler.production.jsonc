@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vinz",
+  "main": "vinz-api.js",
+  "compatibility_date": "2026-11-07",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "SUPABASE_URL": "https://iszghebmetrbkfhnnoqq.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe",
+    "POSTHOG_HOST": "https://us.i.posthog.com",
+    "ALLOWED_ORIGINS": "https://vinz-web-nastechresearch.vercel.app,https://vinz-web-git-codex-vinz-platform-foundation-nastechresearch.vercel.app"
+  },
+  "r2_buckets": [
+    { "binding": "BACKUPS_BUCKET", "bucket_name": "vinz-backups" }
+  ],
+  "kv_namespaces": [
+    { "binding": "CATALOG_CACHE", "id": "3e172dca32ca48e9be8d09b30f6a2a96" }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "head_sampling_rate": 1, "persist": true, "invocation_logs": true },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1, "persist": true }
+  }
+}

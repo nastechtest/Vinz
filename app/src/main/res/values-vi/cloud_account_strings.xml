@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Đăng nhập và quản lý hồ sơ đám mây của bạn</string>
+    <string name="cloud_account_intro">Hồ sơ đám mây của bạn tách biệt với YouTube Music. Âm nhạc cục bộ và phát lại hoạt động mà không cần đăng nhập.</string>
+    <string name="cloud_account_email">Địa chỉ email</string>
+    <string name="cloud_account_password">Mật khẩu</string>
+    <string name="cloud_account_username">Tên người dùng</string>
+    <string name="cloud_account_display_name">Tên hiển thị</string>
+    <string name="cloud_account_username_hint">3–24 chữ cái viết thường, số hoặc dấu gạch dưới</string>
+    <string name="cloud_account_password_hint">Sử dụng ít nhất 8 ký tự.</string>
+    <string name="cloud_account_create">Tạo tài khoản đám mây</string>
+    <string name="cloud_account_existing">Tôi đã có tài khoản</string>
+    <string name="cloud_account_forgot">Quên mật khẩu?</string>
+    <string name="cloud_account_recovery">Gửi email khôi phục</string>
+    <string name="cloud_account_recovery_sent">Nếu địa chỉ này tồn tại một tài khoản thì email khôi phục đã được gửi.</string>
+    <string name="cloud_account_confirmation">Kiểm tra email để xác nhận tài khoản của bạn, sau đó quay lại để đăng nhập.</string>
+    <string name="cloud_account_setup">Hoàn tất việc thiết lập hồ sơ của bạn.</string>
+    <string name="cloud_account_bio">Tiểu sử</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Hồ sơ công khai</string>
+    <string name="cloud_account_public_hint">Cho phép người dùng Vinz khác xem hồ sơ của bạn.</string>
+    <string name="cloud_account_discoverable">Có thể khám phá</string>
+    <string name="cloud_account_discoverable_hint">Cho phép hồ sơ của bạn xuất hiện trong khám phá của người dùng.</string>
+    <string name="cloud_account_saved">Hồ sơ đám mây của bạn đã được lưu.</string>
+    <string name="cloud_account_signed_out">Bạn đã đăng xuất khỏi tài khoản đám mây của mình.</string>
+    <string name="cloud_account_signed_in">Đã đăng nhập bằng %1$s</string>
+    <string name="cloud_account_load_failed">Không thể tải hồ sơ của bạn. Hãy thử lại trước khi chỉnh sửa.</string>
+    <string name="cloud_account_request_failed">Không thể hoàn thành yêu cầu tài khoản này. Hãy kiểm tra kết nối của bạn và thử lại.</string>
+    <string name="cloud_account_sign_in_failed">Không thể hoàn tất đăng nhập. Hãy kiểm tra thông tin chi tiết và kết nối của bạn rồi thử lại.</string>
+    <string name="cloud_account_save_failed">Không thể lưu hồ sơ của bạn. Hãy kiểm tra thông tin chi tiết và kết nối của bạn rồi thử lại.</string>
+    <string name="cloud_account_recovery_failed">Yêu cầu khôi phục không thể được hoàn thành. Hãy thử lại sau.</string>
+    <string name="cloud_account_sign_out_failed">Không thể hoàn tất việc đăng xuất. Hãy thử lại.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

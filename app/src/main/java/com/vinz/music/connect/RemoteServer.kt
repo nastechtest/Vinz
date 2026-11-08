@@ -268,7 +268,7 @@ class RemoteServer(
         if (name.contains("..") || name.contains('/') || name.contains('\\')) { res.text(404, "", security); return }
         val type = when (name.substringAfterLast('.')) {
             "html" -> "text/html; charset=utf-8"; "js" -> "text/javascript; charset=utf-8"; "css" -> "text/css; charset=utf-8"
-            "svg" -> "image/svg+xml"; "png" -> "image/png"; "json" -> "application/manifest+json"; "ttf" -> "font/ttf"
+            "svg" -> "image/svg+xml"; "png" -> "image/png"; "ico" -> "image/x-icon"; "json" -> "application/manifest+json"; "ttf" -> "font/ttf"
             else -> { res.text(404, "", security); return }
         }
         val bytes = asset(name) ?: run { res.text(404, "", security); return }
