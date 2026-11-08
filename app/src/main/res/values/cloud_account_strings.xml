@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="cloud_account_brand_name">Vinz</string>
+    <string name="cloud_account_brand_tagline">YOUR MUSIC. YOUR IDENTITY.</string>
+    <string name="cloud_account_brand_section">YOUR VINZ ACCOUNT</string>
     <string name="cloud_account_summary">Sign in and manage your Vinz Account</string>
     <string name="cloud_account_intro">One Vinz Account for your profile, connections and music world. Connect YouTube Music securely from Account Settings. Local music and playback always work without signing in.</string>
     <string name="cloud_account_email">Email address</string>
