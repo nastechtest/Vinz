@@ -17,7 +17,9 @@ permissions:
 # A new push to the same PR supersedes the previous run.
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # Never turn a correct build red because a newer commit arrived while it was running.
+  # Runs for the same PR queue in order; each commit gets a complete result.
+  cancel-in-progress: false
 
 env:
   APP_PACKAGE: com.vinz.music
