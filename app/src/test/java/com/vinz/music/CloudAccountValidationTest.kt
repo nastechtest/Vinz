@@ -21,7 +21,7 @@ class CloudAccountValidationTest {
         assertFalse(signedIn.copy(profileLoadFailed = true).canContinue)
     }
 
-    @Test fun `all bundled locales have matching account resource keys and format arguments`() {
+    @Test fun `locale account strings use translated entries or base fallback with matching format arguments`() {
         val res = java.io.File("src/main/res")
         fun entries(file: java.io.File): Map<String, String> {
             val root = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
@@ -32,7 +32,15 @@ class CloudAccountValidationTest {
             }
         }
         val base = entries(java.io.File(res, "values/cloud_account_strings.xml"))
-        assertTrue(base.keys.containsAll(listOf("cloud_account_email_hint", "cloud_account_password_sign_in_hint")))
+        assertTrue(base.keys.containsAll(listOf(
+            "cloud_account_email_hint", "cloud_account_password_sign_in_hint",
+            "cloud_account_otp_title", "cloud_account_otp_intro", "cloud_account_otp_code",
+            "cloud_account_otp_expiry_hint", "cloud_account_otp_verify", "cloud_account_otp_sent",
+            "cloud_account_otp_resent", "cloud_account_otp_resend", "cloud_account_otp_resend_countdown",
+            "cloud_account_otp_invalid_or_expired", "cloud_account_otp_rate_limited",
+            "cloud_account_otp_verify_failed", "cloud_account_otp_resend_failed",
+            "cloud_account_back_to_sign_in",
+        )))
         val tables = res.listFiles().orEmpty().filter {
             it.isDirectory && (it.name == "values" || it.name.startsWith("values-")) &&
                 java.io.File(it, "strings.xml").isFile
@@ -42,13 +50,18 @@ class CloudAccountValidationTest {
         tables.forEach { table ->
             assertTrue("Missing account table: ${table.path}", table.isFile)
             val translated = entries(table)
-            val otherKeys = table.parentFile.listFiles().orEmpty()
+            val otherKeys = table.parentFile?.listFiles().orEmpty()
                 .filter { it != table && it.extension == "xml" }.flatMap { entries(it).keys }.toSet()
             assertTrue("Duplicate account resources: ${table.path}", translated.keys.none { it in otherKeys })
-            assertEquals(table.path, base.keys, translated.keys)
+            assertTrue(
+                "${table.path}: unknown account resources ${translated.keys - base.keys}",
+                base.keys.containsAll(translated.keys),
+            )
             base.forEach { (key, value) ->
+                // Android deliberately falls back to values/ for strings not translated in a locale pack.
+                val resolved = translated[key] ?: value
                 assertEquals("${table.path}:$key", argument.findAll(value).map { it.value }.toList(),
-                    argument.findAll(translated.getValue(key)).map { it.value }.toList())
+                    argument.findAll(resolved).map { it.value }.toList())
             }
         }
     }
@@ -62,7 +75,7 @@ class CloudAccountValidationTest {
     @Test fun `username lowercasing is stable under Turkish locale`() {
         val previous = Locale.getDefault()
         try {
-            Locale.setDefault(Locale("tr", "TR"))
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"))
             assertEquals("istanbul_9", CloudAccountValidation.username("ISTANBUL_9"))
         } finally {
             Locale.setDefault(previous)

@@ -10,8 +10,8 @@ internal interface CloudAccountGateway {
     suspend fun checkUsernameAvailable(username: String): Boolean = true
     suspend fun signIn(email: String, password: String): VinzCloudAccount.AuthResult
     suspend fun signUp(email: String, password: String, username: String, displayName: String): VinzCloudAccount.AuthResult
-    suspend fun verifyOtp(email: String, code: String): VinzCloudAccount.AuthResult = error("Email OTP verification is unavailable.")
-    suspend fun resendOtp(email: String) { error("Email OTP resend is unavailable.") }
+    suspend fun verifyOtp(email: String, code: String): VinzCloudAccount.AuthResult = throw UnsupportedOperationException()
+    suspend fun resendOtp(email: String) { throw UnsupportedOperationException() }
     suspend fun recover(email: String)
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
     suspend fun signOut()
