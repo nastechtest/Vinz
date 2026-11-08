@@ -167,11 +167,21 @@ internal class CloudAccountController(
 
     fun refreshYouTubeStatus(): Job? = request(R.string.cloud_account_youtube_failed) {
         val status = gateway.youtubeStatus()
+        val shouldImport = mutable.value.youtubeConnectPending && status.connected
         mutable.value = mutable.value.copy(
             youtubeConnected = status.connected,
             youtubeChannelTitle = status.channelTitle,
             youtubeAuthorizationUrl = null,
+            youtubeConnectPending = if (status.connected) false else mutable.value.youtubeConnectPending,
         )
+        if (shouldImport) {
+            val imported = gateway.importYouTubeMusic()
+            mutable.value = mutable.value.copy(
+                youtubeImportedCount = imported.importedCount,
+                youtubePlaylistCount = imported.playlistCount,
+                youtubeConnected = true,
+            )
+        }
     }
 
     fun importYouTubeMusic(): Job? = request(R.string.cloud_account_youtube_failed) {
@@ -190,6 +200,7 @@ internal class CloudAccountController(
             youtubeChannelTitle = "",
             youtubeImportedCount = null,
             youtubePlaylistCount = null,
+            youtubeConnectPending = false,
         )
     }
 
