@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 const HOME_URL = process.env.VINZ_HOME_URL || "https://home.vinzmusic.workers.dev";
 const API_URL = process.env.VINZ_API_URL || "https://api.vinzmusic.workers.dev";
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://iszghebmetrbkfhnnoqq.supabase.co";
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || (() => {\n  try { return JSON.parse(parseJsonc(fs.readFileSync("platform/cloudflare/wrangler.production.jsonc", "utf8"))).vars?.SUPABASE_PUBLISHABLE_KEY || ""; }\n  catch { return ""; }\n})();
 const timeoutMs = Number(process.env.READINESS_TIMEOUT_MS || 15000);
 const findings = [];
 const checks = [];
