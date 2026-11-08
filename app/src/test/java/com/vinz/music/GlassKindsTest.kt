@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import dev.chrisbanes.haze.glass.GlassDefaults
-import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.GlassOptics
+import dev.chrisbanes.haze.glass.OpticalSizeValue
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,16 +12,15 @@ import org.junit.Test
  * and this keeps them true if a newer Haze changes its styles.
  */
 class GlassKindsTest {
-    /** The blur radii (dp) a glass's optics name: one when fixed, one per size when it changes with the size. */
-    private fun blurs(optics: Any): List<Float> {
-        val radius = optics.javaClass.getMethod("getBlurRadius").invoke(optics).toString()
-        return Regex("value=([0-9.]+)\\.dp").findAll(radius).map { it.groupValues[1].toFloat() }.toList()
-            .also { assertTrue("read a blur from $radius", it.isNotEmpty()) }
+    /** Read every authored blur radius through Haze's public API, not internal getters or toString output. */
+    private fun blurs(optics: GlassOptics): List<Float> = when (val radius = optics.blurRadius) {
+        is OpticalSizeValue.Fixed -> listOf(radius.value.value)
+        is OpticalSizeValue.Responsive -> radius.points.map { it.value.value }
     }
 
     @Test fun clearKeepsWhatsBehindSharpAndRegularBlursIt() {
-        val regular = blurs(GlassDefaults.optics)
-        val clear = blurs(GlassStyle.Companion.javaClass.getMethod("getClearOptics\$haze_root_haze_glass").invoke(GlassStyle.Companion)!!)
+        val regular = blurs(GlassOptics.regular)
+        val clear = blurs(GlassOptics.clear)
         assertTrue("Clear barely blurs ($clear dp)", clear.max() <= 2f)
         assertTrue("Regular blurs ($regular dp)", regular.min() >= 10f)
     }

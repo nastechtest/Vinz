@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">eksperimental hati nabigasyon gitnang mini player pagbabago orihinal</string>
     <string name="icons_shapes_summary">Icon pack at bigat, mga sulok at hugis</string>
     <string name="icons_shapes_keywords">icon pack bigat sulok hugis</string>
+    <string name="cloud_account_tab_overview">Pangkalahatang-ideya</string>
+    <string name="cloud_account_tab_security">Seguridad</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">PANGKALAHATANG-IDEYA NG ACCOUNT</string>
+    <string name="cloud_account_profile_default">Iyong Vinz profile</string>
+    <string name="cloud_account_overview_description">Nakakonekta ang iyong Vinz identity. Mananatiling available nang hiwalay sa pag-sign in ang music library mo sa teleponong ito.</string>
+    <string name="cloud_account_edit_profile">I-edit ang profile</string>
+    <string name="cloud_account_music_profile">IYONG MUSIC PROFILE</string>
+    <string name="cloud_account_security">SEGURIDAD NG ACCOUNT</string>
+    <string name="cloud_account_password_and_recovery">Password at pagbawi</string>
+    <string name="cloud_account_password_reset_description">Magpadala ng email para sa pag-reset ng password sa %1$s. Pinoproseso ang link sa pag-reset sa pamamagitan ng na-verify mong Vinz email flow.</string>
+    <string name="cloud_account_send_password_reset">Magpadala ng email para sa pag-reset ng password</string>
+    <string name="cloud_account_connected_services">MGA NAKAKONEKTANG SERBISYO</string>
+    <string name="cloud_account_connections_subtitle">Magkahiwalay na pahintulot ang pag-sign in sa Google at pag-import ng musika sa YouTube.</string>
+    <string name="cloud_account_connections_description">Ang pag-sign in gamit ang cookie ng YouTube Music ay nananatiling hiwalay na feature ng music source. Hindi ka nito isi-sign in sa Vinz. Nangangailangan ang native na pag-link ng Google identity at pag-import ng YouTube Data API ng Android OAuth callback at secure na token-exchange flow; hindi nagpapanggap ang screen na ito na nakakonekta ang mga pahintulot na iyon.</string>
+    <string name="cloud_account_username_checking">Sinusuri ang availability sa Vinz…</string>
+    <string name="cloud_account_username_available">Available ang username</string>
+    <string name="cloud_account_username_unavailable">Hindi available o nakalaan ang username</string>
+    <string name="cloud_account_username_invalid">Maglagay ng 3–24 maliliit na letra, numero, o underscore</string>
+    <string name="cloud_account_username_error">Hindi maabot ang Vinz. Subukan muli.</string>
 </resources>

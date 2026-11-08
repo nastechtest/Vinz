@@ -4581,4 +4581,24 @@
     <string name="experimental_split_navigation_keywords">試験的 分割 ナビゲーション 中央 ミニプレーヤー 変形 元</string>
     <string name="icons_shapes_summary">アイコンパックと太さ、角と形</string>
     <string name="icons_shapes_keywords">アイコン パック 太さ 角 形</string>
+    <string name="cloud_account_tab_overview">概要</string>
+    <string name="cloud_account_tab_security">セキュリティ</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">アカウントの概要</string>
+    <string name="cloud_account_profile_default">あなたの Vinz プロフィール</string>
+    <string name="cloud_account_overview_description">Vinz ID は接続されています。このスマートフォンの音楽ライブラリは、サインインとは独立して引き続き利用できます。</string>
+    <string name="cloud_account_edit_profile">プロフィールを編集</string>
+    <string name="cloud_account_music_profile">あなたの音楽プロフィール</string>
+    <string name="cloud_account_security">アカウントのセキュリティ</string>
+    <string name="cloud_account_password_and_recovery">パスワードと復旧</string>
+    <string name="cloud_account_password_reset_description">%1$s にパスワード再設定メールを送信します。再設定リンクは、確認済みの Vinz メールフローで処理されます。</string>
+    <string name="cloud_account_send_password_reset">パスワード再設定メールを送信</string>
+    <string name="cloud_account_connected_services">接続済みのサービス</string>
+    <string name="cloud_account_connections_subtitle">Google サインインと YouTube 音楽のインポートは別々の権限です。</string>
+    <string name="cloud_account_connections_description">YouTube Music の Cookie サインインは、引き続き別の音楽ソース機能です。これは Vinz へのサインインではありません。ネイティブの Google ID 連携と YouTube Data API のインポートには、Android OAuth コールバックと安全なトークン交換フローが必要です。この画面では、それらの権限が接続されているかのようには表示しません。</string>
+    <string name="cloud_account_username_checking">Vinz で利用可能か確認中…</string>
+    <string name="cloud_account_username_available">ユーザー名を使用できます</string>
+    <string name="cloud_account_username_unavailable">ユーザー名は使用できないか予約済みです</string>
+    <string name="cloud_account_username_invalid">3～24 文字の小文字、数字、またはアンダースコアを入力してください</string>
+    <string name="cloud_account_username_error">Vinz に接続できませんでした。もう一度お試しください。</string>
 </resources>

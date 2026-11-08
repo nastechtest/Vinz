@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">deneysel bölünmüş gezinti ortalanmış mini oynatıcı dönüşüm özgün</string>
     <string name="icons_shapes_summary">Simge paketi ve kalınlığı, köşeler ve şekiller</string>
     <string name="icons_shapes_keywords">simge paket kalınlık köşeler şekiller</string>
+    <string name="cloud_account_tab_overview">Genel bakış</string>
+    <string name="cloud_account_tab_security">Güvenlik</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">HESABA GENEL BAKIŞ</string>
+    <string name="cloud_account_profile_default">Vinz profiliniz</string>
+    <string name="cloud_account_overview_description">Vinz kimliğiniz bağlı. Bu telefondaki müzik kitaplığınız, oturum açmadan bağımsız olarak kullanılabilir kalır.</string>
+    <string name="cloud_account_edit_profile">Profili düzenle</string>
+    <string name="cloud_account_music_profile">MÜZİK PROFİLİNİZ</string>
+    <string name="cloud_account_security">HESAP GÜVENLİĞİ</string>
+    <string name="cloud_account_password_and_recovery">Parola ve kurtarma</string>
+    <string name="cloud_account_password_reset_description">%1$s adresine parola sıfırlama e-postası gönderin. Sıfırlama bağlantısı, doğrulanmış Vinz e-posta akışınız tarafından işlenir.</string>
+    <string name="cloud_account_send_password_reset">Parola sıfırlama e-postası gönder</string>
+    <string name="cloud_account_connected_services">BAĞLI HİZMETLER</string>
+    <string name="cloud_account_connections_subtitle">Google ile oturum açma ve YouTube Music içe aktarma ayrı izinlerdir.</string>
+    <string name="cloud_account_connections_description">YouTube Music çerezle oturum açma, ayrı bir müzik kaynağı özelliği olmaya devam eder. Sizi Vinz\'e oturum açtırmaz. Yerel Google kimlik bağlama ve YouTube Data API içe aktarma, Android OAuth geri çağrısını ve güvenli belirteç değişim akışını gerektirir; bu ekran bu izinlerin bağlı olduğunu iddia etmez.</string>
+    <string name="cloud_account_username_checking">Vinz ile kullanılabilirlik denetleniyor…</string>
+    <string name="cloud_account_username_available">Kullanıcı adı kullanılabilir</string>
+    <string name="cloud_account_username_unavailable">Kullanıcı adı kullanılamıyor veya ayrılmış</string>
+    <string name="cloud_account_username_invalid">3–24 küçük harf, rakam veya alt çizgi girin</string>
+    <string name="cloud_account_username_error">Vinz\'e ulaşılamadı. Tekrar deneyin.</string>
 </resources>
