@@ -89,3 +89,18 @@ jobs:
           npm run check:vinext
           npm run build:vinext
           npm run deploy:cloudflare
+      - name: Smoke-test the exact production hostname
+        run: |
+          set -euo pipefail
+          url="https://home.vinzmusic.workers.dev/"
+          for attempt in $(seq 1 12); do
+            status=$(curl --silent --show-error --output /tmp/vinz-home.html --write-out '%{http_code}' "$url" || true)
+            if [ "$status" = "200" ] && grep -qi "vinz" /tmp/vinz-home.html; then
+              echo "Verified $url returned HTTP 200 and Vinz page content."
+              exit 0
+            fi
+            echo "Attempt $attempt: $url returned HTTP ${status:-no-response}; retrying."
+            sleep 10
+          done
+          echo "Cloudflare deployed, but the required home hostname did not pass its HTTP smoke test."
+          exit 1
