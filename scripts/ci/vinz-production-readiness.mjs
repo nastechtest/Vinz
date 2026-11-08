@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 const HOME_URL = process.env.VINZ_HOME_URL || "https://home.vinzmusic.workers.dev";
@@ -91,7 +90,7 @@ if (expected.supabase) {
   }
   if (!SUPABASE_ANON_KEY) add("Supabase API key", "SKIP", "SUPABASE_ANON_KEY is not configured; Auth liveness was checked without an API key");
   else {
-    const rest = await request("Supabase REST live", new URL("/rest/v1/", SUPABASE_URL).toString(), { headers });
+    const rest = await request("Supabase REST live", new URL("/rest/v1/vinz_profiles?select=id&limit=0", SUPABASE_URL).toString(), { headers });
     if (rest) {
       if (!rest.response.ok) fail("Supabase REST live", `HTTP ${rest.response.status}`, rest.response.url);
       else add("Supabase REST live", "PASS", `HTTP ${rest.response.status}`, rest.response.url);
@@ -141,10 +140,12 @@ for (const [origin, files] of byOrigin) {
 add("URL inventory", "PASS", `Inspected ${configFiles.length} production-sensitive files; ${inventory.length} URL literals found`);
 
 let changedFiles = [];
+let diffBase = "HEAD~1";
 try {
   const base = process.env.GITHUB_BASE_REF;
   if (base) {
     execFileSync("git", ["fetch", "--no-tags", "origin", base], { stdio: "ignore" });
+    diffBase = `origin/${base}`;
     changedFiles = execFileSync("git", ["diff", "--name-only", `origin/${base}...HEAD`], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
   } else {
     changedFiles = execFileSync("git", ["diff", "--name-only", "HEAD~1...HEAD"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
@@ -153,7 +154,7 @@ try {
 const changeLines = [];
 for (const file of changedFiles) {
   let diff = "";
-  try { diff = execFileSync("git", ["diff", "--unified=0", "HEAD~1...HEAD", "--", file], { encoding: "utf8" }); } catch {}
+  try { diff = execFileSync("git", ["diff", "--unified=0", `${diffBase}...HEAD`, "--", file], { encoding: "utf8" }); } catch {}
   const urls = diff.split("\n").filter(line => /^[+-].*https?:\/\//.test(line) && !/^[+-]{3}/.test(line));
   for (const line of urls) changeLines.push(`${file}: ${line.slice(0, 300)}`);
 }
