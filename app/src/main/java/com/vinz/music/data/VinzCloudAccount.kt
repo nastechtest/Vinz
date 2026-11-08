@@ -32,7 +32,10 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val isPublic: Boolean,
         val discoverable: Boolean,
     )
-    data class YouTubeStatus(val connected: Boolean, val channelTitle: String = "")\n    data class YouTubeImportResult(val importedCount: Int, val playlistCount: Int)\n\n    sealed interface AuthResult {
+    data class YouTubeStatus(val connected: Boolean, val channelTitle: String = "")
+    data class YouTubeImportResult(val importedCount: Int, val playlistCount: Int)
+
+    sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
         data object EmailConfirmationRequired : AuthResult
     }
@@ -242,7 +245,8 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     }
 
     companion object {
-        const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"\n        const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
+        const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"
+        const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
         // Publishable client key only. Never embed service-role or secret keys in the Android app.
         const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe"
     }
