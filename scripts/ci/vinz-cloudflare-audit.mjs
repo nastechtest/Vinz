@@ -92,7 +92,7 @@ if (!TOKEN) {
       fetch("https://home.vinzmusic.workers.dev", { redirect: "manual", signal: AbortSignal.timeout(12000) }),
       fetch("https://api.vinzmusic.workers.dev/health", { redirect: "manual", signal: AbortSignal.timeout(12000) }),
     ]);
-    if (homeProbe.ok && /text\\/html/i.test(homeProbe.headers.get("content-type") || "")) add("Cloudflare home route", "PASS", "Home URL serves an HTML response", "HTTP " + homeProbe.status);
+    if (homeProbe.ok && (homeProbe.headers.get("content-type") || "").toLowerCase().includes("text/html")) add("Cloudflare home route", "PASS", "Home URL serves an HTML response", "HTTP " + homeProbe.status);
     else fail("Cloudflare home route", "Home URL is not serving the deployed web application", "HTTP " + homeProbe.status);
     const health = await apiProbe.json().catch(() => ({}));
     if (apiProbe.ok && health.service === "vinz-api" && health.status === "ok" && health.integrations?.youtube_import_configured === true) add("Cloudflare API health and YouTube secrets", "PASS", "Live API reports core services and YouTube OAuth configured");
