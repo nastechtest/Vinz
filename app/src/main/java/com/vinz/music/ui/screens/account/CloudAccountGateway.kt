@@ -6,6 +6,7 @@ import com.vinz.music.data.VinzCloudAccount
 internal interface CloudAccountGateway {
     val identity: CloudAccountIdentity?
     suspend fun loadProfile(): VinzCloudAccount.Profile?
+    suspend fun checkUsernameAvailable(username: String): Boolean = true
     suspend fun signIn(email: String, password: String): VinzCloudAccount.AuthResult
     suspend fun signUp(email: String, password: String, username: String, displayName: String): VinzCloudAccount.AuthResult
     suspend fun recover(email: String)
@@ -16,6 +17,7 @@ internal interface CloudAccountGateway {
 internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) : CloudAccountGateway {
     override val identity: CloudAccountIdentity? get() = cloud.session?.let { CloudAccountIdentity(it.userId, it.email) }
     override suspend fun loadProfile() = cloud.loadProfile()
+    override suspend fun checkUsernameAvailable(username: String) = cloud.checkUsernameAvailable(username)
     override suspend fun signIn(email: String, password: String) = cloud.signIn(email, password)
     override suspend fun signUp(email: String, password: String, username: String, displayName: String) =
         cloud.signUp(email, password, username, displayName)
