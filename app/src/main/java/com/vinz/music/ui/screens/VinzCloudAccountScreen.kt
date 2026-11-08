@@ -227,8 +227,11 @@ private fun CloudAccountFormBody(
     onSection: (String) -> Unit,
 ) {
     val focus = LocalFocusManager.current
+    val registering = state.identity == null && state.mode == CloudAccountMode.SIGN_UP
+    var confirmPassword by remember(state.mode) { mutableStateOf("") }
+    val passwordsMatch = !registering || (confirmPassword.isNotEmpty() && confirmPassword == state.password)
     val submitFromKeyboard: () -> Unit = {
-        if (state.canSubmit) { focus.clearFocus(); actions.submit() }
+        if (state.canSubmit && passwordsMatch) { focus.clearFocus(); actions.submit() }
     }
     if (state.busy) {
         CircularProgressIndicator(Modifier.testTag("cloud-account-progress"))
@@ -244,7 +247,6 @@ private fun CloudAccountFormBody(
     }
     if (state.identity == null) {
         val recovery = state.mode == CloudAccountMode.RECOVERY
-        val registering = state.mode == CloudAccountMode.SIGN_UP
         VinzTextField(
             state.email, actions::email, Modifier.fillMaxWidth().testTag("cloud-account-email"),
             enabled = !state.busy, label = { Text(tr(R.string.cloud_account_email)) }, singleLine = true,
@@ -254,6 +256,7 @@ private fun CloudAccountFormBody(
             keyboardActions = KeyboardActions(onNext = { focus.moveFocus(FocusDirection.Next) }, onDone = { submitFromKeyboard() }),
         )
         var passwordVisible by remember(state.mode) { mutableStateOf(false) }
+        var confirmVisible by remember(state.mode) { mutableStateOf(false) }
         if (!recovery) {
             androidx.compose.material3.OutlinedTextField(
                 state.password, actions::password, Modifier.fillMaxWidth().testTag("cloud-account-password"),
@@ -270,9 +273,34 @@ private fun CloudAccountFormBody(
                     imeAction = if (registering) ImeAction.Next else ImeAction.Done),
                 keyboardActions = KeyboardActions(onNext = { focus.moveFocus(FocusDirection.Next) }, onDone = { submitFromKeyboard() }),
             )
+            if (registering) {
+                androidx.compose.material3.OutlinedTextField(
+                    confirmPassword,
+                    { confirmPassword = it },
+                    Modifier.fillMaxWidth().testTag("cloud-account-confirm-password"),
+                    enabled = !state.busy,
+                    label = { Text(tr(R.string.cloud_account_confirm_password)) },
+                    visualTransformation = if (confirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { confirmVisible = !confirmVisible }, enabled = !state.busy) {
+                            Text(if (confirmVisible) "Hide" else "Show", style = MaterialTheme.typography.labelSmall)
+                        }
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { focus.moveFocus(FocusDirection.Next) }),
+                )
+                if (confirmPassword.isNotEmpty() && !passwordsMatch) {
+                    Text(
+                        tr(R.string.cloud_account_passwords_do_not_match),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
         if (registering) CloudProfileFields(state, actions)
-        VinzButton(onClick = { actions.submit() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-submit"), enabled = state.canSubmit) {
+        VinzButton(onClick = { actions.submit() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-submit"), enabled = state.canSubmit && passwordsMatch) {
             Text(tr(when (state.mode) {
                 CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery
                 CloudAccountMode.SIGN_UP -> R.string.cloud_account_create
