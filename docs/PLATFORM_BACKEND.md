@@ -44,7 +44,7 @@ Using several providers does not increase any provider's quota. The purpose is t
 
 ### Web hosting
 - The intended web frontend hostname is `https://home.vinzmusic.workers.dev`; it must not be described as live until the `home` Worker is deployed and the URL returns the actual Vinz HTML page.
-- The API hostname is `https://api.vinzmusic.workers.dev`; its live health endpoint responds, but YouTube OAuth secrets and the database tables remain production setup gates.
+- The API hostname is `https://api.vinzmusic.workers.dev`; its live health endpoint responds. The additive `vinz_youtube_music_import` migration was applied to the live Supabase project on 2026-11-08 and both YouTube tables were verified with RLS enabled. YouTube OAuth secrets remain a production setup gate.
 - Vercel is not part of Vinz hosting or release; the old linked project is retained only behind the Git deployment kill switch until it is safely disconnected.
 
 ## Cloudflare API contract
