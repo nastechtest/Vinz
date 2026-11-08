@@ -152,11 +152,8 @@ cloudflare_web_workflow=$(<"$repo_root/.github/workflows/cloudflare-web.yml")
 expect_contains "web frontend builds for Cloudflare Workers" "$cloudflare_web_workflow" "npm run build:vinext"
 expect_contains "web production deploy requires explicit confirmation" "$cloudflare_web_workflow" "deploy-home-production"
 expect_contains "web frontend targets the Vinz Cloudflare Worker" "$cloudflare_web_workflow" "home.vinzmusic.workers.dev"
-if [[ -e "$repo_root/web/vercel.json" ]]; then
-  fail "legacy Vercel deployment config is removed" "web/vercel.json still exists"
-else
-  pass "legacy Vercel deployment config is removed"
-fi
+vercel_kill_switch=$(<"$repo_root/web/vercel.json")
+expect_contains "legacy Vercel Git deployments remain disabled" "$vercel_kill_switch" '"deploymentEnabled": false'
 pr_workflow=$(<"$repo_root/.github/workflows/pr-checks.yml")
 expect_contains "PR checks do not cancel an in-flight test run" "$pr_workflow" "cancel-in-progress: false"
 runner_script=$(<"$repo_root/scripts/ci/run-unit-tests.sh")
