@@ -33,11 +33,11 @@ The API URL remains:
 Repository/environment variables:
 Cloudflare account ID is pinned in `web/cloudflare.config.ts` to the verified Vinz account; it is not a GitHub variable.
 - `NEXT_PUBLIC_SUPABASE_URL` — optional override; defaults to `https://iszghebmetrbkfhnnoqq.supabase.co` in the workflow.
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — Supabase publishable key (required as a GitHub Actions variable).
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — optional GitHub Actions variable override. If unset, the workflow uses the verified Supabase publishable key for project `iszghebmetrbkfhnnoqq` (this key is designed for public clients; RLS remains the data-access boundary).
 - `NEXT_PUBLIC_VINZ_API_URL` — optional override; defaults to `https://api.vinzmusic.workers.dev` in the workflow.
 
-GitHub environment secret:
-- `CLOUDFLARE_API_TOKEN` — scoped to deploy Workers scripts and read required account metadata. Never put it in repository variables or source files.
+GitHub environment secret (still required before the production deploy can run):
+- `CLOUDFLARE_API_TOKEN` — scoped to deploy Workers scripts and read required account metadata. Never put it in repository variables or source files. The Cloudflare CLI also receives `CF_SEND_TELEMETRY=false` in CI.
 
 Set a GitHub `production` environment and require a reviewer if available. The workflow does not deploy on PR pushes or ordinary pushes to `main`; it only deploys after an explicit workflow dispatch confirmation.
 
