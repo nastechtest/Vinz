@@ -69,9 +69,13 @@ internal fun CloudAccountContent(
                 modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
                 Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
             }
-            Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
-            Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(if (state.mode == CloudAccountMode.VERIFY_EMAIL) R.string.cloud_account_otp_title else R.string.your_vinz_account),
+                style = MaterialTheme.typography.headlineMedium)
+            Text(
+                if (state.mode == CloudAccountMode.VERIFY_EMAIL) tr(R.string.cloud_account_otp_intro, state.email)
+                else tr(R.string.cloud_account_intro),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             CloudAccountFormBody(state, actions, section = section, onSection = { section = it })
             if (onContinue != null && state.canContinue) {
                 VinzButton(onClick = onContinue, modifier = Modifier.fillMaxWidth().testTag("cloud-account-continue")) {
@@ -109,6 +113,28 @@ private fun CloudAccountFormBody(
         Text(tr(it), Modifier.testTag("cloud-account-message").semantics { liveRegion = LiveRegionMode.Polite },
             color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
     }
+    if (state.mode == CloudAccountMode.VERIFY_EMAIL) {
+        androidx.compose.material3.OutlinedTextField(
+            state.otp, actions::otp, Modifier.fillMaxWidth().testTag("cloud-account-otp"),
+            enabled = !state.busy, label = { Text(tr(R.string.cloud_account_otp_code)) }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submitFromKeyboard() }),
+        )
+        Text(tr(R.string.cloud_account_otp_expiry_hint), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        VinzButton(onClick = { actions.submit() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-verify"),
+            enabled = state.canSubmit) { Text(tr(R.string.cloud_account_otp_verify)) }
+        VinzTextButton(onClick = { actions.resendOtp() }, modifier = Modifier.testTag("cloud-account-resend-otp"),
+            enabled = state.canResendOtp) {
+            Text(if (state.resendSecondsRemaining > 0) tr(R.string.cloud_account_otp_resend_countdown, state.resendSecondsRemaining)
+                else tr(R.string.cloud_account_otp_resend))
+        }
+        VinzTextButton(onClick = { actions.mode(CloudAccountMode.SIGN_IN) },
+            modifier = Modifier.testTag("cloud-account-back-to-sign-in"), enabled = !state.busy) {
+            Text(tr(R.string.cloud_account_back_to_sign_in))
+        }
+        return
+    }
     if (state.identity == null) {
         val recovery = state.mode == CloudAccountMode.RECOVERY
         val registering = state.mode == CloudAccountMode.SIGN_UP
@@ -137,6 +163,7 @@ private fun CloudAccountFormBody(
                 CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery
                 CloudAccountMode.SIGN_UP -> R.string.cloud_account_create
                 CloudAccountMode.SIGN_IN -> R.string.sign_in
+                CloudAccountMode.VERIFY_EMAIL -> R.string.cloud_account_otp_verify
             }))
         }
         VinzTextButton(

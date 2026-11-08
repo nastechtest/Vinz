@@ -106,6 +106,19 @@ class CloudAccountScreenTest {
         compose.onNodeWithTag("cloud-account-submit").assertIsEnabled()
     }
 
+    @Test fun verificationModeOnlyShowsNumericCodeAndHonorsResendCooldown() {
+        render(CloudAccountState(mode = CloudAccountMode.VERIFY_EMAIL, email = "verify@example.test", resendSecondsRemaining = 60))
+        compose.onNodeWithTag("cloud-account-otp").assertExists()
+        compose.onNodeWithTag("cloud-account-email").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-account-password").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-account-verify").assertIsNotEnabled()
+        compose.onNodeWithTag("cloud-account-resend-otp").assertIsNotEnabled()
+
+        render(CloudAccountState(mode = CloudAccountMode.VERIFY_EMAIL, email = "verify@example.test", otp = "123456", resendSecondsRemaining = 0))
+        compose.onNodeWithTag("cloud-account-verify").assertIsEnabled()
+        compose.onNodeWithTag("cloud-account-resend-otp").assertIsEnabled()
+    }
+
     @Test fun credentialsShowClearModeSpecificHints() {
         render(CloudAccountState(mode = CloudAccountMode.SIGN_IN))
         compose.onNodeWithText("Enter the email address for your Vinz Account.").assertExists()

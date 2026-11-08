@@ -2,6 +2,8 @@ package com.vinz.music.ui.screens.account
 
 import com.vinz.music.R
 import com.vinz.music.data.VinzCloudAccount
+import com.vinz.music.data.CloudAuthException
+import com.vinz.music.data.CloudAuthFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -15,16 +17,23 @@ import kotlinx.coroutines.delay
 internal class CloudAccountController(
     private val gateway: CloudAccountGateway,
     private val scope: CoroutineScope,
+    private val resendCooldownSeconds: Int = 60,
 ) {
     private val mutable = MutableStateFlow(CloudAccountState(identity = gateway.identity).let {
         it.copy(email = it.identity?.email.orEmpty())
     })
     val state: StateFlow<CloudAccountState> = mutable.asStateFlow()
     private var usernameCheckJob: Job? = null
+    private var resendJob: Job? = null
 
-    fun mode(mode: CloudAccountMode) = edit { copy(mode = mode, password = "", message = null, error = null) }
+    fun mode(mode: CloudAccountMode) {
+        if (mutable.value.busy) return
+        resendJob?.cancel()
+        mutable.value = mutable.value.copy(mode = mode, password = "", otp = "", resendSecondsRemaining = 0, message = null, error = null)
+    }
     fun email(value: String) = edit { copy(email = value, message = null, error = null) }
     fun password(value: String) = edit { copy(password = value, message = null, error = null) }
+    fun otp(value: String) = edit { copy(otp = CloudAccountValidation.otp(value), message = null, error = null) }
     /** Release typed secrets when the account screen is disposed. */
     fun clearPassword() { mutable.value = mutable.value.copy(password = "") }
     fun username(value: String) {
@@ -85,41 +94,92 @@ internal class CloudAccountController(
     fun submit(): Job? {
         val before = mutable.value
         if (!before.canSubmit) return null
-        val failure = if (before.mode == CloudAccountMode.RECOVERY) R.string.cloud_account_recovery_failed
-            else R.string.cloud_account_sign_in_failed
+        val failure = when (before.mode) {
+            CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery_failed
+            CloudAccountMode.VERIFY_EMAIL -> R.string.cloud_account_otp_verify_failed
+            else -> R.string.cloud_account_sign_in_failed
+        }
         return request(failure) {
             val email = before.email.trim()
-            if (before.mode == CloudAccountMode.RECOVERY) {
-                gateway.recover(email)
-                mutable.value = mutable.value.copy(email = email, message = R.string.cloud_account_recovery_sent)
-            } else {
-                val result = if (before.mode == CloudAccountMode.SIGN_UP) gateway.signUp(
-                    email, before.password, before.draft.username, before.draft.displayName.trim(),
-                ) else gateway.signIn(email, before.password)
-                when (result) {
-                    VinzCloudAccount.AuthResult.EmailConfirmationRequired -> mutable.value = mutable.value.copy(
-                        mode = CloudAccountMode.SIGN_IN, email = email, password = "",
-                        message = R.string.cloud_account_confirmation,
-                    )
-                    is VinzCloudAccount.AuthResult.SignedIn -> {
-                        val identity = gateway.identity
-                        if (identity == null) {
-                            mutable.value = mutable.value.copy(password = "", error = failure)
-                        } else if (!identity.email.trim().equals(email, ignoreCase = true) ||
-                            (result.profile != null && result.profile.id != identity.userId)) {
-                            resetForCurrentIdentity()
-                        } else {
-                            mutable.value = CloudAccountState(
-                                identity = identity, email = identity.email, busy = true, profileReady = true,
-                                draft = result.profile?.draft() ?: if (before.mode == CloudAccountMode.SIGN_UP) before.draft else CloudProfileDraft(),
-                                originalUsername = result.profile?.username.orEmpty(),
-                                usernameAvailability = if (result.profile == null) UsernameAvailability.AVAILABLE else UsernameAvailability.UNCHANGED,
-                                message = if (result.profile == null) R.string.cloud_account_setup else null,
-                            )
-                        }
+            when (before.mode) {
+                CloudAccountMode.RECOVERY -> {
+                    gateway.recover(email)
+                    mutable.value = mutable.value.copy(email = email, message = R.string.cloud_account_recovery_sent)
+                }
+                CloudAccountMode.VERIFY_EMAIL -> {
+                    val result = gateway.verifyOtp(email, before.otp)
+                    acceptSignedIn(result, before, email, failure)
+                }
+                CloudAccountMode.SIGN_UP, CloudAccountMode.SIGN_IN -> {
+                    val result = if (before.mode == CloudAccountMode.SIGN_UP) gateway.signUp(
+                        email, before.password, before.draft.username, before.draft.displayName.trim(),
+                    ) else gateway.signIn(email, before.password)
+                    when (result) {
+                        is VinzCloudAccount.AuthResult.VerificationRequired -> beginVerification(result.email)
+                        VinzCloudAccount.AuthResult.EmailConfirmationRequired -> beginVerification(email)
+                        is VinzCloudAccount.AuthResult.SignedIn -> acceptSignedIn(result, before, email, failure)
                     }
                 }
             }
+        }
+    }
+
+    fun resendOtp(): Job? {
+        val before = mutable.value
+        if (!before.canResendOtp) return null
+        return request(R.string.cloud_account_otp_resend_failed) {
+            gateway.resendOtp(before.email.trim())
+            mutable.value = mutable.value.copy(otp = "", message = R.string.cloud_account_otp_resent)
+            startResendCooldown(resendCooldownSeconds)
+        }
+    }
+
+    private fun beginVerification(email: String) {
+        resendJob?.cancel()
+        mutable.value = mutable.value.copy(
+            mode = CloudAccountMode.VERIFY_EMAIL, email = email.trim(), password = "", otp = "",
+            resendSecondsRemaining = resendCooldownSeconds, message = R.string.cloud_account_otp_sent, error = null,
+        )
+        startResendCooldown(resendCooldownSeconds)
+    }
+
+    private fun startResendCooldown(seconds: Int) {
+        resendJob?.cancel()
+        mutable.value = mutable.value.copy(resendSecondsRemaining = seconds.coerceAtLeast(0))
+        if (seconds <= 0) return
+        resendJob = scope.launch {
+            var remaining = seconds
+            while (remaining > 0) {
+                delay(1_000)
+                if (mutable.value.mode != CloudAccountMode.VERIFY_EMAIL) return@launch
+                remaining--
+                mutable.value = mutable.value.copy(resendSecondsRemaining = remaining)
+            }
+        }
+    }
+
+    private fun acceptSignedIn(
+        result: VinzCloudAccount.AuthResult.SignedIn,
+        before: CloudAccountState,
+        expectedEmail: String,
+        failure: Int,
+    ) {
+        val identity = gateway.identity
+        if (identity == null) {
+            mutable.value = mutable.value.copy(password = "", otp = "", error = failure)
+        } else if (!identity.email.trim().equals(expectedEmail, ignoreCase = true) ||
+            (result.profile != null && result.profile.id != identity.userId)) {
+            resetForCurrentIdentity()
+        } else {
+            resendJob?.cancel()
+            val keepSignupDraft = before.mode == CloudAccountMode.SIGN_UP || before.mode == CloudAccountMode.VERIFY_EMAIL
+            mutable.value = CloudAccountState(
+                identity = identity, email = identity.email, busy = true, profileReady = true,
+                draft = result.profile?.draft() ?: if (keepSignupDraft) before.draft else CloudProfileDraft(),
+                originalUsername = result.profile?.username.orEmpty(),
+                usernameAvailability = if (result.profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,
+                message = if (result.profile == null) R.string.cloud_account_setup else null,
+            )
         }
     }
 
@@ -157,6 +217,7 @@ internal class CloudAccountController(
     }
 
     private fun resetForCurrentIdentity() {
+        resendJob?.cancel()
         val identity = gateway.identity
         mutable.value = CloudAccountState(
             identity = identity, email = identity?.email.orEmpty(), busy = true,
@@ -174,6 +235,20 @@ internal class CloudAccountController(
                 operation()
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (auth: CloudAuthException) {
+                val mapped = when (auth.failure) {
+                    CloudAuthFailure.INVALID_OTP, CloudAuthFailure.OTP_EXPIRED -> R.string.cloud_account_otp_invalid_or_expired
+                    CloudAuthFailure.RATE_LIMITED -> R.string.cloud_account_otp_rate_limited
+                    CloudAuthFailure.USERNAME_TAKEN -> R.string.cloud_account_username_unavailable
+                    CloudAuthFailure.EMAIL_NOT_CONFIRMED -> R.string.cloud_account_confirmation
+                }
+                val identity = gateway.identity
+                val changed = identity?.userId != mutable.value.identity?.userId
+                mutable.value = if (changed) CloudAccountState(
+                    identity = identity, email = identity?.email.orEmpty(), busy = true,
+                    profileLoadFailed = identity != null,
+                    error = if (identity != null) R.string.cloud_account_load_failed else mapped,
+                ) else mutable.value.copy(error = mapped)
             } catch (_: Exception) {
                 // Never render raw transport messages, response bodies, tokens or private backend details.
                 val identity = gateway.identity

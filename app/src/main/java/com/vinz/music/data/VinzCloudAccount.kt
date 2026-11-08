@@ -17,6 +17,10 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+enum class CloudAuthFailure { EMAIL_NOT_CONFIRMED, INVALID_OTP, OTP_EXPIRED, RATE_LIMITED, USERNAME_TAKEN }
+
+class CloudAuthException(val failure: CloudAuthFailure) : IllegalStateException()
+
 /**
  * Cloud identity for Vinz. This is deliberately separate from YouTube Music's cookie-based login.
  * The Supabase publishable key is public client configuration; privileged keys never belong in this app.
@@ -34,6 +38,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     )
     sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
+        data class VerificationRequired(val email: String) : AuthResult
         data object EmailConfirmationRequired : AuthResult
     }
 
@@ -44,36 +49,129 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     val session: Session? get() = store.read()?.let(::decodeSession)
 
     suspend fun signUp(email: String, password: String, username: String, displayName: String): AuthResult = withContext(Dispatchers.IO) {
-        require(email.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) { "Enter a valid email address." }
+        val normalizedEmail = email.trim()
+        require(normalizedEmail.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) { "Enter a valid email address." }
         require(password.length >= 8) { "Use a password with at least 8 characters." }
         require(username.matches(Regex("^[a-z0-9_]{3,24}$"))) { "Username must be 3–24 characters: lowercase letters, numbers or underscore." }
         require(displayName.trim().length in 1..60) { "Display name must be 1–60 characters." }
-        val body = JSONObject().put("email", email.trim()).put("password", password).toString()
-        val result = request("/auth/v1/signup", "POST", body)
-        val access = result.optString("access_token")
-        if (access.isBlank()) return@withContext AuthResult.EmailConfirmationRequired
-        val user = result.optJSONObject("user") ?: result
-        val userId = user.optString("id")
-        val refresh = result.optString("refresh_token")
-        if (userId.isBlank() || refresh.isBlank()) error("Supabase did not return a complete account session.")
-        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh).put("user_id", userId).put("email", email.trim()).toString())
-        val profile = saveProfile(username, displayName, "", true, true)
-        AuthResult.SignedIn(profile)
+
+        // Never persist a signup session before the user has entered the email OTP.
+        val result = request("/auth/v1/signup", "POST",
+            JSONObject().put("email", normalizedEmail).put("password", password).toString(), authenticated = false)
+        val hasImmediateSession = result.optString("access_token").isNotBlank()
+        store.writePendingVerification(pendingVerificationJson(
+            normalizedEmail, username, displayName.trim(), if (hasImmediateSession) "email" else "signup",
+        ))
+
+        // If hosted email confirmations are disabled, signup may return a session immediately.
+        // Discard it and send a separate OTP so this app still requires explicit code verification.
+        if (hasImmediateSession) sendEmailOtp(normalizedEmail)
+        AuthResult.VerificationRequired(normalizedEmail)
     }
 
     suspend fun signIn(email: String, password: String): AuthResult = withContext(Dispatchers.IO) {
-        require(email.isNotBlank()) { "Enter your email address." }
+        val normalizedEmail = email.trim()
+        require(normalizedEmail.isNotBlank()) { "Enter your email address." }
         require(password.isNotEmpty()) { "Enter your password." }
-        val result = request("/auth/v1/token?grant_type=password", "POST",
-            JSONObject().put("email", email.trim()).put("password", password).toString())
+        val result = try {
+            request("/auth/v1/token?grant_type=password", "POST",
+                JSONObject().put("email", normalizedEmail).put("password", password).toString(), authenticated = false)
+        } catch (failure: CloudAuthException) {
+            if (failure.failure != CloudAuthFailure.EMAIL_NOT_CONFIRMED) throw failure
+            store.writePendingVerification(pendingVerificationJson(normalizedEmail, "", "", "signup"))
+            resendSignupOtp(normalizedEmail)
+            return@withContext AuthResult.VerificationRequired(normalizedEmail)
+        }
         val user = result.optJSONObject("user") ?: error("Supabase did not return the account.")
+        if (!isEmailConfirmed(user)) {
+            store.writePendingVerification(pendingVerificationJson(normalizedEmail, "", "", "signup"))
+            resendSignupOtp(normalizedEmail)
+            return@withContext AuthResult.VerificationRequired(normalizedEmail)
+        }
         val access = result.optString("access_token")
         val refresh = result.optString("refresh_token")
         val userId = user.optString("id")
         if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The account session was incomplete.")
-        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh).put("user_id", userId).put("email", user.optString("email", email)).toString())
+        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh)
+            .put("user_id", userId).put("email", user.optString("email", normalizedEmail)).toString())
+        store.clearPendingVerification()
         AuthResult.SignedIn(loadProfile())
     }
+
+    /** Verifies the six-digit email OTP before creating a local session or enabling account features. */
+    suspend fun verifyEmailOtp(email: String, token: String): AuthResult = withContext(Dispatchers.IO) {
+        val normalizedEmail = email.trim()
+        require(android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) { "Enter a valid email address." }
+        require(token.matches(Regex("^[0-9]{6}$"))) { "Enter the six-digit code from your email." }
+        val pending = pendingVerification()
+        if (pending != null && !pending.email.equals(normalizedEmail, ignoreCase = true)) {
+            error("The verification request does not match this email address.")
+        }
+        val result = request("/auth/v1/verify", "POST",
+            JSONObject().put("type", "email").put("email", normalizedEmail).put("token", token).toString(),
+            authenticated = false)
+        val user = result.optJSONObject("user") ?: error("Supabase did not return the verified account.")
+        val verifiedEmail = user.optString("email")
+        if (verifiedEmail.isNotBlank() && !verifiedEmail.equals(normalizedEmail, ignoreCase = true)) {
+            error("The verified account did not match this email address.")
+        }
+        if (!isEmailConfirmed(user)) throw CloudAuthException(CloudAuthFailure.EMAIL_NOT_CONFIRMED)
+        val access = result.optString("access_token")
+        val refresh = result.optString("refresh_token")
+        val userId = user.optString("id")
+        if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The verified account session was incomplete.")
+        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh)
+            .put("user_id", userId).put("email", verifiedEmail.ifBlank { normalizedEmail }).toString())
+
+        // The auth-user trigger created a safe default row. Apply signup profile data only after verification.
+        // A username collision leaves the verified session active so the user can choose another username.
+        val profile = if (!pending?.username.isNullOrBlank()) {
+            runCatching { saveProfile(pending!!.username, pending.displayName, "", true, true) }.getOrNull()
+        } else runCatching { loadProfile() }.getOrNull()
+        if (profile != null || pending?.username.isNullOrBlank()) store.clearPendingVerification()
+        AuthResult.SignedIn(profile)
+    }
+
+    /** Supabase owns expiry and attempt limits; this requests a fresh server-issued code. */
+    suspend fun resendEmailOtp(email: String) = withContext(Dispatchers.IO) {
+        val normalizedEmail = email.trim()
+        require(android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) { "Enter a valid email address." }
+        val pending = pendingVerification()
+        if (pending != null && !pending.email.equals(normalizedEmail, ignoreCase = true)) {
+            error("The verification request does not match this email address.")
+        }
+        if (pending?.resendType == "email") sendEmailOtp(normalizedEmail) else resendSignupOtp(normalizedEmail)
+    }
+
+    private fun sendEmailOtp(email: String) {
+        request("/auth/v1/otp", "POST",
+            JSONObject().put("email", email).put("create_user", false).toString(), authenticated = false)
+    }
+
+    private fun resendSignupOtp(email: String) {
+        request("/auth/v1/resend", "POST",
+            JSONObject().put("type", "signup").put("email", email).toString(), authenticated = false)
+    }
+
+    private fun pendingVerificationJson(email: String, username: String, displayName: String, resendType: String) =
+        JSONObject().put("email", email).put("username", username).put("display_name", displayName)
+            .put("resend_type", resendType).toString()
+
+    private data class PendingVerification(val email: String, val username: String, val displayName: String, val resendType: String)
+
+    private fun pendingVerification(): PendingVerification? = store.readPendingVerification()?.let { raw ->
+        runCatching {
+            val value = JSONObject(raw)
+            PendingVerification(value.optString("email"), value.optString("username"),
+                value.optString("display_name"), value.optString("resend_type", "signup"))
+        }.getOrNull()
+    }
+
+    private fun isEmailConfirmed(user: JSONObject): Boolean =
+        listOf("email_confirmed_at", "confirmed_at").any { key ->
+            val value = user.opt(key)
+            value is String && value.isNotBlank()
+        }
 
     suspend fun sendPasswordRecovery(email: String) = withContext(Dispatchers.IO) {
         require(android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) { "Enter a valid email address." }
@@ -130,9 +228,10 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
             // The auth-user trigger creates the row; PATCH uses the existing owner-only UPDATE policy.
             val result = request("/rest/v1/vinz_profiles?id=eq.${s.userId}", "PATCH", payload.toString(),
                 prefer = "return=representation")
-            val rows = result.optJSONArray("data")
-            rows?.takeIf { it.length() > 0 }?.getJSONObject(0)?.toProfile()
+            val saved = result.optJSONArray("data")?.takeIf { it.length() > 0 }?.getJSONObject(0)?.toProfile()
                 ?: loadProfile() ?: error("Profile was saved but could not be reloaded.")
+            if (pendingVerification()?.email?.equals(s.email, ignoreCase = true) == true) store.clearPendingVerification()
+            saved
         }
 
     suspend fun signOut() = withContext(Dispatchers.IO) {
@@ -154,8 +253,25 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         http.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                val message = runCatching { JSONObject(text).optString("message").ifBlank { JSONObject(text).optString("msg") } }.getOrNull()
-                error(message?.takeIf { it.isNotBlank() } ?: "Vinz Account request failed (${response.code}).")
+                val payload = runCatching { JSONObject(text) }.getOrNull()
+                val message = listOf("message", "msg", "error_description", "error")
+                    .map { payload?.optString(it).orEmpty() }.joinToString(" ").lowercase()
+                val code = payload?.optString("code").orEmpty()
+                val failure = when {
+                    response.code == 429 || message.contains("rate limit") || message.contains("too many") ->
+                        CloudAuthFailure.RATE_LIMITED
+                    path.contains("/verify") && (message.contains("expired") || code == "otp_expired") ->
+                        CloudAuthFailure.OTP_EXPIRED
+                    path.contains("/verify") && (message.contains("invalid") || message.contains("token")) ->
+                        CloudAuthFailure.INVALID_OTP
+                    message.contains("email not confirmed") || code == "email_not_confirmed" ->
+                        CloudAuthFailure.EMAIL_NOT_CONFIRMED
+                    path.startsWith("/rest/v1/vinz_profiles") && (response.code == 409 || code == "23505") ->
+                        CloudAuthFailure.USERNAME_TAKEN
+                    else -> null
+                }
+                if (failure != null) throw CloudAuthException(failure)
+                error("Vinz Account request failed (${response.code}).")
             }
             return if (text.isBlank()) JSONObject() else if (text.trimStart().startsWith("[")) JSONObject().put("data", org.json.JSONArray(text)) else JSONObject(text)
         }
@@ -183,19 +299,22 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
             return generator.generateKey()
         }
-        fun write(value: String) {
+        private fun encrypt(value: String): String {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
-            val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            val packed = cipher.iv + encrypted
-            prefs.edit().putString("session", Base64.encodeToString(packed, Base64.NO_WRAP)).apply()
+            return Base64.encodeToString(cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
         }
-        fun read(): String? = runCatching {
-            val packed = Base64.decode(prefs.getString("session", null), Base64.NO_WRAP)
+        private fun decrypt(value: String?): String? = runCatching {
+            val packed = Base64.decode(value, Base64.NO_WRAP)
             val iv = packed.copyOfRange(0, 12)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)) }
             String(cipher.doFinal(packed.copyOfRange(12, packed.size)), Charsets.UTF_8)
         }.getOrNull()
-        fun clear() { prefs.edit().remove("session").apply() }
+        fun write(value: String) { prefs.edit().putString("session", encrypt(value)).apply() }
+        fun read(): String? = decrypt(prefs.getString("session", null))
+        fun writePendingVerification(value: String) { prefs.edit().putString("pending_verification", encrypt(value)).apply() }
+        fun readPendingVerification(): String? = decrypt(prefs.getString("pending_verification", null))
+        fun clearPendingVerification() { prefs.edit().remove("pending_verification").apply() }
+        fun clear() { prefs.edit().remove("session").remove("pending_verification").apply() }
     }
 
     companion object {

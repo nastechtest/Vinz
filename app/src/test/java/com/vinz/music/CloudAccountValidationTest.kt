@@ -113,4 +113,17 @@ class CloudAccountValidationTest {
             draft = CloudProfileDraft("artist_7", "Artist"),
         )))
     }
+
+    @Test fun `otp input keeps only six ASCII digits`() {
+        assertEquals("123456", CloudAccountValidation.otp("12a3-45678"))
+        assertEquals("", CloudAccountValidation.otp("１２３４５６"))
+    }
+
+    @Test fun `verification submit requires exactly six digits`() {
+        val base = CloudAccountState(mode = CloudAccountMode.VERIFY_EMAIL, email = "user@example.test")
+        assertFalse(CloudAccountValidation.canSubmit(base))
+        assertFalse(CloudAccountValidation.canSubmit(base.copy(otp = "12345")))
+        assertFalse(CloudAccountValidation.canSubmit(base.copy(otp = "1234567")))
+        assertTrue(CloudAccountValidation.canSubmit(base.copy(otp = "123456")))
+    }
 }

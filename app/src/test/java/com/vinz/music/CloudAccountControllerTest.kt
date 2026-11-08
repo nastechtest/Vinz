@@ -156,10 +156,11 @@ class CloudAccountControllerTest {
 
         controller.submit()!!.join()
 
-        assertEquals(CloudAccountMode.SIGN_IN, controller.state.value.mode)
+        assertEquals(CloudAccountMode.VERIFY_EMAIL, controller.state.value.mode)
         assertEquals("new@example.test", controller.state.value.email)
         assertEquals("", controller.state.value.password)
-        assertEquals(R.string.cloud_account_confirmation, controller.state.value.message)
+        assertEquals(R.string.cloud_account_otp_sent, controller.state.value.message)
+        assertEquals(60, controller.state.value.resendSecondsRemaining)
     }
 
     @Test fun `identity stored before sign in failure requires profile retry`() = runBlocking {
