@@ -55,6 +55,7 @@ if (!TOKEN) {
       cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/vinz/settings"),
       cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/vinz/secrets"),
       cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/vinz/subdomain"),
+      cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/staging/settings"),
     ]);
     const apiBindings = apiSettings?.bindings || [];
     const service = apiBindings.find((item) => item.name === "VINZ" && item.type === "service");
