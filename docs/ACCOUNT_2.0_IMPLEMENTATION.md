@@ -32,7 +32,7 @@ The migration provisions a public-read `vinz-avatars` bucket (5 MB; JPEG/PNG/Web
 ## Deployment gates
 - Configure Google OAuth client credentials in Supabase Auth and Google Cloud Console.
 - Enable YouTube Data API v3 and configure its consent screen before implementing the server-side importer.
-- Configure Supabase Auth Site URL and redirect allowlist for the deployed Vercel URL and callback.
+- Configure Supabase Auth Site URL as `https://home.vinzmusic.workers.dev` and allow `https://home.vinzmusic.workers.dev/auth/callback`. The Google OAuth provider redirect URI remains the Supabase Auth callback URL.
 - Apply the migration through the normal Supabase migration pipeline before enabling avatar uploads or the new username restrictions.
 - Account deletion remains disabled until a privileged server-side workflow can remove the Auth identity, profile rows and stored objects safely.
 - No production secrets are included in the client, and this PR does not apply migrations or deploy production resources.

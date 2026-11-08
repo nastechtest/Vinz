@@ -7,7 +7,8 @@ This repository is a native Android application. The backend work is isolated un
 | Service | Responsibility |
 |---|---|
 | Supabase | Auth, profile/settings data, RLS, backup metadata, notification records, scheduled discovery Edge Function |
-| Cloudflare Workers | Authenticated edge API, validation, provider routing and privacy-safe error telemetry |
+| Cloudflare Workers (API) | Authenticated edge API, validation, provider routing and privacy-safe error telemetry |
+| Cloudflare Workers (web) | Vinz web frontend built with vinext; production hostname `home.vinzmusic.workers.dev` |
 | Cloudflare R2 | Opaque user backup objects |
 | Cloudflare KV | Shared cache for public catalog metadata/artwork |
 | Cloudflare Queues | Reserved for future bursty discovery/notification fan-out; queues exist but have no consumer yet |
@@ -41,8 +42,10 @@ Using several providers does not increase any provider's quota. The purpose is t
 - The dedicated Worker test workflow passed on the checked commit. Existing Android regression/PR checks are separate and must finish before merge.
 - PostHog is wired into staging for a fixed, allowlisted `vinz_api_error` event. It receives no user IDs, emails, tokens, queries, artist/track names, lyrics, audio or request bodies.
 
-### Vercel
-- No Vinz project is linked to this Android repository. No placeholder Vercel project was created. Vercel should be used when a real web app/control panel exists.
+### Web hosting
+- The web frontend is hosted on Cloudflare Workers at `https://home.vinzmusic.workers.dev`.
+- The API is hosted separately at `https://api.vinzmusic.workers.dev`.
+- Vercel is not part of Vinz's hosting, CI, preview, or release path.
 
 ## Cloudflare API contract
 
