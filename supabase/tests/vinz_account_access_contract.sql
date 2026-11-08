@@ -43,6 +43,26 @@ begin
   if has_column_privilege('anon', 'public.vinz_share_links', 'user_id', 'SELECT') then
     raise exception 'anon must not read share-link owner IDs';
   end if;
+  -- This RPC intentionally uses SECURITY DEFINER to check global username uniqueness
+  -- without granting authenticated users read access to other users' private profiles.
+  -- Keep it executable only by authenticated users and pin its search_path to empty.
+  if has_function_privilege('anon', 'public.vinz_username_available(text)', 'EXECUTE') then
+    raise exception 'anon must not execute username availability RPC';
+  end if;
+  if not has_function_privilege('authenticated', 'public.vinz_username_available(text)', 'EXECUTE') then
+    raise exception 'authenticated must execute username availability RPC';
+  end if;
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'vinz_username_available'
+      and p.prosecdef
+      and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=""%'
+  ) then
+    raise exception 'username availability SECURITY DEFINER must use an empty search_path';
+  end if;
+
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public'
