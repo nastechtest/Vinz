@@ -62,8 +62,10 @@ export default function AuthCallback() {
         throw new Error("No active session was created. The confirmation link may have expired.");
       }
 
+      const requestedNext = query.get("next");
+      const next = requestedNext === "/account" || requestedNext === "/auth/reset-password" ? requestedNext : "/";
       window.history.replaceState({}, document.title, "/auth/callback");
-      window.location.replace("/");
+      window.location.replace(next);
     }
 
     void finish().catch((error: unknown) => {

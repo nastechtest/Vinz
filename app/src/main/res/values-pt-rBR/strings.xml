@@ -4705,4 +4705,24 @@
     <string name="experimental_split_navigation_keywords">experimental navegação dividida centralizado miniplayer transformação original</string>
     <string name="icons_shapes_summary">Pacote e peso de ícones, cantos e formas</string>
     <string name="icons_shapes_keywords">ícone pacote peso cantos formas</string>
+    <string name="cloud_account_tab_overview">Visão geral</string>
+    <string name="cloud_account_tab_security">Segurança</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">VISÃO GERAL DA CONTA</string>
+    <string name="cloud_account_profile_default">Seu perfil do Vinz</string>
+    <string name="cloud_account_overview_description">Sua identidade Vinz está conectada. Sua biblioteca de músicas neste telefone continua disponível independentemente do login.</string>
+    <string name="cloud_account_edit_profile">Editar perfil</string>
+    <string name="cloud_account_music_profile">SEU PERFIL MUSICAL</string>
+    <string name="cloud_account_security">SEGURANÇA DA CONTA</string>
+    <string name="cloud_account_password_and_recovery">Senha e recuperação</string>
+    <string name="cloud_account_password_reset_description">Envie um e-mail de redefinição de senha para %1$s. O link de redefinição é processado pelo seu fluxo de e-mail Vinz verificado.</string>
+    <string name="cloud_account_send_password_reset">Enviar e-mail de redefinição de senha</string>
+    <string name="cloud_account_connected_services">SERVIÇOS CONECTADOS</string>
+    <string name="cloud_account_connections_subtitle">O login com Google e a importação de músicas do YouTube são permissões separadas.</string>
+    <string name="cloud_account_connections_description">O login por cookie no YouTube Music continua sendo um recurso separado de fonte de música. Ele não faz login no Vinz. A vinculação nativa da identidade do Google e a importação pela API YouTube Data exigem o callback OAuth do Android e um fluxo seguro de troca de tokens; esta tela não finge que essas permissões estão conectadas.</string>
+    <string name="cloud_account_username_checking">Verificando disponibilidade com a Vinz…</string>
+    <string name="cloud_account_username_available">Nome de usuário disponível</string>
+    <string name="cloud_account_username_unavailable">Nome de usuário indisponível ou reservado</string>
+    <string name="cloud_account_username_invalid">Digite de 3 a 24 letras minúsculas, números ou sublinhados</string>
+    <string name="cloud_account_username_error">Não foi possível acessar a Vinz. Tente novamente.</string>
 </resources>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Log masuk dan urus profil awan anda</string>
+    <string name="cloud_account_intro">Profil awan anda berasingan daripada YouTube Music. Muzik tempatan dan main balik berfungsi tanpa log masuk.</string>
+    <string name="cloud_account_email">Alamat e-mel</string>
+    <string name="cloud_account_password">Kata laluan</string>
+    <string name="cloud_account_username">Nama pengguna</string>
+    <string name="cloud_account_display_name">Nama paparan</string>
+    <string name="cloud_account_username_hint">3–24 huruf kecil, nombor atau garis bawah</string>
+    <string name="cloud_account_password_hint">Gunakan sekurang-kurangnya 8 aksara.</string>
+    <string name="cloud_account_create">Buat akaun awan</string>
+    <string name="cloud_account_existing">Saya sudah mempunyai akaun</string>
+    <string name="cloud_account_forgot">Lupa kata laluan?</string>
+    <string name="cloud_account_recovery">Hantar e-mel pemulihan</string>
+    <string name="cloud_account_recovery_sent">Jika akaun wujud untuk alamat ini, e-mel pemulihan telah dihantar.</string>
+    <string name="cloud_account_confirmation">Semak e-mel anda untuk mengesahkan akaun anda, kemudian kembali untuk log masuk.</string>
+    <string name="cloud_account_setup">Selesai menyediakan profil anda.</string>
+    <string name="cloud_account_bio">Biografi</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Profil awam</string>
+    <string name="cloud_account_public_hint">Benarkan pengguna Vinz lain melihat profil anda.</string>
+    <string name="cloud_account_discoverable">Boleh ditemui</string>
+    <string name="cloud_account_discoverable_hint">Benarkan profil anda muncul dalam penemuan pengguna.</string>
+    <string name="cloud_account_saved">Profil awan anda disimpan.</string>
+    <string name="cloud_account_signed_out">Anda telah log keluar daripada akaun awan anda.</string>
+    <string name="cloud_account_signed_in">Log masuk sebagai %1$s</string>
+    <string name="cloud_account_load_failed">Profil anda tidak dapat dimuatkan. Cuba lagi sebelum mengedit.</string>
+    <string name="cloud_account_request_failed">Permintaan akaun ini tidak dapat diselesaikan. Semak sambungan anda dan cuba lagi.</string>
+    <string name="cloud_account_sign_in_failed">Log masuk tidak dapat diselesaikan. Semak butiran dan sambungan anda, kemudian cuba lagi.</string>
+    <string name="cloud_account_save_failed">Profil anda tidak dapat disimpan. Semak butiran dan sambungan anda, kemudian cuba lagi.</string>
+    <string name="cloud_account_recovery_failed">Permintaan pemulihan tidak dapat diselesaikan. Cuba lagi nanti.</string>
+    <string name="cloud_account_sign_out_failed">Log keluar tidak dapat diselesaikan. Cuba lagi.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

@@ -4705,4 +4705,24 @@
     <string name="experimental_split_navigation_keywords">experimental navigare împărțită centrat mini player transformare original</string>
     <string name="icons_shapes_summary">Pachet și grosime pictograme, colțuri și forme</string>
     <string name="icons_shapes_keywords">pictogramă pachet grosime colțuri forme</string>
+    <string name="cloud_account_tab_overview">Prezentare generală</string>
+    <string name="cloud_account_tab_security">Securitate</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">PREZENTARE GENERALĂ A CONTULUI</string>
+    <string name="cloud_account_profile_default">Profilul tău Vinz</string>
+    <string name="cloud_account_overview_description">Identitatea ta Vinz este conectată. Biblioteca ta muzicală de pe acest telefon rămâne disponibilă independent de conectare.</string>
+    <string name="cloud_account_edit_profile">Editează profilul</string>
+    <string name="cloud_account_music_profile">PROFILUL TĂU MUZICAL</string>
+    <string name="cloud_account_security">SECURITATEA CONTULUI</string>
+    <string name="cloud_account_password_and_recovery">Parolă și recuperare</string>
+    <string name="cloud_account_password_reset_description">Trimite un e-mail de resetare a parolei la %1$s. Linkul de resetare este gestionat de fluxul tău de e-mail Vinz verificat.</string>
+    <string name="cloud_account_send_password_reset">Trimite e-mail de resetare a parolei</string>
+    <string name="cloud_account_connected_services">SERVICII CONECTATE</string>
+    <string name="cloud_account_connections_subtitle">Conectarea cu Google și importul de muzică YouTube sunt permisiuni separate.</string>
+    <string name="cloud_account_connections_description">Conectarea cu cookie la YouTube Music rămâne o funcție separată pentru sursa de muzică. Nu te conectează la Vinz. Asocierea nativă a identității Google și importul prin API-ul YouTube Data necesită callback-ul OAuth Android și un flux securizat de schimb de tokenuri; acest ecran nu pretinde că aceste permisiuni sunt conectate.</string>
+    <string name="cloud_account_username_checking">Se verifică disponibilitatea la Vinz…</string>
+    <string name="cloud_account_username_available">Nume de utilizator disponibil</string>
+    <string name="cloud_account_username_unavailable">Nume de utilizator indisponibil sau rezervat</string>
+    <string name="cloud_account_username_invalid">Introdu 3–24 de litere mici, cifre sau liniuțe de subliniere</string>
+    <string name="cloud_account_username_error">Vinz nu a putut fi contactat. Încearcă din nou.</string>
 </resources>

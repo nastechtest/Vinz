@@ -18,7 +18,6 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("signup");
   const [needsOtp, setNeedsOtp] = useState(false);
   const [message, setMessage] = useState("");
@@ -32,7 +31,7 @@ export default function Home() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive) setUser(session?.user ?? null);
     });
-    return () => { alive = false; listener.subscription.unsubscribe(); };
+  return () => { alive = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   useEffect(() => {
@@ -46,6 +45,35 @@ export default function Home() {
       .catch(() => setApiStatus("offline"));
   }, []);
 
+  async function googleSignIn() {
+    if (!supabase) return;
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + "/auth/callback?next=%2Faccount" },
+    });
+    if (error) { setMessage(error.message); setBusy(false); }
+  }
+
+  async function resendOtp() {
+    if (!supabase) return;
+    setBusy(true);
+    const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+    if (!error) setOtp("");
+    setMessage(error?.message ?? "A new 6-digit verification code has been sent.");
+    setBusy(false);
+  }
+
+  async function recoverPassword() {
+    if (!supabase || !email.trim()) { setMessage("Enter your email address first."); return; }
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin + "/auth/callback?next=%2Fauth%2Freset-password",
+    });
+    setMessage(error?.message ?? "If the account exists, a password reset email has been sent.");
+    setBusy(false);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) { setMessage("Account service is not configured yet."); return; }
@@ -56,10 +84,9 @@ export default function Home() {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { emailRedirectTo: new URL("/auth/callback", process.env.NEXT_PUBLIC_VINZ_SITE_URL || "https://vinz-web-liart.vercel.app").toString() },
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
         });
         if (error) throw error;
-        setOtpEmail(email.trim().toLowerCase());
         setOtp("");
         setNeedsOtp(true);
         setMessage("Check your email for the 6-digit verification code.");
@@ -83,7 +110,7 @@ export default function Home() {
     setMessage("");
     try {
       const { error } = await supabase.auth.verifyOtp({
-        email: otpEmail || email.trim().toLowerCase(),
+        email: email.trim(),
         token: otp.trim(),
         type: "signup",
       });
@@ -93,22 +120,6 @@ export default function Home() {
       setMessage("Email verified. Your Vinz account is ready.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Verification failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resendOtp() {
-    if (!supabase || !otpEmail) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const { error } = await supabase.auth.resend({ type: "signup", email: otpEmail });
-      if (error) throw error;
-      setOtp("");
-      setMessage("A new 6-digit verification code has been sent.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not resend the verification code.");
     } finally {
       setBusy(false);
     }
@@ -143,17 +154,17 @@ export default function Home() {
             <p className="eyebrow">ACCOUNT CONNECTED</p>
             <h2>Welcome to Vinz.</h2>
             <p className="muted">{user.email}</p>
-            <button className="primary" onClick={signOut}>Sign out</button>
+            <a className="primary account-entry" href="/account">Open account</a><button className="secondary-action" onClick={signOut}>Sign out</button>
           </div>
         ) : needsOtp ? (
           <form onSubmit={verifyEmail}>
             <p className="eyebrow">EMAIL VERIFICATION</p>
             <h2>Check your inbox.</h2>
-            <p className="muted">Enter the 6-digit code sent to {otpEmail || email}.</p>
+            <p className="muted">Enter the 6-digit code sent to {email}.</p>
             <label htmlFor="otp">Verification code</label>
             <input id="otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="000000" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} required maxLength={6} aria-label="6-digit email verification code" />
             <button className="primary" disabled={busy || otp.length !== 6}>{busy ? "Verifying…" : "Verify email"}</button>
-            <button type="button" className="text-button" onClick={resendOtp} disabled={busy}>Resend code</button>
+            <button type="button" className="text-button" disabled={busy} onClick={resendOtp}>Resend code</button>
             <button type="button" className="text-button" onClick={() => { setNeedsOtp(false); setMessage(""); }}>Back</button>
           </form>
         ) : (
@@ -169,7 +180,7 @@ export default function Home() {
               <input id="email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
               <label htmlFor="password">Password</label>
               <input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={e => setPassword(e.target.value)} minLength={8} required />
-              <button className="primary" disabled={busy}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}</button>
+              <button className="primary" disabled={busy}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}</button>{mode === "login" && <button type="button" className="text-button" onClick={recoverPassword}>Forgot password?</button>}<div className="auth-divider"><span>OR</span></div><button type="button" className="google-button" disabled={busy} onClick={googleSignIn}><span className="google-mark">G</span> Continue with Google</button>
             </form>
           </>
         )}

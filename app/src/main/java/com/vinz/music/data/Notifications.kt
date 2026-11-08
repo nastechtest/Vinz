@@ -68,10 +68,10 @@ object Notifications {
     }
 
     /** Posts a notification on [channel]; quietly does nothing when notifications aren't allowed. */
-    fun post(context: Context, channel: String, id: Int, title: String, text: String, link: String?, build: (NotificationCompat.Builder) -> Unit = {}) {
+    fun post(context: Context, channel: String, id: Int, title: String, text: String, link: String?, iconRes: Int = R.drawable.ic_notification, build: (NotificationCompat.Builder) -> Unit = {}) {
         if (!allowed(context)) return
         val n = NotificationCompat.Builder(context, channel)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(iconRes)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

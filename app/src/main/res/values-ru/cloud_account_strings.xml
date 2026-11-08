@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Войдите и управляйте своим облачным профилем</string>
+    <string name="cloud_account_intro">Ваш облачный профиль отделен от YouTube Music. Локальная музыка и воспроизведение работают без входа в систему.</string>
+    <string name="cloud_account_email">Адрес электронной почты</string>
+    <string name="cloud_account_password">Пароль</string>
+    <string name="cloud_account_username">Имя пользователя</string>
+    <string name="cloud_account_display_name">Отображаемое имя</string>
+    <string name="cloud_account_username_hint">3–24 строчные буквы, цифры или символы подчеркивания.</string>
+    <string name="cloud_account_password_hint">Используйте не менее 8 символов.</string>
+    <string name="cloud_account_create">Создать облачный аккаунт</string>
+    <string name="cloud_account_existing">У меня уже есть аккаунт</string>
+    <string name="cloud_account_forgot">Забыли пароль?</string>
+    <string name="cloud_account_recovery">Отправить письмо для восстановления</string>
+    <string name="cloud_account_recovery_sent">Если для этого адреса существует учетная запись, письмо для восстановления было отправлено.</string>
+    <string name="cloud_account_confirmation">Проверьте свою электронную почту, чтобы подтвердить свою учетную запись, а затем вернитесь для входа в систему.</string>
+    <string name="cloud_account_setup">Завершите настройку своего профиля.</string>
+    <string name="cloud_account_bio">Био</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Публичный профиль</string>
+    <string name="cloud_account_public_hint">Разрешите другим пользователям Vinz просматривать ваш профиль.</string>
+    <string name="cloud_account_discoverable">Обнаруживаемый</string>
+    <string name="cloud_account_discoverable_hint">Разрешите вашему профилю появляться в разделе обнаружения пользователей.</string>
+    <string name="cloud_account_saved">Ваш облачный профиль сохранен.</string>
+    <string name="cloud_account_signed_out">Вы вышли из своей облачной учетной записи.</string>
+    <string name="cloud_account_signed_in">Выполнен вход как %1$s</string>
+    <string name="cloud_account_load_failed">Не удалось загрузить ваш профиль. Прежде чем редактировать, попробуйте еще раз.</string>
+    <string name="cloud_account_request_failed">Этот запрос аккаунта не может быть выполнен. Проверьте подключение и повторите попытку.</string>
+    <string name="cloud_account_sign_in_failed">Не удалось выполнить вход. Проверьте свои данные и соединение, затем повторите попытку.</string>
+    <string name="cloud_account_save_failed">Ваш профиль не удалось сохранить. Проверьте свои данные и соединение, затем повторите попытку.</string>
+    <string name="cloud_account_recovery_failed">Запрос на восстановление не может быть выполнен. Повторите попытку позже.</string>
+    <string name="cloud_account_sign_out_failed">Не удалось завершить выход. Попробуйте еще раз.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

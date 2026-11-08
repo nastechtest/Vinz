@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">experimenteel gesplitst navigatie gecentreerd minispeler vervormen oorspronkelijk</string>
     <string name="icons_shapes_summary">Icoonpakket en gewicht, hoeken en vormen</string>
     <string name="icons_shapes_keywords">icoon pakket gewicht hoeken vormen</string>
+    <string name="cloud_account_tab_overview">Overzicht</string>
+    <string name="cloud_account_tab_security">Beveiliging</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">ACCOUNTOVERZICHT</string>
+    <string name="cloud_account_profile_default">Je Vinz-profiel</string>
+    <string name="cloud_account_overview_description">Je Vinz-identiteit is verbonden. Je muziekbibliotheek op deze telefoon blijft onafhankelijk van het inloggen beschikbaar.</string>
+    <string name="cloud_account_edit_profile">Profiel bewerken</string>
+    <string name="cloud_account_music_profile">JE MUZIEKPROFIEL</string>
+    <string name="cloud_account_security">ACCOUNTBEVEILIGING</string>
+    <string name="cloud_account_password_and_recovery">Wachtwoord en herstel</string>
+    <string name="cloud_account_password_reset_description">Stuur een e-mail voor het opnieuw instellen van je wachtwoord naar %1$s. De link voor opnieuw instellen wordt afgehandeld via je geverifieerde Vinz-e-mailstroom.</string>
+    <string name="cloud_account_send_password_reset">E-mail voor opnieuw instellen van wachtwoord versturen</string>
+    <string name="cloud_account_connected_services">VERBONDEN DIENSTEN</string>
+    <string name="cloud_account_connections_subtitle">Inloggen met Google en het importeren van YouTube-muziek zijn afzonderlijke machtigingen.</string>
+    <string name="cloud_account_connections_description">Inloggen bij YouTube Music met een cookie blijft een afzonderlijke functie voor muziekbronnen. Daarmee log je niet in bij Vinz. Native koppeling van Google-identiteit en import via de YouTube Data API vereisen de Android OAuth-callback en een veilige tokenuitwisselingsstroom; dit scherm wekt niet de indruk dat die machtigingen verbonden zijn.</string>
+    <string name="cloud_account_username_checking">Beschikbaarheid wordt gecontroleerd bij Vinz…</string>
+    <string name="cloud_account_username_available">Gebruikersnaam beschikbaar</string>
+    <string name="cloud_account_username_unavailable">Gebruikersnaam niet beschikbaar of gereserveerd</string>
+    <string name="cloud_account_username_invalid">Voer 3–24 kleine letters, cijfers of underscores in</string>
+    <string name="cloud_account_username_error">Vinz kon niet worden bereikt. Probeer het opnieuw.</string>
 </resources>

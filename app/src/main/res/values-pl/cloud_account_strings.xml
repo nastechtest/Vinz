@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Zaloguj się i zarządzaj swoim profilem w chmurze</string>
+    <string name="cloud_account_intro">Twój profil w chmurze jest niezależny od YouTube Music. Lokalna muzyka i odtwarzanie działają bez logowania.</string>
+    <string name="cloud_account_email">Adres e-mail</string>
+    <string name="cloud_account_password">Hasło</string>
+    <string name="cloud_account_username">Nazwa użytkownika</string>
+    <string name="cloud_account_display_name">Nazwa wyświetlana</string>
+    <string name="cloud_account_username_hint">3–24 małe litery, cyfry lub podkreślenia</string>
+    <string name="cloud_account_password_hint">Użyj co najmniej 8 znaków.</string>
+    <string name="cloud_account_create">Utwórz konto w chmurze</string>
+    <string name="cloud_account_existing">Mam już konto</string>
+    <string name="cloud_account_forgot">Zapomniałeś hasła?</string>
+    <string name="cloud_account_recovery">Wyślij e-mail dotyczący odzyskiwania</string>
+    <string name="cloud_account_recovery_sent">Jeśli dla tego adresu istnieje konto, wysłano e-mail pomocniczy.</string>
+    <string name="cloud_account_confirmation">Sprawdź pocztę e-mail, aby potwierdzić konto, a następnie wróć, aby się zalogować.</string>
+    <string name="cloud_account_setup">Zakończ konfigurowanie swojego profilu.</string>
+    <string name="cloud_account_bio">Biografia</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Profil publiczny</string>
+    <string name="cloud_account_public_hint">Pozwól innym użytkownikom Vinz przeglądać Twój profil.</string>
+    <string name="cloud_account_discoverable">Wykrywalne</string>
+    <string name="cloud_account_discoverable_hint">Zezwól na wyświetlanie swojego profilu podczas odkrywania użytkowników.</string>
+    <string name="cloud_account_saved">Twój profil w chmurze został zapisany.</string>
+    <string name="cloud_account_signed_out">Wylogowałeś się ze swojego konta w chmurze.</string>
+    <string name="cloud_account_signed_in">Zalogowano się jako %1$s</string>
+    <string name="cloud_account_load_failed">Nie można załadować Twojego profilu. Spróbuj ponownie przed edycją.</string>
+    <string name="cloud_account_request_failed">Nie można zrealizować tego żądania dotyczącego konta. Sprawdź połączenie i spróbuj ponownie.</string>
+    <string name="cloud_account_sign_in_failed">Nie można ukończyć logowania. Sprawdź swoje dane i połączenie, a następnie spróbuj ponownie.</string>
+    <string name="cloud_account_save_failed">Nie można zapisać Twojego profilu. Sprawdź swoje dane i połączenie, a następnie spróbuj ponownie.</string>
+    <string name="cloud_account_recovery_failed">Nie można zrealizować żądania odzyskiwania. Spróbuj ponownie później.</string>
+    <string name="cloud_account_sign_out_failed">Nie można ukończyć wylogowywania. Spróbuj ponownie.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

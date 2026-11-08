@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">سائن ان کریں اور اپنے کلاؤڈ پروفائل کا نظم کریں۔</string>
+    <string name="cloud_account_intro">آپ کا کلاؤڈ پروفائل YouTube Music سے الگ ہے۔ سائن ان کیے بغیر مقامی موسیقی اور پلے بیک کام کرتے ہیں۔</string>
+    <string name="cloud_account_email">ای میل ایڈریس</string>
+    <string name="cloud_account_password">پاس ورڈ</string>
+    <string name="cloud_account_username">صارف نام</string>
+    <string name="cloud_account_display_name">ڈسپلے کا نام</string>
+    <string name="cloud_account_username_hint">3–24 چھوٹے حروف، اعداد یا انڈر سکور</string>
+    <string name="cloud_account_password_hint">کم از کم 8 حروف استعمال کریں۔</string>
+    <string name="cloud_account_create">کلاؤڈ اکاؤنٹ بنائیں</string>
+    <string name="cloud_account_existing">میرے پاس پہلے سے ہی ایک اکاؤنٹ ہے۔</string>
+    <string name="cloud_account_forgot">پاس ورڈ بھول گئے؟</string>
+    <string name="cloud_account_recovery">بازیابی ای میل بھیجیں۔</string>
+    <string name="cloud_account_recovery_sent">اگر اس پتے کے لیے کوئی اکاؤنٹ موجود ہے تو، ایک بازیابی ای میل بھیجی گئی ہے۔</string>
+    <string name="cloud_account_confirmation">اپنے اکاؤنٹ کی تصدیق کے لیے اپنا ای میل چیک کریں، پھر سائن ان کرنے کے لیے واپس جائیں۔</string>
+    <string name="cloud_account_setup">اپنا پروفائل ترتیب دینا مکمل کریں۔</string>
+    <string name="cloud_account_bio">بایو</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">عوامی پروفائل</string>
+    <string name="cloud_account_public_hint">دوسرے Vinz صارفین کو اپنا پروفائل دیکھنے کی اجازت دیں۔</string>
+    <string name="cloud_account_discoverable">قابل دریافت</string>
+    <string name="cloud_account_discoverable_hint">اپنے پروفائل کو صارف کی دریافت میں ظاہر ہونے دیں۔</string>
+    <string name="cloud_account_saved">آپ کا کلاؤڈ پروفائل محفوظ ہو گیا ہے۔</string>
+    <string name="cloud_account_signed_out">آپ اپنے کلاؤڈ اکاؤنٹ سے سائن آؤٹ ہو چکے ہیں۔</string>
+    <string name="cloud_account_signed_in">%1$s کے بطور سائن ان ہوا۔</string>
+    <string name="cloud_account_load_failed">آپ کا پروفائل لوڈ نہیں ہو سکا۔ ترمیم کرنے سے پہلے دوبارہ کوشش کریں۔</string>
+    <string name="cloud_account_request_failed">اکاؤنٹ کی یہ درخواست مکمل نہیں ہو سکی۔ اپنا کنکشن چیک کریں اور دوبارہ کوشش کریں۔</string>
+    <string name="cloud_account_sign_in_failed">سائن ان مکمل نہیں ہو سکا۔ اپنی تفصیلات اور کنکشن چیک کریں، پھر دوبارہ کوشش کریں۔</string>
+    <string name="cloud_account_save_failed">آپ کا پروفائل محفوظ نہیں ہو سکا۔ اپنی تفصیلات اور کنکشن چیک کریں، پھر دوبارہ کوشش کریں۔</string>
+    <string name="cloud_account_recovery_failed">بازیابی کی درخواست مکمل نہیں ہو سکی۔ بعد میں دوبارہ کوشش کریں۔</string>
+    <string name="cloud_account_sign_out_failed">سائن آؤٹ مکمل نہیں ہو سکا۔ دوبارہ کوشش کریں۔</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>
