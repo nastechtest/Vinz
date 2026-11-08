@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /** Screen-scoped presentation state. Auth, tokens, network and persistence stay in the existing client. */
 internal class CloudAccountController(
@@ -19,13 +20,41 @@ internal class CloudAccountController(
         it.copy(email = it.identity?.email.orEmpty())
     })
     val state: StateFlow<CloudAccountState> = mutable.asStateFlow()
+    private var usernameCheckJob: Job? = null
 
     fun mode(mode: CloudAccountMode) = edit { copy(mode = mode, password = "", message = null, error = null) }
     fun email(value: String) = edit { copy(email = value, message = null, error = null) }
     fun password(value: String) = edit { copy(password = value, message = null, error = null) }
     /** Release typed secrets when the account screen is disposed. */
     fun clearPassword() { mutable.value = mutable.value.copy(password = "") }
-    fun username(value: String) = edit { copy(draft = draft.copy(username = CloudAccountValidation.username(value)), message = null, error = null) }
+    fun username(value: String) {
+        if (mutable.value.busy) return
+        val clean = CloudAccountValidation.username(value)
+        usernameCheckJob?.cancel()
+        val current = mutable.value
+        val status = when {
+            current.identity == null -> UsernameAvailability.IDLE
+            clean == current.originalUsername -> UsernameAvailability.UNCHANGED
+            !clean.matches(Regex("^[a-z0-9_]{3,24}$")) -> UsernameAvailability.INVALID
+            else -> UsernameAvailability.CHECKING
+        }
+        mutable.value = current.copy(draft = current.draft.copy(username = clean),
+            usernameAvailability = status, message = null, error = null)
+        if (status == UsernameAvailability.CHECKING) {
+            usernameCheckJob = scope.launch {
+                delay(400)
+                try {
+                    val available = gateway.checkUsernameAvailable(clean)
+                    if (mutable.value.draft.username == clean) mutable.value = mutable.value.copy(
+                        usernameAvailability = if (available) UsernameAvailability.AVAILABLE else UsernameAvailability.UNAVAILABLE,
+                    )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) {
+                    if (mutable.value.draft.username == clean) mutable.value = mutable.value.copy(usernameAvailability = UsernameAvailability.ERROR)
+                }
+            }
+        }
+    }
     fun displayName(value: String) = edit { copy(draft = draft.copy(displayName = value.take(60)), message = null, error = null) }
     fun bio(value: String) = edit { copy(draft = draft.copy(bio = value.take(160)), message = null, error = null) }
     fun publicProfile(value: Boolean) = edit { copy(draft = draft.copy(isPublic = value), message = null, error = null) }
@@ -45,7 +74,9 @@ internal class CloudAccountController(
                 return@request
             }
             mutable.value = mutable.value.copy(
-                draft = profile?.draft() ?: CloudProfileDraft(), profileReady = true, profileLoadFailed = false,
+                draft = profile?.draft() ?: CloudProfileDraft(), originalUsername = profile?.username.orEmpty(),
+                usernameAvailability = if (profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,
+                profileReady = true, profileLoadFailed = false,
                 message = if (profile == null) R.string.cloud_account_setup else null,
             )
         }
@@ -81,6 +112,8 @@ internal class CloudAccountController(
                             mutable.value = CloudAccountState(
                                 identity = identity, email = identity.email, busy = true, profileReady = true,
                                 draft = result.profile?.draft() ?: if (before.mode == CloudAccountMode.SIGN_UP) before.draft else CloudProfileDraft(),
+                                originalUsername = result.profile?.username.orEmpty(),
+                                usernameAvailability = if (result.profile == null) UsernameAvailability.AVAILABLE else UsernameAvailability.UNCHANGED,
                                 message = if (result.profile == null) R.string.cloud_account_setup else null,
                             )
                         }
@@ -103,7 +136,15 @@ internal class CloudAccountController(
                 resetForCurrentIdentity()
                 return@request
             }
-            mutable.value = mutable.value.copy(draft = saved.draft(), message = R.string.cloud_account_saved)
+            mutable.value = mutable.value.copy(draft = saved.draft(), originalUsername = saved.username, usernameAvailability = UsernameAvailability.UNCHANGED, message = R.string.cloud_account_saved)
+        }
+    }
+
+    fun sendPasswordReset(): Job? {
+        val email = mutable.value.identity?.email?.takeIf { it.isNotBlank() } ?: return null
+        return request(R.string.cloud_account_recovery_failed) {
+            gateway.recover(email)
+            mutable.value = mutable.value.copy(message = R.string.cloud_account_recovery_sent)
         }
     }
 

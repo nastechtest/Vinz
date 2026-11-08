@@ -7,6 +7,8 @@ internal data class CloudAccountIdentity(val userId: String, val email: String)
 
 internal enum class CloudAccountMode { SIGN_IN, SIGN_UP, RECOVERY }
 
+internal enum class UsernameAvailability { IDLE, CHECKING, AVAILABLE, UNAVAILABLE, INVALID, ERROR, UNCHANGED }
+
 internal data class CloudProfileDraft(
     val username: String = "",
     val displayName: String = "",
@@ -22,6 +24,8 @@ internal data class CloudAccountState(
     // Passwords intentionally stay in memory, never rememberSaveable or persistent storage.
     val password: String = "",
     val draft: CloudProfileDraft = CloudProfileDraft(),
+    val originalUsername: String = "",
+    val usernameAvailability: UsernameAvailability = UsernameAvailability.IDLE,
     val busy: Boolean = false,
     val profileReady: Boolean = false,
     val profileLoadFailed: Boolean = false,
