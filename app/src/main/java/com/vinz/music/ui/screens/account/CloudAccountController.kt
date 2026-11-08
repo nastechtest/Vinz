@@ -162,7 +162,7 @@ internal class CloudAccountController(
 
     fun connectYouTube(): Job? = request(R.string.cloud_account_youtube_failed) {
         val authorizationUrl = gateway.youtubeConnectUrl()
-        mutable.value = mutable.value.copy(youtubeAuthorizationUrl = authorizationUrl)
+        mutable.value = mutable.value.copy(youtubeAuthorizationUrl = authorizationUrl, youtubeConnectPending = true)
     }
 
     fun refreshYouTubeStatus(): Job? = request(R.string.cloud_account_youtube_failed) {
