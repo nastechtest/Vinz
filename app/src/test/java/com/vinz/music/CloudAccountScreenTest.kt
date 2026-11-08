@@ -184,7 +184,7 @@ class CloudAccountScreenTest {
         compose.onNodeWithTag("cloud-account-tab-connections").performScrollTo().performClick()
         compose.onNodeWithTag("cloud-account-youtube-action").performScrollTo().assertIsEnabled()
         compose.onNodeWithText("Connect YouTube Music").assertExists()
-        compose.onNodeWithText("Connect YouTube Music to your Vinz Account using Google's secure authorization. Vinz never asks for a YouTube email or password.").assertExists()
+        compose.onNodeWithText("Connect YouTube Music to your Vinz Account using secure Google authorization. Vinz never asks for a YouTube email or password.").assertExists()
     }
 
     @Test fun connectedYouTubeShowsImportAndDisconnectActions() {
