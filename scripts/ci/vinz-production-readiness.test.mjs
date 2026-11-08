@@ -31,7 +31,15 @@ test("private profile anonymous denial is recognized only for Postgres privilege
   assert.equal(isExpectedPrivateTableDenial(200, { code: "42501", message: "permission denied for table vinz_profiles" }), false);
 });
 
-test("SQL account access contract asserts profile privacy and share-link column grants", () => {\n  const sql = fs.readFileSync("supabase/tests/vinz_account_access_contract.sql", "utf8");\n  assert.match(sql, /vinz_profiles must have RLS enabled/);\n  assert.match(sql, /authenticated must have profile SELECT privilege/);\n  assert.match(sql, /anon must not read share-link owner IDs/);\n  assert.match(sql, /public share-link expiry policy is missing/);\n});\n\ntest("localhost variants are detected without matching unrelated hosts", () => {
+test("SQL account access contract asserts profile privacy and share-link column grants", () => {
+  const sql = fs.readFileSync("supabase/tests/vinz_account_access_contract.sql", "utf8");
+  assert.match(sql, /vinz_profiles must have RLS enabled/);
+  assert.match(sql, /authenticated must have profile SELECT privilege/);
+  assert.match(sql, /anon must not read share-link owner IDs/);
+  assert.match(sql, /public share-link expiry policy is missing/);
+});
+
+test("localhost variants are detected without matching unrelated hosts", () => {
   for (const host of ["localhost", "api.localhost", "127.0.0.1", "0.0.0.0", "::1"]) assert.equal(isLocalHost(host), true);
   assert.equal(isLocalHost("home.vinzmusic.workers.dev"), false);
   assert.equal(isLocalHost("notlocalhost.com"), false);
