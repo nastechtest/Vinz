@@ -153,6 +153,8 @@ class CloudAccountControllerTest {
         controller.password("password8")
         controller.username("new_artist")
         controller.displayName("New Artist")
+        // Registration now waits for the debounced server-side username availability response.
+        kotlinx.coroutines.delay(450)
 
         controller.submit()!!.join()
 
