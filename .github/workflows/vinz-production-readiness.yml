@@ -45,6 +45,8 @@ jobs:
           node-version: "22"
       - name: Test URL, duplicate and privacy classifiers
         run: node --test scripts/ci/vinz-production-readiness.test.mjs
+      - name: Syntax-check provider audit scripts
+        run: node --check scripts/ci/vinz-cloudflare-audit.mjs && node --check scripts/ci/vinz-supabase-auth-audit.mjs
 
   live-connectivity-and-config:
     name: Live server connectivity and production configuration
