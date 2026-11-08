@@ -12,7 +12,7 @@ The repository keeps the Android app, Cloudflare Worker and Supabase Edge Functi
 | `CodeQL` | PR, push, weekly | Existing Kotlin/Java security analysis |
 | `Platform backend checks` | Backend/workflow changes, manual | Node 22 syntax checks, Cloudflare Worker tests, Supabase migration filename/order checks and YAML/patch hygiene |
 | `Connected provider health` | Weekly Monday, manual | Non-mutating authentication checks for Cloudflare, Supabase, Linear and PostHog |
-| `Deploy Cloudflare staging API` | Manual only | Re-runs Worker tests and uploads only `vinz-api-staging`; requires the exact confirmation phrase |
+| `Deploy Cloudflare staging API` | Manual only | Re-runs Worker tests and uploads only `staging`; requires the exact confirmation phrase |
 | `Vinz platform deployment` | Manual only | Deploys staging or production Worker after tests; production requires `deploy-production` and a protected environment |
 | `Vinz web checks and Cloudflare deployment` | PR, main push, manual | Builds the Next.js portal with vinext for Cloudflare Workers; production deploy is manual and targets `home.vinzmusic.workers.dev` |
 | `Deploy Vinz Supabase Edge Function` | Manual only | Deploys only `vinz-discovery` after the exact confirmation phrase; does not push migrations |
@@ -43,7 +43,7 @@ The web frontend is hosted on Cloudflare Workers at `https://home.vinzmusic.work
 
 The staging and production deploy workflows use `CLOUDFLARE_ACCOUNT_ID` and the `POSTHOG_PROJECT_KEY` repository variable (optional for telemetry). The Worker URL, publishable Supabase key, PostHog host, R2 bucket, KV namespace and compatibility date are maintained in `platform/cloudflare/wrangler.jsonc`, which CI validates and the deployment workflow reads as its source of truth. The deploy injects the public PostHog project ingestion key at deploy time; it is not committed to source.
 
-It reuses `CLOUDFLARE_API_TOKEN` from the provider health section. The Cloudflare token must be scoped to the Vinz account and have permission to edit Workers scripts. The workflow binds the existing `vinz-backups` R2 bucket and `VINZ_CATALOG_CACHE` KV namespace, then deploys only `vinz-api-staging`.
+It reuses `CLOUDFLARE_API_TOKEN` from the provider health section. The Cloudflare token must be scoped to the Vinz account and have permission to edit Workers scripts. The workflow binds the existing `vinz-backups` R2 bucket and `VINZ_CATALOG_CACHE` KV namespace, then deploys only `staging`.
 
 The production deploy requires `confirm_production=deploy-production`. Create GitHub Actions environments named `staging` and `production`; require reviewers on `production` under **Settings → Environments**. The workflow does not create routes, change DNS, or deploy Supabase migrations. The committed Wrangler config contains only public configuration and resource identifiers; never put service-role keys, access tokens, SMTP credentials or signing keys in it.
 
