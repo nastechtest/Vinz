@@ -40,7 +40,10 @@ data class EqProfile(
          * left out. Null when there's no filter in it at all.
          */
         fun parse(name: String, text: String, source: String = ""): EqProfile? {
-            val preamp = PREAMP.find(text)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+            // Imported profiles are external input. Ignore non-finite or extreme preamp values rather than letting
+            // them turn the processor output into Infinity/NaN.
+            val preamp = PREAMP.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
+                ?.takeIf { it.isFinite() && it in -60.0..60.0 } ?: 0.0
             val filters = FILTER.findAll(text).mapNotNull { m ->
                 val type = when (m.groupValues[1].uppercase()) {
                     "PK", "PEQ", "PEAK" -> EqFilter.Type.PEAK
@@ -50,10 +53,12 @@ data class EqProfile(
                     "HP", "HPQ" -> EqFilter.Type.HIGH_PASS
                     else -> return@mapNotNull null
                 }
-                val hz = m.groupValues[2].toDoubleOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+                val hz = m.groupValues[2].toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 } ?: return@mapNotNull null
                 val gain = m.groupValues[3].toDoubleOrNull() ?: 0.0
-                // Shelves without a Q are the usual gentle ones (0.707); a peak always has one.
-                val q = m.groupValues[4].toDoubleOrNull()?.takeIf { it > 0 } ?: 0.707
+                if (!gain.isFinite() || gain !in -60.0..60.0) return@mapNotNull null
+                // Shelves without a Q are the usual gentle ones (0.707); a supplied Q must be finite and positive.
+                val q = if (m.groupValues[4].isBlank()) 0.707 else
+                    m.groupValues[4].toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 } ?: return@mapNotNull null
                 EqFilter(type, hz, gain, q)
             }.toList()
             if (filters.isEmpty()) return null
@@ -76,13 +81,17 @@ class Biquad(val b0: Double, val b1: Double, val b2: Double, val a1: Double, val
     companion object {
         /** [f] at a sample rate [rate], its gain scaled by [strength] (0..1). Null when it can't be applied there. */
         fun of(f: EqFilter, rate: Int, strength: Double = 1.0): Biquad? {
-            // A band at or past the top of what this sample rate can carry can't be drawn there.
-            if (f.hz >= rate * 0.49) return null
+            // Profiles can come from downloaded files or restored backups. Reject invalid values before coefficient
+            // math: NaN/Infinity or a near-zero Q can poison every sample in the audio processor.
+            if (rate <= 0 || !strength.isFinite() || strength !in 0.0..1.0) return null
+            if (!f.hz.isFinite() || f.hz <= 0.0 || f.hz >= rate * 0.49) return null
+            if (!f.gainDb.isFinite() || f.gainDb !in -60.0..60.0 || !f.q.isFinite() || f.q <= 0.0) return null
             val gain = f.gainDb * strength
             val a = 10.0.pow(gain / 40)
             val w0 = 2 * PI * f.hz / rate
             val cw = cos(w0)
             val alpha = sin(w0) / (2 * f.q)
+            if (!a.isFinite() || !alpha.isFinite()) return null
             val (b0, b1, b2, a0, a1, a2) = when (f.type) {
                 EqFilter.Type.PEAK -> listOf(1 + alpha * a, -2 * cw, 1 - alpha * a, 1 + alpha / a, -2 * cw, 1 - alpha / a)
                 EqFilter.Type.LOW_SHELF -> {
@@ -101,6 +110,9 @@ class Biquad(val b0: Double, val b1: Double, val b2: Double, val a1: Double, val
                 EqFilter.Type.HIGH_PASS -> if (strength <= 0) return null else
                     listOf((1 + cw) / 2, -(1 + cw), (1 + cw) / 2, 1 + alpha, -2 * cw, 1 - alpha)
             }
+            if (!a0.isFinite() || kotlin.math.abs(a0) < 1e-12) return null
+            val coefficients = listOf(b0, b1, b2, a1, a2)
+            if (coefficients.any { !it.isFinite() }) return null
             return Biquad(b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
         }
 
