@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Melden Sie sich an und verwalten Sie Ihr Cloud-Profil</string>
+    <string name="cloud_account_intro">Dein Cloud-Profil ist von YouTube Music getrennt. Lokale Musik und Wiedergabe funktionieren ohne Anmeldung.</string>
+    <string name="cloud_account_email">E-Mail-Adresse</string>
+    <string name="cloud_account_password">Passwort</string>
+    <string name="cloud_account_username">Benutzername</string>
+    <string name="cloud_account_display_name">Anzeigename</string>
+    <string name="cloud_account_username_hint">3–24 Kleinbuchstaben, Zahlen oder Unterstriche</string>
+    <string name="cloud_account_password_hint">Verwenden Sie mindestens 8 Zeichen.</string>
+    <string name="cloud_account_create">Cloud-Konto erstellen</string>
+    <string name="cloud_account_existing">Ich habe bereits ein Konto</string>
+    <string name="cloud_account_forgot">Passwort vergessen?</string>
+    <string name="cloud_account_recovery">Senden Sie eine Wiederherstellungs-E-Mail</string>
+    <string name="cloud_account_recovery_sent">Wenn für diese Adresse ein Konto vorhanden ist, wurde eine Wiederherstellungs-E-Mail gesendet.</string>
+    <string name="cloud_account_confirmation">Überprüfen Sie Ihre E-Mails, um Ihr Konto zu bestätigen, und kehren Sie dann zurück, um sich anzumelden.</string>
+    <string name="cloud_account_setup">Schließen Sie die Einrichtung Ihres Profils ab.</string>
+    <string name="cloud_account_bio">Biografie</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Öffentliches Profil</string>
+    <string name="cloud_account_public_hint">Ermöglichen Sie anderen Vinz-Benutzern, Ihr Profil anzuzeigen.</string>
+    <string name="cloud_account_discoverable">Auffindbar</string>
+    <string name="cloud_account_discoverable_hint">Erlauben Sie, dass Ihr Profil in der Benutzererkennung angezeigt wird.</string>
+    <string name="cloud_account_saved">Ihr Cloud-Profil wird gespeichert.</string>
+    <string name="cloud_account_signed_out">Sie haben sich von Ihrem Cloud-Konto abgemeldet.</string>
+    <string name="cloud_account_signed_in">Angemeldet als %1$s</string>
+    <string name="cloud_account_load_failed">Ihr Profil konnte nicht geladen werden. Versuchen Sie es vor der Bearbeitung noch einmal.</string>
+    <string name="cloud_account_request_failed">Diese Kontoanfrage konnte nicht abgeschlossen werden. Überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.</string>
+    <string name="cloud_account_sign_in_failed">Die Anmeldung konnte nicht abgeschlossen werden. Überprüfen Sie Ihre Angaben und Ihre Verbindung und versuchen Sie es dann erneut.</string>
+    <string name="cloud_account_save_failed">Ihr Profil konnte nicht gespeichert werden. Überprüfen Sie Ihre Angaben und Ihre Verbindung und versuchen Sie es dann erneut.</string>
+    <string name="cloud_account_recovery_failed">Die Wiederherstellungsanfrage konnte nicht abgeschlossen werden. Versuchen Sie es später noch einmal.</string>
+    <string name="cloud_account_sign_out_failed">Die Abmeldung konnte nicht abgeschlossen werden. Versuchen Sie es erneut.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>
