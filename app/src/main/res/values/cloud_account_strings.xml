@@ -37,7 +37,7 @@
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
     <string name="cloud_account_youtube_title">YouTube Music</string>
-    <string name="cloud_account_youtube_description">Connect YouTube Music to your Vinz Account using Google's secure authorization. Vinz never asks for a YouTube email or password.</string>
+    <string name="cloud_account_youtube_description">Connect YouTube Music to your Vinz Account using secure Google authorization. Vinz never asks for a YouTube email or password.</string>
     <string name="cloud_account_youtube_not_connected">Not connected</string>
     <string name="cloud_account_youtube_connected">Connected channel: %1$s</string>
     <string name="cloud_account_youtube_connect">Connect YouTube Music</string>
