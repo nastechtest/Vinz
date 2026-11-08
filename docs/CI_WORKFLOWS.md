@@ -15,7 +15,7 @@ The repository keeps the Android app, Cloudflare Worker and Supabase Edge Functi
 | `Deploy Cloudflare staging API` | Manual only | Re-runs Worker tests and uploads only `staging`; requires the exact confirmation phrase |
 | `Vinz platform deployment` | Manual only | Deploys staging or production Worker after tests; production requires `deploy-production` and a protected environment |
 | `Vinz web checks and Cloudflare deployment` | PR, main push, manual | Builds the Next.js portal with vinext for Cloudflare Workers; production deploy is manual and targets `home.vinzmusic.workers.dev` |
-| `Vinz production readiness` | PR, main push, manual, every 6 hours | Tests real home/API/Supabase endpoints, live Cloudflare Worker scripts/routes/bindings/secrets, missing tables, URL drift, duplicate CORS entries and changed configuration; uploads JSON evidence |
+| `Vinz production readiness` | PR, main push, manual, every 6 hours | Tests real home/API/Supabase endpoints, live Cloudflare Worker scripts/routes/bindings/secrets, Supabase Auth URL/Google/SMTP/security settings, missing tables, URL drift, duplicate CORS entries and changed configuration; uploads JSON evidence |
 | `Deploy Vinz Supabase Edge Function` | Manual only | Deploys only `vinz-discovery` after the exact confirmation phrase; does not push migrations |
 | Dependabot | Weekly Monday | Gradle, Cloudflare Worker npm dependencies and pinned GitHub Actions updates |
 
