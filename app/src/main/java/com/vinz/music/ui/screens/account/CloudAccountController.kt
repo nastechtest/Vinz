@@ -85,8 +85,11 @@ internal class CloudAccountController(
     fun submit(): Job? {
         val before = mutable.value
         if (!before.canSubmit) return null
-        val failure = if (before.mode == CloudAccountMode.RECOVERY) R.string.cloud_account_recovery_failed
-            else R.string.cloud_account_sign_in_failed
+        val failure = when (before.mode) {
+            CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery_failed
+            CloudAccountMode.SIGN_UP -> R.string.cloud_account_sign_up_failed
+            CloudAccountMode.SIGN_IN -> R.string.cloud_account_sign_in_failed
+        }
         return request(failure) {
             val email = before.email.trim()
             if (before.mode == CloudAccountMode.RECOVERY) {
