@@ -15,11 +15,10 @@ cd "${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
 # Fail before tests if a required Vinz brand asset is missing or has drifted.
 python3 "${script_dir}/check_branding.py"
 
-# Robolectric fetches its Android runtime from Maven Central inside the test JVM, where a single 404 fails whichever
-# test happens to be running (PR #19 lost five render tests to one missing .pom.sha512). Warmed up front instead, with
-# retries; if nothing can be downloaded the tests fall back to fetching it themselves, as they always used to.
-"${script_dir}/prefetch-robolectric.sh" ||
-  echo "::warning title=Robolectric prefetch::the runtimes were not prefetched, so the tests will download them"
+# Robolectric's POM and runtime JARs are fetched and validated before the test JVM starts. This is a hard
+# prerequisite: silently falling back to Robolectric's one-shot network fetch made Maven CDN hiccups look like
+# random test failures. The prefetcher retries and uses a second Maven Central endpoint before failing clearly.
+"${script_dir}/prefetch-robolectric.sh"
 
 mapfile -t sources < <(find app/src/test/java -type f -name '*Test.kt' | sort)
 [[ ${#sources[@]} -gt 0 ]] || { echo "::error::no JVM test sources found under app/src/test/java" >&2; exit 1; }
