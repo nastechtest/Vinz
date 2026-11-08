@@ -166,7 +166,7 @@ export async function handleYouTubeCallback(request, url, env, config) {
   if (!saved) return callbackResult("expired");
   await env.CATALOG_CACHE.delete(key);
   let pending;
-  try { pending = JSON.parse(saved); } catch { return callbackResult("invalid_state"); }
+  try { pending = JSON.parse(await decryptSecret(saved, env)); } catch { return callbackResult("invalid_state"); }
   if (!pending.userId || !pending.authorization || !pending.codeVerifier) return callbackResult("invalid_state");
   try {
     const identityResponse = await fetch(config.url + "/auth/v1/user", {
@@ -210,7 +210,8 @@ export async function handleYouTubeRoute(request, url, env, config, auth) {
     const verifier = randomToken(48);
     const challenge = encodeBase64Url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
     const pending = JSON.stringify({ userId: auth.user.id, authorization: auth.authorization, codeVerifier: verifier });
-    await env.CATALOG_CACHE.put("vinz:youtube:oauth:" + state, pending, { expirationTtl: 600 });
+    const protectedPending = await encryptSecret(pending, env);
+    await env.CATALOG_CACHE.put("vinz:youtube:oauth:" + state, protectedPending, { expirationTtl: 600 });
     const authorizationUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     authorizationUrl.search = new URLSearchParams({
       client_id: env.GOOGLE_CLIENT_ID,
