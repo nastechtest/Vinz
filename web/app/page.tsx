@@ -180,7 +180,7 @@ export default function Home() {
           </>
         )}
         {message && <p className="message" role="status">{message}</p>}
-        {!supabase && <p className="message warning">Add the Supabase public URL and publishable key to the Vercel project environment.</p>}
+        {!supabase && <p className="message warning">Vinz account services are temporarily unavailable. Please try again later.</p>}
         <p className="legal">By continuing, you agree to use Vinz responsibly and protect your account credentials.</p>
       </section>
       <footer><span>© {new Date().getFullYear()} Vinz</span><span>Built for the love of music.</span></footer>
