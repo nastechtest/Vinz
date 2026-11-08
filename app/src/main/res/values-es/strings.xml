@@ -4705,4 +4705,24 @@
     <string name="experimental_split_navigation_keywords">experimental navegación dividida centrado minirreproductor transformar original</string>
     <string name="icons_shapes_summary">Paquete y grosor de iconos, esquinas y formas</string>
     <string name="icons_shapes_keywords">icono paquete grosor esquinas formas</string>
+    <string name="cloud_account_tab_overview">Resumen</string>
+    <string name="cloud_account_tab_security">Seguridad</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">RESUMEN DE LA CUENTA</string>
+    <string name="cloud_account_profile_default">Tu perfil de Vinz</string>
+    <string name="cloud_account_overview_description">Tu identidad de Vinz está conectada. Tu biblioteca de música en este teléfono sigue disponible independientemente de que inicies sesión.</string>
+    <string name="cloud_account_edit_profile">Editar perfil</string>
+    <string name="cloud_account_music_profile">TU PERFIL MUSICAL</string>
+    <string name="cloud_account_security">SEGURIDAD DE LA CUENTA</string>
+    <string name="cloud_account_password_and_recovery">Contraseña y recuperación</string>
+    <string name="cloud_account_password_reset_description">Envía un correo electrónico para restablecer la contraseña a %1$s. El enlace de restablecimiento se gestiona mediante tu flujo de correo electrónico verificado de Vinz.</string>
+    <string name="cloud_account_send_password_reset">Enviar correo para restablecer la contraseña</string>
+    <string name="cloud_account_connected_services">SERVICIOS CONECTADOS</string>
+    <string name="cloud_account_connections_subtitle">El inicio de sesión con Google y la importación de música de YouTube son permisos independientes.</string>
+    <string name="cloud_account_connections_description">El inicio de sesión con cookies en YouTube Music sigue siendo una función independiente de fuente de música. No inicia sesión en Vinz. La vinculación nativa de identidad de Google y la importación mediante la API de datos de YouTube requieren la devolución de llamada OAuth de Android y un flujo seguro de intercambio de tokens; esta pantalla no pretende que esos permisos estén conectados.</string>
+    <string name="cloud_account_username_checking">Comprobando disponibilidad con Vinz…</string>
+    <string name="cloud_account_username_available">Nombre de usuario disponible</string>
+    <string name="cloud_account_username_unavailable">Nombre de usuario no disponible o reservado</string>
+    <string name="cloud_account_username_invalid">Introduce de 3 a 24 letras minúsculas, números o guiones bajos</string>
+    <string name="cloud_account_username_error">No se ha podido contactar con Vinz. Inténtalo de nuevo.</string>
 </resources>

@@ -4581,4 +4581,24 @@
     <string name="experimental_split_navigation_keywords">ทดลอง แยก การนำทาง กึ่งกลาง มินิเพลเยอร์ เปลี่ยนรูป แบบเดิม</string>
     <string name="icons_shapes_summary">ชุดและน้ำหนักไอคอน มุมและรูปทรง</string>
     <string name="icons_shapes_keywords">ไอคอน ชุด น้ำหนัก มุม รูปทรง</string>
+    <string name="cloud_account_tab_overview">ภาพรวม</string>
+    <string name="cloud_account_tab_security">ความปลอดภัย</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">ภาพรวมบัญชี</string>
+    <string name="cloud_account_profile_default">โปรไฟล์ Vinz ของคุณ</string>
+    <string name="cloud_account_overview_description">ตัวตน Vinz ของคุณเชื่อมต่อแล้ว คลังเพลงในโทรศัพท์เครื่องนี้ยังใช้งานได้โดยไม่ขึ้นกับการลงชื่อเข้าใช้ของคุณ</string>
+    <string name="cloud_account_edit_profile">แก้ไขโปรไฟล์</string>
+    <string name="cloud_account_music_profile">โปรไฟล์เพลงของคุณ</string>
+    <string name="cloud_account_security">ความปลอดภัยของบัญชี</string>
+    <string name="cloud_account_password_and_recovery">รหัสผ่านและการกู้คืน</string>
+    <string name="cloud_account_password_reset_description">ส่งอีเมลรีเซ็ตรหัสผ่านไปที่ %1$s ลิงก์รีเซ็ตจะดำเนินการผ่านขั้นตอนอีเมล Vinz ที่ยืนยันแล้วของคุณ</string>
+    <string name="cloud_account_send_password_reset">ส่งอีเมลรีเซ็ตรหัสผ่าน</string>
+    <string name="cloud_account_connected_services">บริการที่เชื่อมต่อ</string>
+    <string name="cloud_account_connections_subtitle">การลงชื่อเข้าใช้ Google และการนำเข้าเพลง YouTube เป็นสิทธิ์แยกกัน</string>
+    <string name="cloud_account_connections_description">การลงชื่อเข้าใช้ด้วยคุกกี้ YouTube Music ยังคงเป็นคุณลักษณะแหล่งเพลงแยกต่างหาก ซึ่งไม่ได้ลงชื่อเข้าใช้ Vinz ให้คุณ การเชื่อมโยงตัวตน Google แบบเนทีฟและการนำเข้า YouTube Data API ต้องใช้ Android OAuth callback และขั้นตอนแลกเปลี่ยนโทเค็นที่ปลอดภัย หน้าจอนี้ไม่ได้แสร้งว่าสิทธิ์เหล่านั้นเชื่อมต่ออยู่แล้ว</string>
+    <string name="cloud_account_username_checking">กำลังตรวจสอบความพร้อมใช้งานกับ Vinz…</string>
+    <string name="cloud_account_username_available">ชื่อผู้ใช้พร้อมใช้งาน</string>
+    <string name="cloud_account_username_unavailable">ชื่อผู้ใช้ไม่พร้อมใช้งานหรือถูกสงวนไว้</string>
+    <string name="cloud_account_username_invalid">ป้อนตัวอักษรพิมพ์เล็ก ตัวเลข หรือขีดล่าง 3–24 ตัว</string>
+    <string name="cloud_account_username_error">ไม่สามารถติดต่อ Vinz ได้ โปรดลองอีกครั้ง</string>
 </resources>

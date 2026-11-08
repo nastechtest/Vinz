@@ -4581,4 +4581,24 @@
     <string name="experimental_split_navigation_keywords">eksperimental navigasi terpisah tengah pemain mini berubah asal</string>
     <string name="icons_shapes_summary">Pek dan berat ikon, bucu dan bentuk</string>
     <string name="icons_shapes_keywords">ikon pek berat bucu bentuk</string>
+    <string name="cloud_account_tab_overview">Gambaran keseluruhan</string>
+    <string name="cloud_account_tab_security">Keselamatan</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">GAMBARAN KESELURUHAN AKAUN</string>
+    <string name="cloud_account_profile_default">Profil Vinz anda</string>
+    <string name="cloud_account_overview_description">Identiti Vinz anda disambungkan. Pustaka muzik pada telefon ini kekal tersedia tanpa bergantung pada log masuk anda.</string>
+    <string name="cloud_account_edit_profile">Edit profil</string>
+    <string name="cloud_account_music_profile">PROFIL MUZIK ANDA</string>
+    <string name="cloud_account_security">KESELAMATAN AKAUN</string>
+    <string name="cloud_account_password_and_recovery">Kata laluan dan pemulihan</string>
+    <string name="cloud_account_password_reset_description">Hantar e-mel tetapan semula kata laluan kepada %1$s. Pautan tetapan semula dikendalikan melalui aliran e-mel Vinz anda yang disahkan.</string>
+    <string name="cloud_account_send_password_reset">Hantar e-mel tetapan semula kata laluan</string>
+    <string name="cloud_account_connected_services">PERKHIDMATAN BERSAMBUNG</string>
+    <string name="cloud_account_connections_subtitle">Log masuk Google dan import muzik YouTube ialah kebenaran berasingan.</string>
+    <string name="cloud_account_connections_description">Log masuk kuki YouTube Music kekal sebagai ciri sumber muzik berasingan. Ia tidak melog masuk anda ke Vinz. Pautan identiti Google asli dan import YouTube Data API memerlukan panggil balik OAuth Android serta aliran pertukaran token yang selamat; skrin ini tidak mendakwa bahawa kebenaran tersebut bersambung.</string>
+    <string name="cloud_account_username_checking">Menyemak ketersediaan dengan Vinz…</string>
+    <string name="cloud_account_username_available">Nama pengguna tersedia</string>
+    <string name="cloud_account_username_unavailable">Nama pengguna tidak tersedia atau ditempah</string>
+    <string name="cloud_account_username_invalid">Masukkan 3–24 huruf kecil, nombor atau garis bawah</string>
+    <string name="cloud_account_username_error">Tidak dapat menghubungi Vinz. Cuba lagi.</string>
 </resources>

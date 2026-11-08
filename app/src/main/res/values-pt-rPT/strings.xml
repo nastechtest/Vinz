@@ -4705,4 +4705,24 @@
     <string name="experimental_split_navigation_keywords">experimental navegação dividida centrado mini leitor transformação original</string>
     <string name="icons_shapes_summary">Pacote e espessura de ícones, cantos e formas</string>
     <string name="icons_shapes_keywords">ícone pacote espessura cantos formas</string>
+    <string name="cloud_account_tab_overview">Visão geral</string>
+    <string name="cloud_account_tab_security">Segurança</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">VISÃO GERAL DA CONTA</string>
+    <string name="cloud_account_profile_default">O seu perfil Vinz</string>
+    <string name="cloud_account_overview_description">A sua identidade Vinz está ligada. A sua biblioteca de música neste telemóvel mantém-se disponível independentemente de iniciar sessão.</string>
+    <string name="cloud_account_edit_profile">Editar perfil</string>
+    <string name="cloud_account_music_profile">O SEU PERFIL MUSICAL</string>
+    <string name="cloud_account_security">SEGURANÇA DA CONTA</string>
+    <string name="cloud_account_password_and_recovery">Palavra-passe e recuperação</string>
+    <string name="cloud_account_password_reset_description">Envie um e-mail de reposição da palavra-passe para %1$s. A ligação de reposição é processada pelo seu fluxo de e-mail Vinz verificado.</string>
+    <string name="cloud_account_send_password_reset">Enviar e-mail de reposição da palavra-passe</string>
+    <string name="cloud_account_connected_services">SERVIÇOS LIGADOS</string>
+    <string name="cloud_account_connections_subtitle">O início de sessão Google e a importação de música do YouTube são permissões separadas.</string>
+    <string name="cloud_account_connections_description">O início de sessão por cookie no YouTube Music continua a ser uma funcionalidade separada de fonte de música. Não inicia sessão no Vinz. A ligação nativa da identidade Google e a importação através da API YouTube Data exigem o callback OAuth do Android e um fluxo seguro de troca de tokens; este ecrã não finge que essas permissões estão ligadas.</string>
+    <string name="cloud_account_username_checking">A verificar a disponibilidade com a Vinz…</string>
+    <string name="cloud_account_username_available">Nome de utilizador disponível</string>
+    <string name="cloud_account_username_unavailable">Nome de utilizador indisponível ou reservado</string>
+    <string name="cloud_account_username_invalid">Introduza 3–24 letras minúsculas, números ou sublinhados</string>
+    <string name="cloud_account_username_error">Não foi possível contactar a Vinz. Tente novamente.</string>
 </resources>

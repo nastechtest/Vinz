@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">آزمایشی ناوبری جداشده مرکزی مینی پخش‌کننده تغییرشکل اصلی</string>
     <string name="icons_shapes_summary">بسته و ضخامت آیکن، گوشه‌ها و شکل‌ها</string>
     <string name="icons_shapes_keywords">آیکن بسته ضخامت گوشه‌ها شکل‌ها</string>
+    <string name="cloud_account_tab_overview">نمای کلی</string>
+    <string name="cloud_account_tab_security">امنیت</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">نمای کلی حساب</string>
+    <string name="cloud_account_profile_default">نمایهٔ Vinz شما</string>
+    <string name="cloud_account_overview_description">هویت Vinz شما متصل است. کتابخانهٔ موسیقی این تلفن، مستقل از ورود، همچنان در دسترس می‌ماند.</string>
+    <string name="cloud_account_edit_profile">ویرایش نمایه</string>
+    <string name="cloud_account_music_profile">نمایهٔ موسیقی شما</string>
+    <string name="cloud_account_security">امنیت حساب</string>
+    <string name="cloud_account_password_and_recovery">گذرواژه و بازیابی</string>
+    <string name="cloud_account_password_reset_description">یک ایمیل بازنشانی گذرواژه به %1$s بفرستید. پیوند بازنشانی توسط جریان ایمیل تأییدشدهٔ Vinz شما مدیریت می‌شود.</string>
+    <string name="cloud_account_send_password_reset">ارسال ایمیل بازنشانی گذرواژه</string>
+    <string name="cloud_account_connected_services">خدمات متصل</string>
+    <string name="cloud_account_connections_subtitle">ورود با Google و وارد کردن موسیقی YouTube، مجوزهای جداگانه‌اند.</string>
+    <string name="cloud_account_connections_description">ورود با کوکی به YouTube Music یک قابلیت جداگانهٔ منبع موسیقی باقی می‌ماند. شما را وارد Vinz نمی‌کند. پیوند بومی هویت Google و وارد کردن از YouTube Data API به بازگشت Android OAuth و جریان امن تبادل توکن نیاز دارند؛ این صفحه وانمود نمی‌کند که این مجوزها متصل‌اند.</string>
+    <string name="cloud_account_username_checking">در حال بررسی دسترس‌پذیری با Vinz…</string>
+    <string name="cloud_account_username_available">نام کاربری در دسترس است</string>
+    <string name="cloud_account_username_unavailable">نام کاربری در دسترس نیست یا رزرو شده است</string>
+    <string name="cloud_account_username_invalid">۳–۲۴ حرف کوچک، عدد یا زیرخط وارد کنید</string>
+    <string name="cloud_account_username_error">دسترسی به Vinz ممکن نشد. دوباره تلاش کنید.</string>
 </resources>

@@ -4581,4 +4581,24 @@
     <string name="experimental_split_navigation_keywords">实验性 分体 导航 居中 迷你播放器 变形 原始</string>
     <string name="icons_shapes_summary">图标包和粗细、圆角和形状</string>
     <string name="icons_shapes_keywords">图标 包 粗细 圆角 形状</string>
+    <string name="cloud_account_tab_overview">概览</string>
+    <string name="cloud_account_tab_security">安全</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">账户概览</string>
+    <string name="cloud_account_profile_default">你的 Vinz 个人资料</string>
+    <string name="cloud_account_overview_description">你的 Vinz 身份已连接。此手机上的音乐库不受登录状态影响，仍可独立使用。</string>
+    <string name="cloud_account_edit_profile">编辑个人资料</string>
+    <string name="cloud_account_music_profile">你的音乐资料</string>
+    <string name="cloud_account_security">账户安全</string>
+    <string name="cloud_account_password_and_recovery">密码和恢复</string>
+    <string name="cloud_account_password_reset_description">向 %1$s 发送密码重置邮件。重置链接将通过你已验证的 Vinz 邮件流程处理。</string>
+    <string name="cloud_account_send_password_reset">发送密码重置邮件</string>
+    <string name="cloud_account_connected_services">已连接的服务</string>
+    <string name="cloud_account_connections_subtitle">Google 登录和 YouTube 音乐导入是独立的权限。</string>
+    <string name="cloud_account_connections_description">YouTube Music Cookie 登录仍是独立的音乐来源功能。它不会让你登录 Vinz。原生 Google 身份关联和 YouTube Data API 导入需要 Android OAuth 回调以及安全的令牌交换流程；此页面不会假装这些权限已经连接。</string>
+    <string name="cloud_account_username_checking">正在通过 Vinz 检查可用性…</string>
+    <string name="cloud_account_username_available">用户名可用</string>
+    <string name="cloud_account_username_unavailable">用户名不可用或已被保留</string>
+    <string name="cloud_account_username_invalid">请输入 3–24 个小写字母、数字或下划线</string>
+    <string name="cloud_account_username_error">无法连接到 Vinz。请重试。</string>
 </resources>

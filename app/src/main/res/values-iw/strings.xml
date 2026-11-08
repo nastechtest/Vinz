@@ -4705,4 +4705,24 @@
     <string name="experimental_split_navigation_keywords">ניסיוני ניווט מפוצל ממורכז מיני נגן שינוי מקורי</string>
     <string name="icons_shapes_summary">חבילת ומשקל סמלים, פינות וצורות</string>
     <string name="icons_shapes_keywords">סמל חבילה משקל פינות צורות</string>
+    <string name="cloud_account_tab_overview">סקירה כללית</string>
+    <string name="cloud_account_tab_security">אבטחה</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">סקירת החשבון</string>
+    <string name="cloud_account_profile_default">פרופיל Vinz שלך</string>
+    <string name="cloud_account_overview_description">זהות ה‑Vinz שלך מחוברת. ספריית המוזיקה בטלפון זה נשארת זמינה ללא תלות בכניסה לחשבון.</string>
+    <string name="cloud_account_edit_profile">עריכת פרופיל</string>
+    <string name="cloud_account_music_profile">פרופיל המוזיקה שלך</string>
+    <string name="cloud_account_security">אבטחת החשבון</string>
+    <string name="cloud_account_password_and_recovery">סיסמה ושחזור</string>
+    <string name="cloud_account_password_reset_description">שלח/י אימייל לאיפוס סיסמה אל %1$s. הקישור לאיפוס מטופל בתהליך האימייל המאומת שלך ב‑Vinz.</string>
+    <string name="cloud_account_send_password_reset">שליחת אימייל לאיפוס סיסמה</string>
+    <string name="cloud_account_connected_services">שירותים מחוברים</string>
+    <string name="cloud_account_connections_subtitle">הכניסה באמצעות Google וייבוא מוזיקה מ‑YouTube הן הרשאות נפרדות.</string>
+    <string name="cloud_account_connections_description">כניסה ל‑YouTube Music באמצעות קובץ Cookie נשארת תכונת מקור מוזיקה נפרדת. היא לא מכניסה אותך ל‑Vinz. קישור זהות Google מקורי וייבוא מ‑YouTube Data API דורשים קריאה חוזרת של Android OAuth ותהליך מאובטח להחלפת אסימונים; מסך זה אינו מעמיד פנים שההרשאות האלה מחוברות.</string>
+    <string name="cloud_account_username_checking">בודק זמינות מול Vinz…</string>
+    <string name="cloud_account_username_available">שם המשתמש זמין</string>
+    <string name="cloud_account_username_unavailable">שם המשתמש אינו זמין או שמור</string>
+    <string name="cloud_account_username_invalid">יש להזין 3–24 אותיות קטנות, מספרים או קווים תחתיים</string>
+    <string name="cloud_account_username_error">לא ניתן היה להגיע אל Vinz. נסה/י שוב.</string>
 </resources>

@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">experimentell geteilt navigation zentriert mini player verformen ursprünglich</string>
     <string name="icons_shapes_summary">Icon-Paket und -stärke, Ecken und Formen</string>
     <string name="icons_shapes_keywords">icon paket stärke ecken formen</string>
+    <string name="cloud_account_tab_overview">Übersicht</string>
+    <string name="cloud_account_tab_security">Sicherheit</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">KONTOÜBERSICHT</string>
+    <string name="cloud_account_profile_default">Ihr Vinz-Profil</string>
+    <string name="cloud_account_overview_description">Ihre Vinz-Identität ist verbunden. Ihre Musikbibliothek auf diesem Telefon bleibt unabhängig von der Anmeldung verfügbar.</string>
+    <string name="cloud_account_edit_profile">Profil bearbeiten</string>
+    <string name="cloud_account_music_profile">IHR MUSIKPROFIL</string>
+    <string name="cloud_account_security">KONTOSICHERHEIT</string>
+    <string name="cloud_account_password_and_recovery">Passwort und Wiederherstellung</string>
+    <string name="cloud_account_password_reset_description">Senden Sie eine E-Mail zum Zurücksetzen des Passworts an %1$s. Der Link zum Zurücksetzen wird über Ihren verifizierten Vinz-E-Mail-Ablauf abgewickelt.</string>
+    <string name="cloud_account_send_password_reset">E-Mail zum Zurücksetzen des Passworts senden</string>
+    <string name="cloud_account_connected_services">VERBUNDENE DIENSTE</string>
+    <string name="cloud_account_connections_subtitle">Google-Anmeldung und YouTube-Musikimport sind separate Berechtigungen.</string>
+    <string name="cloud_account_connections_description">Die Anmeldung bei YouTube Music per Cookie bleibt eine separate Funktion für Musikquellen. Sie meldet Sie nicht bei Vinz an. Die native Verknüpfung der Google-Identität und der Import über die YouTube Data API erfordern den Android-OAuth-Rückruf und einen sicheren Ablauf zum Tokenaustausch; dieser Bildschirm erweckt nicht den Eindruck, dass diese Berechtigungen verbunden sind.</string>
+    <string name="cloud_account_username_checking">Verfügbarkeit wird bei Vinz geprüft…</string>
+    <string name="cloud_account_username_available">Benutzername verfügbar</string>
+    <string name="cloud_account_username_unavailable">Benutzername nicht verfügbar oder reserviert</string>
+    <string name="cloud_account_username_invalid">Geben Sie 3–24 Kleinbuchstaben, Ziffern oder Unterstriche ein</string>
+    <string name="cloud_account_username_error">Vinz konnte nicht erreicht werden. Versuchen Sie es erneut.</string>
 </resources>

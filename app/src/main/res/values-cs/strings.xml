@@ -4767,4 +4767,24 @@
     <string name="experimental_split_navigation_keywords">experimentální rozdělená navigace vystředěný mini přehrávač proměna původní</string>
     <string name="icons_shapes_summary">Sada ikon a tloušťka, rohy a tvary</string>
     <string name="icons_shapes_keywords">ikona sada tloušťka rohy tvary</string>
+    <string name="cloud_account_tab_overview">Přehled</string>
+    <string name="cloud_account_tab_security">Zabezpečení</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">PŘEHLED ÚČTU</string>
+    <string name="cloud_account_profile_default">Váš profil Vinz</string>
+    <string name="cloud_account_overview_description">Vaše identita Vinz je připojená. Vaše hudební knihovna v tomto telefonu zůstává dostupná nezávisle na přihlášení.</string>
+    <string name="cloud_account_edit_profile">Upravit profil</string>
+    <string name="cloud_account_music_profile">VÁŠ HUDEBNÍ PROFIL</string>
+    <string name="cloud_account_security">ZABEZPEČENÍ ÚČTU</string>
+    <string name="cloud_account_password_and_recovery">Heslo a obnovení</string>
+    <string name="cloud_account_password_reset_description">Odešlete e-mail pro obnovení hesla na adresu %1$s. Odkaz pro obnovení je zpracován vaším ověřeným e-mailovým tokem Vinz.</string>
+    <string name="cloud_account_send_password_reset">Odeslat e-mail pro obnovení hesla</string>
+    <string name="cloud_account_connected_services">PŘIPOJENÉ SLUŽBY</string>
+    <string name="cloud_account_connections_subtitle">Přihlášení přes Google a import hudby z YouTube jsou samostatná oprávnění.</string>
+    <string name="cloud_account_connections_description">Přihlášení do YouTube Music pomocí souboru cookie zůstává samostatnou funkcí zdroje hudby. Nepřihlašuje vás do Vinz. Nativní propojení identity Google a import přes rozhraní YouTube Data API vyžadují zpětné volání OAuth pro Android a zabezpečený tok výměny tokenů; tato obrazovka nepředstírá, že jsou tato oprávnění připojena.</string>
+    <string name="cloud_account_username_checking">Kontroluje se dostupnost ve Vinz…</string>
+    <string name="cloud_account_username_available">Uživatelské jméno je dostupné</string>
+    <string name="cloud_account_username_unavailable">Uživatelské jméno není dostupné nebo je rezervované</string>
+    <string name="cloud_account_username_invalid">Zadejte 3–24 malých písmen, číslic nebo podtržítek</string>
+    <string name="cloud_account_username_error">Vinz se nepodařilo kontaktovat. Zkuste to znovu.</string>
 </resources>
