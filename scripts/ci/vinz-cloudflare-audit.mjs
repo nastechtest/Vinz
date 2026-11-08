@@ -35,7 +35,7 @@ if (!TOKEN) {
       cf("/accounts/" + ACCOUNT_ID + "/workers/subdomain"),
     ]);
     const scriptNames = new Set((scripts || []).map((item) => item.id));
-    for (const name of ["home", "api", "vinz"]) {
+    for (const name of ["home", "api", "vinz", "staging"]) {
       if (scriptNames.has(name)) add("Cloudflare Worker exists: " + name, "PASS", "Worker script exists in the connected Vinz account");
       else fail("Cloudflare Worker exists: " + name, "Required Worker script is missing", name);
     }
@@ -49,7 +49,7 @@ if (!TOKEN) {
     if (bucketList.some((item) => item.name === "vinz-backups")) add("Cloudflare R2 backup bucket", "PASS", "vinz-backups bucket exists");
     else fail("Cloudflare R2 backup bucket", "Required vinz-backups bucket is missing");
 
-    const [apiSettings, apiSubdomain, vinzSettings, vinzSecrets, vinzSubdomain] = await Promise.all([
+    const [apiSettings, apiSubdomain, vinzSettings, vinzSecrets, vinzSubdomain, stagingSettings] = await Promise.all([
       cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/api/settings"),
       cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/api/subdomain"),
       cf("/accounts/" + ACCOUNT_ID + "/workers/scripts/vinz/settings"),
@@ -81,6 +81,10 @@ if (!TOKEN) {
     else fail("Live Worker R2 binding", "BACKUPS_BUCKET binding is missing or points to the wrong bucket", JSON.stringify(r2Binding || null));
     if (vinzSubdomain?.enabled === true) add("Vinz service workers.dev route", "PASS", "vinz service Worker route is enabled");
     else fail("Vinz service workers.dev route", "vinz service Worker workers.dev route is disabled");
+
+    const stagingKv = (stagingSettings?.bindings || []).find((item) => item.name === "CATALOG_CACHE");
+    if (stagingKv?.type === "kv_namespace" && stagingKv.namespace_id === namespace?.id) add("Live staging KV binding", "PASS", "Staging CATALOG_CACHE points to VINZ_CATALOG_CACHE");
+    else fail("Live staging KV binding", "Staging CATALOG_CACHE is missing or points to the wrong namespace", JSON.stringify(stagingKv || null));
 
     const secretNames = new Set((vinzSecrets || []).map((item) => item.name));
     for (const name of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "YOUTUBE_TOKEN_ENCRYPTION_KEY"]) {
