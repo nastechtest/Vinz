@@ -1,33 +1,25 @@
 #!/usr/bin/env bash
-# Puts Robolectric's Android runtime jars in the local Maven repository before the tests start.
+# Pre-fetch every Robolectric Android runtime used by the JVM suite into its local Maven repository.
 #
-# Robolectric downloads its runtime jar -- android-all-instrumented, one per API level, ~110 MB each -- from Maven
-# Central the first time a test needs that API level: inside the test JVM, with no retry, and a failed request is
-# reported as a test failure rather than as a network problem. That is not hypothetical. On PR #19 one 404 on
-# "android-all-instrumented-14-robolectric-10818077-i7.pom.sha512" failed five render tests while the other 388 in
-# the same run passed, and the same suite had been green on the commit before it.
+# Robolectric resolves android-all-instrumented from Maven at test runtime. A transient Maven CDN 404/5xx
+# used to fail whichever test happened to trigger the fetch (PR #19: one missing .pom.sha512 failed five
+# render tests while the rest of the suite passed). Prefetch both the POM and the large runtime JAR before
+# the test JVM starts. Validate each file and atomically move it into the local repository only when complete.
 #
-# Robolectric skips the network when the jar is already in the local Maven repository (MavenArtifactFetcher:
-# "assume that if the file exists in the local repository, it has been fetched successfully"), so fetching it here
-# -- before the JVM starts, with retries, and only ever writing a complete zip into place -- turns a coin flip into
-# a step that either works or says why it did not.
-#
-# This never fails a test run: anything it cannot download is left to Robolectric, exactly as before it existed.
+# The test suite must not silently fall back to a second, un-retried network request from inside Robolectric.
+# If both Maven Central endpoints are unavailable after retries, fail here with an infrastructure error,
+# before any unit test is reported as failed.
 #
 #   prefetch-robolectric.sh [--check]
 #
 #     --check   report what is missing and exit 1 if anything is; download nothing
-set -uo pipefail
+set -euo pipefail
 
-# The API levels these tests run at: robolectric.properties pins 34 for every test that does not say otherwise, and
-# the suite also asks for 35. A level missing from this list is still fetched the old way, so a stale list costs a
-# flaky run rather than a broken one; keep it in step with robolectric.properties and @Config(sdk = ...).
 versions=(
   "14-robolectric-10818077-i7" # API 34
   "15-robolectric-12650502-i7" # API 35
 )
 
-repo_url="${ROBOLECTRIC_REPO_URL:-https://repo1.maven.org/maven2}"
 repo_dir="${MAVEN_REPO_LOCAL:-${HOME}/.m2/repository}"
 group_path="org/robolectric/android-all-instrumented"
 check_only=false
@@ -40,65 +32,85 @@ for arg in "$@"; do
   esac
 done
 
-warn() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::warning title=Robolectric prefetch::$*"
-  else
-    echo "prefetch-robolectric: $*" >&2
-  fi
+if [[ -n "${ROBOLECTRIC_REPO_URL:-}" ]]; then
+  repo_urls=("${ROBOLECTRIC_REPO_URL%/}" "https://repo.maven.apache.org/maven2")
+else
+  repo_urls=("https://repo1.maven.org/maven2" "https://repo.maven.apache.org/maven2")
+fi
+
+is_jar() {
+  [[ -f "$1" && "$(head -c 2 "$1" 2>/dev/null)" == "PK" ]] && unzip -tq "$1" >/dev/null 2>&1
 }
 
-# Only a zip is a jar. A truncated transfer or a proxy's error page would otherwise sit in the cache looking like a
-# hit and fail every test on that API level with a class-format error instead of a download.
-is_jar() {
-  [[ -f "$1" && "$(head -c 2 "$1" 2>/dev/null)" == "PK" ]]
+is_pom() {
+  [[ -f "$1" ]] && python3 - "$1" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+    raise SystemExit(0 if root.tag.endswith("project") else 1)
+except (OSError, ET.ParseError):
+    raise SystemExit(1)
+PY
+}
+
+download_validated() {
+  local url="$1" destination="$2" kind="$3" part="${2}.part"
+  local mirror
+  rm -f "$part"
+  for mirror in "${repo_urls[@]}"; do
+    echo "Fetching $(basename "$destination") from $mirror"
+    if curl --fail --silent --show-error --location \
+        --retry 5 --retry-delay 2 --retry-all-errors \
+        --connect-timeout 20 --max-time 900 \
+        --output "$part" "$mirror/$url"; then
+      if [[ "$kind" == jar ]] && is_jar "$part"; then
+        mv "$part" "$destination"
+        return 0
+      elif [[ "$kind" == pom ]] && is_pom "$part"; then
+        mv "$part" "$destination"
+        return 0
+      fi
+      echo "prefetch-robolectric: invalid $kind returned by $mirror/$url" >&2
+    else
+      echo "prefetch-robolectric: download failed from $mirror/$url" >&2
+    fi
+    rm -f "$part"
+  done
+  echo "::error title=Robolectric dependency unavailable::Could not fetch and validate $url from either Maven Central endpoint." >&2
+  return 1
 }
 
 missing=0
-unavailable=0
 for version in "${versions[@]}"; do
-  jar="${repo_dir}/${group_path}/${version}/android-all-instrumented-${version}.jar"
-  is_jar "$jar" && continue
-  missing=$((missing + 1))
-  if [[ "$check_only" == true ]]; then
-    echo "missing: ${version}" >&2
-    continue
-  fi
-  if ! command -v curl >/dev/null 2>&1; then
-    warn "curl is not installed, so ${version} was not fetched; Robolectric will download it itself"
-    unavailable=$((unavailable + 1))
-    continue
-  fi
-  echo "Fetching Robolectric's Android ${version%%-*} runtime (android-all-instrumented-${version})"
-  if ! mkdir -p "$(dirname "$jar")"; then
-    warn "cannot create $(dirname "$jar")"
-    unavailable=$((unavailable + 1))
-    continue
-  fi
-  # --retry-all-errors retries the 404s and 5xx that Maven Central's CDN returns under load, which is exactly the
-  # failure this script exists for. The download lands in .part and is renamed only once it is a complete zip, so
-  # an interrupted run never leaves a half jar behind for the next one to trust.
-  if curl --fail --silent --show-error --location \
-      --retry 5 --retry-delay 2 --retry-all-errors \
-      --connect-timeout 20 --max-time 900 \
-      --output "${jar}.part" \
-      "${repo_url}/${group_path}/${version}/android-all-instrumented-${version}.jar"; then
-    if is_jar "${jar}.part"; then
-      mv "${jar}.part" "$jar"
-      continue
+  base="${group_path}/${version}/android-all-instrumented-${version}"
+  jar="${repo_dir}/${base}.jar"
+  pom="${repo_dir}/${base}.pom"
+
+  if ! is_jar "$jar"; then
+    missing=$((missing + 1))
+    if [[ "$check_only" == true ]]; then
+      echo "missing or invalid: ${base}.jar" >&2
+    else
+      mkdir -p "$(dirname "$jar")"
+      download_validated "${base}.jar" "$jar" jar
     fi
-    warn "${version} arrived as something other than a jar; discarding it"
-  else
-    warn "could not download ${version}; Robolectric will download it itself"
   fi
-  rm -f "${jar}.part"
-  unavailable=$((unavailable + 1))
+  if ! is_pom "$pom"; then
+    missing=$((missing + 1))
+    if [[ "$check_only" == true ]]; then
+      echo "missing or invalid: ${base}.pom" >&2
+    else
+      mkdir -p "$(dirname "$pom")"
+      download_validated "${base}.pom" "$pom" pom
+    fi
+  fi
 done
 
 if [[ "$check_only" == true ]]; then
   [[ $missing -eq 0 ]] || exit 1
-  echo "Robolectric runtimes cached: ${#versions[@]}/${#versions[@]}"
+  echo "Robolectric POMs and runtimes cached: ${#versions[@]}/${#versions[@]}"
   exit 0
 fi
 
-echo "Robolectric runtimes ready: $(( ${#versions[@]} - unavailable ))/${#versions[@]} in ${repo_dir}/${group_path}"
+echo "Robolectric POMs and runtimes are ready in ${repo_dir}/${group_path}"
