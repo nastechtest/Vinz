@@ -33,11 +33,11 @@ internal fun CloudProfileFields(state: CloudAccountState, actions: CloudAccountC
         state.draft.username, actions::username, Modifier.fillMaxWidth().testTag("cloud-account-username"),
         enabled = !state.busy, label = { Text(tr(R.string.cloud_account_username)) },
         supportingText = { Text(tr(R.string.cloud_account_username_hint) + when (state.usernameAvailability) {
-            UsernameAvailability.CHECKING -> " · Checking availability with Vinz…"
-            UsernameAvailability.AVAILABLE -> " · Username available"
-            UsernameAvailability.UNAVAILABLE -> " · Username unavailable or reserved"
-            UsernameAvailability.INVALID -> " · Enter 3–24 lowercase letters, numbers or underscores"
-            UsernameAvailability.ERROR -> " · Could not reach Vinz. Try again."
+            UsernameAvailability.CHECKING -> " · ${tr(R.string.cloud_account_username_checking)}"
+            UsernameAvailability.AVAILABLE -> " · ${tr(R.string.cloud_account_username_available)}"
+            UsernameAvailability.UNAVAILABLE -> " · ${tr(R.string.cloud_account_username_unavailable)}"
+            UsernameAvailability.INVALID -> " · ${tr(R.string.cloud_account_username_invalid)}"
+            UsernameAvailability.ERROR -> " · ${tr(R.string.cloud_account_username_error)}"
             else -> ""
         }) }, singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),

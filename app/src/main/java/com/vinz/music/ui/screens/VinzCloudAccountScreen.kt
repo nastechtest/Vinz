@@ -164,26 +164,31 @@ private fun CloudAccountFormBody(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("cloud-account-sections"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        listOf("overview" to "Overview", "profile" to "Profile", "security" to "Security", "connections" to "Connections").forEach { (id, title) ->
+        listOf(
+            "overview" to R.string.cloud_account_tab_overview,
+            "profile" to R.string.kind_profile,
+            "security" to R.string.cloud_account_tab_security,
+            "connections" to R.string.connections,
+        ).forEach { (id, title) ->
             VinzTextButton(onClick = { onSection(id) }, enabled = !state.busy, modifier = Modifier.testTag("cloud-account-tab-$id")) {
-                Text(if (section == id) "• $title" else title)
+                Text(if (section == id) tr(R.string.cloud_account_selected_tab, tr(title)) else tr(title))
             }
         }
     }
     when (section) {
         "overview" -> {
-            Text("ACCOUNT OVERVIEW", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(state.draft.displayName.ifBlank { "Your Vinz profile" }, style = MaterialTheme.typography.headlineSmall)
+            Text(tr(R.string.cloud_account_overview), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(state.draft.displayName.ifBlank { tr(R.string.cloud_account_profile_default) }, style = MaterialTheme.typography.headlineSmall)
             Text("@${state.draft.username}", style = MaterialTheme.typography.titleMedium)
             if (state.draft.bio.isNotBlank()) Text(state.draft.bio, style = MaterialTheme.typography.bodyMedium)
-            Text("Your Vinz identity is connected. Your music library on this phone remains available independently of sign-in.",
+            Text(tr(R.string.cloud_account_overview_description),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             VinzButton(onClick = { onSection("profile") }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-edit-profile")) {
-                Text("Edit profile")
+                Text(tr(R.string.cloud_account_edit_profile))
             }
         }
         "profile" -> {
-            Text("YOUR MUSIC PROFILE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(tr(R.string.cloud_account_music_profile), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             CloudProfileFields(state, actions)
             VinzTextField(
                 state.draft.bio, actions::bio, Modifier.fillMaxWidth().testTag("cloud-account-bio"), enabled = !state.busy,
@@ -199,19 +204,19 @@ private fun CloudAccountFormBody(
             }
         }
         "security" -> {
-            Text("ACCOUNT SECURITY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text("Password and recovery", style = MaterialTheme.typography.titleMedium)
-            Text("Send a password reset email to ${state.identity.email}. The reset link is handled by your verified Vinz email flow.",
+            Text(tr(R.string.cloud_account_security), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(tr(R.string.cloud_account_password_and_recovery), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_password_reset_description, state.identity.email),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             VinzButton(onClick = { actions.sendPasswordReset() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-send-reset"), enabled = !state.busy) {
-                Text("Send password reset email")
+                Text(tr(R.string.cloud_account_send_password_reset))
             }
         }
         "connections" -> {
-            Text("CONNECTED SERVICES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text("Google sign-in and YouTube music import are separate permissions.",
+            Text(tr(R.string.cloud_account_connected_services), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(tr(R.string.cloud_account_connections_subtitle),
                 style = MaterialTheme.typography.titleMedium)
-            Text("YouTube Music cookie sign-in remains a separate music-source feature. It does not sign you into Vinz. Native Google identity linking and YouTube Data API import require the Android OAuth callback and secure token-exchange flow; this screen does not pretend that those permissions are connected.",
+            Text(tr(R.string.cloud_account_connections_description),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

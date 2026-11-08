@@ -16,7 +16,6 @@ class GlassKindsTest {
     private fun blurs(optics: GlassOptics): List<Float> = when (val radius = optics.blurRadius) {
         is OpticalSizeValue.Fixed -> listOf(radius.value.value)
         is OpticalSizeValue.Responsive -> radius.points.map { it.value.value }
-        else -> error("Unsupported glass blur radius: $radius")
     }
 
     @Test fun clearKeepsWhatsBehindSharpAndRegularBlursIt() {
