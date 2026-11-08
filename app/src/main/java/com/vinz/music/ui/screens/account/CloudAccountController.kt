@@ -177,7 +177,8 @@ internal class CloudAccountController(
     fun importYouTubeMusic(): Job? = request(R.string.cloud_account_youtube_failed) {
         val result = gateway.importYouTubeMusic()
         mutable.value = mutable.value.copy(
-            youtubeImportSummary = "Imported ${result.importedCount} videos from ${result.playlistCount} playlists.",
+            youtubeImportedCount = result.importedCount,
+            youtubePlaylistCount = result.playlistCount,
             youtubeConnected = true,
         )
     }
@@ -187,7 +188,8 @@ internal class CloudAccountController(
         mutable.value = mutable.value.copy(
             youtubeConnected = false,
             youtubeChannelTitle = "",
-            youtubeImportSummary = null,
+            youtubeImportedCount = null,
+            youtubePlaylistCount = null,
         )
     }
 
