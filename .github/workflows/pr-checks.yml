@@ -9,6 +9,16 @@ on:
   pull_request:
     branches: [main, stable]
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [feat/frontend-experience-refresh]
+    paths:
+      - "app/**"
+      - "baselineprofile/**"
+      - "scripts/ci/**"
+      - "version.properties"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/pr-checks.yml"
 
 # Read-only by default; no job here writes to the repository, a package, or a release.
 permissions:
@@ -16,7 +26,7 @@ permissions:
 
 # Each commit gets a complete result; runs for the same PR queue instead of cancelling each other.
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number }}
+  group: pr-checks-${{ github.event.pull_request.number || github.ref_name }}
   # Never turn a correct build red because a newer commit arrived while it was running.
   # Runs for the same PR queue in order; each commit gets a complete result.
   cancel-in-progress: false
@@ -25,8 +35,8 @@ env:
   APP_PACKAGE: com.vinz.music
   JAVA_VERSION: "17"
   # Stamped into BuildConfig: an installed build can name the exact commit it came from.
-  VINZ_GIT_SHA: ${{ github.event.pull_request.head.sha }}
-  VINZ_BUILD_CHANNEL: pr
+  VINZ_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  VINZ_BUILD_CHANNEL: ${{ github.event_name == 'pull_request' && 'pr' || 'feature' }}
 
 jobs:
   wrapper:
@@ -103,7 +113,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
       # Vinz does not configure a Kotlin formatter (no ktlint/spotless plugin), so there is no formatting
       # task to run; Android Lint is the static check the build system actually provides.
@@ -114,7 +124,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: lint-report-pr-${{ github.event.pull_request.number }}
+          name: lint-report-${{ github.run_id }}
           path: |
             app/build/reports/lint-results-debug.html
             app/build/reports/lint-results-debug.txt
@@ -147,29 +157,37 @@ jobs:
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           # Never write to the cache from a fork: a poisoned cache entry would be restored by later runs.
-          cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
       - name: Compute the build identifier
         id: build-id
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          build_number=$(./scripts/ci/pr-build-number.sh "$PR_NUMBER")
-          label=$(./scripts/ci/version.sh pr "$PR_NUMBER" "$build_number")
           base=$(./scripts/ci/version.sh development-name)
           version_code=$(./scripts/ci/version.sh bump-code)
-          # Keep the public version short; channel, commit and artifact label identify this test build.
           stamped="$base"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            build_number=$(./scripts/ci/pr-build-number.sh "$PR_NUMBER")
+            label=$(./scripts/ci/version.sh pr "$PR_NUMBER" "$build_number")
+            apk_name="Vinz-PR-${PR_NUMBER}-build-${build_number}.apk"
+          else
+            build_number="$RUN_NUMBER"
+            label="feature-$build_number"
+            apk_name="Vinz-feature-$build_number.apk"
+          fi
           {
             echo "number=$build_number"
             echo "label=$label"
             echo "version-name=$stamped"
             echo "version-code=$version_code"
-            echo "apk-name=Vinz-PR-${PR_NUMBER}-build-${build_number}.apk"
+            echo "apk-name=$apk_name"
           } >> "$GITHUB_OUTPUT"
-          echo "PR build: $label (versionName $stamped)"
+          echo "Test build: $label (versionName $stamped)"
 
       - name: Run deterministic unit tests
         run: ./scripts/ci/run-unit-tests.sh
@@ -194,8 +212,8 @@ jobs:
         env:
           APK_NAME: ${{ steps.build-id.outputs.apk-name }}
           LABEL: ${{ steps.build-id.outputs.label }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-          SOURCE_BRANCH: ${{ github.head_ref }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -228,7 +246,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: unit-test-report-pr-${{ github.event.pull_request.number }}
+          name: unit-test-report-${{ github.run_id }}
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
@@ -242,9 +260,10 @@ jobs:
           LABEL: ${{ steps.build-id.outputs.label }}
           VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          SOURCE_BRANCH: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
           STATUS: ${{ job.status }}
           RUN_ID: ${{ github.run_id }}
         run: |
@@ -261,10 +280,14 @@ jobs:
             echo "| Result | **${verdict}** |"
             echo "| Build | \`${LABEL}\` |"
             echo "| versionName stamped | \`${VERSION_NAME}\` |"
-            echo "| Pull request | #${PR_NUMBER} from \`${SOURCE_BRANCH}\` |"
-            echo "| Head commit | \`${HEAD_SHA}\` |"
-            echo "| Base commit | \`${BASE_SHA}\` |"
-            echo "| Build number | \`${LABEL##*-}\` |"
+            if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              echo "| Pull request | #${PR_NUMBER} from ${SOURCE_BRANCH} |"
+              echo "| Base commit | ${BASE_SHA} |"
+            else
+              echo "| Branch | ${SOURCE_BRANCH} |"
+            fi
+            echo "| Head commit | ${HEAD_SHA} |"
+            echo "| Build number | ${LABEL##*-} |"
             echo
             if [[ "$STATUS" == success ]]; then
               echo "### Download and install on a phone"

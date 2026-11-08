@@ -1,82 +1,74 @@
-# Vinz Account — implementation plan and progress
+# Vinz Account and Cloud Experience — roadmap progress
 
-This PR's immediate scope is the Vinz account experience: authentication, complete user profiles, profile/account settings, and the cloud services needed to support them. Do not broaden this work into a general app redesign or unrelated music-feature projects.
+This is the single agreed development roadmap for the Android repository `nastechtest/Vinz`. Work remains account-first; do not broaden into unrelated music screens.
 
-- Repository: `nastechtest/Vinz`
-- Branch: `feat/frontend-experience-refresh`
-- Single review PR: [#37](https://github.com/nastechtest/Vinz/pull/37)
-- Backend direction: Supabase is the account/auth/data foundation. Use Cloudflare only for the specific server-side/edge needs already agreed and present in the project. Inspect actual configuration/resources before implementing.
-- Product rule: local music, playback and local library remain usable without signing in.
-- Do not push to `main`, merge, deploy, or modify production cloud resources without explicit approval.
+- Working branch: `feat/frontend-experience-refresh`
+- Historical review: [PR #37](https://github.com/nastechtest/Vinz/pull/37) was merged on 2026-11-08. It cannot remain draft or include new branch commits. Per the user's one-PR/no-new-PR rule, no replacement PR is created; follow-up work remains on the named feature branch until review routing is explicitly changed.
+- Backend: Supabase Auth/Postgres/RLS/Storage remains the account foundation. Cloudflare Workers and Durable Objects are reserved for link resolution and real-time room coordination.
+- Local music, playback and library remain usable without signing in. Vinz Account remains separate from YouTube Music provider login.
+- No production Supabase schema, Cloudflare resources, secrets, deployments or releases are changed by this branch work.
 
-## Agreed implementation order
+## Priority order and acceptance status
 
-### Phase 1 — Vinz Identity and login
-- [ ] Frontend-first account entry and welcome experience.
-- [ ] Vinz email/password registration and login.
-- [ ] Google sign-in.
-- [ ] Email verification and resend flow.
-- [ ] Forgot/reset password and recovery flow.
-- [ ] Session persistence, expiry/refresh, sign-out and account switching.
-- [ ] Loading, validation, network failure, duplicate account and authentication error states.
-- [ ] Keep existing YouTube Music login independent; do not confuse it with a Vinz Account.
+### Phase 1 — Vinz identity and authentication
+- [x] Separate Vinz Account entry, email/password sign-up and sign-in, recovery request, encrypted Android Keystore session storage.
+- [x] Username syntax validation and authenticated availability RPC for signed-in profile edits; the database has a case-insensitive unique index and server-side availability RPC.
+- [x] Six-digit email OTP verification screen and Supabase `/verify` integration; no signup session is stored before successful code verification.
+- [x] OTP resend flow with a 60-second UI cooldown; Supabase remains authoritative for expiry, request throttling and failed-attempt limits. Safe invalid/expired/rate-limit feedback is mapped without exposing response bodies.
+- [x] Encrypted pending verification email/profile metadata survives process restarts and reopens the OTP screen; passwords and typed OTPs are never persisted.
+- [ ] Verify hosted Supabase Auth configuration: Email confirmations must be enabled and the signup/email OTP template must render `{{ .Token }}` (not only `{{ .ConfirmationURL }}`) for numeric-code entry. Confirm configured OTP expiry and provider rate limits. This is a provider-console check; no production setting was changed.
+- [ ] Pre-auth username availability while registering; current RPC is authenticated-only, so registration still relies on the database unique constraint at final save.
+- [ ] Google OAuth with PKCE and verified Android callback.
+- [ ] Automatic session refresh/401 retry, expiry/revocation handling, account switching, identity linking/unlinking.
+- [ ] Password reset completion screen and recovery callback/deep link.
 
-### Phase 2 — Complete user profile pages
-- [ ] Account/profile overview page.
-- [ ] Public profile page and private account details separated clearly.
-- [ ] Username, display name, full name (private by default), bio, avatar/photo, and profile URL.
-- [ ] Edit profile flow with validation, username availability/uniqueness, avatar upload/change/remove and save feedback.
-- [ ] Profile preview and visibility controls.
-- [ ] Correct empty/loading/offline/error states.
-- [ ] Profile data backed by Supabase and protected by ownership-aware RLS and storage policies.
+### Phase 2 — Complete user profiles
+- [x] Account overview and profile editor; username, display name, bio, public/discoverable controls.
+- [x] Supabase profile row is owner-updated; public/private profile visibility fields are persisted.
+- [ ] Full name private by default, public profile route and canonical profile URL.
+- [ ] Avatar upload/change/remove with image validation and verified owner-only storage policy.
+- [ ] Username availability during registration and race-condition UI recovery (server unique index remains final authority).
 
-### Phase 3 — Profile settings and account management
-- [ ] Profile and personal information settings.
-- [ ] Privacy, discoverability and profile visibility.
-- [ ] Notification preferences.
-- [ ] Connected accounts and Google/email identity linking where supported.
-- [ ] Active sessions/devices and sign-out controls.
-- [ ] Password/security controls and account recovery.
-- [ ] Account management, data export/deletion pathway where supported.
-- [ ] Clear explanation of what is public, private, local and cloud-synced.
+### Phase 3 — Account settings and security
+- [x] Existing account overview, security/reset request and connected-services sections.
+- [ ] Persist notification preferences, privacy controls, connected identities, active sessions/devices and revoke controls.
+- [ ] Password change/recovery callback, account export and deletion paths where supported.
+- [x] Repository migration adds a database-side verified-email gate to account-owned RLS and private backup-object policies; it is not applied to the connected production project.
 
-### Phase 4 — Cloud backup and restore tied to Vinz Account
-- [ ] Upgrade the existing backup/restore flow, do not replace it.
-- [ ] Cloud backup available to signed-in Vinz Accounts.
-- [ ] Preserve the agreed lightweight backup rule: only use that path when the backup is below 50 MB.
-- [ ] Clearly identify excluded large media/files; never claim they were backed up.
-- [ ] Restore preview, integrity checks, progress, retry and compatibility.
-- [ ] Keep local backup/restore options and existing behavior.
+### Phase 4 — Cloud backup and restore
+- [x] Existing private `vinz-cloud-backups` bucket and `vinz_backups` metadata foundation are present; local backup/restore must remain unchanged.
+- [ ] Implement signed-in cloud backup/restore, below-50-MB lightweight rule, excluded-file disclosure, restore preview, checksum/version validation, progress/cancel/retry and conflict handling.
+- [ ] Verify round-trip, corruption, offline and storage-policy failures.
 
-### Phase 5 — Community foundation (later, after account/profile)
-- [ ] Build on the completed identity and profile foundation.
-- [ ] User discovery and community entry points, privacy and consent.
-- [ ] Wi-Fi/community sharing is later scope, not a reason to expand the current login/profile implementation prematurely.
+### Phase 5 — Vinz direct song sharing and deferred install
+- [x] Existing share-link metadata table is present; this is not yet the finished Android share experience.
+- [ ] Canonical HTTPS resolver on Cloudflare Worker; verified Android App Links; exact song/album/artist/playlist routing.
+- [ ] Installed-app open, web preview when absent, Play Store path and deferred destination restore after install.
+- [ ] Open Graph metadata, share sheet/copy/QR, privacy-aware analytics, expiry/deleted/private/unavailable fallbacks.
+- [ ] No copyrighted audio hosting or rebroadcast; resolve to lawful provider links and the listener's own entitlement.
 
-## Supabase and Cloudflare responsibilities
+### Phase 6 — Advanced Listen Together
+- [ ] Cloudflare Worker authenticated signaling/API and Durable Object room coordinator with hibernating WebSockets.
+- [ ] Server-authoritative queue/play/pause/seek/track state, sequence numbers, server clock, presence, host/co-host roles, approvals, invites, reactions/chat, moderation and host transfer.
+- [ ] Drift correction, latency measurement, reconnect/resume, duplicate/out-of-order event handling, host disconnect recovery and network/lifecycle handling.
+- [ ] Optional WebRTC DataChannel and TURN fallback; optional SFU only for voice, never copyrighted song audio.
+- [ ] Every participant plays independently from their own lawful source/entitlement; add authorization, room-size, reconnect-storm, event-ordering and drift/load tests.
 
-- [ ] Inspect the repository's actual Supabase and Cloudflare configuration and connected project resources before deciding implementation details.
-- [ ] Supabase: Auth, profile records in Postgres, RLS, avatar/profile Storage, and any required session/data functionality.
-- [ ] Cloudflare: only the specific Worker/API/edge or server-side secret functions the current architecture actually requires; do not add products or infrastructure speculatively.
-- [ ] Never place Supabase service-role/secret keys or Cloudflare API tokens in Android code, client configuration, logs or source control.
-- [ ] Use publishable/client configuration only in the app; keep privileged secrets server-side.
-- [ ] RLS must enforce per-user ownership; storage upload/read/update policies must match intended profile access.
-- [ ] No production schema changes, secret rotation, resource creation or deployment without explicit approval.
+### Phase 7 — Community and discovery
+- [ ] Expand discovery/social experiences only after identity/profile foundations are complete, with privacy, consent, blocking and moderation.
 
-## Existing branch work (not the main account deliverable)
+## CI and verification
 
-- [x] Recognition AMOLED orb and event-specific notification icons are already in earlier commits on this branch. They are existing branch changes, not permission to broaden the current priority into unrelated features.
+- Existing Android PR checks are reused, not duplicated. `.github/workflows/pr-checks.yml` now also runs on pushes to `feat/frontend-experience-refresh` because PR #37 is already merged.
+- Existing platform checks now run on the feature branch when Supabase migrations change and statically guard the verified-email RLS gate.
+- Android JVM/UI tests, lint, debug APK verification and artifact upload must pass on the current feature head before the increment is called verified.
+- Existing platform checks cover Cloudflare Worker tests and Supabase migration naming/order. Add isolated Supabase Auth/RLS contract tests as the backend increments land.
+- Keep release/deploy workflows protected; no feature branch auto-deploy.
+- Only link APKs when the workflow artifact exists and package/signature/checksum are verified.
 
-## Out of immediate scope
+## Current implementation increment
 
-Do not start a general refresh of every music page, rebuild Sing, redesign Podcasts, expand music-provider research, implement BantuLyrics, or add broad social/community features before the account phases above are delivered. These can remain separate future workstreams unless the user explicitly reprioritizes them.
-
-## Delivery and review discipline
-
-- Implement frontend account pages first, then connect them to Supabase and only the necessary Cloudflare services.
-- Inspect existing architecture and preserve current app behavior and user data.
-- Make meaningful, reviewable code increments on `feat/frontend-experience-refresh` only.
-- Update this document and PR #37 with exact completed work and verified test results.
-- Keep one PR (#37), draft until the agreed account scope is implemented and validated. Never merge without explicit approval.
-- Provide APK links only when an artifact is actually built, uploaded and verified.
-- Report blockers honestly; do not claim planned features are implemented.
+- Added Supabase email OTP verify/resend API handling, a numeric verification screen, resend cooldown, server-error mapping, encrypted pending verification metadata and controller/UI regression tests.
+- Added a repository-only migration that gates account-owned RLS policies and private backup objects on the authoritative `auth.users.email_confirmed_at` timestamp. It has not been applied to the connected Supabase project.
+- Added feature-branch Android and migration checks by extending existing workflows; no duplicate pipeline was created.
+- CI run status and APK artifact are recorded after the feature-branch workflows complete.

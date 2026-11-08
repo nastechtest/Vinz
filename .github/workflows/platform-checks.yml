@@ -9,7 +9,7 @@ on:
       - ".github/workflows/**"
       - ".github/dependabot.yml"
   push:
-    branches: [main, stable]
+    branches: [main, stable, feat/frontend-experience-refresh]
     paths:
       - "platform/cloudflare/**"
       - "supabase/**"
@@ -107,6 +107,31 @@ jobs:
           if versions != sorted(versions):
               raise SystemExit("Supabase migrations are not ordered")
           print(f"Validated {len(files)} timestamped Supabase migrations.")
+          PY
+
+      - name: Require verified-email gates on account-owned policies
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("supabase/migrations/20261108140500_vinz_require_verified_email_for_account_policies.sql")
+          sql = path.read_text()
+          required = [
+              "vinz_private.is_email_verified()",
+              '"Vinz profiles update own profile"',
+              '"Vinz account settings read own"',
+              '"Vinz private account read own"',
+              '"Vinz backups create own"',
+              '"Vinz backup objects upload own"',
+              '"Vinz friend requests sender create"',
+              '"Vinz YouTube connection owner access"',
+          ]
+          missing = [item for item in required if item not in sql]
+          if missing:
+              raise SystemExit("Verified-email policy migration is incomplete: " + ", ".join(missing))
+          if "auth.users u" not in sql or "u.email_confirmed_at is not null" not in sql:
+              raise SystemExit("Verified-email policy must read auth.users.email_confirmed_at.")
+          print("Verified-email function and account-owned RLS gates are present.")
           PY
 
       - name: Check Edge Function source is present
