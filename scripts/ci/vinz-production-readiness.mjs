@@ -109,9 +109,9 @@ if (api) {
     let data = {};
     try { data = JSON.parse(result.body); } catch {}
     if (!result.response.ok) fail("Vinz API live", `HTTP ${result.response.status}`, result.response.url || API_URL);
-    else if (data.service !== "vinz-api" || data.status !== "ok" || data.configured !== true || data.backup_storage !== true) {
-      fail("Vinz API live", "Health payload does not confirm service, configuration and backup storage", JSON.stringify(data));
-    } else add("Vinz API live", "PASS", "API, Supabase configuration and R2 backup binding report healthy", API_URL + "/health");
+    else if (data.service !== "vinz-api" || data.status !== "ok" || data.configured !== true || data.backup_storage !== true || data.integrations?.youtube_import_configured !== true) {
+      fail("Vinz API live", "Health payload does not confirm API, Supabase, R2 backup and YouTube OAuth secrets", JSON.stringify(data));
+    } else add("Vinz API live", "PASS", "API, Supabase, R2 backup and YouTube OAuth secrets report healthy", API_URL + "/health");
   }
 }
 
