@@ -33,4 +33,23 @@
     <!-- English fallback for new account guidance, pending translation. -->
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+
+    <string name="cloud_account_brand_name">Vinz</string>
+    <string name="cloud_account_brand_tagline">A TE ZENÉD. A TE IDENTITÁSOD.</string>
+    <string name="cloud_account_brand_section">A TE VINZ-FIÓKOD</string>
+    <string name="cloud_account_youtube_title">YouTube Music</string>
+    <string name="cloud_account_youtube_description">Csatlakoztasd a YouTube Music szolgáltatást Vinz-fiókodhoz biztonságos Google-hitelesítéssel. A Vinz soha nem kéri el YouTube-jelszavadat vagy e-mail-címedet.</string>
+    <string name="cloud_account_youtube_not_connected">Nincs csatlakoztatva</string>
+    <string name="cloud_account_youtube_connected">Csatlakoztatott csatorna: %1$s</string>
+    <string name="cloud_account_youtube_connect">YouTube Music csatlakoztatása</string>
+    <string name="cloud_account_youtube_import">YouTube Music importálása</string>
+    <string name="cloud_account_youtube_refresh">Kapcsolat állapotának frissítése</string>
+    <string name="cloud_account_youtube_disconnect">YouTube leválasztása</string>
+    <string name="cloud_account_youtube_imported">%1$d videó importálva %2$d lejátszási listából.</string>
+    <string name="cloud_account_youtube_failed">A YouTube Music csatlakoztatása vagy importálása nem sikerült. Ellenőrizd a kapcsolatot, majd próbáld újra.</string>
+    <string name="cloud_account_sign_up_failed">A Vinz-fiók létrehozása nem sikerült. Ellenőrizd az adatokat és a kapcsolatot, majd próbáld újra.</string>
+    <string name="cloud_account_sign_in_cta">Bejelentkezés a Vinz-fiókba</string>
+    <string name="youtube_playback_session">YouTube-lejátszási munkamenet</string>
+    <string name="connect_youtube_for_playback">YouTube csatlakoztatása lejátszáshoz</string>
+    <string name="optional_playback_session_not_vinz_identity">Ez csak egy opcionális lejátszási munkamenet. A könyvtáradat a Vinz-fiók → Kapcsolatok menüpontban importálhatod.</string>
 </resources>
