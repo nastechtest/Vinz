@@ -27,7 +27,7 @@ if (!TOKEN) {
 
     const redirects = String(auth.uri_allow_list || "").split(/[\s,]+/).filter(Boolean);
     const callback = "https://home.vinzmusic.workers.dev/auth/callback";
-    if (redirects.includes(callback)) add("Supabase Auth callback allowlist", "PASS", "Exact web auth callback is allowlisted");
+    if (redirects.some((value) => value === callback)) add("Supabase Auth callback allowlist", "PASS", "Exact web auth callback is allowlisted");
     else fail("Supabase Auth callback allowlist", "Required /auth/callback URL is missing from the Supabase redirect allowlist");
     const staleRedirects = redirects.filter((value) => /vercel\.app|localhost|127\.0\.0\.1/i.test(value));
     if (staleRedirects.length) fail("Supabase Auth stale redirects", "Old Vercel or localhost redirect URLs remain configured: " + staleRedirects.length + " entry/entries");
