@@ -83,7 +83,7 @@ internal fun CloudAccountContent(
                     Image(
                         painter = painterResource(R.drawable.vinz_logo),
                         contentDescription = "Vinz",
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)),
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag("cloud-account-logo"),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("VINZ", style = MaterialTheme.typography.titleLarge)
