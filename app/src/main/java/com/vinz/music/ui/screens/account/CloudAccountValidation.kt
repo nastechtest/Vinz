@@ -21,6 +21,7 @@ internal object CloudAccountValidation {
     fun canSubmit(state: CloudAccountState): Boolean = validEmail(state.email) && when (state.mode) {
         CloudAccountMode.RECOVERY -> true
         CloudAccountMode.SIGN_IN -> state.password.isNotEmpty()
-        CloudAccountMode.SIGN_UP -> state.password.length >= 8 && validProfile(state.draft)
+        CloudAccountMode.SIGN_UP -> state.password.length >= 8 && validProfile(state.draft) &&
+            state.usernameAvailability == UsernameAvailability.AVAILABLE
     }
 }
