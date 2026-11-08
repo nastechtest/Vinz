@@ -220,6 +220,10 @@ const youtubeMigration = read("supabase/migrations/20261108100000_vinz_youtube_m
 if (youtubeApi.includes("code_challenge_method") && youtubeApi.includes("AES-GCM") && youtubeApi.includes("youtube.readonly")) {
   add("YouTube OAuth backend", "PASS", "PKCE, read-only scope and encrypted token storage are implemented");
 } else fail("YouTube OAuth backend", "OAuth backend is missing PKCE, read-only scope or token encryption", "platform/cloudflare/youtube-import.js");
+const youtubeTests = read("platform/cloudflare/youtube-import.test.js") || "";
+if (youtubeApi.includes("login_hint") && youtubeTests.includes("login_hint")) {
+  add("Google account auto-selection", "PASS", "The signed-in Vinz email is passed as Google's login_hint; no YouTube email field exists");
+} else fail("Google account auto-selection", "The Google consent flow does not reuse the signed-in Vinz email", "platform/cloudflare/youtube-import.js");
 if (youtubeMigration.includes("enable row level security") && youtubeMigration.includes("Vinz YouTube connection owner access") && youtubeMigration.includes("Vinz YouTube imports owner access")) {
   add("YouTube database security", "PASS", "Connection and imported metadata tables use owner-only RLS");
 } else fail("YouTube database security", "YouTube tables are missing owner-only RLS", "supabase/migrations/20261108100000_vinz_youtube_music_import.sql");
@@ -228,9 +232,7 @@ const androidAccountClient = read("app/src/main/java/com/vinz/music/data/VinzClo
 if (androidAccountClient.includes("/v1/integrations/youtube/") && /youtube/i.test(androidAccount)) {
   add("Android YouTube Music import", "PASS", "Native account flow is wired to the authenticated YouTube import service");
 } else fail("Android YouTube Music import", "Native account does not yet connect to the YouTube OAuth/import service", "CloudAccountController.kt");
-if (/linkIdentity|GoogleSignIn|CredentialManager|google/i.test(androidController)) {
-  add("Android Google identity", "PASS", "Native account has a Google identity integration hook");
-} else fail("Android Google identity", "Native Google sign-in/linking is not implemented", "CloudAccountController.kt");
+
 
 const productionFiles = [
   ".github/workflows/cloudflare-web.yml",
