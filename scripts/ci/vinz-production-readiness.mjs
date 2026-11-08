@@ -222,7 +222,8 @@ if (youtubeMigration.includes("enable row level security") && youtubeMigration.i
   add("YouTube database security", "PASS", "Connection and imported metadata tables use owner-only RLS");
 } else fail("YouTube database security", "YouTube tables are missing owner-only RLS", "supabase/migrations/20261108100000_vinz_youtube_music_import.sql");
 const androidController = read("app/src/main/java/com/vinz/music/ui/screens/account/CloudAccountController.kt") || "";
-if (androidController.includes("/v1/integrations/youtube/") && /youtube/i.test(androidAccount)) {
+const androidAccountClient = read("app/src/main/java/com/vinz/music/data/VinzCloudAccount.kt") || "";
+if (androidAccountClient.includes("/v1/integrations/youtube/") && /youtube/i.test(androidAccount)) {
   add("Android YouTube Music import", "PASS", "Native account flow is wired to the authenticated YouTube import service");
 } else fail("Android YouTube Music import", "Native account does not yet connect to the YouTube OAuth/import service", "CloudAccountController.kt");
 if (/linkIdentity|GoogleSignIn|CredentialManager|google/i.test(androidController)) {
