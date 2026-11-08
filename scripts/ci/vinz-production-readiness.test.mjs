@@ -39,6 +39,13 @@ test("SQL account access contract asserts profile privacy and share-link column 
   assert.match(sql, /public share-link expiry policy is missing/);
 });
 
+test("SQL YouTube access contract requires owner-only RLS for provider tokens and imports", () => {
+  const sql = fs.readFileSync("supabase/tests/vinz_youtube_access_contract.sql", "utf8");
+  assert.match(sql, /anon must not read encrypted YouTube tokens/);
+  assert.match(sql, /YouTube connection owner policy is missing/);
+  assert.match(sql, /YouTube import owner policy is missing/);
+});
+
 test("localhost variants are detected without matching unrelated hosts", () => {
   for (const host of ["localhost", "api.localhost", "127.0.0.1", "0.0.0.0", "::1"]) assert.equal(isLocalHost(host), true);
   assert.equal(isLocalHost("home.vinzmusic.workers.dev"), false);
