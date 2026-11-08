@@ -20,6 +20,8 @@ The Next.js web app remains in `web/`. Cloudflare's recommended Next.js path is 
 - `web/package.json`: `dev:vinext`, `check:vinext`, `build:vinext`, `start:vinext`, and `deploy:cloudflare`.
 - `.github/workflows/cloudflare-web.yml`: pull-request and main-branch build checks. Production deployment is manual and requires the exact confirmation string `deploy-home-production` in the workflow dispatch input. It deploys only the `home` Worker.
 
+For local web development, copy `web/.env.example` to `web/.env.local`; it contains the verified public Supabase URL/key and the existing API URL.
+
 The expected frontend URL is exactly:
 
 `https://home.vinzmusic.workers.dev`
@@ -43,7 +45,7 @@ Set a GitHub `production` environment and require a reviewer if available. The w
 
 ## Supabase Auth URLs
 
-Before enabling sign-in on the new host, update Supabase Auth URL configuration:
+Before enabling sign-in on the new host, update Supabase Auth URL configuration in [Supabase Auth URL Configuration](https://supabase.com/dashboard/project/iszghebmetrbkfhnnoqq/auth/url-configuration):
 
 - Site URL: `https://home.vinzmusic.workers.dev`
 - Additional Redirect URL: `https://home.vinzmusic.workers.dev/auth/callback`
@@ -53,7 +55,7 @@ Retain any other callback URLs only while they are intentionally used for develo
 ## Verification checklist
 
 - [ ] Cloudflare build and vinext compatibility check pass.
-- [ ] Worker deploy creates `home.vinzmusic.workers.dev` and serves the app.
+- [ ] Worker deploy creates `home.vinzmusic.workers.dev` and serves the app; the workflow then runs an HTTP 200/content smoke test against that exact hostname.
 - [ ] `/auth/callback` completes OTP and Google auth redirects.
 - [ ] Signup, email OTP, resend, password recovery and Google sign-in work.
 - [ ] Profile routes, username availability RPC and avatar storage work.
