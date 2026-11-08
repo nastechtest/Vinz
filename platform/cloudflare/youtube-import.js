@@ -183,6 +183,7 @@ export async function handleYouTubeCallback(request, url, env, config) {
     const channel = channelPayload.items?.[0] || null;
     const previous = await getConnection(config, pending.authorization, pending.userId, true).catch(() => null);
     const refreshToken = token.refresh_token || (previous ? await decryptSecret(previous.encrypted_refresh_token, env).catch(() => null) : null);
+    if (!refreshToken) return callbackResult("refresh_token_missing");
     const record = {
       user_id: pending.userId,
       channel_id: channel?.id || null,
