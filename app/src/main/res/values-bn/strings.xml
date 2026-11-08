@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">পরীক্ষামূলক বিভক্ত নেভিগেশন কেন্দ্রীয় মিনি প্লেয়ার রূপান্তর মূল</string>
     <string name="icons_shapes_summary">আইকন প্যাক ও ওজন, কোণ ও আকার</string>
     <string name="icons_shapes_keywords">আইকন প্যাক ওজন কোণ আকার</string>
+    <string name="cloud_account_tab_overview">সংক্ষিপ্ত বিবরণ</string>
+    <string name="cloud_account_tab_security">নিরাপত্তা</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">অ্যাকাউন্টের সংক্ষিপ্ত বিবরণ</string>
+    <string name="cloud_account_profile_default">আপনার Vinz প্রোফাইল</string>
+    <string name="cloud_account_overview_description">আপনার Vinz পরিচয় সংযুক্ত আছে। এই ফোনের আপনার সঙ্গীত লাইব্রেরি সাইন ইন থেকে স্বাধীনভাবে উপলভ্য থাকে।</string>
+    <string name="cloud_account_edit_profile">প্রোফাইল সম্পাদনা করুন</string>
+    <string name="cloud_account_music_profile">আপনার সঙ্গীত প্রোফাইল</string>
+    <string name="cloud_account_security">অ্যাকাউন্ট নিরাপত্তা</string>
+    <string name="cloud_account_password_and_recovery">পাসওয়ার্ড ও পুনরুদ্ধার</string>
+    <string name="cloud_account_password_reset_description">%1$s-এ একটি পাসওয়ার্ড রিসেট ইমেইল পাঠান। রিসেট লিঙ্কটি আপনার যাচাইকৃত Vinz ইমেইল প্রবাহ দ্বারা পরিচালিত হয়।</string>
+    <string name="cloud_account_send_password_reset">পাসওয়ার্ড রিসেট ইমেইল পাঠান</string>
+    <string name="cloud_account_connected_services">সংযুক্ত পরিষেবাসমূহ</string>
+    <string name="cloud_account_connections_subtitle">Google সাইন-ইন এবং YouTube সঙ্গীত আমদানি আলাদা অনুমতি।</string>
+    <string name="cloud_account_connections_description">কুকি দিয়ে YouTube Music-এ সাইন-ইন একটি পৃথক সঙ্গীত-উৎস বৈশিষ্ট্য হিসেবেই থাকে। এটি আপনাকে Vinz-এ সাইন ইন করায় না। স্থানীয় Google পরিচয় সংযোগ ও YouTube Data API আমদানির জন্য Android OAuth কলব্যাক এবং নিরাপদ টোকেন-বিনিময় প্রবাহ দরকার; এই স্ক্রিনটি এসব অনুমতি সংযুক্ত থাকার ভান করে না।</string>
+    <string name="cloud_account_username_checking">Vinz-এর সঙ্গে প্রাপ্যতা পরীক্ষা করা হচ্ছে…</string>
+    <string name="cloud_account_username_available">ব্যবহারকারীর নাম উপলভ্য</string>
+    <string name="cloud_account_username_unavailable">ব্যবহারকারীর নাম উপলভ্য নয় বা সংরক্ষিত</string>
+    <string name="cloud_account_username_invalid">3–24টি ছোট হাতের অক্ষর, সংখ্যা বা আন্ডারস্কোর লিখুন</string>
+    <string name="cloud_account_username_error">Vinz-এ পৌঁছানো যায়নি। আবার চেষ্টা করুন।</string>
 </resources>

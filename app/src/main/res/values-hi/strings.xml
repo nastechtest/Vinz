@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">प्रायोगिक विभाजित नेविगेशन केंद्रित मिनी प्लेयर रूपांतरण मूल</string>
     <string name="icons_shapes_summary">आइकन पैक और मोटाई, कोने और आकार</string>
     <string name="icons_shapes_keywords">आइकन पैक मोटाई कोने आकार</string>
+    <string name="cloud_account_tab_overview">अवलोकन</string>
+    <string name="cloud_account_tab_security">सुरक्षा</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">खाता अवलोकन</string>
+    <string name="cloud_account_profile_default">आपकी Vinz प्रोफ़ाइल</string>
+    <string name="cloud_account_overview_description">आपकी Vinz पहचान जुड़ी हुई है। इस फ़ोन की आपकी संगीत लाइब्रेरी साइन इन से स्वतंत्र रूप से उपलब्ध रहती है।</string>
+    <string name="cloud_account_edit_profile">प्रोफ़ाइल संपादित करें</string>
+    <string name="cloud_account_music_profile">आपकी संगीत प्रोफ़ाइल</string>
+    <string name="cloud_account_security">खाता सुरक्षा</string>
+    <string name="cloud_account_password_and_recovery">पासवर्ड और पुनर्प्राप्ति</string>
+    <string name="cloud_account_password_reset_description">%1$s पर पासवर्ड रीसेट ईमेल भेजें। रीसेट लिंक आपके सत्यापित Vinz ईमेल प्रवाह द्वारा संभाला जाता है।</string>
+    <string name="cloud_account_send_password_reset">पासवर्ड रीसेट ईमेल भेजें</string>
+    <string name="cloud_account_connected_services">जुड़ी हुई सेवाएँ</string>
+    <string name="cloud_account_connections_subtitle">Google साइन-इन और YouTube संगीत आयात अलग-अलग अनुमतियाँ हैं।</string>
+    <string name="cloud_account_connections_description">कुकी के साथ YouTube Music साइन-इन एक अलग संगीत-स्रोत सुविधा बना रहता है। यह आपको Vinz में साइन इन नहीं करता। मूल Google पहचान लिंकिंग और YouTube Data API आयात के लिए Android OAuth कॉलबैक और सुरक्षित टोकन-विनिमय प्रवाह आवश्यक है; यह स्क्रीन इन अनुमतियों के जुड़े होने का दिखावा नहीं करती।</string>
+    <string name="cloud_account_username_checking">Vinz पर उपलब्धता जाँची जा रही है…</string>
+    <string name="cloud_account_username_available">उपयोगकर्ता नाम उपलब्ध है</string>
+    <string name="cloud_account_username_unavailable">उपयोगकर्ता नाम उपलब्ध नहीं है या आरक्षित है</string>
+    <string name="cloud_account_username_invalid">3–24 छोटे अक्षर, अंक या अंडरस्कोर दर्ज करें</string>
+    <string name="cloud_account_username_error">Vinz तक नहीं पहुँचा जा सका। फिर से कोशिश करें।</string>
 </resources>

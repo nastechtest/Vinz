@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">ลงชื่อเข้าใช้และจัดการโปรไฟล์คลาวด์ของคุณ</string>
+    <string name="cloud_account_intro">โปรไฟล์คลาวด์ของคุณแยกจาก YouTube Music เพลงและการเล่นในท้องถิ่นทำงานได้โดยไม่ต้องลงชื่อเข้าใช้</string>
+    <string name="cloud_account_email">ที่อยู่อีเมล</string>
+    <string name="cloud_account_password">รหัสผ่าน</string>
+    <string name="cloud_account_username">ชื่อผู้ใช้</string>
+    <string name="cloud_account_display_name">ชื่อที่แสดง</string>
+    <string name="cloud_account_username_hint">ตัวอักษรพิมพ์เล็ก ตัวเลข หรือขีดล่าง 3–24 ตัว</string>
+    <string name="cloud_account_password_hint">ใช้อย่างน้อย 8 ตัวอักษร</string>
+    <string name="cloud_account_create">สร้างบัญชีคลาวด์</string>
+    <string name="cloud_account_existing">ฉันมีบัญชีอยู่แล้ว</string>
+    <string name="cloud_account_forgot">ลืมรหัสผ่าน?</string>
+    <string name="cloud_account_recovery">ส่งอีเมลสำรอง</string>
+    <string name="cloud_account_recovery_sent">หากมีบัญชีสำหรับที่อยู่นี้ อีเมลสำรองจะถูกส่งไปแล้ว</string>
+    <string name="cloud_account_confirmation">ตรวจสอบอีเมลของคุณเพื่อยืนยันบัญชีของคุณ จากนั้นกลับไปลงชื่อเข้าใช้</string>
+    <string name="cloud_account_setup">ตั้งค่าโปรไฟล์ของคุณให้เสร็จสิ้น</string>
+    <string name="cloud_account_bio">ไบโอ</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">โปรไฟล์สาธารณะ</string>
+    <string name="cloud_account_public_hint">อนุญาตให้ผู้ใช้ Vinz รายอื่นดูโปรไฟล์ของคุณ</string>
+    <string name="cloud_account_discoverable">ค้นพบได้</string>
+    <string name="cloud_account_discoverable_hint">อนุญาตให้โปรไฟล์ของคุณปรากฏในการค้นพบผู้ใช้</string>
+    <string name="cloud_account_saved">บันทึกโปรไฟล์คลาวด์ของคุณแล้ว</string>
+    <string name="cloud_account_signed_out">คุณได้ออกจากระบบบัญชีคลาวด์ของคุณแล้ว</string>
+    <string name="cloud_account_signed_in">ลงชื่อเข้าใช้ด้วย %1$s</string>
+    <string name="cloud_account_load_failed">ไม่สามารถโหลดโปรไฟล์ของคุณได้ ลองอีกครั้งก่อนที่จะแก้ไข</string>
+    <string name="cloud_account_request_failed">ไม่สามารถดำเนินการตามคำขอบัญชีนี้ได้ ตรวจสอบการเชื่อมต่อของคุณแล้วลองอีกครั้ง</string>
+    <string name="cloud_account_sign_in_failed">ไม่สามารถลงชื่อเข้าใช้ให้เสร็จสิ้นได้ ตรวจสอบรายละเอียดและการเชื่อมต่อของคุณ แล้วลองอีกครั้ง</string>
+    <string name="cloud_account_save_failed">ไม่สามารถบันทึกโปรไฟล์ของคุณได้ ตรวจสอบรายละเอียดและการเชื่อมต่อของคุณ แล้วลองอีกครั้ง</string>
+    <string name="cloud_account_recovery_failed">ไม่สามารถดำเนินการตามคำขอกู้คืนได้ ลองอีกครั้งในภายหลัง</string>
+    <string name="cloud_account_sign_out_failed">ไม่สามารถออกจากระบบได้ ลองอีกครั้ง</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

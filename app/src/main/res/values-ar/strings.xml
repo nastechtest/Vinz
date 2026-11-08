@@ -4891,4 +4891,24 @@
     <string name="experimental_split_navigation_keywords">تجريبي تنقل منقسم مشغل مركزي صغير تحويل أصلي</string>
     <string name="icons_shapes_summary">حزمة الأيقونات ووزنها والزوايا والأشكال</string>
     <string name="icons_shapes_keywords">أيقونة حزمة وزن زوايا أشكال</string>
+    <string name="cloud_account_tab_overview">نظرة عامة</string>
+    <string name="cloud_account_tab_security">الأمان</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">نظرة عامة على الحساب</string>
+    <string name="cloud_account_profile_default">ملفك الشخصي في Vinz</string>
+    <string name="cloud_account_overview_description">هويتك في Vinz متصلة. تظل مكتبة الموسيقى على هذا الهاتف متاحة بشكل مستقل عن تسجيل الدخول.</string>
+    <string name="cloud_account_edit_profile">تعديل الملف الشخصي</string>
+    <string name="cloud_account_music_profile">ملفك الموسيقي</string>
+    <string name="cloud_account_security">أمان الحساب</string>
+    <string name="cloud_account_password_and_recovery">كلمة المرور والاسترداد</string>
+    <string name="cloud_account_password_reset_description">أرسل رسالة إلكترونية لإعادة تعيين كلمة المرور إلى %1$s. يُعالَج رابط إعادة التعيين بواسطة مسار بريد Vinz الإلكتروني الذي تم التحقق منه.</string>
+    <string name="cloud_account_send_password_reset">إرسال رسالة إعادة تعيين كلمة المرور</string>
+    <string name="cloud_account_connected_services">الخدمات المتصلة</string>
+    <string name="cloud_account_connections_subtitle">تسجيل الدخول عبر Google واستيراد موسيقى YouTube إذنان منفصلان.</string>
+    <string name="cloud_account_connections_description">يبقى تسجيل الدخول إلى YouTube Music باستخدام ملف تعريف الارتباط ميزة منفصلة لمصدر الموسيقى. لا يسجّلك الدخول إلى Vinz. يتطلب ربط هوية Google الأصلي والاستيراد عبر YouTube Data API رد اتصال Android OAuth وتدفقاً آمناً لتبادل الرموز؛ لا تدّعي هذه الشاشة أن هذه الأذونات متصلة.</string>
+    <string name="cloud_account_username_checking">جارٍ التحقق من الإتاحة مع Vinz…</string>
+    <string name="cloud_account_username_available">اسم المستخدم متاح</string>
+    <string name="cloud_account_username_unavailable">اسم المستخدم غير متاح أو محجوز</string>
+    <string name="cloud_account_username_invalid">أدخل 3–24 حرفاً صغيراً أو رقماً أو شرطة سفلية</string>
+    <string name="cloud_account_username_error">تعذّر الوصول إلى Vinz. حاول مرة أخرى.</string>
 </resources>

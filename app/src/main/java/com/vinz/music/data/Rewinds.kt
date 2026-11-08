@@ -202,6 +202,7 @@ class RewindWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             Notifications.post(
                 applicationContext, Notifications.REWIND, 4800 + year % 100, tr(R.string.your_rewind_is_ready_2, year),
                 tr(R.string.your_year_in_music_your_top), "vinz://rewind/$year",
+                iconRes = R.drawable.ic_notification_rewind,
             )
         }
         Rewinds.schedule(applicationContext)

@@ -4705,4 +4705,24 @@
     <string name="experimental_split_navigation_keywords">expérimental navigation séparée centrée mini lecteur morphose origine</string>
     <string name="icons_shapes_summary">Pack et épaisseur des icônes, coins et formes</string>
     <string name="icons_shapes_keywords">icône pack épaisseur coins formes</string>
+    <string name="cloud_account_tab_overview">Vue d’ensemble</string>
+    <string name="cloud_account_tab_security">Sécurité</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">APERÇU DU COMPTE</string>
+    <string name="cloud_account_profile_default">Votre profil Vinz</string>
+    <string name="cloud_account_overview_description">Votre identité Vinz est connectée. Votre bibliothèque musicale sur ce téléphone reste disponible indépendamment de la connexion.</string>
+    <string name="cloud_account_edit_profile">Modifier le profil</string>
+    <string name="cloud_account_music_profile">VOTRE PROFIL MUSICAL</string>
+    <string name="cloud_account_security">SÉCURITÉ DU COMPTE</string>
+    <string name="cloud_account_password_and_recovery">Mot de passe et récupération</string>
+    <string name="cloud_account_password_reset_description">Envoyez un e-mail de réinitialisation du mot de passe à %1$s. Le lien de réinitialisation est géré par votre flux d’e-mail Vinz vérifié.</string>
+    <string name="cloud_account_send_password_reset">Envoyer l’e-mail de réinitialisation du mot de passe</string>
+    <string name="cloud_account_connected_services">SERVICES CONNECTÉS</string>
+    <string name="cloud_account_connections_subtitle">La connexion Google et l’importation de musique YouTube sont des autorisations distinctes.</string>
+    <string name="cloud_account_connections_description">La connexion par cookie à YouTube Music reste une fonctionnalité distincte de source musicale. Elle ne vous connecte pas à Vinz. L’association native de l’identité Google et l’importation via l’API YouTube Data nécessitent le rappel OAuth Android et un flux sécurisé d’échange de jetons ; cet écran ne prétend pas que ces autorisations sont connectées.</string>
+    <string name="cloud_account_username_checking">Vérification de la disponibilité auprès de Vinz…</string>
+    <string name="cloud_account_username_available">Nom d’utilisateur disponible</string>
+    <string name="cloud_account_username_unavailable">Nom d’utilisateur indisponible ou réservé</string>
+    <string name="cloud_account_username_invalid">Saisissez 3 à 24 lettres minuscules, chiffres ou traits de soulignement</string>
+    <string name="cloud_account_username_error">Impossible de joindre Vinz. Réessayez.</string>
 </resources>

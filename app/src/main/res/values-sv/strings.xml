@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">experimentell delad navigering centrerad minispelare formförändring ursprunglig</string>
     <string name="icons_shapes_summary">Ikonpaket och tjocklek, hörn och former</string>
     <string name="icons_shapes_keywords">ikon paket tjocklek hörn former</string>
+    <string name="cloud_account_tab_overview">Översikt</string>
+    <string name="cloud_account_tab_security">Säkerhet</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">KONTOÖVERSIKT</string>
+    <string name="cloud_account_profile_default">Din Vinz-profil</string>
+    <string name="cloud_account_overview_description">Din Vinz-identitet är ansluten. Ditt musikbibliotek på den här telefonen är tillgängligt oberoende av inloggningen.</string>
+    <string name="cloud_account_edit_profile">Redigera profil</string>
+    <string name="cloud_account_music_profile">DIN MUSIKPROFIL</string>
+    <string name="cloud_account_security">KONTOSÄKERHET</string>
+    <string name="cloud_account_password_and_recovery">Lösenord och återställning</string>
+    <string name="cloud_account_password_reset_description">Skicka ett e-postmeddelande för återställning av lösenord till %1$s. Återställningslänken hanteras av ditt verifierade Vinz-e-postflöde.</string>
+    <string name="cloud_account_send_password_reset">Skicka e-post för återställning av lösenord</string>
+    <string name="cloud_account_connected_services">ANSLUTNA TJÄNSTER</string>
+    <string name="cloud_account_connections_subtitle">Google-inloggning och musikimport från YouTube är separata behörigheter.</string>
+    <string name="cloud_account_connections_description">Cookie-inloggning till YouTube Music är fortfarande en separat funktion för musikkällor. Den loggar inte in dig på Vinz. Inbyggd länkning av Google-identitet och import via YouTube Data API kräver Androids OAuth-återanrop och ett säkert tokenutbytesflöde; den här skärmen låtsas inte att dessa behörigheter är anslutna.</string>
+    <string name="cloud_account_username_checking">Kontrollerar tillgänglighet hos Vinz…</string>
+    <string name="cloud_account_username_available">Användarnamnet är tillgängligt</string>
+    <string name="cloud_account_username_unavailable">Användarnamnet är inte tillgängligt eller är reserverat</string>
+    <string name="cloud_account_username_invalid">Ange 3–24 gemener, siffror eller understreck</string>
+    <string name="cloud_account_username_error">Kunde inte nå Vinz. Försök igen.</string>
 </resources>

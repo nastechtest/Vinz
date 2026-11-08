@@ -4581,4 +4581,24 @@
     <string name="experimental_split_navigation_keywords">eksperimental navigasi terpisah tengah pemutar mini berubah asli</string>
     <string name="icons_shapes_summary">Paket dan bobot ikon, sudut dan bentuk</string>
     <string name="icons_shapes_keywords">ikon paket bobot sudut bentuk</string>
+    <string name="cloud_account_tab_overview">Ringkasan</string>
+    <string name="cloud_account_tab_security">Keamanan</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">RINGKASAN AKUN</string>
+    <string name="cloud_account_profile_default">Profil Vinz Anda</string>
+    <string name="cloud_account_overview_description">Identitas Vinz Anda terhubung. Koleksi musik di ponsel ini tetap tersedia secara mandiri dari status masuk Anda.</string>
+    <string name="cloud_account_edit_profile">Edit profil</string>
+    <string name="cloud_account_music_profile">PROFIL MUSIK ANDA</string>
+    <string name="cloud_account_security">KEAMANAN AKUN</string>
+    <string name="cloud_account_password_and_recovery">Kata sandi dan pemulihan</string>
+    <string name="cloud_account_password_reset_description">Kirim email pengaturan ulang kata sandi ke %1$s. Tautan pengaturan ulang ditangani melalui alur email Vinz terverifikasi Anda.</string>
+    <string name="cloud_account_send_password_reset">Kirim email pengaturan ulang kata sandi</string>
+    <string name="cloud_account_connected_services">LAYANAN TERHUBUNG</string>
+    <string name="cloud_account_connections_subtitle">Login Google dan impor musik YouTube adalah izin terpisah.</string>
+    <string name="cloud_account_connections_description">Login cookie YouTube Music tetap merupakan fitur sumber musik terpisah. Ini tidak membuat Anda login ke Vinz. Penautan identitas Google native dan impor YouTube Data API memerlukan callback OAuth Android serta alur pertukaran token yang aman; layar ini tidak berpura-pura bahwa izin tersebut terhubung.</string>
+    <string name="cloud_account_username_checking">Memeriksa ketersediaan dengan Vinz…</string>
+    <string name="cloud_account_username_available">Nama pengguna tersedia</string>
+    <string name="cloud_account_username_unavailable">Nama pengguna tidak tersedia atau dicadangkan</string>
+    <string name="cloud_account_username_invalid">Masukkan 3–24 huruf kecil, angka, atau garis bawah</string>
+    <string name="cloud_account_username_error">Tidak dapat menghubungi Vinz. Coba lagi.</string>
 </resources>

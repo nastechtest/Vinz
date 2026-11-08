@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Masuk dan kelola profil cloud Anda</string>
+    <string name="cloud_account_intro">Profil cloud Anda terpisah dari YouTube Music. Musik lokal dan pemutaran berfungsi tanpa masuk.</string>
+    <string name="cloud_account_email">Alamat email</string>
+    <string name="cloud_account_password">Kata sandi</string>
+    <string name="cloud_account_username">Nama belakang</string>
+    <string name="cloud_account_display_name">Nama tampilan</string>
+    <string name="cloud_account_username_hint">3–24 huruf kecil, angka, atau garis bawah</string>
+    <string name="cloud_account_password_hint">Gunakan minimal 8 karakter.</string>
+    <string name="cloud_account_create">Buat akun cloud</string>
+    <string name="cloud_account_existing">Saya sudah memiliki akun</string>
+    <string name="cloud_account_forgot">Lupa kata sandi?</string>
+    <string name="cloud_account_recovery">Kirim email pemulihan</string>
+    <string name="cloud_account_recovery_sent">Jika ada akun untuk alamat ini, email pemulihan telah dikirim.</string>
+    <string name="cloud_account_confirmation">Periksa email Anda untuk mengonfirmasi akun Anda, lalu kembali untuk masuk.</string>
+    <string name="cloud_account_setup">Selesaikan pengaturan profil Anda.</string>
+    <string name="cloud_account_bio">Biografi</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Profil publik</string>
+    <string name="cloud_account_public_hint">Izinkan pengguna Vinz lain melihat profil Anda.</string>
+    <string name="cloud_account_discoverable">Dapat ditemukan</string>
+    <string name="cloud_account_discoverable_hint">Izinkan profil Anda muncul dalam penemuan pengguna.</string>
+    <string name="cloud_account_saved">Profil cloud Anda disimpan.</string>
+    <string name="cloud_account_signed_out">Anda telah keluar dari akun cloud Anda.</string>
+    <string name="cloud_account_signed_in">Masuk sebagai %1$s</string>
+    <string name="cloud_account_load_failed">Profil Anda tidak dapat dimuat. Coba lagi sebelum mengedit.</string>
+    <string name="cloud_account_request_failed">Permintaan akun ini tidak dapat diselesaikan. Periksa koneksi Anda dan coba lagi.</string>
+    <string name="cloud_account_sign_in_failed">Proses masuk tidak dapat diselesaikan. Periksa detail dan koneksi Anda, lalu coba lagi.</string>
+    <string name="cloud_account_save_failed">Profil Anda tidak dapat disimpan. Periksa detail dan koneksi Anda, lalu coba lagi.</string>
+    <string name="cloud_account_recovery_failed">Permintaan pemulihan tidak dapat diselesaikan. Coba lagi nanti.</string>
+    <string name="cloud_account_sign_out_failed">Keluar tidak dapat diselesaikan. Coba lagi.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

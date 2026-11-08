@@ -4676,4 +4676,24 @@
     <string name="experimental_split_navigation_keywords">experimental split navigation centred center mini player morph original</string>
     <string name="icons_shapes_summary">Icon pack and weight, corners and shapes</string>
     <string name="icons_shapes_keywords">icon pack weight corners shapes</string>
+    <string name="cloud_account_tab_overview">Overview</string>
+    <string name="cloud_account_tab_security">Security</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">ACCOUNT OVERVIEW</string>
+    <string name="cloud_account_profile_default">Your Vinz profile</string>
+    <string name="cloud_account_overview_description">Your Vinz identity is connected. Your music library on this phone remains available independently of sign-in.</string>
+    <string name="cloud_account_edit_profile">Edit profile</string>
+    <string name="cloud_account_music_profile">YOUR MUSIC PROFILE</string>
+    <string name="cloud_account_security">ACCOUNT SECURITY</string>
+    <string name="cloud_account_password_and_recovery">Password and recovery</string>
+    <string name="cloud_account_password_reset_description">Send a password reset email to %1$s. The reset link is handled by your verified Vinz email flow.</string>
+    <string name="cloud_account_send_password_reset">Send password reset email</string>
+    <string name="cloud_account_connected_services">CONNECTED SERVICES</string>
+    <string name="cloud_account_connections_subtitle">Google sign-in and YouTube music import are separate permissions.</string>
+    <string name="cloud_account_connections_description">YouTube Music cookie sign-in remains a separate music-source feature. It does not sign you into Vinz. Native Google identity linking and YouTube Data API import require the Android OAuth callback and secure token-exchange flow; this screen does not pretend that those permissions are connected.</string>
+    <string name="cloud_account_username_checking">Checking availability with Vinz…</string>
+    <string name="cloud_account_username_available">Username available</string>
+    <string name="cloud_account_username_unavailable">Username unavailable or reserved</string>
+    <string name="cloud_account_username_invalid">Enter 3–24 lowercase letters, numbers or underscores</string>
+    <string name="cloud_account_username_error">Could not reach Vinz. Try again.</string>
 </resources>

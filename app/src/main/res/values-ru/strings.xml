@@ -4767,4 +4767,24 @@
     <string name="experimental_split_navigation_keywords">экспериментальная раздельная навигация по центру мини плеер трансформация исходная</string>
     <string name="icons_shapes_summary">Набор и толщина значков, углы и формы</string>
     <string name="icons_shapes_keywords">значок набор толщина углы формы</string>
+    <string name="cloud_account_tab_overview">Обзор</string>
+    <string name="cloud_account_tab_security">Безопасность</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">ОБЗОР УЧЁТНОЙ ЗАПИСИ</string>
+    <string name="cloud_account_profile_default">Ваш профиль Vinz</string>
+    <string name="cloud_account_overview_description">Ваш идентификатор Vinz подключён. Музыкальная библиотека на этом телефоне остаётся доступной независимо от входа.</string>
+    <string name="cloud_account_edit_profile">Изменить профиль</string>
+    <string name="cloud_account_music_profile">ВАШ МУЗЫКАЛЬНЫЙ ПРОФИЛЬ</string>
+    <string name="cloud_account_security">БЕЗОПАСНОСТЬ УЧЁТНОЙ ЗАПИСИ</string>
+    <string name="cloud_account_password_and_recovery">Пароль и восстановление</string>
+    <string name="cloud_account_password_reset_description">Отправить письмо для сброса пароля на %1$s. Ссылка для сброса обрабатывается вашим подтверждённым потоком электронной почты Vinz.</string>
+    <string name="cloud_account_send_password_reset">Отправить письмо для сброса пароля</string>
+    <string name="cloud_account_connected_services">ПОДКЛЮЧЁННЫЕ СЕРВИСЫ</string>
+    <string name="cloud_account_connections_subtitle">Вход через Google и импорт музыки YouTube — отдельные разрешения.</string>
+    <string name="cloud_account_connections_description">Вход в YouTube Music с помощью cookie остаётся отдельной функцией источника музыки. Он не выполняет вход в Vinz. Нативная привязка идентификатора Google и импорт через YouTube Data API требуют обратного вызова Android OAuth и безопасного потока обмена токенами; этот экран не утверждает, что эти разрешения подключены.</string>
+    <string name="cloud_account_username_checking">Проверка доступности в Vinz…</string>
+    <string name="cloud_account_username_available">Имя пользователя доступно</string>
+    <string name="cloud_account_username_unavailable">Имя пользователя недоступно или зарезервировано</string>
+    <string name="cloud_account_username_invalid">Введите 3–24 строчные буквы, цифры или символы подчёркивания</string>
+    <string name="cloud_account_username_error">Не удалось связаться с Vinz. Повторите попытку.</string>
 </resources>

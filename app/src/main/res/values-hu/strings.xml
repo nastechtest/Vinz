@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">kísérleti osztott navigáció középen mini lejátszó átalakulás eredeti</string>
     <string name="icons_shapes_summary">Ikoncsomag és vastagság, sarkok és formák</string>
     <string name="icons_shapes_keywords">ikon csomag vastagság sarkok formák</string>
+    <string name="cloud_account_tab_overview">Áttekintés</string>
+    <string name="cloud_account_tab_security">Biztonság</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">FIÓK ÁTTEKINTÉSE</string>
+    <string name="cloud_account_profile_default">Az Ön Vinz-profilja</string>
+    <string name="cloud_account_overview_description">Az Ön Vinz-azonossága kapcsolódik. Az ezen a telefonon lévő zenei könyvtár bejelentkezéstől függetlenül elérhető marad.</string>
+    <string name="cloud_account_edit_profile">Profil szerkesztése</string>
+    <string name="cloud_account_music_profile">AZ ÖN ZENEI PROFILJA</string>
+    <string name="cloud_account_security">FIÓKBIZTONSÁG</string>
+    <string name="cloud_account_password_and_recovery">Jelszó és helyreállítás</string>
+    <string name="cloud_account_password_reset_description">Jelszó-visszaállító e-mail küldése erre a címre: %1$s. A visszaállítási hivatkozást az Ön ellenőrzött Vinz e-mail-folyamata kezeli.</string>
+    <string name="cloud_account_send_password_reset">Jelszó-visszaállító e-mail küldése</string>
+    <string name="cloud_account_connected_services">KAPCSOLÓDÓ SZOLGÁLTATÁSOK</string>
+    <string name="cloud_account_connections_subtitle">A Google-bejelentkezés és a YouTube-zeneimport külön engedélyek.</string>
+    <string name="cloud_account_connections_description">A YouTube Musicba cookie-val történő bejelentkezés külön zeneforrás-funkció marad. Nem jelentkezteti be Önt a Vinzbe. A natív Google-azonosság összekapcsolása és a YouTube Data API-import Android OAuth-visszahívást, valamint biztonságos tokenváltási folyamatot igényel; ez a képernyő nem tesz úgy, mintha ezek az engedélyek kapcsolódnának.</string>
+    <string name="cloud_account_username_checking">Elérhetőség ellenőrzése a Vinzzel…</string>
+    <string name="cloud_account_username_available">A felhasználónév elérhető</string>
+    <string name="cloud_account_username_unavailable">A felhasználónév nem elérhető vagy foglalt</string>
+    <string name="cloud_account_username_invalid">Adjon meg 3–24 kisbetűt, számot vagy aláhúzásjelet</string>
+    <string name="cloud_account_username_error">Nem érhető el a Vinz. Próbálja újra.</string>
 </resources>

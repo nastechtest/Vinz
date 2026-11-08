@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">تجرباتی تقسیم شدہ نیویگیشن مرکزی منی پلیئر تبدیلی اصل</string>
     <string name="icons_shapes_summary">آئیکن پیک وزن کونے شکلیں</string>
     <string name="icons_shapes_keywords">آئیکن پیک وزن کونے شکلیں</string>
+    <string name="cloud_account_tab_overview">جائزہ</string>
+    <string name="cloud_account_tab_security">سیکیورٹی</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">اکاؤنٹ کا جائزہ</string>
+    <string name="cloud_account_profile_default">آپ کا Vinz پروفائل</string>
+    <string name="cloud_account_overview_description">آپ کی Vinz شناخت منسلک ہے۔ اس فون پر آپ کی موسیقی کی لائبریری سائن اِن سے آزادانہ طور پر دستیاب رہتی ہے۔</string>
+    <string name="cloud_account_edit_profile">پروفائل میں ترمیم کریں</string>
+    <string name="cloud_account_music_profile">آپ کا موسیقی پروفائل</string>
+    <string name="cloud_account_security">اکاؤنٹ کی سیکیورٹی</string>
+    <string name="cloud_account_password_and_recovery">پاس ورڈ اور بازیابی</string>
+    <string name="cloud_account_password_reset_description">%1$s پر پاس ورڈ ری سیٹ ای میل بھیجیں۔ ری سیٹ لنک آپ کے تصدیق شدہ Vinz ای میل فلو کے ذریعے سنبھالا جاتا ہے۔</string>
+    <string name="cloud_account_send_password_reset">پاس ورڈ ری سیٹ ای میل بھیجیں</string>
+    <string name="cloud_account_connected_services">منسلک خدمات</string>
+    <string name="cloud_account_connections_subtitle">Google سائن اِن اور YouTube موسیقی درآمد الگ اجازتیں ہیں۔</string>
+    <string name="cloud_account_connections_description">کوکی کے ذریعے YouTube Music میں سائن اِن ایک الگ موسیقی ماخذ کی خصوصیت رہتی ہے۔ یہ آپ کو Vinz میں سائن اِن نہیں کرتا۔ مقامی Google شناخت لنکنگ اور YouTube Data API درآمد کے لیے Android OAuth کال بیک اور محفوظ ٹوکن تبادلے کا فلو درکار ہے؛ یہ اسکرین یہ ظاہر نہیں کرتی کہ یہ اجازتیں منسلک ہیں۔</string>
+    <string name="cloud_account_username_checking">Vinz کے ساتھ دستیابی چیک کی جا رہی ہے…</string>
+    <string name="cloud_account_username_available">صارف نام دستیاب ہے</string>
+    <string name="cloud_account_username_unavailable">صارف نام دستیاب نہیں یا محفوظ ہے</string>
+    <string name="cloud_account_username_invalid">3–24 چھوٹے حروف، اعداد یا انڈر اسکور درج کریں</string>
+    <string name="cloud_account_username_error">Vinz تک نہیں پہنچا جا سکا۔ دوبارہ کوشش کریں۔</string>
 </resources>

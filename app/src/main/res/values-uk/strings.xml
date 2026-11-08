@@ -4767,4 +4767,24 @@
     <string name="experimental_split_navigation_keywords">експериментальна розділена навігація по центру міні плеєр перетворення початкова</string>
     <string name="icons_shapes_summary">Набір і товщина значків, кути та форми</string>
     <string name="icons_shapes_keywords">значок набір товщина кути форми</string>
+    <string name="cloud_account_tab_overview">Огляд</string>
+    <string name="cloud_account_tab_security">Безпека</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">ОГЛЯД ОБЛІКОВОГО ЗАПИСУ</string>
+    <string name="cloud_account_profile_default">Ваш профіль Vinz</string>
+    <string name="cloud_account_overview_description">Ваш ідентифікатор Vinz підключено. Музична бібліотека на цьому телефоні лишається доступною незалежно від входу.</string>
+    <string name="cloud_account_edit_profile">Редагувати профіль</string>
+    <string name="cloud_account_music_profile">ВАШ МУЗИЧНИЙ ПРОФІЛЬ</string>
+    <string name="cloud_account_security">БЕЗПЕКА ОБЛІКОВОГО ЗАПИСУ</string>
+    <string name="cloud_account_password_and_recovery">Пароль і відновлення</string>
+    <string name="cloud_account_password_reset_description">Надішліть лист для скидання пароля на %1$s. Посилання для скидання обробляється вашим підтвердженим потоком електронної пошти Vinz.</string>
+    <string name="cloud_account_send_password_reset">Надіслати лист для скидання пароля</string>
+    <string name="cloud_account_connected_services">ПІДКЛЮЧЕНІ СЕРВІСИ</string>
+    <string name="cloud_account_connections_subtitle">Вхід через Google та імпорт музики YouTube — окремі дозволи.</string>
+    <string name="cloud_account_connections_description">Вхід у YouTube Music за допомогою cookie лишається окремою функцією джерела музики. Він не виконує вхід у Vinz. Власне зв\'язування ідентифікатора Google та імпорт через YouTube Data API потребують зворотного виклику Android OAuth і безпечного потоку обміну токенами; цей екран не вдає, що ці дозволи підключено.</string>
+    <string name="cloud_account_username_checking">Перевіряємо доступність у Vinz…</string>
+    <string name="cloud_account_username_available">Ім\'я користувача доступне</string>
+    <string name="cloud_account_username_unavailable">Ім\'я користувача недоступне або зарезервоване</string>
+    <string name="cloud_account_username_invalid">Введіть 3–24 малих літери, цифри або символи підкреслення</string>
+    <string name="cloud_account_username_error">Не вдалося зв\'язатися з Vinz. Спробуйте ще раз.</string>
 </resources>

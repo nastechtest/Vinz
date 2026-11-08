@@ -1,50 +1,70 @@
 # Vinz platform deployment
 
-## Architecture
+## Production architecture
 
-- **Vercel**: Next.js web account portal at `web/`.
-- **Supabase**: Auth, Postgres, RLS, and the `vinz-discovery` Edge Function.
-- **Cloudflare Workers**: Vinz API. Staging is `vinz-api-staging`; production is `vinz`.
+- **Cloudflare Workers**: Vinz web frontend at `https://home.vinzmusic.workers.dev` (Worker name `home`, account subdomain `vinzmusic`).
+- **Cloudflare Workers**: Vinz API at `https://api.vinzmusic.workers.dev`. The web frontend and API are separate Workers.
+- **Supabase**: Auth, OTP, Postgres, RLS, and the `vinz-discovery` Edge Function.
 - **Cloudflare R2**: private backup objects in `vinz-backups`.
 - **Cloudflare KV**: catalog cache.
-- **PostHog**: operational error telemetry only; the Worker intentionally excludes user identifiers, emails, tokens, lyrics, and music queries.
+- **PostHog**: operational error telemetry only; the API intentionally excludes user identifiers, emails, tokens, lyrics, and music queries.
 
-## Deploy workflows
+Vercel is not part of the production hosting path. Keep the existing Vercel project untouched during the migration as a rollback reference until Cloudflare verification is complete; do not rely on it for releases.
 
-- `.github/workflows/vercel-web.yml`: web dependency/build validation. Vercel Git integration creates deployments for connected branches.
-- `.github/workflows/vinz-platform-deploy.yml`: manual staging/production Worker deployment with tests and post-deploy health check.
-- Existing platform checks and provider health workflows remain separate.
-- Production Worker deploy requires `confirm_production=deploy-production`.
-- Supabase database migrations are not auto-applied by a web or Worker deployment. They are already present in the connected project; future migrations need their own reviewed migration release.
+## Web build and deploy
+
+The Next.js web app remains in `web/`. Cloudflare's recommended Next.js path is vinext on Workers.
+
+- `web/vite.config.ts`: vinext + Cloudflare Vite plugin.
+- `web/cloudflare.config.ts`: Worker name is explicitly `home`; `workersDev: true` enables its `workers.dev` route.
+- `web/package.json`: `dev:vinext`, `check:vinext`, `build:vinext`, `start:vinext`, and `deploy:cloudflare`.
+- `.github/workflows/cloudflare-web.yml`: pull-request and main-branch build checks. Production deployment is manual and requires the exact confirmation string `deploy-home-production` in the workflow dispatch input. It deploys only the `home` Worker.
+
+The expected frontend URL is exactly:
+
+`https://home.vinzmusic.workers.dev`
+
+The API URL remains:
+
+`https://api.vinzmusic.workers.dev`
 
 ## GitHub Actions configuration
 
-Secrets:
-- `SUPABASE_ACCESS_TOKEN` — Supabase personal access token for Edge Function deployment.
-- `CLOUDFLARE_API_TOKEN` — Workers edit/deploy permission for the account.
-- `POSTHOG_PROJECT_KEY` — optional PostHog ingestion key; distinct from the personal API token. Deploys work without it, but production telemetry stays disabled.
-- Existing provider-health credentials as documented in `docs/CI_WORKFLOWS.md`.
+Repository/environment variables:
+Cloudflare account ID is pinned in `web/cloudflare.config.ts` to the verified Vinz account; it is not a GitHub variable.
+- `NEXT_PUBLIC_SUPABASE_URL` — optional override; defaults to `https://iszghebmetrbkfhnnoqq.supabase.co` in the workflow.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — optional GitHub Actions variable override. If unset, the workflow uses the verified Supabase publishable key for project `iszghebmetrbkfhnnoqq` (this key is designed for public clients; RLS remains the data-access boundary).
+- `NEXT_PUBLIC_VINZ_API_URL` — optional override; defaults to `https://api.vinzmusic.workers.dev` in the workflow.
 
-Variables:
-- `SUPABASE_PROJECT_REF` — `iszghebmetrbkfhnnoqq`.
-- `CLOUDFLARE_ACCOUNT_ID`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `NEXT_PUBLIC_VINZ_API_URL`
+GitHub environment secret (still required before the production deploy can run):
+- `CLOUDFLARE_API_TOKEN` — scoped to deploy Workers scripts and read required account metadata. Never put it in repository variables or source files. The Cloudflare CLI also receives `CF_SEND_TELEMETRY=false` in CI.
 
-Set GitHub environment `staging` and `production`; put Cloudflare credentials in both environments. Production should require an environment reviewer.
+Set a GitHub `production` environment and require a reviewer if available. The workflow does not deploy on PR pushes or ordinary pushes to `main`; it only deploys after an explicit workflow dispatch confirmation.
 
-## Vercel project
+## Supabase Auth URLs
 
-Project: `vinz-web`, root directory `web`, framework Next.js. The project is connected to `nastechtest/Vinz` and has the public Supabase URL, publishable key, and Worker API URL configured in Vercel environments.
+Before enabling sign-in on the new host, update Supabase Auth URL configuration:
 
-Canonical web URL: https://vinz-web-nastechresearch.vercel.app
+- Site URL: `https://home.vinzmusic.workers.dev`
+- Additional Redirect URL: `https://home.vinzmusic.workers.dev/auth/callback`
 
-The callback route is `/auth/callback`. Add these Supabase Auth URL settings:
-- Site URL: `https://vinz-web-nastechresearch.vercel.app`
-- Additional Redirect URL: `https://vinz-web-nastechresearch.vercel.app/auth/callback`
-- For preview testing, add only the exact trusted Vercel preview domains required.
+Retain any other callback URLs only while they are intentionally used for development or rollback. Google OAuth's authorized redirect URI remains the Supabase Auth callback URL, not the Workers hostname.
 
-## Verification
+## Verification checklist
 
-The API smoke test requires `/health` to report `configured=true` and `backup_storage=true`. Browser auth and authenticated API operations require the Supabase email/OTP settings and allowed-origin policy to be tested against the deployed URL. Never expose service-role keys to the browser.
+- [ ] Cloudflare build and vinext compatibility check pass.
+- [ ] Worker deploy creates `home.vinzmusic.workers.dev` and serves the app.
+- [ ] `/auth/callback` completes OTP and Google auth redirects.
+- [ ] Signup, email OTP, resend, password recovery and Google sign-in work.
+- [ ] Profile routes, username availability RPC and avatar storage work.
+- [ ] Web-to-API calls use `api.vinzmusic.workers.dev`.
+- [ ] Android local playback remains independent of cloud account sign-in.
+- [ ] No production deployment until PR review and Supabase redirect allowlist are complete.
+
+## Existing API deployment
+
+- `.github/workflows/vinz-platform-deploy.yml`: manual staging/production Worker deployment with tests and post-deploy health check.
+- `.github/workflows/cloudflare-staging-deploy.yml`: staging API only.
+- Existing platform checks and provider health workflows remain separate.
+
+Production API deployment requires `confirm_production=deploy-production`. Supabase migrations are not automatically applied by a web or Worker deployment; database migrations require their own reviewed migration release.

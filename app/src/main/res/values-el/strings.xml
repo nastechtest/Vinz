@@ -4643,4 +4643,24 @@
     <string name="experimental_split_navigation_keywords">πειραματικό διαιρεμένη πλοήγηση κεντρικό μίνι πρόγραμμα αλλαγή αρχικό</string>
     <string name="icons_shapes_summary">Πακέτο και βάρος εικονιδίων, γωνίες και σχήματα</string>
     <string name="icons_shapes_keywords">εικονίδιο πακέτο βάρος γωνίες σχήματα</string>
+    <string name="cloud_account_tab_overview">Επισκόπηση</string>
+    <string name="cloud_account_tab_security">Ασφάλεια</string>
+    <string name="cloud_account_selected_tab">• %1$s</string>
+    <string name="cloud_account_overview">ΕΠΙΣΚΟΠΗΣΗ ΛΟΓΑΡΙΑΣΜΟΥ</string>
+    <string name="cloud_account_profile_default">Το προφίλ Vinz σας</string>
+    <string name="cloud_account_overview_description">Η ταυτότητά σας στο Vinz είναι συνδεδεμένη. Η μουσική βιβλιοθήκη σε αυτό το τηλέφωνο παραμένει διαθέσιμη ανεξάρτητα από τη σύνδεση.</string>
+    <string name="cloud_account_edit_profile">Επεξεργασία προφίλ</string>
+    <string name="cloud_account_music_profile">ΤΟ ΜΟΥΣΙΚΟ ΠΡΟΦΙΛ ΣΑΣ</string>
+    <string name="cloud_account_security">ΑΣΦΑΛΕΙΑ ΛΟΓΑΡΙΑΣΜΟΥ</string>
+    <string name="cloud_account_password_and_recovery">Κωδικός πρόσβασης και ανάκτηση</string>
+    <string name="cloud_account_password_reset_description">Στείλτε email επαναφοράς κωδικού πρόσβασης στο %1$s. Ο σύνδεσμος επαναφοράς διαχειρίζεται από την επαληθευμένη ροή email Vinz σας.</string>
+    <string name="cloud_account_send_password_reset">Αποστολή email επαναφοράς κωδικού</string>
+    <string name="cloud_account_connected_services">ΣΥΝΔΕΔΕΜΕΝΕΣ ΥΠΗΡΕΣΙΕΣ</string>
+    <string name="cloud_account_connections_subtitle">Η σύνδεση με Google και η εισαγωγή μουσικής από YouTube είναι ξεχωριστές άδειες.</string>
+    <string name="cloud_account_connections_description">Η σύνδεση με cookie στο YouTube Music παραμένει ξεχωριστή λειτουργία πηγής μουσικής. Δεν σας συνδέει στο Vinz. Η εγγενής σύνδεση ταυτότητας Google και η εισαγωγή από το YouTube Data API απαιτούν την επιστροφή κλήσης Android OAuth και ασφαλή ροή ανταλλαγής διακριτικού· αυτή η οθόνη δεν προσποιείται ότι αυτές οι άδειες είναι συνδεδεμένες.</string>
+    <string name="cloud_account_username_checking">Έλεγχος διαθεσιμότητας με το Vinz…</string>
+    <string name="cloud_account_username_available">Το όνομα χρήστη είναι διαθέσιμο</string>
+    <string name="cloud_account_username_unavailable">Το όνομα χρήστη δεν είναι διαθέσιμο ή είναι δεσμευμένο</string>
+    <string name="cloud_account_username_invalid">Εισαγάγετε 3–24 πεζά γράμματα, αριθμούς ή κάτω παύλες</string>
+    <string name="cloud_account_username_error">Δεν ήταν δυνατή η επικοινωνία με το Vinz. Δοκιμάστε ξανά.</string>
 </resources>
