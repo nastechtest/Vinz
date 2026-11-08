@@ -47,4 +47,7 @@
     <string name="cloud_account_youtube_imported">%1$d videos imported from %2$d playlists.</string>
     <string name="cloud_account_youtube_failed">YouTube Music could not be connected or imported. Check the connection and try again.</string>
     <string name="cloud_account_sign_in_cta">Sign in to your Vinz Account</string>
+    <string name="youtube_playback_session">YouTube playback session</string>
+    <string name="connect_youtube_for_playback">Connect YouTube for playback</string>
+    <string name="optional_playback_session_not_vinz_identity">Optional playback session only. Import your library in Vinz Account → Connections.</string>
 </resources>
