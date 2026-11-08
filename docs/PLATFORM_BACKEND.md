@@ -32,7 +32,7 @@ Using several providers does not increase any provider's quota. The purpose is t
 
 ### Cloudflare
 - Existing production Worker `vinz` remains the original Hello World script; it has not been replaced.
-- A separate `vinz-api-staging` Worker is deployed with the backend API source, Supabase public bindings, the `vinz-backups` R2 binding, the `VINZ_CATALOG_CACHE` KV binding, PostHog secret binding, and observability enabled.
+- A separate `staging` Worker is deployed with the backend API source, Supabase public bindings, the `vinz-backups` R2 binding, the `VINZ_CATALOG_CACHE` KV binding, PostHog secret binding, and observability enabled.
 - R2 bucket `vinz-backups` exists in EEUR.
 - KV namespace `VINZ_CATALOG_CACHE` exists in EU.
 - Queues `vinz-discovery-jobs` and `vinz-discovery-jobs-dlq` exist in EU, but no queue consumer is configured; the initial release-monitor schedule runs through Supabase Cron + Vault instead.
@@ -136,6 +136,6 @@ Never place the Supabase service-role key in the Android app or public API Worke
 ## Safety gates
 
 - No production Worker deployment, production app release, merge or destructive schema operation is included in this draft PR.
-- The production `vinz` Worker is untouched; the new API is on `vinz-api-staging`.
+- The production `vinz` Worker is untouched; the new API is on `staging`.
 - The database changes applied so far are additive. The reconstructed baseline migrations are intended to reproduce the live schema in a clean project and should be reviewed before using them for a fresh environment.
 - Never cache authenticated responses or silently discard user data.
