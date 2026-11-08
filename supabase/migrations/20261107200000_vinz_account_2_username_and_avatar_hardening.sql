@@ -30,7 +30,11 @@ grant execute on function vinz_private.enforce_vinz_username() to postgres;
 drop trigger if exists vinz_profiles_enforce_username on public.vinz_profiles;
 create trigger vinz_profiles_enforce_username before insert or update of username on public.vinz_profiles for each row execute function vinz_private.enforce_vinz_username();
 
-create or replace function public.vinz_username_available(p_username text)
+-- Keep the privileged lookup implementation outside the exposed public API schema.
+-- The public RPC is an invoker wrapper; the private helper checks auth.uid() and throttles each user.
+grant usage on schema vinz_private to authenticated;
+
+create or replace function vinz_private.vinz_username_available(p_username text)
 returns boolean language plpgsql volatile security definer set search_path = '' as $function$
 declare
   normalized text;
@@ -49,7 +53,14 @@ begin
   return not exists (select 1 from public.vinz_profiles p where pg_catalog.lower(p.username) = normalized);
 end;
 $function$;
-revoke all on function public.vinz_username_available(text) from public, anon;
+revoke all on function vinz_private.vinz_username_available(text) from public, anon, service_role;
+grant execute on function vinz_private.vinz_username_available(text) to authenticated;
+
+create or replace function public.vinz_username_available(p_username text)
+returns boolean language sql volatile security invoker set search_path = '' as $function$
+  select vinz_private.vinz_username_available(p_username);
+$function$;
+revoke all on function public.vinz_username_available(text) from public, anon, service_role;
 grant execute on function public.vinz_username_available(text) to authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
