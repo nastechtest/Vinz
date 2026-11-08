@@ -127,7 +127,6 @@ class CloudAccountValidationTest {
             mode = CloudAccountMode.SIGN_UP,
             password = "password8",
             draft = CloudProfileDraft("artist_7", "Artist"),
-            usernameAvailability = com.vinz.music.ui.screens.account.UsernameAvailability.AVAILABLE,
         )))
     }
 }
