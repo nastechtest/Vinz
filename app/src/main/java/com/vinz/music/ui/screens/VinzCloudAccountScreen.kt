@@ -1,7 +1,16 @@
 package com.vinz.music.ui.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +33,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
@@ -65,9 +77,41 @@ internal fun CloudAccountContent(
                 .testTag("cloud-account-content"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            VinzTextButton(onClick = onContinue ?: onBack, enabled = !state.busy,
-                modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
-                Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Image(
+                        painter = painterResource(R.drawable.vinz_logo),
+                        contentDescription = "Vinz",
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("VINZ", style = MaterialTheme.typography.titleLarge)
+                        Text("YOUR MUSIC. YOUR IDENTITY.", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                VinzTextButton(onClick = onContinue ?: onBack, enabled = !state.busy,
+                    modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
+                    Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
+                }
+            }
+            val motion = rememberInfiniteTransition(label = "vinz-account-brand")
+            Row(Modifier.padding(top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                repeat(5) { index ->
+                    val height by motion.animateFloat(
+                        initialValue = 5f, targetValue = 17f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 560 + index * 90, delayMillis = index * 75),
+                            repeatMode = RepeatMode.Reverse,
+                        ), label = "vinz-equalizer-$index",
+                    )
+                    Box(Modifier.size(width = 4.dp, height = height.dp)
+                        .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary))
+                }
+                Text("YOUR VINZ ACCOUNT", modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
             Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
             Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium,
