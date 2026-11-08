@@ -10,21 +10,19 @@ import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +31,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -50,10 +50,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -65,7 +65,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.platform.testTag
 import kotlin.math.cos
 import kotlin.math.sin
@@ -423,66 +422,84 @@ private val DISCORD_HOOK_JS = """
 
 @Composable
 fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Unit) {
-    val t = rememberInfiniteTransition(label = "welcome")
-    val a by t.animateFloat(0f, (Math.PI * 2).toFloat(), infiniteRepeatable(tween(16_000, easing = LinearEasing)), label = "a")
+    // The hero is intentionally still artwork: it remains comfortable when Android reduces motion.
+    val scroll = androidx.compose.foundation.rememberScrollState()
     Box(Modifier.fillMaxSize().background(Color(0xFF07060C))) {
-        Canvas(Modifier.fillMaxSize()) {
-            val cols = listOf(Color(0xFF7C5CFF), Color(0xFFFF3B5C), Color(0xFF00B4D8), Color(0xFFFFB627))
-            cols.forEachIndexed { i, col ->
-                val ph = a + i * 1.6f
-                val p = Offset(size.width * (0.5f + 0.35f * cos(ph)), size.height * (0.35f + 0.22f * sin(ph * 1.3f)))
-                drawCircle(Brush.radialGradient(listOf(col.copy(alpha = 0.55f), Color.Transparent), p, size.width * 0.7f), size.width * 0.7f, p)
-            }
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF07060C)), startY = size.height * 0.35f))
-        }
-        // A phone's width in the middle on a tablet, rather than buttons stretched across the screen. It scrolls: with
-        // large text or display size the list pushed the buttons off the bottom and new listeners couldn't go on (1.7.9.3,
-        // owner's report). When it doesn't fit, it opens scrolled to the buttons; the rest is a swipe up.
-        val scroll = androidx.compose.foundation.rememberScrollState()
-        LaunchedEffect(scroll.maxValue) { if (scroll.maxValue > 0 && scroll.value == 0) scroll.scrollTo(scroll.maxValue) }
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.align(Alignment.TopCenter).widthIn(max = 480.dp).fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        Column(
-            Modifier.fillMaxWidth().verticalScroll(scroll).heightIn(min = maxHeight).padding(28.dp).testTag("welcome"),
-            verticalArrangement = Arrangement.Bottom,
+        BoxWithConstraints(
+            Modifier.align(Alignment.TopCenter).widthIn(max = 480.dp).fillMaxSize()
+                .statusBarsPadding().navigationBarsPadding(),
         ) {
-            Text(tr(R.string.app_name), color = Color.White, style = MaterialTheme.typography.displayLarge)
-            Text(tr(R.string.your_music_refracted), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(28.dp))
-            Feature(VinzIcons.Lyrics, tr(R.string.karaoke_lyrics_word_by_word_from))
-            Feature(VinzIcons.Mic, tr(R.string.sing_the_song_with_its_voice))
-            Feature(VinzIcons.StarFilled, tr(R.string.made_for_you_daily_mixes_release))
-            Feature(VinzIcons.Equalizer, tr(R.string.dj_mode_your_songs_mixed_in))
-            Feature(VinzIcons.Recognize, tr(R.string.name_the_song_playing_around_you))
-            Feature(VinzIcons.Replay, tr(R.string.rewind_your_year_in_music))
-            Spacer(Modifier.height(32.dp))
-            // Vinz is the primary identity. YouTube import is available inside Account → Connections; playback sessions remain optional.
-            VinzButton(onClick = onAccount, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.make_a_vinz_account), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Column(
+                Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(scroll)
+                    .padding(horizontal = 24.dp, vertical = 16.dp).testTag("welcome"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.onboarding_welcome),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 300.dp),
+                )
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    tr(R.string.app_name),
+                    color = Color.White,
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    tr(R.string.welcome_to_vinz),
+                    color = Color.White.copy(alpha = 0.76f),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(24.dp))
+                WelcomeFeature(VinzIcons.StarFilled, tr(R.string.discover_together), tr(R.string.your_mixes_and_new_releases_start))
+                Spacer(Modifier.height(10.dp))
+                WelcomeFeature(VinzIcons.Mic, tr(R.string.sing), tr(R.string.sing_s_voice_separation))
+                Spacer(Modifier.height(10.dp))
+                WelcomeFeature(VinzIcons.Recognize, tr(R.string.recognize), tr(R.string.songs_found_by_listening))
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = onAccount,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD9FF3F),
+                        contentColor = Color(0xFF101400),
+                    ),
+                ) {
+                    Text(tr(R.string.start), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+                VinzTextButton(onClick = onSignIn, modifier = Modifier.padding(top = 6.dp)) {
+                    Text(tr(R.string.sign_in), color = Color.White.copy(alpha = 0.82f))
+                }
+                VinzTextButton(onClick = onSkip) {
+                    Text(tr(R.string.a_guest), color = Color.White.copy(alpha = 0.82f))
+                }
+                WelcomeRestoreButton()
             }
-            Text(
-                tr(R.string.cloud_account_intro),
-                color = Color.White.copy(alpha = 0.62f), style = MaterialTheme.typography.bodySmall,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            )
-            com.vinz.music.ui.components.VinzOutlinedButton(onClick = onSignIn, Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.cloud_account_sign_in_cta), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-            VinzTextButton(onClick = onSkip, Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                Text(tr(R.string.skip_for_now), color = Color.White.copy(alpha = 0.8f))
-            }
-            WelcomeRestoreButton()
-        }
         }
     }
 }
 
 @Composable
-private fun Feature(icon: ImageVector, text: String) {
-    Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(34.dp).background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(18.dp))
+private fun WelcomeFeature(icon: ImageVector, title: String, detail: String) {
+    Row(
+        Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp)).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).background(Color(0xFFD9FF3F).copy(alpha = 0.14f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = Color(0xFFD9FF3F), modifier = Modifier.size(21.dp))
         }
         Spacer(Modifier.width(14.dp))
-        Text(text, color = Color.White, style = MaterialTheme.typography.bodyLarge)
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(2.dp))
+            Text(detail, color = Color.White.copy(alpha = 0.66f), style = MaterialTheme.typography.bodySmall)
+        }
     }
 }

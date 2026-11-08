@@ -1,5 +1,6 @@
 package com.vinz.music.ui.screens
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -24,7 +26,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +42,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
@@ -78,6 +87,9 @@ internal fun CloudAccountContent(
     var section by remember(state.identity?.userId) { mutableStateOf("profile") }
     val uriHandler = LocalUriHandler.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val unauthenticated = state.identity == null
+    val cinematicOnboarding = unauthenticated && onContinue != null
+    val registering = state.mode == CloudAccountMode.SIGN_UP
     DisposableEffect(lifecycleOwner, state.identity?.userId) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && state.identity != null) actions.refreshYouTubeStatus()
@@ -90,10 +102,34 @@ internal fun CloudAccountContent(
         runCatching { uriHandler.openUri(url) }
         actions.clearYouTubeAuthorizationUrl()
     }
-    Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
+
+    Box(Modifier.fillMaxSize().background(Color.Black).navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
+        if (cinematicOnboarding) {
+            // These supplied portraits are deliberately crossfaded rather than swapped abruptly.
+            Crossfade(targetState = registering, label = "vinz-account-portrait", modifier = Modifier.matchParentSize()) { signUp ->
+                Image(
+                    painter = painterResource(if (signUp) R.drawable.onboarding_signup else R.drawable.onboarding_signin),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.24f),
+                        0.42f to Color.Black.copy(alpha = 0.64f),
+                        1f to Color.Black.copy(alpha = 0.96f),
+                    ),
+                ),
+            )
+        }
         Column(
             Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = bottomPadding + 24.dp)
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = bottomPadding + 24.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(if (cinematicOnboarding) Color.Black.copy(alpha = 0.78f) else Color.Transparent)
+                .padding(20.dp)
                 .testTag("cloud-account-content"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -103,12 +139,11 @@ internal fun CloudAccountContent(
                     Image(
                         painter = painterResource(R.drawable.vinz_logo),
                         contentDescription = tr(R.string.cloud_account_brand_name),
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag("cloud-account-logo"),
+                        modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).testTag("cloud-account-logo"),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(tr(R.string.cloud_account_brand_name), style = MaterialTheme.typography.titleLarge)
-                        Text(tr(R.string.cloud_account_brand_tagline), style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr(R.string.cloud_account_brand_name), style = MaterialTheme.typography.titleLarge, color = Color.White)
+                        Text(tr(R.string.cloud_account_brand_tagline), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
                     }
                 }
                 VinzTextButton(onClick = onContinue ?: onBack, enabled = !state.busy,
@@ -116,9 +151,32 @@ internal fun CloudAccountContent(
                     Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
                 }
             }
+            if (unauthenticated) {
+                TabRow(
+                    selectedTabIndex = if (registering) 1 else 0,
+                    containerColor = Color.Transparent,
+                    contentColor = Color(0xFFD7FF00),
+                    divider = {},
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.10f)).testTag("cloud-account-auth-tabs"),
+                ) {
+                    Tab(
+                        selected = !registering,
+                        onClick = { actions.mode(CloudAccountMode.SIGN_IN) },
+                        enabled = !state.busy,
+                        text = { Text(tr(R.string.sign_in)) },
+                        modifier = Modifier.testTag("cloud-account-tab-sign-in"),
+                    )
+                    Tab(
+                        selected = registering,
+                        onClick = { actions.mode(CloudAccountMode.SIGN_UP) },
+                        enabled = !state.busy,
+                        text = { Text(tr(R.string.cloud_account_create)) },
+                        modifier = Modifier.testTag("cloud-account-tab-sign-up"),
+                    )
+                }
+            }
             val motion = rememberInfiniteTransition(label = "vinz-account-brand")
-            Row(Modifier.padding(top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 repeat(5) { index ->
                     val height by motion.animateFloat(
                         initialValue = 5f, targetValue = 17f,
@@ -128,14 +186,21 @@ internal fun CloudAccountContent(
                         ), label = "vinz-equalizer-$index",
                     )
                     Box(Modifier.size(width = 4.dp, height = height.dp)
-                        .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary))
+                        .clip(RoundedCornerShape(4.dp)).background(Color(0xFFD7FF00)))
                 }
                 Text(tr(R.string.cloud_account_brand_section), modifier = Modifier.padding(start = 8.dp),
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    style = MaterialTheme.typography.labelMedium, color = Color(0xFFD7FF00))
             }
-            Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
-            Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                tr(when {
+                    state.mode == CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery
+                    registering -> R.string.cloud_account_create
+                    else -> R.string.sign_in
+                }),
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+            )
+            Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.78f))
             CloudAccountFormBody(state, actions, section = section, onSection = { section = it })
             if (onContinue != null && state.canContinue) {
                 VinzButton(onClick = onContinue, modifier = Modifier.fillMaxWidth().testTag("cloud-account-continue")) {
@@ -148,6 +213,27 @@ internal fun CloudAccountContent(
             ) { Text(tr(R.string.sign_out)) }
         }
     }
+}
+
+@Composable
+private fun CloudAccountPrimaryButton(
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFD7FF00),
+            contentColor = Color.Black,
+            disabledContainerColor = Color(0xFFD7FF00).copy(alpha = 0.35f),
+            disabledContentColor = Color.Black.copy(alpha = 0.55f),
+        ),
+    ) { Text(label) }
 }
 
 @Composable
@@ -196,13 +282,16 @@ private fun CloudAccountFormBody(
             )
         }
         if (registering) CloudProfileFields(state, actions)
-        VinzButton(onClick = { actions.submit() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-submit"), enabled = state.canSubmit) {
-            Text(tr(when (state.mode) {
+        CloudAccountPrimaryButton(
+            onClick = { actions.submit() },
+            label = tr(when (state.mode) {
                 CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery
                 CloudAccountMode.SIGN_UP -> R.string.cloud_account_create
                 CloudAccountMode.SIGN_IN -> R.string.sign_in
-            }))
-        }
+            }),
+            modifier = Modifier.fillMaxWidth().testTag("cloud-account-submit"),
+            enabled = state.canSubmit,
+        )
         VinzTextButton(
             onClick = { actions.mode(if (registering || recovery) CloudAccountMode.SIGN_IN else CloudAccountMode.SIGN_UP) },
             modifier = Modifier.testTag("cloud-account-mode"), enabled = !state.busy,

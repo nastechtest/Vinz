@@ -79,12 +79,12 @@ fun AvatarArt(avatar: com.vinz.music.ui.theme.VinzAvatar, modifier: Modifier = M
 
 /** The sole Vinz Account host, used by startup, Settings and the legacy route alias. */
 @Composable
-fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit) {
+fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, signIn: Boolean = false, onDone: () -> Unit) {
     val cloud = LocalContainer.current.vinzCloudAccount
     val scope = rememberCoroutineScope()
-    val controller = remember(cloud, scope, onboarding) {
+    val controller = remember(cloud, scope, onboarding, signIn) {
         CloudAccountController(ExistingCloudAccountGateway(cloud), scope).also {
-            if (onboarding) it.mode(CloudAccountMode.SIGN_UP)
+            if (onboarding && !signIn) it.mode(CloudAccountMode.SIGN_UP)
         }
     }
     val state by controller.state.collectAsStateWithLifecycle()
