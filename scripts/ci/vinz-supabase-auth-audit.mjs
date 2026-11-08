@@ -33,7 +33,7 @@ if (!TOKEN) {
     if (staleRedirects.length) fail("Supabase Auth stale redirects", "Old Vercel or localhost redirect URLs remain configured: " + staleRedirects.length + " entry/entries");
     else add("Supabase Auth stale redirects", "PASS", "No Vercel or localhost redirect entries detected");
 
-    if (auth.external_google_enabled === true && auth.external_google_client_id) add("Supabase Google provider", "PASS", "Google OAuth provider and client ID are configured");
+    if (auth.external_google_enabled === true && auth.external_google_client_id && auth.external_google_secret) add("Supabase Google provider", "PASS", "Google OAuth provider, client ID and secret are configured; values withheld");
     else fail("Supabase Google provider", "Google OAuth provider is disabled or its client ID is missing");
     if (auth.mailer_autoconfirm === false) add("Supabase email verification", "PASS", "Email auto-confirm is disabled; users must verify");
     else fail("Supabase email verification", "Email auto-confirm is enabled; Vinz requires verified email accounts");
@@ -45,7 +45,7 @@ if (!TOKEN) {
     const smtpPort = ["465", "587"].includes(String(auth.smtp_port || ""));
     if (smtpHost && smtpUser && smtpPass && smtpSender && smtpPort) add("Supabase custom SMTP", "PASS", "SMTP host, username, password, sender and secure submission port are configured; values withheld");
     else fail("Supabase custom SMTP", "SMTP is incomplete; one or more of host, username, password, sender or secure port is missing");
-    if (auth.password_hibp_enabled === true) add("Supabase leaked-password protection", "PASS", "Leaked-password protection is enabled");
+    if (Number(auth.mailer_otp_length) >= 6 && Number(auth.mailer_otp_length) <= 8) add("Supabase email OTP length", "PASS", "OTP length is compatible with the Vinz verification input");\n    else fail("Supabase email OTP length", "OTP length must be between 6 and 8 digits");\n    if (auth.password_hibp_enabled === true) add("Supabase leaked-password protection", "PASS", "Leaked-password protection is enabled");
     else fail("Supabase leaked-password protection", "Leaked-password protection is disabled");
     if (auth.refresh_token_rotation_enabled === true) add("Supabase refresh-token rotation", "PASS", "Refresh-token rotation is enabled");
     else fail("Supabase refresh-token rotation", "Refresh-token rotation is disabled");
