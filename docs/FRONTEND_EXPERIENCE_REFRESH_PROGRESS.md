@@ -26,7 +26,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 - [x] Account overview and profile editor; username, display name, bio, public/discoverable controls.
 - [x] Supabase profile row is owner-updated; public/private profile visibility fields are persisted.
 - [ ] Full name private by default, public profile route and canonical profile URL.
-- [ ] Avatar upload/change/remove with image validation and verified owner-only storage policy.
+- [ ] Avatar upload/change/remove UI and image validation. The repository now has verified-email + owner-scoped avatar object write policies; upload functionality is not yet implemented.
 - [ ] Username availability during registration and race-condition UI recovery (server unique index remains final authority).
 
 ### Phase 3 — Account settings and security
@@ -70,6 +70,8 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Added Supabase email OTP verify/resend API handling, a numeric verification screen, resend cooldown, server-error mapping, encrypted pending verification metadata and controller/UI regression tests.
 - Added a repository-only migration that gates account-owned RLS policies and private backup objects on the authoritative `auth.users.email_confirmed_at` timestamp. It has not been applied to the connected Supabase project.
+
+- Security follow-up: added a repository migration that also requires verified email for avatar object insert/update/delete while retaining owner-folder isolation. The platform workflow now asserts all three policies. This migration is not applied to the connected Supabase project.
 - Added feature-branch Android and migration checks by extending existing workflows; no duplicate pipeline was created.
 - CI run status and APK artifact are recorded after the feature-branch workflows complete.
 
