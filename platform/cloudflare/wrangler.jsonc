@@ -1,5 +1,5 @@
 {
-  "name": "vinz-api-staging",
+  "name": "staging",
   "main": "vinz-api.js",
   "compatibility_date": "2026-11-07",
   "workers_dev": true,
@@ -18,7 +18,7 @@
   "kv_namespaces": [
     {
       "binding": "CATALOG_CACHE",
-      "id": "3e172dca32ca48e9be8d09b30f6a2a96"
+      "id": "dc7be60ce85f490bb473ef321dec9e5d"
     }
   ],
   "observability": {

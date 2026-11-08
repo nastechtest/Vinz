@@ -46,11 +46,16 @@ jobs:
           node --check vinz-api.js
           npm test
           node -e "for (const f of ['wrangler.jsonc','wrangler.production.jsonc']) { const c=JSON.parse(require('fs').readFileSync(f,'utf8')); if(c.main!=='vinz-api.js'||!c.r2_buckets?.length||!c.kv_namespaces?.length) process.exit(1); console.log(f, c.name, 'valid'); }"
-      - name: Build Vercel web application
+      - name: Build Vinz web application for Cloudflare Workers
         working-directory: web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://iszghebmetrbkfhnnoqq.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_9UXwKG0oVlJ9zIkJ-bZKg_W-fkotZe' }}
+          NEXT_PUBLIC_VINZ_API_URL: ${{ vars.NEXT_PUBLIC_VINZ_API_URL || 'https://api.vinzmusic.workers.dev' }}
         run: |
           npm install --no-audit --no-fund
-          npm run build
+          npm run check:vinext
+          npm run build:vinext
 
   deploy-worker:
     needs: validate
@@ -85,7 +90,7 @@ jobs:
             WORKER=vinz
           else
             CONFIG=wrangler.jsonc
-            WORKER=vinz-api-staging
+            WORKER=staging
           fi
           npx --yes wrangler@4 deploy --config "$CONFIG"
           if [ -n "$POSTHOG_PROJECT_KEY" ]; then
@@ -105,7 +110,7 @@ jobs:
           TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          if [ "$TARGET" = "production" ]; then URL="https://vinz.nastechresearch.workers.dev"
-          else URL="https://vinz-api-staging.nastechresearch.workers.dev"; fi
+          if [ "$TARGET" = "production" ]; then URL="https://api.vinzmusic.workers.dev"
+          else URL="https://staging.vinzmusic.workers.dev"; fi
           curl --fail --silent --show-error "$URL/health" -o health.json
           node -e "const x=require('./health.json'); if(x.service!=='vinz-api'||x.status!=='ok'||x.configured!==true||x.backup_storage!==true) { console.error(x); process.exit(1); } console.log('API health and Supabase/R2 configuration verified');"

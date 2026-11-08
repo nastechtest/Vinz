@@ -9,11 +9,11 @@
 - **Cloudflare KV**: catalog cache.
 - **PostHog**: operational error telemetry only; the API intentionally excludes user identifiers, emails, tokens, lyrics, and music queries.
 
-Vercel is not part of the production hosting path. Keep the existing Vercel project untouched during the migration as a rollback reference until Cloudflare verification is complete; do not rely on it for releases.
+Vinz uses Cloudflare Workers for both web and API hosting. Vercel is not a build, preview, rollback, or production dependency; do not configure or rely on a Vercel project for Vinz. The minimal `web/vercel.json` is retained only as a kill switch (`deploymentEnabled: false`) so an old linked Vercel Git integration cannot silently resume deployments; it is not a supported host.
 
 ## Web build and deploy
 
-The Next.js web app remains in `web/`. Cloudflare's recommended Next.js path is vinext on Workers.
+The Next.js web app remains in `web/` and is built and deployed exclusively to Cloudflare Workers using vinext.
 
 - `web/vite.config.ts`: vinext + Cloudflare Vite plugin.
 - `web/cloudflare.config.ts`: Worker name is explicitly `home`; `workersDev: true` enables its `workers.dev` route.
@@ -60,6 +60,7 @@ Retain any other callback URLs only while they are intentionally used for develo
 - [ ] Web-to-API calls use `api.vinzmusic.workers.dev`.
 - [ ] Android local playback remains independent of cloud account sign-in.
 - [ ] No production deployment until PR review and Supabase redirect allowlist are complete.
+- [ ] No Vercel project, Git integration, environment variables, preview URL, or production URL is required for Vinz.
 
 ## Existing API deployment
 

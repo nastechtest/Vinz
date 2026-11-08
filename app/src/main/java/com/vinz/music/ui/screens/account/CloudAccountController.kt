@@ -68,6 +68,9 @@ internal class CloudAccountController(
         val identity = mutable.value.identity ?: return null
         return request(R.string.cloud_account_load_failed) {
             val profile = gateway.loadProfile()
+            val youtube = try { gateway.youtubeStatus() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
             // An external account change must not paint the old user's private profile.
             if (gateway.identity?.userId != identity.userId || (profile != null && profile.id != identity.userId)) {
                 resetForCurrentIdentity()
@@ -78,6 +81,8 @@ internal class CloudAccountController(
                 usernameAvailability = if (profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,
                 profileReady = true, profileLoadFailed = false,
                 message = if (profile == null) R.string.cloud_account_setup else null,
+                youtubeConnected = youtube?.connected ?: false,
+                youtubeChannelTitle = youtube?.channelTitle.orEmpty(),
             )
         }
     }
@@ -85,8 +90,11 @@ internal class CloudAccountController(
     fun submit(): Job? {
         val before = mutable.value
         if (!before.canSubmit) return null
-        val failure = if (before.mode == CloudAccountMode.RECOVERY) R.string.cloud_account_recovery_failed
-            else R.string.cloud_account_sign_in_failed
+        val failure = when (before.mode) {
+            CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery_failed
+            CloudAccountMode.SIGN_UP -> R.string.cloud_account_sign_up_failed
+            CloudAccountMode.SIGN_IN -> R.string.cloud_account_sign_in_failed
+        }
         return request(failure) {
             val email = before.email.trim()
             if (before.mode == CloudAccountMode.RECOVERY) {
@@ -146,6 +154,54 @@ internal class CloudAccountController(
             gateway.recover(email)
             mutable.value = mutable.value.copy(message = R.string.cloud_account_recovery_sent)
         }
+    }
+
+    fun clearYouTubeAuthorizationUrl() {
+        mutable.value = mutable.value.copy(youtubeAuthorizationUrl = null)
+    }
+
+    fun connectYouTube(): Job? = request(R.string.cloud_account_youtube_failed) {
+        val authorizationUrl = gateway.youtubeConnectUrl()
+        mutable.value = mutable.value.copy(youtubeAuthorizationUrl = authorizationUrl, youtubeConnectPending = true)
+    }
+
+    fun refreshYouTubeStatus(): Job? = request(R.string.cloud_account_youtube_failed) {
+        val status = gateway.youtubeStatus()
+        val shouldImport = mutable.value.youtubeConnectPending && status.connected
+        mutable.value = mutable.value.copy(
+            youtubeConnected = status.connected,
+            youtubeChannelTitle = status.channelTitle,
+            youtubeAuthorizationUrl = null,
+            youtubeConnectPending = if (status.connected) false else mutable.value.youtubeConnectPending,
+        )
+        if (shouldImport) {
+            val imported = gateway.importYouTubeMusic()
+            mutable.value = mutable.value.copy(
+                youtubeImportedCount = imported.importedCount,
+                youtubePlaylistCount = imported.playlistCount,
+                youtubeConnected = true,
+            )
+        }
+    }
+
+    fun importYouTubeMusic(): Job? = request(R.string.cloud_account_youtube_failed) {
+        val result = gateway.importYouTubeMusic()
+        mutable.value = mutable.value.copy(
+            youtubeImportedCount = result.importedCount,
+            youtubePlaylistCount = result.playlistCount,
+            youtubeConnected = true,
+        )
+    }
+
+    fun disconnectYouTubeMusic(): Job? = request(R.string.cloud_account_youtube_failed) {
+        gateway.disconnectYouTubeMusic()
+        mutable.value = mutable.value.copy(
+            youtubeConnected = false,
+            youtubeChannelTitle = "",
+            youtubeImportedCount = null,
+            youtubePlaylistCount = null,
+            youtubeConnectPending = false,
+        )
     }
 
     fun signOut(): Job? {

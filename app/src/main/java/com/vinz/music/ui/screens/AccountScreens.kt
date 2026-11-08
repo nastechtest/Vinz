@@ -100,19 +100,14 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
     }
 }
 
-/** Local library information is not a second account. Keep existing import bookkeeping and data intact. */
+/** Local library information is separate from account connections and requires no provider login. */
 @Composable
 private fun LocalMusicSummary() {
     val c = LocalContainer.current
-    val settings = LocalAppSettings.current
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val legacyImport by c.account.profile.collectAsState()
     val lists by c.vinzLibrary.lists.collectAsState()
     val albums by c.vinzLibrary.albums.collectAsState()
     val liked by c.library.liked.collectAsState(initial = emptyList())
     val stars by c.artistPrefs.favorites.collectAsState()
-    var bringing by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth().clip(com.vinz.music.ui.theme.LocalUi.current.card)
         .background(com.vinz.music.ui.components.glassFill(1.2f)).padding(18.dp)) {
         com.vinz.music.ui.components.Eyebrow(tr(R.string.on_this_phone))
@@ -121,44 +116,5 @@ private fun LocalMusicSummary() {
             trp(R.plurals.n_liked_songs, liked.size), trp(R.plurals.n_playlists, lists.size),
             trp(R.plurals.n_saved_albums, albums.size), trp(R.plurals.n_starred_artists, stars.size),
         ).joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
-        // Existing imports require their existing deduplication record. Never create a local identity to enable them.
-        if (settings.isLoggedIn && legacyImport != null) {
-            Spacer(Modifier.height(14.dp))
-            Text(tr(R.string.your_youtube_music_library), style = MaterialTheme.typography.titleSmall)
-            Text(tr(R.string.copy_its_playlists_saved_albums_and_all), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
-            val at = legacyImport?.broughtAt ?: 0
-            VinzOutlinedButton(
-                onClick = {
-                    if (bringing == null) {
-                        bringing = tr(R.string.starting)
-                        scope.launch {
-                            try {
-                                val result = try { c.account.bringOver { bringing = it } }
-                                    catch (cancelled: CancellationException) { throw cancelled }
-                                    catch (_: Exception) { null }
-                                Toast.makeText(context,
-                                    if (result == null) tr(R.string.couldn_t_reach_youtube_music_try)
-                                    else tr(R.string.copied_playlists_albums_and_artists,
-                                        trp(R.plurals.n_playlists, result.playlists), trp(R.plurals.n_albums, result.albums),
-                                        trp(R.plurals.n_artists, result.artists)) +
-                                        if (result.failed > 0) trp(R.plurals.n_playlists_couldn_t_be_read, result.failed) else "",
-                                    Toast.LENGTH_LONG).show()
-                            } finally { bringing = null }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(), enabled = bringing == null,
-            ) {
-                if (bringing != null) {
-                    com.vinz.music.ui.components.VinzSpinner(Modifier.size(16.dp), stroke = 2.dp)
-                    Spacer(Modifier.width(10.dp)); Text(bringing.orEmpty())
-                } else Text(tr(if (at > 0) R.string.copy_again else R.string.copy_into_vinz))
-            }
-            if (at > 0) Text(tr(R.string.last_copied,
-                java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(at))),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp))
-        }
     }
 }

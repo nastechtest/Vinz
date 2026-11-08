@@ -146,7 +146,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit, addAccount: Boolean = fa
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopAppBar(
-            title = { Text(tr(R.string.sign_in_to_youtube_music)) },
+            title = { Text(tr(R.string.connect_youtube_for_playback)) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(VinzIcons.ArrowBack, tr(R.string.back)) } },
             actions = { VinzTextButton(onClick = { pasteDialog = true }) { Text(tr(R.string.use_cookie)) } },
         )
@@ -455,7 +455,7 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
             Feature(VinzIcons.Recognize, tr(R.string.name_the_song_playing_around_you))
             Feature(VinzIcons.Replay, tr(R.string.rewind_your_year_in_music))
             Spacer(Modifier.height(32.dp))
-            // Vinz Account uses email/password; YouTube Music keeps its independent login.
+            // Vinz is the primary identity. YouTube import is available inside Account → Connections; playback sessions remain optional.
             VinzButton(onClick = onAccount, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
                 Text(tr(R.string.make_a_vinz_account), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
@@ -465,7 +465,7 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
             com.vinz.music.ui.components.VinzOutlinedButton(onClick = onSignIn, Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.sign_in_to_youtube_music), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(tr(R.string.cloud_account_sign_in_cta), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             VinzTextButton(onClick = onSkip, Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 Text(tr(R.string.skip_for_now), color = Color.White.copy(alpha = 0.8f))

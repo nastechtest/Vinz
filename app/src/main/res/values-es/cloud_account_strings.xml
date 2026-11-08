@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="cloud_account_brand_name">Vinz</string>
+    <string name="cloud_account_brand_tagline">TU MÚSICA. TU IDENTIDAD.</string>
+    <string name="cloud_account_brand_section">TU CUENTA VINZ</string>
     <string name="cloud_account_summary">Inicie sesión y administre su perfil en la nube</string>
     <string name="cloud_account_intro">Tu perfil en la nube está separado de YouTube Music. La música local y la reproducción funcionan sin necesidad de iniciar sesión.</string>
     <string name="cloud_account_email">Dirección de correo electrónico</string>
@@ -26,6 +29,7 @@
     <string name="cloud_account_signed_in">Iniciado sesión como %1$s</string>
     <string name="cloud_account_load_failed">No se pudo cargar tu perfil. Inténtalo de nuevo antes de editar.</string>
     <string name="cloud_account_request_failed">Esta solicitud de cuenta no se pudo completar. Comprueba tu conexión y vuelve a intentarlo.</string>
+    <string name="cloud_account_sign_up_failed">No se pudo crear tu cuenta Vinz. Comprueba tus datos y conexión, luego inténtalo de nuevo.</string>
     <string name="cloud_account_sign_in_failed">No se pudo completar el inicio de sesión. Verifique sus datos y conexión, luego inténtelo nuevamente.</string>
     <string name="cloud_account_save_failed">No se pudo guardar tu perfil. Verifique sus datos y conexión, luego inténtelo nuevamente.</string>
     <string name="cloud_account_recovery_failed">No se pudo completar la solicitud de recuperación. Vuelve a intentarlo más tarde.</string>
@@ -33,4 +37,18 @@
     <!-- English fallback for new account guidance, pending translation. -->
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="cloud_account_youtube_title">YouTube Music</string>
+    <string name="cloud_account_youtube_description">Conecta YouTube Music a tu cuenta Vinz mediante la autorización segura de Google. Vinz nunca solicita tu correo ni contraseña de YouTube.</string>
+    <string name="cloud_account_youtube_not_connected">No conectado</string>
+    <string name="cloud_account_youtube_connected">Canal conectado: %1$s</string>
+    <string name="cloud_account_youtube_connect">Conectar YouTube Music</string>
+    <string name="cloud_account_youtube_import">Importar YouTube Music</string>
+    <string name="cloud_account_youtube_refresh">Actualizar estado de conexión</string>
+    <string name="cloud_account_youtube_disconnect">Desconectar YouTube</string>
+    <string name="cloud_account_youtube_imported">%1$d vídeos importados de %2$d listas.</string>
+    <string name="cloud_account_youtube_failed">No se pudo conectar o importar YouTube Music. Comprueba la conexión e inténtalo de nuevo.</string>
+    <string name="cloud_account_sign_in_cta">Inicia sesión en tu cuenta Vinz</string>
+    <string name="youtube_playback_session">Sesión de reproducción de YouTube</string>
+    <string name="connect_youtube_for_playback">Conectar YouTube para reproducir</string>
+    <string name="optional_playback_session_not_vinz_identity">Solo sesión opcional de reproducción. Importa tu biblioteca en Cuenta Vinz → Conexiones.</string>
 </resources>

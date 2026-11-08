@@ -1,3 +1,5 @@
+import { handleYouTubeCallback, handleYouTubeRoute } from "./youtube-import.js";
+
 /**
  * Vinz API — Cloudflare Worker entry point.
  *
@@ -93,7 +95,7 @@ async function authenticate(request, config) {
   if (!response.ok) return { error: "identity_provider_unavailable", status: 502 };
   const user = await response.json();
   if (typeof user.id !== "string") return { error: "unauthorized", status: 401 };
-  return { user: { id: user.id }, authorization };
+  return { user: { id: user.id, email: typeof user.email === "string" ? user.email : null }, authorization };
 }
 
 function restHeaders(config, authorization, extra = {}) {
@@ -909,7 +911,7 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
 
   const url = new URL(request.url);
   if (url.pathname === "/health" && request.method === "GET") {
-    return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET) }, 200, headers);
+    return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET), integrations: { youtube_import_configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.YOUTUBE_TOKEN_ENCRYPTION_KEY && env.CATALOG_CACHE) } }, 200, headers);
   }
   const publicShareMatch = url.pathname.match(/^\/s\/([^/]+)$/);
   if (publicShareMatch && request.method === "GET") {
@@ -919,6 +921,9 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
   }
 
   const config = configuration(env);
+  if (url.pathname === "/v1/integrations/youtube/callback" && request.method === "GET") {
+    return handleYouTubeCallback(request, url, env, config);
+  }
   if (!config && url.pathname.startsWith("/v1/")) {
     return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
   }
@@ -947,6 +952,10 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     if (auth.error) {
       recordApiError(env, ctx, url.pathname, auth.error, auth.status);
       return json({ error: auth.error, request_id: requestId }, auth.status, headers);
+    }
+
+    if (url.pathname.startsWith("/v1/integrations/youtube/")) {
+      return withHeaders(await handleYouTubeRoute(request, url, env, config, auth), headers);
     }
 
     if (url.pathname === "/v1/community/search" && request.method === "GET") {

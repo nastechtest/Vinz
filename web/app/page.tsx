@@ -134,11 +134,11 @@ export default function Home() {
   return (
     <main className="shell">
       <nav className="nav">
-        <a className="brand" href="/" aria-label="Vinz home"><span className="brand-mark">V</span><span>vinz</span></a>
+        <a className="brand" href="/" aria-label="Vinz home"><img className="brand-logo" src="/vinz-logo.png" alt="" width="42" height="42" /><span>vinz</span></a>
         <span className="nav-note">MUSIC · COMMUNITY · YOU</span>
       </nav>
       <section className="hero">
-        <div className="eyebrow"><span className="pulse" /> YOUR MUSIC WORLD</div>
+        <div className="hero-kicker"><div className="eyebrow"><span className="pulse" /> YOUR MUSIC WORLD</div><div className="brand-equalizer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div></div>
         <h1>Music feels better<br /><span>together.</span></h1>
         <p className="intro">One account for your music, your people, and everything you discover along the way.</p>
         <div className="status-row">
@@ -148,6 +148,7 @@ export default function Home() {
       </section>
 
       <section className="auth-card" aria-label="Vinz account">
+        <div className="auth-brand-lockup"><img src="/vinz-logo.png" alt="Vinz" width="54" height="54" /><div><span>VINZ ACCOUNT</span><small>Your music world, connected.</small></div><div className="brand-equalizer compact" aria-hidden="true"><i /><i /><i /><i /><i /></div></div>
         {user ? (
           <div className="signed-in">
             <div className="success-icon">✓</div>
@@ -185,7 +186,7 @@ export default function Home() {
           </>
         )}
         {message && <p className="message" role="status">{message}</p>}
-        {!supabase && <p className="message warning">Add the Supabase public URL and publishable key to the Vercel project environment.</p>}
+        {!supabase && <p className="message warning">Vinz account services are temporarily unavailable. Please try again later.</p>}
         <p className="legal">By continuing, you agree to use Vinz responsibly and protect your account credentials.</p>
       </section>
       <footer><span>© {new Date().getFullYear()} Vinz</span><span>Built for the love of music.</span></footer>

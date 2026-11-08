@@ -681,7 +681,7 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                     ) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
-                                onSignIn = { navController.navigate(Routes.LOGIN) },
+                                onSignIn = { navController.navigate(Routes.ACCOUNT) },
                                 // One cloud-backed Vinz Account, followed by the existing artist selection.
                                 onAccount = { navController.navigate(Routes.ACCOUNT + "?onboarding=true") },
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
