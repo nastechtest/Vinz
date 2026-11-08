@@ -36,6 +36,16 @@ const requiredFiles = [
   "platform/cloudflare/vinz-api.js",
   "supabase/migrations/20261107131815_vinz_account_foundation.sql",
   "supabase/migrations/20261107200000_vinz_account_2_username_and_avatar_hardening.sql",\n  "supabase/tests/vinz_account_access_contract.sql",
+  "web/app/account/page.tsx",
+  "web/app/account/profile/page.tsx",
+  "web/app/account/security/page.tsx",
+  "web/app/account/connections/page.tsx",
+  "web/app/u/[username]/page.tsx",
+  "web/app/auth/callback/page.tsx",
+  "web/app/auth/reset-password/page.tsx",
+  "app/src/main/java/com/vinz/music/ui/screens/VinzCloudAccountScreen.kt",
+  "app/src/main/java/com/vinz/music/ui/screens/account/CloudAccountController.kt",
+  "app/src/test/java/com/vinz/music/CloudAccountScreenTest.kt",
 ];
 for (const file of requiredFiles) {
   if (read(file) === null) fail("Required file inventory", "Required production file is missing", file);
@@ -172,6 +182,40 @@ for (const key of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE
   if (new RegExp("^" + key + "=", "m").test(envExample)) add("Web environment: " + key, "PASS", "Documented in web/.env.example");
   else fail("Web environment: " + key, "Required environment variable is missing", "web/.env.example");
 }
+
+// Cross-platform account acceptance contract: do not mark YouTube integration ready
+// merely because the settings page exists. The OAuth backend and both clients must be wired.
+for (const route of [
+  "web/app/account/page.tsx",
+  "web/app/account/profile/page.tsx",
+  "web/app/account/security/page.tsx",
+  "web/app/account/connections/page.tsx",
+  "web/app/u/[username]/page.tsx",
+  "web/app/auth/callback/page.tsx",
+  "web/app/auth/reset-password/page.tsx",
+]) {
+  if (read(route) !== null) add("Account route: " + route, "PASS", "Route exists on the production web source");
+  else fail("Account route: " + route, "Required account route is missing", route);
+}
+const androidAccount = read("app/src/main/java/com/vinz/music/ui/screens/VinzCloudAccountScreen.kt") || "";
+if (androidAccount.includes("R.drawable.vinz_logo") && androidAccount.includes("rememberInfiniteTransition")) {
+  add("Android account branding", "PASS", "Official logo and animated brand equalizer are present");
+} else fail("Android account branding", "Official logo or branded motion is missing", "VinzCloudAccountScreen.kt");
+const webGoogleSignIn = read("web/app/page.tsx") || "";
+if (webGoogleSignIn.includes("signInWithOAuth") && webGoogleSignIn.includes('provider: "google"')) {
+  add("Web Google sign-in", "PASS", "Google sign-in is connected to the Vinz Supabase identity flow");
+} else fail("Web Google sign-in", "Google sign-in provider flow is missing", "web/app/page.tsx");
+const webConnections = read("web/app/account/connections/page.tsx") || "";
+if (webConnections.includes("/v1/integrations/youtube/") && /Import YouTube Music/i.test(webConnections) && !/disabled>\s*YouTube import setup pending/i.test(webConnections)) {
+  add("Web YouTube Music import", "PASS", "Connections page calls the authenticated YouTube import service");
+} else fail("Web YouTube Music import", "YouTube import is still disabled or has no authenticated OAuth/import API route", "web/app/account/connections/page.tsx");
+const androidController = read("app/src/main/java/com/vinz/music/ui/screens/account/CloudAccountController.kt") || "";
+if (androidController.includes("/v1/integrations/youtube/") && /youtube/i.test(androidAccount)) {
+  add("Android YouTube Music import", "PASS", "Native account flow is wired to the authenticated YouTube import service");
+} else fail("Android YouTube Music import", "Native account does not yet connect to the YouTube OAuth/import service", "CloudAccountController.kt");
+if (/linkIdentity|GoogleSignIn|CredentialManager|google/i.test(androidController)) {
+  add("Android Google identity", "PASS", "Native account has a Google identity integration hook");
+} else fail("Android Google identity", "Native Google sign-in/linking is not implemented", "CloudAccountController.kt");
 
 const productionFiles = [
   ".github/workflows/cloudflare-web.yml",
