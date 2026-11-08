@@ -15,7 +15,7 @@
     { "binding": "BACKUPS_BUCKET", "bucket_name": "vinz-backups" }
   ],
   "kv_namespaces": [
-    { "binding": "CATALOG_CACHE", "id": "3e172dca32ca48e9be8d09b30f6a2a96" }
+    { "binding": "CATALOG_CACHE", "id": "dc7be60ce85f490bb473ef321dec9e5d" }
   ],
   "observability": {
     "enabled": true,

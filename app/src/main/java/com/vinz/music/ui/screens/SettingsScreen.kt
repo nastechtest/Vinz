@@ -627,7 +627,7 @@ private fun AccountCard() {
     )
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
     // One cloud-backed Vinz Account destination, not a local profile editor.
-    // YouTube Music retains its own established sign-in and session controls below.
+    // Optional YouTube playback session only. Vinz identity and YouTube library import are managed in Vinz Account.
     Row(
         Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -662,11 +662,11 @@ private fun AccountCard() {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                if (s.isLoggedIn) tr(R.string.youtube_music, s.accountName.ifBlank { tr(R.string.signed_in) }) else tr(R.string.sign_in_to_youtube_music),
+                if (s.isLoggedIn) tr(R.string.youtube_playback_session) else tr(R.string.connect_youtube_for_playback),
                 style = MaterialTheme.typography.bodyMedium, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (s.isLoggedIn) s.accountEmail.ifBlank { tr(R.string.signed_in_2) } else tr(R.string.optional_your_library_history_and_recommendation),
+                if (s.isLoggedIn) s.accountEmail.ifBlank { tr(R.string.signed_in_2) } else tr(R.string.optional_playback_session_not_vinz_identity),
                 style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }

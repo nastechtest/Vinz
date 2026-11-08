@@ -62,7 +62,7 @@ jobs:
 
           (async () => {
             const config = JSON.parse(await fs.readFile("platform/cloudflare/wrangler.jsonc", "utf8"));
-            if (config.name !== "vinz-api-staging" || config.workers_dev !== true) {
+            if (config.name !== "staging" || config.workers_dev !== true) {
               throw new Error("Refusing deployment: Wrangler config is not the staging Worker.");
             }
             config.vars = { ...(config.vars || {}), POSTHOG_PROJECT_KEY: posthogProjectKey };

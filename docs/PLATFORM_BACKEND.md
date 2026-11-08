@@ -1,6 +1,6 @@
 # Vinz backend platform
 
-This repository is a native Android application. The backend work is isolated under `platform/cloudflare`, `supabase/functions`, `supabase/migrations`, and `docs`. No Android screens or local music-library behavior have been changed.
+Vinz includes the Android app and a web account experience. The shared backend lives under `platform/cloudflare` and `supabase`; web hosting is built with vinext for Cloudflare Workers. Account and YouTube import changes must be validated across Android, web, Supabase and Cloudflare.
 
 ## Service ownership
 
@@ -14,11 +14,11 @@ This repository is a native Android application. The backend work is isolated un
 | Cloudflare Queues | Reserved for future bursty discovery/notification fan-out; queues exist but have no consumer yet |
 | PostHog | Allowlisted backend operational error events; never listening history or raw music content |
 | Linear | Workstreams, blockers, acceptance criteria and release tracking |
-| Vercel | Reserved for an actual web control-plane app. The current repo is Android-only and no Vinz Vercel project is linked. Android builds stay in GitHub Actions. |
+| Vercel | Legacy project remains linked to GitHub but is not an active Vinz host. `web/vercel.json` disables Git-triggered deployments; do not remove that kill switch until the legacy Vercel project is disconnected. |
 
 Using several providers does not increase any provider's quota. The purpose is to keep each service on the workload it handles efficiently and to make fallbacks explicit.
 
-## Verified live infrastructure (2026-11-07)
+## Live infrastructure inventory (checked 2026-11-08)
 
 ### Supabase
 - Project `iszghebmetrbkfhnnoqq`, region `eu-west-1`.
@@ -32,7 +32,7 @@ Using several providers does not increase any provider's quota. The purpose is t
 
 ### Cloudflare
 - Existing production Worker `vinz` remains the original Hello World script; it has not been replaced.
-- A separate `vinz-api-staging` Worker is deployed with the backend API source, Supabase public bindings, the `vinz-backups` R2 binding, the `VINZ_CATALOG_CACHE` KV binding, PostHog secret binding, and observability enabled.
+- A separate `staging` Worker is deployed with the backend API source, Supabase public bindings, the `vinz-backups` R2 binding, the `VINZ_CATALOG_CACHE` KV binding, PostHog secret binding, and observability enabled.
 - R2 bucket `vinz-backups` exists in EEUR.
 - KV namespace `VINZ_CATALOG_CACHE` exists in EU.
 - Queues `vinz-discovery-jobs` and `vinz-discovery-jobs-dlq` exist in EU, but no queue consumer is configured; the initial release-monitor schedule runs through Supabase Cron + Vault instead.
@@ -43,9 +43,9 @@ Using several providers does not increase any provider's quota. The purpose is t
 - PostHog is wired into staging for a fixed, allowlisted `vinz_api_error` event. It receives no user IDs, emails, tokens, queries, artist/track names, lyrics, audio or request bodies.
 
 ### Web hosting
-- The web frontend is hosted on Cloudflare Workers at `https://home.vinzmusic.workers.dev`.
-- The API is hosted separately at `https://api.vinzmusic.workers.dev`.
-- Vercel is not part of Vinz's hosting, CI, preview, or release path.
+- The intended web frontend hostname is `https://home.vinzmusic.workers.dev`; it must not be described as live until the `home` Worker is deployed and the URL returns the actual Vinz HTML page.
+- The API hostname is `https://api.vinzmusic.workers.dev`; its live health endpoint responds. The additive `vinz_youtube_music_import` migration was applied to the live Supabase project on 2026-11-08 and both YouTube tables were verified with RLS enabled. YouTube OAuth secrets remain a production setup gate.
+- Vercel is not part of Vinz hosting or release; the old linked project is retained only behind the Git deployment kill switch until it is safely disconnected.
 
 ## Cloudflare API contract
 
@@ -136,6 +136,6 @@ Never place the Supabase service-role key in the Android app or public API Worke
 ## Safety gates
 
 - No production Worker deployment, production app release, merge or destructive schema operation is included in this draft PR.
-- The production `vinz` Worker is untouched; the new API is on `vinz-api-staging`.
+- The production `vinz` Worker is untouched; the new API is on `staging`.
 - The database changes applied so far are additive. The reconstructed baseline migrations are intended to reproduce the live schema in a clean project and should be reviewed before using them for a fresh environment.
 - Never cache authenticated responses or silently discard user data.

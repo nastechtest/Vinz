@@ -29,6 +29,12 @@ internal data class CloudAccountState(
     val busy: Boolean = false,
     val profileReady: Boolean = false,
     val profileLoadFailed: Boolean = false,
+    val youtubeConnected: Boolean = false,
+    val youtubeChannelTitle: String = "",
+    val youtubeAuthorizationUrl: String? = null,
+    val youtubeConnectPending: Boolean = false,
+    val youtubeImportedCount: Int? = null,
+    val youtubePlaylistCount: Int? = null,
     @param:StringRes val message: Int? = null,
     @param:StringRes val error: Int? = null,
 ) {

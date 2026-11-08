@@ -1,7 +1,16 @@
 package com.vinz.music.ui.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,13 +28,22 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -58,6 +76,20 @@ internal fun CloudAccountContent(
     supplementalContent: @Composable () -> Unit = {},
 ) {
     var section by remember(state.identity?.userId) { mutableStateOf("profile") }
+    val uriHandler = LocalUriHandler.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, state.identity?.userId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && state.identity != null) actions.refreshYouTubeStatus()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(state.youtubeAuthorizationUrl) {
+        val url = state.youtubeAuthorizationUrl ?: return@LaunchedEffect
+        runCatching { uriHandler.openUri(url) }
+        actions.clearYouTubeAuthorizationUrl()
+    }
     Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState())
@@ -65,9 +97,41 @@ internal fun CloudAccountContent(
                 .testTag("cloud-account-content"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            VinzTextButton(onClick = onContinue ?: onBack, enabled = !state.busy,
-                modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
-                Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Image(
+                        painter = painterResource(R.drawable.vinz_logo),
+                        contentDescription = tr(R.string.cloud_account_brand_name),
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag("cloud-account-logo"),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(tr(R.string.cloud_account_brand_name), style = MaterialTheme.typography.titleLarge)
+                        Text(tr(R.string.cloud_account_brand_tagline), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                VinzTextButton(onClick = onContinue ?: onBack, enabled = !state.busy,
+                    modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
+                    Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
+                }
+            }
+            val motion = rememberInfiniteTransition(label = "vinz-account-brand")
+            Row(Modifier.padding(top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                repeat(5) { index ->
+                    val height by motion.animateFloat(
+                        initialValue = 5f, targetValue = 17f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 560 + index * 90, delayMillis = index * 75),
+                            repeatMode = RepeatMode.Reverse,
+                        ), label = "vinz-equalizer-$index",
+                    )
+                    Box(Modifier.size(width = 4.dp, height = height.dp)
+                        .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary))
+                }
+                Text(tr(R.string.cloud_account_brand_section), modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
             Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
             Text(tr(R.string.cloud_account_intro), style = MaterialTheme.typography.bodyMedium,
@@ -214,10 +278,38 @@ private fun CloudAccountFormBody(
         }
         "connections" -> {
             Text(tr(R.string.cloud_account_connected_services), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(tr(R.string.cloud_account_connections_subtitle),
-                style = MaterialTheme.typography.titleMedium)
-            Text(tr(R.string.cloud_account_connections_description),
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.cloud_account_connections_subtitle), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_connections_description), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.cloud_account_youtube_title), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_youtube_description), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (state.youtubeConnected) tr(R.string.cloud_account_youtube_connected, state.youtubeChannelTitle.ifBlank { tr(R.string.cloud_account_youtube_title) })
+                else tr(R.string.cloud_account_youtube_not_connected),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (state.youtubeConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            VinzButton(
+                onClick = { if (state.youtubeConnected) actions.importYouTubeMusic() else actions.connectYouTube() },
+                modifier = Modifier.fillMaxWidth().testTag("cloud-account-youtube-action"),
+                enabled = !state.busy,
+            ) {
+                Text(tr(if (state.youtubeConnected) R.string.cloud_account_youtube_import else R.string.cloud_account_youtube_connect))
+            }
+            VinzTextButton(onClick = { actions.refreshYouTubeStatus() }, enabled = !state.busy,
+                modifier = Modifier.testTag("cloud-account-youtube-refresh")) {
+                Text(tr(R.string.cloud_account_youtube_refresh))
+            }
+            if (state.youtubeConnected) VinzTextButton(onClick = { actions.disconnectYouTubeMusic() },
+                enabled = !state.busy, modifier = Modifier.testTag("cloud-account-youtube-disconnect")) {
+                Text(tr(R.string.cloud_account_youtube_disconnect))
+            }
+            if (state.youtubeImportedCount != null && state.youtubePlaylistCount != null) Text(
+                tr(R.string.cloud_account_youtube_imported, state.youtubeImportedCount, state.youtubePlaylistCount),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.testTag("cloud-account-youtube-import-result"),
+            )
         }
     }
 }

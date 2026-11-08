@@ -72,6 +72,13 @@ class CloudAccountScreenTest {
 
     @After fun tearDown() { scope.cancel() }
 
+    @Test fun accountEntryShowsOfficialVinzLogoAndBrandedHeader() {
+        render(CloudAccountState(mode = CloudAccountMode.SIGN_UP))
+        compose.onNodeWithTag("cloud-account-logo").assertExists()
+        compose.onNodeWithText("Vinz").assertExists()
+        compose.onNodeWithText("YOUR MUSIC. YOUR IDENTITY.").assertExists()
+    }
+
     @Test fun profileLoadFailureShowsRetryAndNeverEditableDefaultPrivacy() {
         render(CloudAccountState(
             identity = CloudAccountIdentity("test-user", "test@example.test"),
@@ -167,6 +174,31 @@ class CloudAccountScreenTest {
             assertEquals(1, continued)
             assertEquals(0, backCalls)
         }
+    }
+
+    @Test fun connectionsSectionOffersDirectYouTubeAuthorizationWithoutEmailEntry() {
+        render(CloudAccountState(
+            identity = CloudAccountIdentity("test-user", "listener@example.test"),
+            profileReady = true,
+        ))
+        compose.onNodeWithTag("cloud-account-tab-connections").performScrollTo().performClick()
+        compose.onNodeWithTag("cloud-account-youtube-action").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Connect YouTube Music").assertExists()
+        compose.onNodeWithText("Connect YouTube Music to your Vinz Account using secure Google authorization. Vinz never asks for a YouTube email or password.").assertExists()
+    }
+
+    @Test fun connectedYouTubeShowsImportAndDisconnectActions() {
+        render(CloudAccountState(
+            identity = CloudAccountIdentity("test-user", "listener@example.test"),
+            profileReady = true,
+            youtubeConnected = true,
+            youtubeChannelTitle = "Listener Channel",
+        ))
+        compose.onNodeWithTag("cloud-account-tab-connections").performScrollTo().performClick()
+        compose.onNodeWithTag("cloud-account-youtube-action").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Import YouTube Music").assertExists()
+        compose.onNodeWithTag("cloud-account-youtube-disconnect").assertExists()
+        compose.onNodeWithText("Connected channel: Listener Channel").assertExists()
     }
 
     @Test fun credentialInputsRemainEditableWithoutRequestsOrKeystore() {
