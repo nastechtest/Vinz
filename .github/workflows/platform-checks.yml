@@ -138,24 +138,25 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path("supabase/migrations/20261108144000_vinz_require_verified_email_for_avatar_writes.sql")
           sql = path.read_text()
+          lowered = sql.lower()
           required = {
               "Vinz avatar owner insert": "insert",
               "Vinz avatar owner update": "update",
               "Vinz avatar owner delete": "delete",
           }
           for name, operation in required.items():
-              match = re.search(
-                  rf'create\\s+policy\\s+"{re.escape(name)}"\\s+on\\s+storage\\.objects\\s+for\\s+{operation}\\b(.*?);',
-                  sql,
-                  re.IGNORECASE | re.DOTALL,
-              )
-              if not match:
+              start = lowered.find(f'create policy "{name.lower()}"')
+              if start < 0:
                   raise SystemExit(f"Missing avatar storage policy: {name}")
-              clause = match.group(1)
+              end = lowered.find(";", start)
+              if end < 0:
+                  raise SystemExit(f"Unterminated avatar storage policy: {name}")
+              clause = lowered[start:end]
+              if f"for {operation}" not in clause:
+                  raise SystemExit(f"{name} has the wrong operation.")
               for required_clause in ("vinz_private.is_email_verified()", "bucket_id = 'vinz-avatars'", "(storage.foldername(name))[1]"):
                   if required_clause not in clause:
                       raise SystemExit(f"{name} is missing {required_clause}")
