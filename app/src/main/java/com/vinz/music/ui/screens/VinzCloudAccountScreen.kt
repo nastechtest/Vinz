@@ -285,7 +285,7 @@ private fun CloudAccountFormBody(
             Text(tr(R.string.cloud_account_youtube_description), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                if (state.youtubeConnected) tr(R.string.cloud_account_youtube_connected, state.youtubeChannelTitle.ifBlank { "YouTube" })
+                if (state.youtubeConnected) tr(R.string.cloud_account_youtube_connected, state.youtubeChannelTitle.ifBlank { tr(R.string.cloud_account_youtube_title) })
                 else tr(R.string.cloud_account_youtube_not_connected),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (state.youtubeConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
