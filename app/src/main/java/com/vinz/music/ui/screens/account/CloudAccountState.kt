@@ -28,7 +28,11 @@ internal data class CloudAccountState(
     val usernameAvailability: UsernameAvailability = UsernameAvailability.IDLE,
     val busy: Boolean = false,
     val profileReady: Boolean = false,
-    val profileLoadFailed: Boolean = false,\n    val youtubeConnected: Boolean = false,\n    val youtubeChannelTitle: String = "",\n    val youtubeAuthorizationUrl: String? = null,\n    val youtubeImportSummary: String? = null,
+    val profileLoadFailed: Boolean = false,
+    val youtubeConnected: Boolean = false,
+    val youtubeChannelTitle: String = "",
+    val youtubeAuthorizationUrl: String? = null,
+    val youtubeImportSummary: String? = null,
     @param:StringRes val message: Int? = null,
     @param:StringRes val error: Int? = null,
 ) {
