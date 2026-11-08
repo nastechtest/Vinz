@@ -36,6 +36,12 @@ test("YouTube connect creates a short-lived PKCE state and uses the Vinz email a
   assert.equal(authorization.searchParams.get("redirect_uri"), "https://api.vinzmusic.workers.dev/v1/integrations/youtube/callback");
   assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
   assert.equal(authorization.searchParams.get("access_type"), "offline");
+  const saved = ENV.CATALOG_CACHE.values.get("vinz:youtube:oauth:" + authorization.searchParams.get("state"));
+  assert.ok(saved, "one-time OAuth state must be stored in KV");
+  assert.equal(saved.options.expirationTtl, 600);
+  assert.equal(saved.value.includes("listener@example.com"), false);
+  assert.equal(saved.value.includes("Bearer vinz-user-jwt"), false);
+  assert.equal(saved.value.startsWith("{"), false, "OAuth verifier and Vinz session must be encrypted at rest");
 });
 
 test("YouTube connect fails closed when Google OAuth secrets are absent", async () => {
