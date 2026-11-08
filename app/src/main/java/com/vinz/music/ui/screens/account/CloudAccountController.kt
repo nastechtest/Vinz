@@ -81,6 +81,8 @@ internal class CloudAccountController(
                 usernameAvailability = if (profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,
                 profileReady = true, profileLoadFailed = false,
                 message = if (profile == null) R.string.cloud_account_setup else null,
+                youtubeConnected = youtube?.connected ?: false,
+                youtubeChannelTitle = youtube?.channelTitle.orEmpty(),
             )
         }
     }
