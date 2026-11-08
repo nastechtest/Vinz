@@ -146,7 +146,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit, addAccount: Boolean = fa
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopAppBar(
-            title = { Text(tr(R.string.sign_in_to_youtube_music)) },
+            title = { Text(tr(R.string.connect_youtube_for_playback)) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(VinzIcons.ArrowBack, tr(R.string.back)) } },
             actions = { VinzTextButton(onClick = { pasteDialog = true }) { Text(tr(R.string.use_cookie)) } },
         )
