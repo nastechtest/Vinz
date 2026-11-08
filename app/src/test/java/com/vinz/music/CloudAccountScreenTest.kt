@@ -75,7 +75,7 @@ class CloudAccountScreenTest {
     @Test fun accountEntryShowsOfficialVinzLogoAndBrandedHeader() {
         render(CloudAccountState(mode = CloudAccountMode.SIGN_UP))
         compose.onNodeWithTag("cloud-account-logo").assertExists()
-        compose.onNodeWithText("VINZ").assertExists()
+        compose.onNodeWithText("Vinz").assertExists()
         compose.onNodeWithText("YOUR MUSIC. YOUR IDENTITY.").assertExists()
     }
 
