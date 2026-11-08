@@ -37,10 +37,6 @@
     <!-- English fallback for new account guidance, pending translation. -->
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
-    <string name="cloud_account_brand_name">Vinz</string>
-    <string name="cloud_account_brand_tagline">당신의 음악. 당신의 정체성.</string>
-    <string name="cloud_account_brand_section">나의 VINZ 계정</string>
-    <string name="cloud_account_sign_up_failed">Vinz 계정을 만들 수 없습니다. 정보를 확인하고 다시 시도하세요.</string>
     <string name="cloud_account_youtube_title">YouTube Music</string>
     <string name="cloud_account_youtube_description">안전한 Google 인증을 통해 YouTube Music을 Vinz 계정에 연결하세요. Vinz는 YouTube 이메일이나 비밀번호를 요청하지 않습니다.</string>
     <string name="cloud_account_youtube_not_connected">연결되지 않음</string>
