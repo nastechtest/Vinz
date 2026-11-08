@@ -3,6 +3,7 @@ package com.vinz.music
 import com.vinz.music.data.language.BantuLanguages
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.Locale
 
 class BantuLanguagesTest {
     @Test fun priorityLanguagesKeepTheRequestedOrder() {
@@ -11,10 +12,16 @@ class BantuLanguagesTest {
     @Test fun sectionsKeepPriorityEastCentralSouthernOrder() {
         assertEquals(BantuLanguages.SectionId.entries.toList(), BantuLanguages.sections.map { it.id })
     }
-    @Test fun everyLanguageAppearsOnce() {
-        val shown = BantuLanguages.sections.flatMap { it.languages }.map { it.tag }
-        assertEquals(BantuLanguages.languages.map { it.tag }.toSet(), shown.toSet())
-        assertEquals(shown.size, shown.distinct().size)
+    @Test fun everyLanguageAppearsExactlyOnceWithoutDuplicateTagsOrNames() {
+        val shown = BantuLanguages.sections.flatMap { it.languages }
+        val canonicalTags = BantuLanguages.languages.map { it.tag.lowercase(Locale.ROOT) }
+        val canonicalNames = BantuLanguages.languages.map { it.nativeName.trim().lowercase(Locale.ROOT) }
+        assertEquals(BantuLanguages.languages.map { it.tag }.toSet(), shown.map { it.tag }.toSet())
+        assertEquals(shown.size, shown.map { it.tag }.distinct().size)
+        assertEquals("Duplicate Bantu language tags are not allowed", canonicalTags.size, canonicalTags.distinct().size)
+        assertEquals("Duplicate Bantu endonyms are not allowed", canonicalNames.size, canonicalNames.distinct().size)
+        assertEquals("Every registry language must appear in exactly one picker section",
+            BantuLanguages.languages.size, shown.size)
     }
     @Test fun regionalSectionsContainOnlyTheirRegion() {
         BantuLanguages.sections.drop(1).forEach { section ->
