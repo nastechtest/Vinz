@@ -72,3 +72,10 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Added a repository-only migration that gates account-owned RLS policies and private backup objects on the authoritative `auth.users.email_confirmed_at` timestamp. It has not been applied to the connected Supabase project.
 - Added feature-branch Android and migration checks by extending existing workflows; no duplicate pipeline was created.
 - CI run status and APK artifact are recorded after the feature-branch workflows complete.
+
+## Latest validation — 2026-11-08
+
+- Feature head `ffc6b6bee3cd6674bf3d10d5c4cad2a78321c83f` passed the platform backend checks (Supabase migration integrity, Cloudflare Worker tests and workflow hygiene).
+- Android PR checks exposed a real Kotlin compile error in the OTP controller: the verification gateway returns the sealed `AuthResult` union, but the controller treated it as `SignedIn` without handling the other variants. Both the unit-test and Android Lint jobs failed at compilation; no APK artifact was produced.
+- Fixed the controller to handle all three OTP outcomes explicitly. A regression test now asserts that a second `VerificationRequired` response keeps the account locked on the OTP screen and does not create a signed-in identity.
+- Validation of this fix is pending the feature-branch workflow run triggered by the fix commit. No result is claimed until that run completes.

@@ -111,8 +111,14 @@ internal class CloudAccountController(
                     mutable.value = mutable.value.copy(email = email, message = R.string.cloud_account_recovery_sent)
                 }
                 CloudAccountMode.VERIFY_EMAIL -> {
-                    val result = gateway.verifyOtp(email, before.otp)
-                    acceptSignedIn(result, before, email, failure)
+                    when (val result = gateway.verifyOtp(email, before.otp)) {
+                        is VinzCloudAccount.AuthResult.SignedIn ->
+                            acceptSignedIn(result, before, email, failure)
+                        is VinzCloudAccount.AuthResult.VerificationRequired ->
+                            beginVerification(result.email)
+                        VinzCloudAccount.AuthResult.EmailConfirmationRequired ->
+                            beginVerification(email)
+                    }
                 }
                 CloudAccountMode.SIGN_UP, CloudAccountMode.SIGN_IN -> {
                     val result = if (before.mode == CloudAccountMode.SIGN_UP) gateway.signUp(

@@ -80,12 +80,34 @@ class CloudAccountOtpControllerTest {
         assertEquals(R.string.cloud_account_otp_resent, controller.state.value.message)
     }
 
+    @Test fun `OTP verification response that still requires confirmation never unlocks the account`() = runBlocking {
+        val gateway = FakeGateway().apply {
+            nextVerificationResult = VinzCloudAccount.AuthResult.VerificationRequired("new@example.test")
+        }
+        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0)
+        controller.mode(CloudAccountMode.SIGN_UP)
+        controller.email("new@example.test")
+        controller.password("safe-password-123")
+        controller.username("new_artist")
+        controller.displayName("New Artist")
+        controller.submit()!!.join()
+
+        controller.otp("123456")
+        controller.submit()!!.join()
+
+        assertEquals(CloudAccountMode.VERIFY_EMAIL, controller.state.value.mode)
+        assertNull(controller.state.value.identity)
+        assertEquals("", controller.state.value.otp)
+        assertFalse(controller.state.value.canContinue)
+    }
+
     private class FakeGateway : CloudAccountGateway {
         override var identity: CloudAccountIdentity? = null
         var verifiedEmail = ""
         var verifiedCode = ""
         var resendEmail = ""
         var resendCalls = 0
+        var nextVerificationResult: VinzCloudAccount.AuthResult? = null
         override suspend fun loadProfile(): VinzCloudAccount.Profile? = null
         override suspend fun signIn(email: String, password: String): VinzCloudAccount.AuthResult = error("unexpected sign-in")
         override suspend fun signUp(email: String, password: String, username: String, displayName: String) =
@@ -93,6 +115,8 @@ class CloudAccountOtpControllerTest {
         override suspend fun verifyOtp(email: String, code: String): VinzCloudAccount.AuthResult {
             verifiedEmail = email
             verifiedCode = code
+            val next = nextVerificationResult
+            if (next != null) return next
             identity = CloudAccountIdentity("verified-user", email)
             return VinzCloudAccount.AuthResult.SignedIn(
                 VinzCloudAccount.Profile("verified-user", "new_artist", "New Artist", "", null, true, true),
