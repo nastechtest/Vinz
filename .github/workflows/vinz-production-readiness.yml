@@ -67,11 +67,16 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://iszghebmetrbkfhnnoqq.supabase.co' }}
           GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
         run: node scripts/ci/vinz-production-readiness.mjs
+      - name: Audit live Cloudflare account, Workers, routes, bindings and secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '6ac32c2af3e1d65a98b3733b29bee4ea' }}
+        run: node scripts/ci/vinz-cloudflare-audit.mjs
       - name: Upload machine-readable readiness report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: vinz-readiness-${{ github.run_id }}
-          path: artifacts/vinz-readiness.json
+          path: artifacts/vinz-readiness.json\n            artifacts/vinz-cloudflare-audit.json
           if-no-files-found: error
           retention-days: 30
