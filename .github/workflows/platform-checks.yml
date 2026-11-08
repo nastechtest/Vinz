@@ -58,7 +58,7 @@ jobs:
           const fs = require("node:fs");
           const assert = require("node:assert/strict");
           const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
-          assert.equal(config.name, "vinz-api-staging");
+          assert.equal(config.name, "staging");
           assert.equal(config.main, "vinz-api.js");
           assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(config.compatibility_date));
           assert.ok(config.kv_namespaces?.some((binding) => binding.binding === "CATALOG_CACHE" && binding.id));
