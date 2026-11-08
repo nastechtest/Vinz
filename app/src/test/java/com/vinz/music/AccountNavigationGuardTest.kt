@@ -50,11 +50,13 @@ class AccountNavigationGuardTest {
         }
     }
 
-    @Test fun localSummaryOnlyRetainsLegacyImportBookkeeping() {
+    @Test fun localSummaryShowsPhoneLibraryCountsWithoutSeparateYoutubeImport() {
         val account = read("ui/screens/AccountScreens.kt")
         val summary = account.substringAfter("private fun LocalMusicSummary()")
-        assertTrue(summary.contains("val legacyImport by c.account.profile.collectAsState()"))
-        assertTrue(summary.contains("c.account.bringOver"))
+        assertTrue(summary.contains("c.vinzLibrary.lists"))
+        assertTrue(summary.contains("c.library.liked"))
+        assertFalse(summary.contains("c.account.bringOver"))
+        assertFalse(summary.contains("legacyImport"))
         listOf("c.account.create(", "c.account.delete(", "c.account.name", "c.account.avatar").forEach {
             assertFalse("Local summary must not mutate identity through $it", summary.contains(it))
         }
@@ -91,7 +93,8 @@ class AccountNavigationGuardTest {
         assertTrue(welcome.contains("R.string.cloud_account_intro"))
         assertFalse(welcome.contains("R.string.no_email"))
         assertFalse(welcome.contains("on_this_phone"))
-        assertTrue(welcome.contains("R.string.cloud_account_sign_in_cta"))\n        assertFalse(welcome.contains("R.string.sign_in_to_youtube_music"))
+        assertTrue(welcome.contains("R.string.cloud_account_sign_in_cta"))
+        assertFalse(welcome.contains("R.string.sign_in_to_youtube_music"))
 
         val activity = read("MainActivity.kt")
         assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.ACCOUNT) }"))
