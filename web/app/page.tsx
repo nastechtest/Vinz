@@ -136,7 +136,7 @@ export default function Home() {
       <section className="hero">
         <div className="hero-kicker"><div className="eyebrow"><span className="pulse" /> YOUR MUSIC WORLD</div><div className="brand-equalizer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div></div>
         <h1>Music feels better<br /><span>together.</span></h1>
-        <p className="intro">One account for your music, your people, and everything you discover along the way.</p>
+        <p className="intro">Vinz is a music and community app by Nastech Research. Create your account, manage your profile, discover music and optionally connect YouTube to import playlist and library metadata.</p><section className="intro" aria-label="About Vinz"><h2>One account for your music world.</h2><p>Manage your Vinz identity, connect supported music services when you choose, and keep your music community together. YouTube connections are optional and read-only for supported import features.</p><p><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:nastechplatforms@gmail.com">Contact Nastech Research</a></p></section>
         <div className="status-row">
           <span className={apiStatus === "online" ? "status-dot good" : "status-dot"} />
           <span>Vinz API {apiStatus === "checking" ? "checking" : apiStatus === "online" ? "connected" : "not connected"}</span>
