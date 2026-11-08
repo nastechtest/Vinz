@@ -681,7 +681,7 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                     ) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
-                                onSignIn = { navController.navigate(Routes.ACCOUNT) },
+                                onSignIn = { navController.navigate(Routes.ACCOUNT + "?onboarding=true&signIn=true") },
                                 // One cloud-backed Vinz Account, followed by the existing artist selection.
                                 onAccount = { navController.navigate(Routes.ACCOUNT + "?onboarding=true") },
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
@@ -696,12 +696,15 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                             }
                         }
                         composable(
-                            Routes.ACCOUNT + "?onboarding={onboarding}",
-                            listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false }),
+                            Routes.ACCOUNT + "?onboarding={onboarding}&signIn={signIn}",
+                            listOf(
+                                navArgument("onboarding") { type = NavType.BoolType; defaultValue = false },
+                                navArgument("signIn") { type = NavType.BoolType; defaultValue = false },
+                            ),
                         ) {
                             val onboarding = it.arguments?.getBoolean("onboarding") == true
                             ScreenBackdrop(BackdropScreen.SETTINGS) {
-                                com.vinz.music.ui.screens.VinzAccountScreen(onboarding, if (onboarding) 0.dp else bottomPadding) {
+                                com.vinz.music.ui.screens.VinzAccountScreen(onboarding, if (onboarding) 0.dp else bottomPadding, it.arguments?.getBoolean("signIn") == true) {
                                     if (onboarding) navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") else navController.popBackStack()
                                 }
                             }
