@@ -1,7 +1,6 @@
 package com.vinz.music
 
-import dev.chrisbanes.haze.glass.GlassDefaults
-import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.GlassOptics
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,8 +19,8 @@ class GlassKindsTest {
     }
 
     @Test fun clearKeepsWhatsBehindSharpAndRegularBlursIt() {
-        val regular = blurs(GlassDefaults.optics)
-        val clear = blurs(GlassStyle.Companion.javaClass.getMethod("getClearOptics\$haze_root_haze_glass").invoke(GlassStyle.Companion)!!)
+        val regular = blurs(GlassOptics.regular)
+        val clear = blurs(GlassOptics.clear)
         assertTrue("Clear barely blurs ($clear dp)", clear.max() <= 2f)
         assertTrue("Regular blurs ($regular dp)", regular.min() >= 10f)
     }
