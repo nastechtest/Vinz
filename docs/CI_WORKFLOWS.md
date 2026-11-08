@@ -11,10 +11,10 @@ The repository keeps the Android app, Cloudflare Worker and Supabase Edge Functi
 | `Icons & shapes regression` | Pull requests | Existing Android emulator UI regression test |
 | `CodeQL` | PR, push, weekly | Existing Kotlin/Java security analysis |
 | `Platform backend checks` | Backend/workflow changes, manual | Node 22 syntax checks, Cloudflare Worker tests, Supabase migration filename/order checks and YAML/patch hygiene |
-| `Connected provider health` | Weekly Monday, manual | Non-mutating authentication checks for Cloudflare, Supabase, Linear, PostHog and Vercel |
+| `Connected provider health` | Weekly Monday, manual | Non-mutating authentication checks for Cloudflare, Supabase, Linear and PostHog |
 | `Deploy Cloudflare staging API` | Manual only | Re-runs Worker tests and uploads only `vinz-api-staging`; requires the exact confirmation phrase |
 | `Vinz platform deployment` | Manual only | Deploys staging or production Worker after tests; production requires `deploy-production` and a protected environment |
-| `Vinz web checks and deployment gate` | PR, main push, manual | Builds the Next.js web portal; Vercel Git integration creates preview/production deployments |
+| `Vinz web checks and Cloudflare deployment` | PR, main push, manual | Builds the Next.js portal with vinext for Cloudflare Workers; production deploy is manual and targets `home.vinzmusic.workers.dev` |
 | `Deploy Vinz Supabase Edge Function` | Manual only | Deploys only `vinz-discovery` after the exact confirmation phrase; does not push migrations |
 | Dependabot | Weekly Monday | Gradle, Cloudflare Worker npm dependencies and pinned GitHub Actions updates |
 
@@ -32,11 +32,14 @@ Add these under **Repository → Settings → Secrets and variables → Actions*
 | Supabase | `SUPABASE_ACCESS_TOKEN` | `SUPABASE_PROJECT_REF` |
 | Linear | `LINEAR_API_KEY` | — |
 | PostHog | `POSTHOG_PERSONAL_API_KEY` | `POSTHOG_HOST` (for example `https://us.i.posthog.com`), `POSTHOG_PROJECT_KEY` (public ingestion key) |
-| Vercel | `VERCEL_TOKEN` | `VERCEL_PROJECT_ID`, `VERCEL_ORG_ID` |
 
 The health workflow checks each provider independently. Configure only the integrations Vinz is authorized to use; unconfigured providers are reported as skipped.
 
 ### Cloudflare Worker deployments
+
+The web frontend is hosted on Cloudflare Workers at `https://home.vinzmusic.workers.dev`; the API is a separate Worker at `https://api.vinzmusic.workers.dev`. Web builds use `npm run check:vinext` and `npm run build:vinext`; only the dedicated Cloudflare web workflow deploys the `home` Worker, and it requires the explicit `deploy-home-production` confirmation. No Vercel credentials or deployment integration are used.
+
+
 
 The staging and production deploy workflows use `CLOUDFLARE_ACCOUNT_ID` and the `POSTHOG_PROJECT_KEY` repository variable (optional for telemetry). The Worker URL, publishable Supabase key, PostHog host, R2 bucket, KV namespace and compatibility date are maintained in `platform/cloudflare/wrangler.jsonc`, which CI validates and the deployment workflow reads as its source of truth. The deploy injects the public PostHog project ingestion key at deploy time; it is not committed to source.
 
