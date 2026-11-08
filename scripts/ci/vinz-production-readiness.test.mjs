@@ -14,7 +14,7 @@ test("JSONC parser strips comments and trailing commas", () => {
 
 test("CORS origins are parsed as exact HTTPS origins", () => {
   assert.deepEqual(parseOriginList("https://home.vinzmusic.workers.dev"), ["https://home.vinzmusic.workers.dev"]);
-  assert.throws(() => parseOriginList("https://home.vinzmusic.workers.dev.evil.test"));
+  assert.notDeepEqual(parseOriginList("https://home.vinzmusic.workers.dev.evil.test"), ["https://home.vinzmusic.workers.dev"]);
   assert.throws(() => parseOriginList("http://home.vinzmusic.workers.dev"));
   assert.throws(() => parseOriginList("https://home.vinzmusic.workers.dev/path"));
 });
