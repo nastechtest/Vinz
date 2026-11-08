@@ -88,6 +88,7 @@ jobs:
           name: vinz-readiness-${{ github.run_id }}
           path: |
             artifacts/vinz-readiness.json
-            artifacts/vinz-cloudflare-audit.json\n            artifacts/vinz-supabase-auth-audit.json
+            artifacts/vinz-cloudflare-audit.json
+            artifacts/vinz-supabase-auth-audit.json
           if-no-files-found: error
           retention-days: 30
