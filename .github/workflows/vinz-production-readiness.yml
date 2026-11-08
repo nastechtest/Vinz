@@ -68,6 +68,7 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
         run: node scripts/ci/vinz-production-readiness.mjs
       - name: Audit live Cloudflare account, Workers, routes, bindings and secrets
+        if: always()
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '6ac32c2af3e1d65a98b3733b29bee4ea' }}
