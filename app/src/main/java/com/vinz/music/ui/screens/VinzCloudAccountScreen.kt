@@ -82,12 +82,12 @@ internal fun CloudAccountContent(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Image(
                         painter = painterResource(R.drawable.vinz_logo),
-                        contentDescription = "Vinz",
+                        contentDescription = tr(R.string.cloud_account_brand_name),
                         modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag("cloud-account-logo"),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("VINZ", style = MaterialTheme.typography.titleLarge)
-                        Text("YOUR MUSIC. YOUR IDENTITY.", style = MaterialTheme.typography.labelSmall,
+                        Text(tr(R.string.cloud_account_brand_name), style = MaterialTheme.typography.titleLarge)
+                        Text(tr(R.string.cloud_account_brand_tagline), style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -110,7 +110,7 @@ internal fun CloudAccountContent(
                     Box(Modifier.size(width = 4.dp, height = height.dp)
                         .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary))
                 }
-                Text("YOUR VINZ ACCOUNT", modifier = Modifier.padding(start = 8.dp),
+                Text(tr(R.string.cloud_account_brand_section), modifier = Modifier.padding(start = 8.dp),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
             Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.headlineMedium)
