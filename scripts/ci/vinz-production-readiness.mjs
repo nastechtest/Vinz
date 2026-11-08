@@ -146,6 +146,26 @@ if (supabase) {
         fail("Supabase REST private-profile boundary", `Unexpected HTTP ${rest.response.status}`, rest.body.slice(0, 300));
       }
     }
+    for (const table of ["vinz_youtube_connections", "vinz_youtube_imports"]) {
+      const probe = await request("Supabase table exists: " + table,
+        new URL("/rest/v1/" + table + "?select=*&limit=0", SUPABASE_URL).toString(),
+        { apikey: publishableKey });
+      if (probe) {
+        let payload = {};
+        try { payload = JSON.parse(probe.body); } catch {}
+        if ((probe.response.status === 401 || probe.response.status === 403) &&
+            payload.code === "42501" &&
+            new RegExp("permission denied for table " + table, "i").test(payload.message || "")) {
+          add("Supabase table exists: " + table, "PASS", "PostgREST resolves the table and anon access is correctly denied");
+        } else if (probe.response.status === 404 || payload.code === "PGRST205") {
+          fail("Supabase table exists: " + table, "Required YouTube table is missing from the live Supabase schema", payload.message || "PGRST205");
+        } else if (probe.response.ok) {
+          fail("Supabase table exists: " + table, "Anonymous role can query a private YouTube table; verify grants and RLS", "HTTP " + probe.response.status);
+        } else {
+          fail("Supabase table exists: " + table, "Could not confirm table existence and private access boundary", "HTTP " + probe.response.status + " " + probe.body.slice(0, 220));
+        }
+      }
+    }
   }
 }
 
