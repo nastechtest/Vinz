@@ -68,6 +68,9 @@ internal class CloudAccountController(
         val identity = mutable.value.identity ?: return null
         return request(R.string.cloud_account_load_failed) {
             val profile = gateway.loadProfile()
+            val youtube = try { gateway.youtubeStatus() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
             // An external account change must not paint the old user's private profile.
             if (gateway.identity?.userId != identity.userId || (profile != null && profile.id != identity.userId)) {
                 resetForCurrentIdentity()
@@ -149,6 +152,41 @@ internal class CloudAccountController(
             gateway.recover(email)
             mutable.value = mutable.value.copy(message = R.string.cloud_account_recovery_sent)
         }
+    }
+
+    fun clearYouTubeAuthorizationUrl() {
+        mutable.value = mutable.value.copy(youtubeAuthorizationUrl = null)
+    }
+
+    fun connectYouTube(): Job? = request(R.string.cloud_account_youtube_failed) {
+        val authorizationUrl = gateway.youtubeConnectUrl()
+        mutable.value = mutable.value.copy(youtubeAuthorizationUrl = authorizationUrl)
+    }
+
+    fun refreshYouTubeStatus(): Job? = request(R.string.cloud_account_youtube_failed) {
+        val status = gateway.youtubeStatus()
+        mutable.value = mutable.value.copy(
+            youtubeConnected = status.connected,
+            youtubeChannelTitle = status.channelTitle,
+            youtubeAuthorizationUrl = null,
+        )
+    }
+
+    fun importYouTubeMusic(): Job? = request(R.string.cloud_account_youtube_failed) {
+        val result = gateway.importYouTubeMusic()
+        mutable.value = mutable.value.copy(
+            youtubeImportSummary = "Imported ${result.importedCount} videos from ${result.playlistCount} playlists.",
+            youtubeConnected = true,
+        )
+    }
+
+    fun disconnectYouTubeMusic(): Job? = request(R.string.cloud_account_youtube_failed) {
+        gateway.disconnectYouTubeMusic()
+        mutable.value = mutable.value.copy(
+            youtubeConnected = false,
+            youtubeChannelTitle = "",
+            youtubeImportSummary = null,
+        )
     }
 
     fun signOut(): Job? {
