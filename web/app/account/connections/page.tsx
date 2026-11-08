@@ -73,7 +73,11 @@ export default function Connections() {
     setMessage("");
     try {
       const result = await vinzApi("/v1/integrations/youtube/connect");
-      if (typeof result.authorization_url !== "string" || !result.authorization_url.startsWith("https://accounts.google.com/")) {
+      if (typeof result.authorization_url !== "string") {
+        throw new Error("Vinz returned an invalid Google authorization link.");
+      }
+      const authorization = new URL(result.authorization_url);
+      if (authorization.origin !== "https://accounts.google.com" || authorization.pathname !== "/o/oauth2/v2/auth") {
         throw new Error("Vinz returned an invalid Google authorization link.");
       }
       window.location.assign(result.authorization_url);
