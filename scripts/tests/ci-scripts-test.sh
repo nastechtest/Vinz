@@ -148,6 +148,10 @@ expect_contains "dry run requires the lint check"   "$output" '"Lint"'
 expect_contains "dry run requires the test check"   "$output" '"Unit tests and debug build"'
 
 echo "workflows"
+pr_workflow=$(<"$repo_root/.github/workflows/pr-checks.yml")
+expect_contains "PR checks do not cancel an in-flight test run" "$pr_workflow" "cancel-in-progress: false"
+runner_script=$(<"$repo_root/scripts/ci/run-unit-tests.sh")
+expect_contains "Robolectric prefetch is a hard prerequisite" "$runner_script" '"${script_dir}/prefetch-robolectric.sh"'
 if grep -Fq './scripts/ci/install-emulator-runtime.sh' "$repo_root/.github/workflows/icons-shapes.yml"; then
   pass "icons workflow installs emulator runtime libraries"
 else
