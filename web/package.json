@@ -14,7 +14,9 @@
     "dev:vinext": "vinext dev",
     "build:vinext": "vinext build",
     "start:vinext": "vinext start",
-    "deploy:cloudflare": "vinext-cloudflare deploy"
+    "deploy:cloudflare": "vinext-cloudflare deploy",
+    "prebuild:vinext": "node scripts/copy-brand-assets.mjs",
+    "predev:vinext": "node scripts/copy-brand-assets.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",
