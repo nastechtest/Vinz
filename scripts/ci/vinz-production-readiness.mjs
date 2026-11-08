@@ -92,7 +92,7 @@ if (expected.supabase) {
   else {
     const rest = await request("Supabase REST live", new URL("/rest/v1/vinz_profiles?select=id&limit=0", SUPABASE_URL).toString(), { headers });
     if (rest) {
-      if (!rest.response.ok) fail("Supabase REST live", `HTTP ${rest.response.status}`, rest.response.url);
+      if (!rest.response.ok) fail("Supabase REST live", `HTTP ${rest.response.status}`, `${rest.response.url} :: ${rest.body.slice(0, 240)}`);
       else add("Supabase REST live", "PASS", `HTTP ${rest.response.status}`, rest.response.url);
     }
   }
