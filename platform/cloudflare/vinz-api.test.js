@@ -15,8 +15,22 @@ test("health endpoint reports configuration without exposing secrets", async () 
     status: "ok",
     configured: false,
     backup_storage: false,
+    integrations: { youtube_import_configured: false },
   });
   assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
+test("health endpoint reports YouTube OAuth readiness without exposing secret values", async () => {
+  const response = await handleRequest(new Request("https://api.vinz.example/health"), {
+    GOOGLE_CLIENT_ID: "client-id",
+    GOOGLE_CLIENT_SECRET: "client-secret",
+    YOUTUBE_TOKEN_ENCRYPTION_KEY: "encryption-key",
+    CATALOG_CACHE: {},
+  });
+  const body = await response.json();
+  assert.deepEqual(body.integrations, { youtube_import_configured: true });
+  assert.equal(JSON.stringify(body).includes("client-secret"), false);
+  assert.equal(JSON.stringify(body).includes("encryption-key"), false);
 });
 
 test("unknown routes return a structured 404", async () => {
