@@ -98,3 +98,22 @@ footer{grid-column:1/-1;display:flex;justify-content:space-between;color:#626c6e
 .google-button:disabled{opacity:.55;cursor:wait}.google-mark{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#fff;color:#4285f4;font-weight:700;font-size:15px}
 .account-entry{display:flex;align-items:center;justify-content:center;text-decoration:none;margin:18px 0 10px}
 .signed-in .secondary-action{width:100%}
+
+
+/* Vinz account identity: canonical artwork copied from the Android brand source at build time. */
+.brand-logo{display:block;width:42px;height:42px;object-fit:contain;filter:drop-shadow(0 5px 18px #d4a84326)}
+.brand-mark{display:none}
+.hero-kicker{display:flex;align-items:center;gap:24px}
+.brand-equalizer{height:28px;display:flex;align-items:center;gap:4px}
+.brand-equalizer i{display:block;width:3px;height:8px;border-radius:4px;background:var(--accent);transform-origin:center;animation:vinz-equalize 920ms ease-in-out infinite alternate;box-shadow:0 0 12px #b9f36a55}
+.brand-equalizer i:nth-child(2){animation-delay:-160ms}.brand-equalizer i:nth-child(3){animation-delay:-420ms}.brand-equalizer i:nth-child(4){animation-delay:-80ms}.brand-equalizer i:nth-child(5){animation-delay:-560ms}.brand-equalizer i:nth-child(6){animation-delay:-300ms}.brand-equalizer i:nth-child(7){animation-delay:-680ms}
+@keyframes vinz-equalize{0%{height:5px;opacity:.58}45%{height:21px;opacity:1}100%{height:9px;opacity:.78}}
+.auth-brand-lockup{display:flex;align-items:center;gap:13px;padding-bottom:22px;margin-bottom:24px;border-bottom:1px solid var(--line)}
+.auth-brand-lockup>img{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 6px 20px #d4a84330)}
+.auth-brand-lockup>div:nth-child(2){display:grid;gap:4px}
+.auth-brand-lockup span{font:700 10px "Space Grotesk",sans-serif;letter-spacing:2px;color:var(--accent)}
+.auth-brand-lockup small{font-size:11px;color:var(--muted)}
+.brand-equalizer.compact{margin-left:auto;height:22px;gap:3px}
+.brand-equalizer.compact i{width:2.5px}
+@media(prefers-reduced-motion:reduce){.brand-equalizer i,.pulse{animation:none!important}.brand-equalizer i{height:9px}}
+@media(max-width:800px){.hero-kicker{gap:14px}.brand-equalizer{height:22px}.auth-brand-lockup{padding-bottom:18px;margin-bottom:20px}}
