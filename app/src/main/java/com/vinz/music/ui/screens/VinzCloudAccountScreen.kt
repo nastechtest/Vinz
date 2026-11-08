@@ -305,8 +305,11 @@ private fun CloudAccountFormBody(
                 enabled = !state.busy, modifier = Modifier.testTag("cloud-account-youtube-disconnect")) {
                 Text(tr(R.string.cloud_account_youtube_disconnect))
             }
-            state.youtubeImportSummary?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("cloud-account-youtube-import-result")) }
+            if (state.youtubeImportedCount != null && state.youtubePlaylistCount != null) Text(
+                tr(R.string.cloud_account_youtube_imported, state.youtubeImportedCount, state.youtubePlaylistCount),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.testTag("cloud-account-youtube-import-result"),
+            )
         }
     }
 }
