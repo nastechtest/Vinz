@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">サインインしてクラウド プロファイルを管理する</string>
+    <string name="cloud_account_intro">クラウド プロファイルは YouTube Music とは別のものです。ローカルの音楽と再生はサインインしなくても機能します。</string>
+    <string name="cloud_account_email">電子メールアドレス</string>
+    <string name="cloud_account_password">パスワード</string>
+    <string name="cloud_account_username">ユーザー名</string>
+    <string name="cloud_account_display_name">表示名</string>
+    <string name="cloud_account_username_hint">3 ～ 24 個の小文字、数字、またはアンダースコア</string>
+    <string name="cloud_account_password_hint">少なくとも 8 文字を使用してください。</string>
+    <string name="cloud_account_create">クラウドアカウントを作成する</string>
+    <string name="cloud_account_existing">すでにアカウントを持っています</string>
+    <string name="cloud_account_forgot">パスワードをお忘れですか？</string>
+    <string name="cloud_account_recovery">回復メールを送信する</string>
+    <string name="cloud_account_recovery_sent">このアドレスのアカウントが存在する場合は、回復メールが送信されています。</string>
+    <string name="cloud_account_confirmation">メールをチェックしてアカウントを確認し、サインインに戻ります。</string>
+    <string name="cloud_account_setup">プロファイルの設定を完了します。</string>
+    <string name="cloud_account_bio">バイオ</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">公開プロフィール</string>
+    <string name="cloud_account_public_hint">他の Vinz ユーザーがあなたのプロフィールを閲覧できるようにします。</string>
+    <string name="cloud_account_discoverable">発見可能</string>
+    <string name="cloud_account_discoverable_hint">自分のプロフィールがユーザー検出に表示されるようにします。</string>
+    <string name="cloud_account_saved">クラウド プロファイルが保存されます。</string>
+    <string name="cloud_account_signed_out">クラウド アカウントからサインアウトしました。</string>
+    <string name="cloud_account_signed_in">%1$s としてサインインしています</string>
+    <string name="cloud_account_load_failed">プロフィールを読み込めませんでした。編集する前にもう一度試してください。</string>
+    <string name="cloud_account_request_failed">このアカウントリクエストは完了できませんでした。接続を確認して、もう一度試してください。</string>
+    <string name="cloud_account_sign_in_failed">サインインを完了できませんでした。詳細と接続を確認して、もう一度試してください。</string>
+    <string name="cloud_account_save_failed">プロフィールを保存できませんでした。詳細と接続を確認して、もう一度試してください。</string>
+    <string name="cloud_account_recovery_failed">回復リクエストを完了できませんでした。後でもう一度試してください。</string>
+    <string name="cloud_account_sign_out_failed">サインアウトを完了できませんでした。もう一度やり直してください。</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

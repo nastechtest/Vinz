@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">साइन इन करें और अपनी क्लाउड प्रोफ़ाइल प्रबंधित करें</string>
+    <string name="cloud_account_intro">आपकी क्लाउड प्रोफ़ाइल YouTube Music से अलग है। साइन इन किए बिना स्थानीय संगीत और प्लेबैक काम करता है।</string>
+    <string name="cloud_account_email">मेल पता</string>
+    <string name="cloud_account_password">पासवर्ड</string>
+    <string name="cloud_account_username">उपयोगकर्ता नाम</string>
+    <string name="cloud_account_display_name">प्रदर्शित होने वाला नाम</string>
+    <string name="cloud_account_username_hint">3-24 छोटे अक्षर, संख्याएँ या अंडरस्कोर</string>
+    <string name="cloud_account_password_hint">कम से कम 8 अक्षरों का प्रयोग करें.</string>
+    <string name="cloud_account_create">क्लाउड अकाउंट बनाएं</string>
+    <string name="cloud_account_existing">मेरा पहले से ही खाता है</string>
+    <string name="cloud_account_forgot">पासवर्ड भूल गए?</string>
+    <string name="cloud_account_recovery">पुनर्प्राप्ति ईमेल भेजें</string>
+    <string name="cloud_account_recovery_sent">यदि इस पते के लिए कोई खाता मौजूद है, तो एक पुनर्प्राप्ति ईमेल भेजा गया है।</string>
+    <string name="cloud_account_confirmation">अपने खाते की पुष्टि करने के लिए अपना ईमेल जांचें, फिर साइन इन करने के लिए वापस लौटें।</string>
+    <string name="cloud_account_setup">अपनी प्रोफ़ाइल सेट करना समाप्त करें.</string>
+    <string name="cloud_account_bio">जैव</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">सार्वजनिक प्रालेख</string>
+    <string name="cloud_account_public_hint">अन्य विंज़ उपयोगकर्ताओं को अपनी प्रोफ़ाइल देखने की अनुमति दें।</string>
+    <string name="cloud_account_discoverable">खोज योग्य</string>
+    <string name="cloud_account_discoverable_hint">अपनी प्रोफ़ाइल को उपयोगकर्ता खोज में प्रदर्शित होने दें।</string>
+    <string name="cloud_account_saved">आपकी क्लाउड प्रोफ़ाइल सहेजी गई है.</string>
+    <string name="cloud_account_signed_out">आपने अपने क्लाउड खाते से साइन आउट कर लिया है.</string>
+    <string name="cloud_account_signed_in">%1$s के रूप में साइन इन किया गया</string>
+    <string name="cloud_account_load_failed">आपकी प्रोफ़ाइल लोड नहीं की जा सकी. संपादन से पहले पुनः प्रयास करें.</string>
+    <string name="cloud_account_request_failed">यह खाता अनुरोध पूरा नहीं किया जा सका. अपना कनेक्शन जांचें और पुनः प्रयास करें।</string>
+    <string name="cloud_account_sign_in_failed">साइन-इन पूरा नहीं हो सका. अपना विवरण और कनेक्शन जांचें, फिर पुनः प्रयास करें।</string>
+    <string name="cloud_account_save_failed">आपकी प्रोफ़ाइल सहेजी नहीं जा सकी. अपना विवरण और कनेक्शन जांचें, फिर पुनः प्रयास करें।</string>
+    <string name="cloud_account_recovery_failed">पुनर्प्राप्ति अनुरोध पूरा नहीं किया जा सका. बाद में पुन: प्रयास।</string>
+    <string name="cloud_account_sign_out_failed">साइन-आउट पूरा नहीं किया जा सका. पुनः प्रयास करें।</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

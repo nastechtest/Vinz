@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -49,6 +50,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -105,7 +108,14 @@ fun RecognizeScreen(autoStart: Boolean, bottomPadding: Dp) {
     // Leaving the page stops listening (it never listens unseen).
     DisposableEffect(Unit) { onDispose { if (c.recognizer.state.value is Recognizer.State.Listening) c.recognizer.cancel() } }
 
-    Box(Modifier.fillMaxSize()) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Color(0xFF9B7BFF), onPrimary = Color.White,
+            background = Color.Black, surface = Color(0xFF08080D),
+            onSurface = Color.White, onSurfaceVariant = Color(0xFFB8B4C5),
+        ),
+    ) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
         Column(
             Modifier.fillMaxSize().statusBarsPadding().padding(bottom = bottomPadding).padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -159,27 +169,70 @@ fun RecognizeScreen(autoStart: Boolean, bottomPadding: Dp) {
             Spacer(Modifier.weight(1f))
         }
     }
+    }
 }
 
-/** The round button: still when idle, rippling with the sound while listening. [size] is the ripples' reach. */
+/** A luminous, fluid recognition orb with sound-reactive rings. */
 @Composable
 internal fun ListenButton(listening: Boolean, level: Float, size: Dp = 260.dp, onClick: () -> Unit) {
-    val primary = MaterialTheme.colorScheme.primary
-    val ripple = rememberInfiniteTransition(label = "ripple")
-    val phase by ripple.animateFloat(0f, 1f, infiniteRepeatable(tween(1600), RepeatMode.Restart), label = "phase")
-    val loud by animateFloatAsState(level, tween(120), label = "level")
+    val transition = rememberInfiniteTransition(label = "vinz-orb")
+    val phase by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(if (listening) 2600 else 5200), RepeatMode.Restart),
+        label = "orb-phase",
+    )
+    val loud by animateFloatAsState(level.coerceIn(0f, 1f), tween(110), label = "orb-level")
+    val accent = Color(0xFF9B7BFF)
+    val cyan = Color(0xFF43D9FF)
+    val magenta = Color(0xFFFF63C8)
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-        if (listening) Canvas(Modifier.fillMaxSize()) {
-            for (k in 0 until 3) {
-                val p = (phase + k / 3f) % 1f
-                drawCircle(primary.copy(alpha = (1 - p) * 0.35f), radius = this.size.minDimension / 2 * (0.55f + 0.45f * p + 0.1f * loud))
+        Canvas(Modifier.fillMaxSize()) {
+            val center = androidx.compose.ui.geometry.Offset(this.size.width / 2f, this.size.height / 2f)
+            val reach = this.size.minDimension * 0.47f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accent.copy(alpha = if (listening) 0.25f else 0.16f), Color.Transparent),
+                    center = center,
+                    radius = reach * (0.82f + 0.08f * kotlin.math.sin(phase * Math.PI * 2).toFloat()),
+                ),
+                radius = reach, center = center,
+            )
+            for (i in 0 until 3) {
+                val p = (phase + i / 3f) % 1f
+                drawCircle(
+                    color = (if (i == 1) cyan else accent).copy(alpha = (1f - p) * if (listening) 0.48f else 0.18f),
+                    radius = reach * (0.60f + p * 0.34f + loud * 0.07f),
+                    center = center,
+                    style = Stroke(width = if (listening) 1.8.dp.toPx() else 1.1.dp.toPx()),
+                )
             }
+            drawArc(
+                brush = Brush.sweepGradient(listOf(Color.Transparent, accent.copy(alpha = 0.9f), cyan.copy(alpha = 0.8f), Color.Transparent), center),
+                startAngle = phase * 360f, sweepAngle = 118f + loud * 42f, useCenter = false,
+                topLeft = androidx.compose.ui.geometry.Offset(center.x - reach * 0.88f, center.y - reach * 0.88f),
+                size = androidx.compose.ui.geometry.Size(reach * 1.76f, reach * 1.76f),
+                style = Stroke(width = 2.2.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+            )
+            drawArc(
+                color = magenta.copy(alpha = if (listening) 0.72f else 0.28f),
+                startAngle = 210f - phase * 220f, sweepAngle = 64f, useCenter = false,
+                topLeft = androidx.compose.ui.geometry.Offset(center.x - reach * 0.72f, center.y - reach * 0.72f),
+                size = androidx.compose.ui.geometry.Size(reach * 1.44f, reach * 1.44f),
+                style = Stroke(width = 1.4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+            )
         }
         Box(
-            Modifier.size(size * 0.58f).clip(CircleShape).background(primary).clickable(onClick = onClick),
+            Modifier.size(size * 0.54f).clip(CircleShape)
+                .background(Brush.radialGradient(listOf(Color(0xFF51417E), Color(0xFF171323), Color(0xFF08080D))))
+                .border(1.dp, accent.copy(alpha = 0.72f), CircleShape)
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(if (listening) VinzIcons.Close else VinzIcons.Recognize, if (listening) tr(R.string.stop_listening) else tr(R.string.listen), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(size * 0.25f))
+            Icon(
+                if (listening) VinzIcons.Close else VinzIcons.Recognize,
+                if (listening) tr(R.string.stop_listening) else tr(R.string.listen),
+                tint = Color.White, modifier = Modifier.size(size * 0.22f),
+            )
         }
     }
 }

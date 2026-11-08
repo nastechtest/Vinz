@@ -682,11 +682,18 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
                                 onSignIn = { navController.navigate(Routes.LOGIN) },
-                                // A Vinz Account (on this phone), then a few artists, so the mixes and Release Radar have
-                                // something to start from.
+                                // One cloud-backed Vinz Account, followed by the existing artist selection.
                                 onAccount = { navController.navigate(Routes.ACCOUNT + "?onboarding=true") },
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
                             )
+                        }
+                        // Compatibility destination: old cloud links open the existing account hub, not a second account screen.
+                        composable(Routes.VINZ_CLOUD_ACCOUNT) {
+                            ScreenBackdrop(BackdropScreen.SETTINGS) {
+                                com.vinz.music.ui.screens.VinzAccountScreen(false, bottomPadding) {
+                                    navController.popBackStack()
+                                }
+                            }
                         }
                         composable(
                             Routes.ACCOUNT + "?onboarding={onboarding}",
