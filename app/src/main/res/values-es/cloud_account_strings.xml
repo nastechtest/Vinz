@@ -37,4 +37,14 @@
     <!-- English fallback for new account guidance, pending translation. -->
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="cloud_account_youtube_title">YouTube Music</string>
+    <string name="cloud_account_youtube_description">Conecta YouTube Music a tu cuenta Vinz mediante la autorización segura de Google. Vinz nunca solicita tu correo ni contraseña de YouTube.</string>
+    <string name="cloud_account_youtube_not_connected">No conectado</string>
+    <string name="cloud_account_youtube_connected">Canal conectado: %1$s</string>
+    <string name="cloud_account_youtube_connect">Conectar YouTube Music</string>
+    <string name="cloud_account_youtube_import">Importar YouTube Music</string>
+    <string name="cloud_account_youtube_refresh">Actualizar estado de conexión</string>
+    <string name="cloud_account_youtube_disconnect">Desconectar YouTube</string>
+    <string name="cloud_account_youtube_imported">%1$d vídeos importados de %2$d listas.</string>
+    <string name="cloud_account_youtube_failed">No se pudo conectar o importar YouTube Music. Comprueba la conexión e inténtalo de nuevo.</string>
 </resources>
