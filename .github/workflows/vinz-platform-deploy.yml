@@ -90,7 +90,7 @@ jobs:
             WORKER=vinz
           else
             CONFIG=wrangler.jsonc
-            WORKER=vinz-api-staging
+            WORKER=staging
           fi
           npx --yes wrangler@4 deploy --config "$CONFIG"
           if [ -n "$POSTHOG_PROJECT_KEY" ]; then
@@ -111,6 +111,6 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$TARGET" = "production" ]; then URL="https://api.vinzmusic.workers.dev"
-          else URL="https://vinz-api-staging.nastechresearch.workers.dev"; fi
+          else URL="https://staging.vinzmusic.workers.dev"; fi
           curl --fail --silent --show-error "$URL/health" -o health.json
           node -e "const x=require('./health.json'); if(x.service!=='vinz-api'||x.status!=='ok'||x.configured!==true||x.backup_storage!==true) { console.error(x); process.exit(1); } console.log('API health and Supabase/R2 configuration verified');"
