@@ -26,6 +26,10 @@ internal class CloudAccountController(
     private var usernameCheckJob: Job? = null
     private var resendJob: Job? = null
 
+    init {
+        if (gateway.identity == null) gateway.pendingVerificationEmail()?.takeIf { it.isNotBlank() }?.let(::beginVerification)
+    }
+
     fun mode(mode: CloudAccountMode) {
         if (mutable.value.busy) return
         resendJob?.cancel()

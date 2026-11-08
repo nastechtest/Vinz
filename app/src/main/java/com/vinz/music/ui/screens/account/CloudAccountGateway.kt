@@ -5,6 +5,7 @@ import com.vinz.music.data.VinzCloudAccount
 /** A frontend test seam around existing methods, not a new API or auth/session implementation. */
 internal interface CloudAccountGateway {
     val identity: CloudAccountIdentity?
+    fun pendingVerificationEmail(): String? = null
     suspend fun loadProfile(): VinzCloudAccount.Profile?
     suspend fun checkUsernameAvailable(username: String): Boolean = true
     suspend fun signIn(email: String, password: String): VinzCloudAccount.AuthResult
@@ -18,6 +19,7 @@ internal interface CloudAccountGateway {
 
 internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) : CloudAccountGateway {
     override val identity: CloudAccountIdentity? get() = cloud.session?.let { CloudAccountIdentity(it.userId, it.email) }
+    override fun pendingVerificationEmail() = cloud.pendingVerificationEmail()
     override suspend fun loadProfile() = cloud.loadProfile()
     override suspend fun checkUsernameAvailable(username: String) = cloud.checkUsernameAvailable(username)
     override suspend fun signIn(email: String, password: String) = cloud.signIn(email, password)

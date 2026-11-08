@@ -47,6 +47,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     val session: Session? get() = store.read()?.let(::decodeSession)
+    fun pendingVerificationEmail(): String? = if (session == null) pendingVerification()?.email else null
 
     suspend fun signUp(email: String, password: String, username: String, displayName: String): AuthResult = withContext(Dispatchers.IO) {
         val normalizedEmail = email.trim()
@@ -128,7 +129,8 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val profile = if (!pending?.username.isNullOrBlank()) {
             runCatching { saveProfile(pending!!.username, pending.displayName, "", true, true) }.getOrNull()
         } else runCatching { loadProfile() }.getOrNull()
-        if (profile != null || pending?.username.isNullOrBlank()) store.clearPendingVerification()
+        // Verification is complete even if the requested username collided; the signed-in editor can retry it.
+        store.clearPendingVerification()
         AuthResult.SignedIn(profile)
     }
 
