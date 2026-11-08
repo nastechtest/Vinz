@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Inicie sesión y administre su perfil en la nube</string>
+    <string name="cloud_account_intro">Tu perfil en la nube está separado de YouTube Music. La música local y la reproducción funcionan sin necesidad de iniciar sesión.</string>
+    <string name="cloud_account_email">Dirección de correo electrónico</string>
+    <string name="cloud_account_password">Contraseña</string>
+    <string name="cloud_account_username">Nombre de usuario</string>
+    <string name="cloud_account_display_name">Nombre para mostrar</string>
+    <string name="cloud_account_username_hint">3 a 24 letras minúsculas, números o guiones bajos</string>
+    <string name="cloud_account_password_hint">Utilice al menos 8 caracteres.</string>
+    <string name="cloud_account_create">Crear cuenta en la nube</string>
+    <string name="cloud_account_existing">ya tengo una cuenta</string>
+    <string name="cloud_account_forgot">¿Has olvidado tu contraseña?</string>
+    <string name="cloud_account_recovery">Enviar correo electrónico de recuperación</string>
+    <string name="cloud_account_recovery_sent">Si existe una cuenta para esta dirección, se ha enviado un correo electrónico de recuperación.</string>
+    <string name="cloud_account_confirmation">Revise su correo electrónico para confirmar su cuenta, luego regrese para iniciar sesión.</string>
+    <string name="cloud_account_setup">Termina de configurar tu perfil.</string>
+    <string name="cloud_account_bio">Biografía</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Perfil publico</string>
+    <string name="cloud_account_public_hint">Permita que otros usuarios de Vinz vean su perfil.</string>
+    <string name="cloud_account_discoverable">Descubrible</string>
+    <string name="cloud_account_discoverable_hint">Permita que su perfil aparezca en el descubrimiento de usuarios.</string>
+    <string name="cloud_account_saved">Su perfil en la nube se guarda.</string>
+    <string name="cloud_account_signed_out">Has cerrado sesión en tu cuenta en la nube.</string>
+    <string name="cloud_account_signed_in">Iniciado sesión como %1$s</string>
+    <string name="cloud_account_load_failed">No se pudo cargar tu perfil. Inténtalo de nuevo antes de editar.</string>
+    <string name="cloud_account_request_failed">Esta solicitud de cuenta no se pudo completar. Comprueba tu conexión y vuelve a intentarlo.</string>
+    <string name="cloud_account_sign_in_failed">No se pudo completar el inicio de sesión. Verifique sus datos y conexión, luego inténtelo nuevamente.</string>
+    <string name="cloud_account_save_failed">No se pudo guardar tu perfil. Verifique sus datos y conexión, luego inténtelo nuevamente.</string>
+    <string name="cloud_account_recovery_failed">No se pudo completar la solicitud de recuperación. Vuelve a intentarlo más tarde.</string>
+    <string name="cloud_account_sign_out_failed">No se pudo completar el cierre de sesión. Intentar otra vez.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

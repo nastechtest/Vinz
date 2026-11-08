@@ -37,6 +37,8 @@ data class LyricLine(
     val isGap: Boolean = false,
     /** Background vocals sung with the line ("(Back to let you know)"), word-timed; drawn smaller under it (#66). */
     val background: List<LyricWord> = emptyList(),
+    /** Evidence for branding eligibility; ordinary gap presentation does not imply vocal silence. */
+    val gapProvenance: GapProvenance = GapProvenance.UNKNOWN,
 ) {
     val isWordSynced: Boolean get() = words.isNotEmpty()
 
@@ -268,7 +270,8 @@ object Lrc {
         val sorted = raw.map { (t, s) -> (t - offset).coerceAtLeast(0) to s }.sortedBy { it.first }
         return sorted.mapIndexed { i, (t, s) ->
             val end = sorted.getOrNull(i + 1)?.first ?: (t + 5000)
-            LyricLine(t, s, end, isGap = s.isBlank())
+            LyricLine(t, s, end, isGap = s.isBlank(),
+                gapProvenance = if (s.isBlank()) GapProvenance.LRC_BLANK else GapProvenance.UNKNOWN)
         }.withLeadingGap()
     }
 
@@ -278,7 +281,7 @@ object Lrc {
 /** An intro before the first sung line reads as an instrumental break. */
 private fun List<LyricLine>.withLeadingGap(): List<LyricLine> {
     val first = firstOrNull { !it.isGap } ?: return this
-    return if (first.timeMs > 3000 && firstOrNull()?.isGap != true) listOf(LyricLine(0, "", first.timeMs, isGap = true)) + this else this
+    return if (first.timeMs > 3000 && firstOrNull()?.isGap != true) listOf(LyricLine(0, "", first.timeMs, isGap = true, gapProvenance = GapProvenance.INFERRED_INTRO)) + this else this
 }
 
 /** Apple Music TTML (word or line timed), as served by Better Lyrics. */
@@ -374,7 +377,7 @@ internal fun List<LyricLine>.withInstrumentalGaps(): List<LyricLine> {
     val withGaps = mutableListOf<LyricLine>()
     sortedBy { it.timeMs }.forEachIndexed { i, l ->
         val prevEnd = withGaps.lastOrNull()?.endMs ?: 0L
-        if (i > 0 && l.timeMs - prevEnd > 6000) withGaps += LyricLine(prevEnd, "", l.timeMs, isGap = true)
+        if (i > 0 && l.timeMs - prevEnd > 6000) withGaps += LyricLine(prevEnd, "", l.timeMs, isGap = true, gapProvenance = GapProvenance.INFERRED_TIMING)
         withGaps += l
     }
     return withGaps.withLeadingGap()

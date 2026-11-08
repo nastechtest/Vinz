@@ -136,10 +136,12 @@ async function updateProfile(request, config, auth) {
     if (!allowed.includes(key)) return { error: "field_not_allowed", status: 400 };
   }
   if ("username" in input) {
-    if (typeof input.username !== "string" || !/^[a-z0-9_]{3,24}$/.test(input.username)) {
+    if (typeof input.username !== "string") return { error: "invalid_username", status: 400 };
+    const normalizedUsername = input.username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
       return { error: "invalid_username", status: 400 };
     }
-    update.username = input.username;
+    update.username = normalizedUsername;
   }
   if ("display_name" in input) {
     if (typeof input.display_name !== "string" || input.display_name.trim().length < 1 || input.display_name.length > 60) {
@@ -1027,7 +1029,7 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
 
     const usernameAvailability = url.pathname.match(/^\/v1\/usernames\/([^/]+)\/availability$/);
     if (usernameAvailability && request.method === "GET") {
-      const username = decodeURIComponent(usernameAvailability[1]);
+      const username = decodeURIComponent(usernameAvailability[1]).trim().toLowerCase();
       if (!/^[a-z0-9_]{3,24}$/.test(username)) {
         return json({ error: "invalid_username", available: false, request_id: requestId }, 400, headers);
       }

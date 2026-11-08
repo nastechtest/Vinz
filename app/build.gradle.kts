@@ -670,7 +670,14 @@ abstract class SplitTranslations : DefaultTask() {
         src.walkTopDown().filter { it.isFile && it.extension == "xml" && !it.parentFile.name.startsWith("values") }
             .plus(manifest.get().asFile).forEach { f -> ref.findAll(f.readText()).forEach { keep += it.groupValues[1] } }
 
-        val english = elements(parse(File(src, "values/strings.xml")), "string")
+        // Account and future feature tables share the same asset-backed translation system.
+        fun stringTables(folder: File) = folder.listFiles().orEmpty()
+            .filter { it.isFile && it.extension == "xml" }.sortedBy { it.name }
+        fun strings(folder: File) = stringTables(folder).flatMap { elements(parse(it), "string") }
+        val english = strings(File(src, "values"))
+        check(english.map { it.getAttribute("name") }.distinct().size == english.size) {
+            "Duplicate English string resources"
+        }
         val names = english.filter { it.getAttribute("translatable") != "false" }.map { it.getAttribute("name") }.filter { it !in keep }
         outAssets.resolve("names").writeText(names.joinToString("\n"))
         // English stays in resources.arsc: it's every language's fallback.
@@ -691,20 +698,31 @@ abstract class SplitTranslations : DefaultTask() {
                 (listOf(default) + locales).joinToString("") { "    <locale android:name=\"$it\"/>\n" } + "</locale-config>\n",
         )
 
+        val translationFolders = src.listFiles().orEmpty()
+            .filter { it.name.startsWith("values-") && File(it, "strings.xml").isFile }
+        translationFolders.forEach { folder ->
+            val translated = strings(folder)
+            check(translated.map { it.getAttribute("name") }.distinct().size == translated.size) {
+                "Duplicate string resources in ${folder.name}"
+            }
+            val texts = translated.associate { it.getAttribute("name") to it.textContent }
+            outAssets.resolve(folder.name.removePrefix("values-")).writeText(
+                names.joinToString("\u0000") { texts[it] ?: "\u0001" },
+            )
+        }
+        val translationNames = translationFolders.map { it.name }.toSet()
         val transformer = javax.xml.transform.TransformerFactory.newInstance().newTransformer()
         src.walkTopDown().filter { it.isFile && it.parentFile != src }.forEach { f ->
             val rel = f.relativeTo(src).path
             val folder = f.parentFile.name
-            if (!(folder.startsWith("values-") && f.name == "strings.xml")) {
+            if (!(folder in translationNames && f.extension == "xml")) {
                 f.copyTo(File(outRes, rel))
                 return@forEach
             }
             val doc = parse(f)
             val qualifier = folder.removePrefix("values-")
-            val texts = elements(doc, "string").associate { it.getAttribute("name") to it.textContent }
-            outAssets.resolve(qualifier).writeText(names.joinToString("\u0000") { texts[it] ?: "\u0001" })
             elements(doc, "string").filter { it.getAttribute("name") !in keep }.forEach { it.parentNode.removeChild(it) }
-            doc.documentElement.appendChild(doc.createElement("string").apply {
+            if (f.name == "strings.xml") doc.documentElement.appendChild(doc.createElement("string").apply {
                 setAttribute("name", "vinz_i18n_table")
                 textContent = qualifier
             })
