@@ -11,6 +11,10 @@ internal interface CloudAccountGateway {
     suspend fun signUp(email: String, password: String, username: String, displayName: String): VinzCloudAccount.AuthResult
     suspend fun recover(email: String)
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
+    suspend fun youtubeStatus(): VinzCloudAccount.YouTubeStatus = VinzCloudAccount.YouTubeStatus(false)
+    suspend fun youtubeConnectUrl(): String = error("YouTube connection is unavailable.")
+    suspend fun importYouTubeMusic(): VinzCloudAccount.YouTubeImportResult = error("YouTube import is unavailable.")
+    suspend fun disconnectYouTubeMusic() { }
     suspend fun signOut()
 }
 
