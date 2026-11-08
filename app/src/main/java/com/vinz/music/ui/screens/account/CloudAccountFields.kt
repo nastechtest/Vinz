@@ -56,7 +56,7 @@ internal fun CloudProfileFields(
             onDone = {
                 if (registering && state.canSubmit) {
                     focus.clearFocus()
-                    (onSubmit ?: { actions.submit() }).invoke()
+                    if (onSubmit != null) onSubmit() else actions.submit()
                 }
             },
         ),
