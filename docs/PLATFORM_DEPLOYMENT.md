@@ -9,7 +9,7 @@
 - **Cloudflare KV**: catalog cache.
 - **PostHog**: operational error telemetry only; the API intentionally excludes user identifiers, emails, tokens, lyrics, and music queries.
 
-Vinz uses Cloudflare Workers for both web and API hosting. Vercel is not a build, preview, rollback, or production dependency; do not configure or rely on a Vercel project for Vinz.
+Vinz uses Cloudflare Workers for both web and API hosting. Vercel is not a build, preview, rollback, or production dependency; do not configure or rely on a Vercel project for Vinz. The minimal `web/vercel.json` is retained only as a kill switch (`deploymentEnabled: false`) so an old linked Vercel Git integration cannot silently resume deployments; it is not a supported host.
 
 ## Web build and deploy
 
