@@ -28,6 +28,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -70,6 +72,12 @@ internal fun CloudAccountContent(
     supplementalContent: @Composable () -> Unit = {},
 ) {
     var section by remember(state.identity?.userId) { mutableStateOf("profile") }
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(state.youtubeAuthorizationUrl) {
+        val url = state.youtubeAuthorizationUrl ?: return@LaunchedEffect
+        runCatching { uriHandler.openUri(url) }
+        actions.clearYouTubeAuthorizationUrl()
+    }
     Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState())
@@ -258,10 +266,35 @@ private fun CloudAccountFormBody(
         }
         "connections" -> {
             Text(tr(R.string.cloud_account_connected_services), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(tr(R.string.cloud_account_connections_subtitle),
-                style = MaterialTheme.typography.titleMedium)
-            Text(tr(R.string.cloud_account_connections_description),
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.cloud_account_connections_subtitle), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_connections_description), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.cloud_account_youtube_title), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_youtube_description), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (state.youtubeConnected) tr(R.string.cloud_account_youtube_connected, state.youtubeChannelTitle.ifBlank { "YouTube" })
+                else tr(R.string.cloud_account_youtube_not_connected),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (state.youtubeConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            VinzButton(
+                onClick = { if (state.youtubeConnected) actions.importYouTubeMusic() else actions.connectYouTube() },
+                modifier = Modifier.fillMaxWidth().testTag("cloud-account-youtube-action"),
+                enabled = !state.busy,
+            ) {
+                Text(tr(if (state.youtubeConnected) R.string.cloud_account_youtube_import else R.string.cloud_account_youtube_connect))
+            }
+            VinzTextButton(onClick = { actions.refreshYouTubeStatus() }, enabled = !state.busy,
+                modifier = Modifier.testTag("cloud-account-youtube-refresh")) {
+                Text(tr(R.string.cloud_account_youtube_refresh))
+            }
+            if (state.youtubeConnected) VinzTextButton(onClick = { actions.disconnectYouTubeMusic() },
+                enabled = !state.busy, modifier = Modifier.testTag("cloud-account-youtube-disconnect")) {
+                Text(tr(R.string.cloud_account_youtube_disconnect))
+            }
+            state.youtubeImportSummary?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("cloud-account-youtube-import-result")) }
         }
     }
 }
