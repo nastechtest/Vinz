@@ -911,7 +911,7 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
 
   const url = new URL(request.url);
   if (url.pathname === "/health" && request.method === "GET") {
-    return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET) }, 200, headers);
+    return json({ service: "vinz-api", status: "ok", configured: Boolean(configuration(env)), backup_storage: Boolean(env.BACKUPS_BUCKET), integrations: { youtube_import_configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.YOUTUBE_TOKEN_ENCRYPTION_KEY && env.CATALOG_CACHE) } }, 200, headers);
   }
   const publicShareMatch = url.pathname.match(/^\/s\/([^/]+)$/);
   if (publicShareMatch && request.method === "GET") {
