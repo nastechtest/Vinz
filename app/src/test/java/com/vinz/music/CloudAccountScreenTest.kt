@@ -176,6 +176,31 @@ class CloudAccountScreenTest {
         }
     }
 
+    @Test fun connectionsSectionOffersDirectYouTubeAuthorizationWithoutEmailEntry() {
+        render(CloudAccountState(
+            identity = CloudAccountIdentity("test-user", "listener@example.test"),
+            profileReady = true,
+        ))
+        compose.onNodeWithTag("cloud-account-tab-connections").performScrollTo().performClick()
+        compose.onNodeWithTag("cloud-account-youtube-action").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Connect YouTube Music").assertExists()
+        compose.onNodeWithText("Vinz never asks for your YouTube email or password.").assertExists()
+    }
+
+    @Test fun connectedYouTubeShowsImportAndDisconnectActions() {
+        render(CloudAccountState(
+            identity = CloudAccountIdentity("test-user", "listener@example.test"),
+            profileReady = true,
+            youtubeConnected = true,
+            youtubeChannelTitle = "Listener Channel",
+        ))
+        compose.onNodeWithTag("cloud-account-tab-connections").performScrollTo().performClick()
+        compose.onNodeWithTag("cloud-account-youtube-action").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Import YouTube Music").assertExists()
+        compose.onNodeWithTag("cloud-account-youtube-disconnect").assertExists()
+        compose.onNodeWithText("Connected channel: Listener Channel").assertExists()
+    }
+
     @Test fun credentialInputsRemainEditableWithoutRequestsOrKeystore() {
         compose.runOnIdle { renderControllerState = true }
         compose.onNodeWithTag("cloud-account-email").assertIsEnabled().performTextInput("test@example.test")
