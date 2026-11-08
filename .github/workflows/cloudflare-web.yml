@@ -49,7 +49,7 @@ jobs:
         working-directory: web
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://iszghebmetrbkfhnnoqq.supabase.co
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_9UXwKG0oVlJ9zIkJ-bZKg_W-fkotZe
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe
           NEXT_PUBLIC_VINZ_API_URL: https://api.vinzmusic.workers.dev
         run: npm run build:vinext
 
@@ -78,7 +78,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           NEXT_PUBLIC_SUPABASE_URL: https://iszghebmetrbkfhnnoqq.supabase.co
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_9UXwKG0oVlJ9zIkJ-bZKg_W-fkotZe
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe
           NEXT_PUBLIC_VINZ_API_URL: https://api.vinzmusic.workers.dev
         run: |
           set -euo pipefail
