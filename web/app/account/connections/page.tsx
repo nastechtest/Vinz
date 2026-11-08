@@ -41,8 +41,15 @@ export default function Connections() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const result = params.get("youtube");
-    if (result === "connected") setMessage("YouTube Music is connected to your Vinz account.");
-    else if (result && result !== "cancelled") setMessage("YouTube connection could not be completed (" + result.replace(/[^a-z_]/g, "") + ").");
+    if (result === "connected") {
+      setMessage("YouTube Music is connected. Importing your accessible playlists now…");
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("youtube");
+      window.history.replaceState({}, "", cleanUrl);
+      void refresh().then(() => importYouTube());
+      return;
+    }
+    if (result && result !== "cancelled") setMessage("YouTube connection could not be completed (" + result.replace(/[^a-z_]/g, "") + ").");
     void refresh();
   }, []);
 
