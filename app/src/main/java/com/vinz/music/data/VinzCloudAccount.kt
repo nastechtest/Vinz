@@ -32,7 +32,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val isPublic: Boolean,
         val discoverable: Boolean,
     )
-    sealed interface AuthResult {
+    data class YouTubeStatus(val connected: Boolean, val channelTitle: String = "")\n    data class YouTubeImportResult(val importedCount: Int, val playlistCount: Int)\n\n    sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
         data object EmailConfirmationRequired : AuthResult
     }
@@ -73,6 +73,49 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The account session was incomplete.")
         store.write(JSONObject().put("access_token", access).put("refresh_token", refresh).put("user_id", userId).put("email", user.optString("email", email)).toString())
         AuthResult.SignedIn(loadProfile())
+    }
+
+    suspend fun youtubeStatus(): YouTubeStatus = withContext(Dispatchers.IO) {
+        val result = apiRequest("/v1/integrations/youtube/status", "GET")
+        val channel = result.optJSONObject("channel")
+        YouTubeStatus(result.optBoolean("connected"), channel?.optString("title").orEmpty())
+    }
+
+    /** Starts the official Google consent screen; no YouTube email/password is collected by Vinz. */
+    suspend fun youtubeConnectUrl(): String = withContext(Dispatchers.IO) {
+        val result = apiRequest("/v1/integrations/youtube/connect", "GET")
+        val value = result.optString("authorization_url")
+        val parsed = runCatching { java.net.URI(value) }.getOrNull()
+        if (parsed?.scheme != "https" || parsed.host != "accounts.google.com") {
+            error("Vinz returned an invalid Google authorization URL.")
+        }
+        value
+    }
+
+    suspend fun importYouTubeMusic(): YouTubeImportResult = withContext(Dispatchers.IO) {
+        val result = apiRequest("/v1/integrations/youtube/import", "POST", "{}")
+        YouTubeImportResult(result.optInt("imported_count"), result.optInt("playlist_count"))
+    }
+
+    suspend fun disconnectYouTubeMusic() = withContext(Dispatchers.IO) {
+        apiRequest("/v1/integrations/youtube/connection", "DELETE")
+    }
+
+    private fun apiRequest(path: String, method: String, body: String? = null): JSONObject {
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val builder = Request.Builder().url(VINZ_API_URL + path)
+            .header("Authorization", "Bearer ${s.accessToken}")
+            .header("Accept", "application/json")
+        if (body != null) builder.header("Content-Type", "application/json").method(method, body.toRequestBody(jsonType))
+        else builder.method(method, null)
+        http.newCall(builder.build()).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                val code = runCatching { JSONObject(text).optString("error") }.getOrNull().orEmpty()
+                error(if (code.isNotBlank()) code else "Vinz YouTube service is unavailable (${response.code}).")
+            }
+            return if (text.isBlank()) JSONObject() else JSONObject(text)
+        }
     }
 
     suspend fun sendPasswordRecovery(email: String) = withContext(Dispatchers.IO) {
@@ -199,7 +242,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     }
 
     companion object {
-        const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
+        const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"\n        const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
         // Publishable client key only. Never embed service-role or secret keys in the Android app.
         const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe"
     }
