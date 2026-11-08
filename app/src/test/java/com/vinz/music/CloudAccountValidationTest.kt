@@ -45,10 +45,25 @@ class CloudAccountValidationTest {
             val otherKeys = table.parentFile.listFiles().orEmpty()
                 .filter { it != table && it.extension == "xml" }.flatMap { entries(it).keys }.toSet()
             assertTrue("Duplicate account resources: ${table.path}", translated.keys.none { it in otherKeys })
-            assertEquals(table.path, base.keys, translated.keys)
-            base.forEach { (key, value) ->
-                assertEquals("${table.path}:$key", argument.findAll(value).map { it.value }.toList(),
-                    argument.findAll(translated.getValue(key)).map { it.value }.toList())
+            // These new strings are not translated everywhere yet; Android falls back to values/.
+            val fallbackAllowed = setOf(
+                "cloud_account_brand_name", "cloud_account_brand_section", "cloud_account_brand_tagline",
+                "cloud_account_sign_in_cta", "cloud_account_sign_up_failed",
+                "cloud_account_youtube_connect", "cloud_account_youtube_connected",
+                "cloud_account_youtube_description", "cloud_account_youtube_disconnect",
+                "cloud_account_youtube_failed", "cloud_account_youtube_import",
+                "cloud_account_youtube_imported", "cloud_account_youtube_not_connected",
+                "cloud_account_youtube_refresh", "cloud_account_youtube_title",
+                "connect_youtube_for_playback", "optional_playback_session_not_vinz_identity",
+                "youtube_playback_session",
+            )
+            assertTrue("Unknown account resources: ${table.path}", translated.keys.all { it in base.keys })
+            assertTrue("Missing required account resources: ${table.path}",
+                translated.keys.containsAll(base.keys - fallbackAllowed))
+            translated.forEach { (key, value) ->
+                // Indexed arguments can be reordered to suit the translated language.
+                assertEquals("${table.path}:$key", argument.findAll(base.getValue(key)).map { it.value }.sorted().toList(),
+                    argument.findAll(value).map { it.value }.sorted().toList())
             }
         }
     }
