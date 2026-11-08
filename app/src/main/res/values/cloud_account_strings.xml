@@ -36,4 +36,14 @@
     <string name="cloud_account_sign_out_failed">Sign-out could not be completed. Try again.</string>
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="cloud_account_youtube_title">YouTube Music</string>
+    <string name="cloud_account_youtube_description">Connect YouTube Music to your Vinz Account using Google's secure authorization. Vinz never asks for a YouTube email or password.</string>
+    <string name="cloud_account_youtube_not_connected">Not connected</string>
+    <string name="cloud_account_youtube_connected">Connected channel: %1$s</string>
+    <string name="cloud_account_youtube_connect">Connect YouTube Music</string>
+    <string name="cloud_account_youtube_import">Import YouTube Music</string>
+    <string name="cloud_account_youtube_refresh">Refresh connection status</string>
+    <string name="cloud_account_youtube_disconnect">Disconnect YouTube</string>
+    <string name="cloud_account_youtube_imported">%1$d videos imported from %2$d playlists.</string>
+    <string name="cloud_account_youtube_failed">YouTube Music could not be connected or imported. Check the connection and try again.</string>
 </resources>
