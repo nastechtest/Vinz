@@ -25,5 +25,9 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun save(draft: CloudProfileDraft) = cloud.saveProfile(
         draft.username, draft.displayName, draft.bio, draft.isPublic, draft.discoverable,
     )
+    override suspend fun youtubeStatus() = cloud.youtubeStatus()
+    override suspend fun youtubeConnectUrl() = cloud.youtubeConnectUrl()
+    override suspend fun importYouTubeMusic() = cloud.importYouTubeMusic()
+    override suspend fun disconnectYouTubeMusic() { cloud.disconnectYouTubeMusic() }
     override suspend fun signOut() { cloud.signOut() }
 }
