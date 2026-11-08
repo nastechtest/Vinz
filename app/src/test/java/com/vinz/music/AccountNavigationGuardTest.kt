@@ -108,7 +108,7 @@ class AccountNavigationGuardTest {
         assertTrue(login.contains("CookieManager.getInstance().flush()"))
         assertTrue(login.contains("CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)"))
         assertTrue(login.contains("onDone()"))
-        assertTrue(login.contains("R.string.sign_in_to_youtube_music"))
+        assertTrue(login.contains("R.string.connect_youtube_for_playback"))
     }
 
     @Test fun cloudPresentationCannotMutateLocalOrYoutubeIdentity() {
