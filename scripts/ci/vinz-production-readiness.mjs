@@ -35,7 +35,7 @@ const requiredFiles = [
   "platform/cloudflare/wrangler.production.jsonc",
   "platform/cloudflare/vinz-api.js",
   "supabase/migrations/20261107131815_vinz_account_foundation.sql",
-  "supabase/migrations/20261107200000_vinz_account_2_username_and_avatar_hardening.sql",
+  "supabase/migrations/20261107200000_vinz_account_2_username_and_avatar_hardening.sql",\n  "supabase/tests/vinz_account_access_contract.sql",
 ];
 for (const file of requiredFiles) {
   if (read(file) === null) fail("Required file inventory", "Required production file is missing", file);
