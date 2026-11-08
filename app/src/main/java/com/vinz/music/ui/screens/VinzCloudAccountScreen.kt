@@ -299,7 +299,7 @@ private fun CloudAccountFormBody(
                 }
             }
         }
-        if (registering) CloudProfileFields(state, actions)
+        if (registering) CloudProfileFields(state, actions, onSubmit = submitFromKeyboard)
         VinzButton(onClick = { actions.submit() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-submit"), enabled = state.canSubmit && passwordsMatch) {
             Text(tr(when (state.mode) {
                 CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery
