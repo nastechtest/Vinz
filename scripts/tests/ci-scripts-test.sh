@@ -148,6 +148,8 @@ expect_contains "dry run requires the lint check"   "$output" '"Lint"'
 expect_contains "dry run requires the test check"   "$output" '"Unit tests and debug build"'
 
 echo "workflows"
+vercel_config=$(<"$repo_root/web/vercel.json")
+expect_contains "Vercel automatic Git deployments are disabled" "$vercel_config" '"deploymentEnabled": false'
 pr_workflow=$(<"$repo_root/.github/workflows/pr-checks.yml")
 expect_contains "PR checks do not cancel an in-flight test run" "$pr_workflow" "cancel-in-progress: false"
 runner_script=$(<"$repo_root/scripts/ci/run-unit-tests.sh")
