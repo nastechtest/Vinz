@@ -32,6 +32,7 @@ const requiredFiles = [
   "web/package.json",
   "web/.env.example",
   "web/lib/vinz.ts",
+  "web/scripts/copy-brand-assets.mjs",
   "platform/cloudflare/wrangler.production.jsonc",
   "platform/cloudflare/vinz-api.js",
   "platform/cloudflare/youtube-import.js",
@@ -227,6 +228,15 @@ const androidAccount = read("app/src/main/java/com/vinz/music/ui/screens/VinzClo
 if (androidAccount.includes("R.drawable.vinz_logo") && androidAccount.includes("rememberInfiniteTransition")) {
   add("Android account branding", "PASS", "Official logo and animated brand equalizer are present");
 } else fail("Android account branding", "Official logo or branded motion is missing", "VinzCloudAccountScreen.kt");
+const webCredentials = read("web/app/page.tsx") || "";
+const webStyles = read("web/app/globals.css") || "";
+const brandCopy = read("web/scripts/copy-brand-assets.mjs") || "";
+if (webCredentials.includes('src="/vinz-logo.png"') && brandCopy.includes("vinz_logo.png") && brandCopy.includes("copyFileSync")) {
+  add("Web official Vinz logo", "PASS", "Credentials page uses the canonical Android logo copied during build");
+} else fail("Web official Vinz logo", "Credentials page is missing the canonical Vinz logo or build-time asset copy", "web/app/page.tsx");
+if (webStyles.includes("@keyframes vinz-equalize") && webStyles.includes("prefers-reduced-motion") && webCredentials.includes("brand-equalizer")) {
+  add("Web credentials animation", "PASS", "Animated equalizer is present with reduced-motion support");
+} else fail("Web credentials animation", "Animated branded equalizer or reduced-motion handling is missing", "web/app/globals.css");
 const webGoogleSignIn = read("web/app/page.tsx") || "";
 if (webGoogleSignIn.includes("signInWithOAuth") && webGoogleSignIn.includes('provider: "google"')) {
   add("Web Google sign-in", "PASS", "Google sign-in is connected to the Vinz Supabase identity flow");
