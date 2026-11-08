@@ -14,7 +14,7 @@ on:
 permissions:
   contents: read
 
-# A new push to the same PR supersedes the previous run.
+# Each commit gets a complete result; runs for the same PR queue instead of cancelling each other.
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   # Never turn a correct build red because a newer commit arrived while it was running.
