@@ -86,18 +86,18 @@ class AccountNavigationGuardTest {
         assertTrue(unsigned.indexOf("cloud-account-password") < unsigned.indexOf("CloudProfileFields(state, actions)"))
     }
 
-    @Test fun welcomeUsesCloudAccountCopyAndKeepsCanonicalYoutubeSignIn() {
+    @Test fun welcomeUsesVinzAccountAsPrimarySignIn() {
         val welcome = read("ui/screens/LoginScreen.kt").substringAfter("fun WelcomeScreen(")
         assertTrue(welcome.contains("R.string.cloud_account_intro"))
         assertFalse(welcome.contains("R.string.no_email"))
         assertFalse(welcome.contains("on_this_phone"))
-        assertTrue(welcome.contains("R.string.sign_in_to_youtube_music"))
+        assertTrue(welcome.contains("R.string.cloud_account_sign_in_cta"))\n        assertFalse(welcome.contains("R.string.sign_in_to_youtube_music"))
 
         val activity = read("MainActivity.kt")
-        assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.LOGIN) }"))
+        assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.ACCOUNT) }"))
     }
 
-    @Test fun canonicalYoutubeLoginRetainsWebViewAndCookieLifecycle() {
+    @Test fun optionalYoutubePlaybackSessionRetainsItsWebViewCookieLifecycle() {
         val login = read("ui/screens/LoginScreen.kt")
         assertTrue(login.contains("fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit, addAccount: Boolean = false)"))
         assertTrue(login.contains("AndroidView("))
