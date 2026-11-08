@@ -1,5 +1,7 @@
 package com.vinz.music.ui.theme
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
@@ -22,7 +24,7 @@ import kotlin.math.sin
  * `IconRenderTest` draws them all onto app/build/icon-previews/ for a look.
  */
 /** How heavy Vinz's line icons are drawn (#19). */
-enum class IconWeight(val label: String, val scale: Float) { THIN("Thin", 0.64f), REGULAR("Regular", 1f), BOLD("Bold", 1.45f) }
+enum class IconWeight(val label: String, val scale: Float) { THIN(tr(R.string.thin), 0.64f), REGULAR(tr(R.string.regular), 1f), BOLD(tr(R.string.bold), 1.45f) }
 
 /**
  * The icon style picked in Settings → Appearance → Icons (#19): line weight, and rounded or square ends and corners.
@@ -31,19 +33,21 @@ enum class IconWeight(val label: String, val scale: Float) { THIN("Thin", 0.64f)
  */
 /** Sets of icons to pick from (Settings → Appearance → Icons): Vinz's own, or Cupertino, drawn after Apple's style. */
 enum class IconPack(val label: String, val detail: String) {
-    VINZ("Vinz", "Vinz's own icons"),
-    CUPERTINO("Cupertino", "In the style of Apple's apps: filled tabs, a chevron for Back"),
+    VINZ(tr(R.string.app_name), tr(R.string.vinz_s_own_icons)),
+    CUPERTINO(tr(R.string.cupertino), tr(R.string.in_the_style_of_apple_s)),
     /** Every icon with its curves cut into straight facets and sharp corners (1.7.7, generated from Vinz's drawings). */
-    FACET("Facet", "Straight lines and sharp corners: every curve cut into facets"),
+    FACET(tr(R.string.facet), tr(R.string.straight_lines_and_sharp_corners_every)),
     /** Every icon in dots, like a dot-matrix display (1.7.7, generated from Vinz's drawings). */
-    DOTS("Dots", "Drawn in dots, like a dot-matrix display"),
+    DOTS(tr(R.string.dots), tr(R.string.drawn_in_dots_like_a_dot)),
+    /** Vinz 1.6's hand-drawn icons, a heavier line (1.7.8, #155; [ClassicIcons]). */
+    CLASSIC(tr(R.string.classic), tr(R.string.vinz_1_6_s_icons_a)),
 }
 
 /** How Vinz's icons are filled (1.7.7): lines, a light second tone inside, or solid. */
 enum class IconFill(val label: String, val detail: String) {
-    OUTLINE("Outline", "Lines, filled in when picked"),
-    DUOTONE("Duotone", "Lines with a light tone inside"),
-    FILLED("Filled", "Solid shapes"),
+    OUTLINE(tr(R.string.outline), tr(R.string.lines_filled_in_when_picked)),
+    DUOTONE(tr(R.string.duotone), tr(R.string.lines_with_a_light_tone_inside)),
+    FILLED(tr(R.string.filled), tr(R.string.solid_shapes)),
 }
 
 object IconStyle {
@@ -66,10 +70,15 @@ object IconStyle {
         weight = w; rounded = r
         pack = savedPack(context)
         likeStar = savedLikeStar(context)
-        fill = savedFill(context)    }
+        fill = savedFill(context)
+    }
+
+    // Old installs/imports can contain a different preference type. Typed getters throw on those values.
+    private fun savedValues(context: android.content.Context): Map<String, *> =
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).all
 
     fun savedFill(context: android.content.Context): IconFill =
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString("fill", null)
+        (savedValues(context)["fill"] as? String)
             ?.let { n -> IconFill.entries.firstOrNull { it.name == n } } ?: IconFill.OUTLINE
 
     fun saveFill(context: android.content.Context, f: IconFill) {
@@ -77,15 +86,15 @@ object IconStyle {
     }
 
     fun savedLikeStar(context: android.content.Context): Boolean =
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getBoolean("like_star", false)
+        savedValues(context)["like_star"] as? Boolean ?: false
 
     fun saveLikeStar(context: android.content.Context, on: Boolean) {
         context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean("like_star", on).apply()
     }
 
     fun savedPack(context: android.content.Context): IconPack {
-        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-        return IconPack.entries.firstOrNull { it.name == p.getString("pack", null) } ?: IconPack.VINZ
+        val name = savedValues(context)["pack"] as? String
+        return IconPack.entries.firstOrNull { it.name == name } ?: IconPack.VINZ
     }
 
     fun savePack(context: android.content.Context, pack: IconPack) {
@@ -94,9 +103,10 @@ object IconStyle {
 
     /** What's saved (it may differ from what's drawn until a restart). */
     fun saved(context: android.content.Context): Pair<IconWeight, Boolean> {
-        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-        val w = IconWeight.entries.firstOrNull { it.name == p.getString("weight", null) } ?: IconWeight.REGULAR
-        return w to p.getBoolean("rounded", true)
+        val values = savedValues(context)
+        val name = values["weight"] as? String
+        val w = IconWeight.entries.firstOrNull { it.name == name } ?: IconWeight.REGULAR
+        return w to (values["rounded"] as? Boolean ?: true)
     }
 
     fun save(context: android.content.Context, weight: IconWeight, rounded: Boolean) {
@@ -147,6 +157,9 @@ object VinzIcons {
     // Drawn as SVG in design/icons (24-unit grid, 1.5-unit lines, round ends; see its README) and built from
     // VinzIconData, which the build generates from those files. To change an icon, change its drawing.
 
+    /** Classic's line against today's drawings' (1.8 / 1.5). */
+    private const val CLASSIC_LINE = 1.2f
+
     /** How strongly a selected twin's tinted shapes are filled. */
     private const val TINT = 0.18f
 
@@ -158,8 +171,12 @@ object VinzIcons {
      * the fill style picked in Icons & shapes ([style]; Vinz's own setting unless a preview asks for another).
      */
     private fun drawn(name: String, filled: Boolean = false, style: IconFill = IconStyle.fill, pack: IconPack = IconStyle.pack): ImageVector {
+        // Classic (1.7.8, #155): 1.6.9's own drawing where it had one; Lyrics stays today's (the one #155 didn't miss).
+        if (pack == IconPack.CLASSIC && name != "Lyrics") ClassicIcons.find(if (filled) "${name}Filled" else name)?.let { return it }
         val s = VinzIconData.spec(name)
         val ink = SolidColor(Color.Black)
+        // Icons Classic has no drawing for: today's, at its line (1.8 units against today's 1.5).
+        val classicLine = if (pack == IconPack.CLASSIC) CLASSIC_LINE else 1f
         // Filled: every icon as its solid twin. Duotone: the shapes a twin fills get a light tone inside.
         val twin = filled || (style == IconFill.FILLED && s.twin != 0)
         if (pack == IconPack.DOTS) return dotted(name, if (twin) s.dotsFilled else s.dots, filled, s.mirror)
@@ -181,7 +198,7 @@ object VinzIcons {
                 addPath(
                     nodes,
                     fill = if (fill) ink else null, fillAlpha = alpha,
-                    stroke = ink, strokeLineWidth = p.width * IconStyle.weight.scale,
+                    stroke = ink, strokeLineWidth = p.width * IconStyle.weight.scale * classicLine,
                     strokeLineCap = if (round) StrokeCap.Round else StrokeCap.Butt,
                     strokeLineJoin = if (round) StrokeJoin.Round else StrokeJoin.Miter,
                 )
@@ -340,6 +357,7 @@ object VinzIcons {
     val Timer = drawn("Timer")
     val Moon = drawn("Moon")
     val Sun = drawn("Sun")
+    val Calendar = drawn("Calendar")
     val Looks = drawn("Looks")
     val Undo = drawn("Undo")
     val Stats = drawn("Stats")

@@ -1,6 +1,11 @@
 package com.vinz.music.ui.player
 
+import com.vinz.music.tr
 import com.vinz.music.ui.theme.VinzIcons
+import com.vinz.music.data.prefs.PlayerPart
+import com.vinz.music.data.prefs.shows
+import com.vinz.music.data.prefs.showsMenuButton
+import com.vinz.music.data.prefs.drawsCover
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -22,6 +27,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -44,7 +50,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.tappableElement
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,6 +96,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrain
@@ -112,6 +122,7 @@ import com.vinz.music.data.canvas.CanvasArtwork
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.model.hiRes
 import com.vinz.music.ui.LocalNavigator
+import com.vinz.music.ui.player.PlayerInk.inked
 import com.vinz.music.ui.Routes
 import com.vinz.music.ui.components.shareTarget
 import com.vinz.music.ui.components.tickWhileShown
@@ -125,6 +136,8 @@ private val THUMB_SIZE = 54.dp
 private val HEADER_HEIGHT = 60.dp
 private val ART_TITLE_GAP = 20.dp
 private val DISMISS_STRIP = 32.dp
+/** How far a swipe on the controls goes before it opens or closes the queue or the lyrics (#200), in pixels. */
+private const val PANEL_SWIPE_PX = 90f
 private val ART_BOX_TOP_PAD = 8.dp
 /** How far the title may drop below the cover toward the scrubber, when the screen has room to spare. */
 private val TITLE_DROP_MAX = 24.dp
@@ -139,6 +152,85 @@ private val DECK_GAP_AFTER = mapOf(
     com.vinz.music.data.prefs.DeckPart.BUTTONS to 10.dp,
 )
 private const val HERO_FADE = 0.42f
+
+/** The deck's parts as they show, the gap after each one but the last, and room added under the last one. */
+internal class DeckSpacing(val parts: List<com.vinz.music.data.prefs.DeckPart>, val gaps: List<Dp>, val below: Dp)
+
+/**
+ * #329: the deck laid out from [shown] (its parts in the listener's order, the ones hidden from the player left out
+ * already). A hidden volume bar leaves no hole of its own any more (its blank room sat between the controls and the
+ * buttons row, so the gaps looked uneven): its room, kept so the controls and the cover above stay where they were
+ * (1.6.5), is shared evenly between the gaps. [small]: Small over the lyrics or the queue, tight as before.
+ */
+internal fun deckSpacing(shown: List<com.vinz.music.data.prefs.DeckPart>, volumeShown: Boolean, small: Boolean): DeckSpacing {
+    val volume = com.vinz.music.data.prefs.DeckPart.VOLUME
+    if (small) return DeckSpacing(shown, List((shown.size - 1).coerceAtLeast(0)) { 2.dp }, 0.dp)
+    val hiddenVolume = !volumeShown && volume in shown
+    val parts = if (hiddenVolume) shown - volume else shown
+    // The room it had: the bar's own, and the gap under it when something followed.
+    val spare = if (!hiddenVolume) 0.dp else VOLUME_ROW_HEIGHT + if (shown.last() != volume) DECK_GAP_AFTER.getValue(volume) else 0.dp
+    val gaps = parts.dropLast(1).map { DECK_GAP_AFTER[it] ?: 8.dp }
+    if (gaps.isEmpty()) return DeckSpacing(parts, gaps, spare)
+    return DeckSpacing(parts, gaps.map { it + spare / gaps.size }, 0.dp)
+}
+
+/**
+ * Whether the full-bleed cover is up: in full-bleed mode, once there's a picture to show, this song's or (#244) the
+ * last one's while this one loads, or an animated cover.
+ */
+internal fun heroTarget(heroMode: Boolean, picture: Boolean, canvas: Boolean): Boolean = heroMode && (picture || canvas)
+
+/**
+ * #250: the player draws the band behind the navigation buttons itself on Android 15 and later ([sdk] 35+), where a
+ * window's navigation bar color is ignored for apps targeting 35+; below that the window's color is the band.
+ */
+internal fun drawsNavBand(sdk: Int, on: Boolean): Boolean = on && sdk >= 35
+
+/** The band's color: dark under the player, light over its White background (as the window's color below Android 15). */
+internal fun navBandColor(light: Boolean): Color = if (light) Color(0x80F2F2F4) else Color(0x801B1B1B)
+
+/**
+ * The band behind three-button navigation (#250, Android 15+): as tall as the buttons' bar, from the tappable-element
+ * insets, which are zero with gesture navigation (its handle isn't tappable), so there's no band there.
+ */
+@Composable
+private fun PlayerNavBand(light: Boolean, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val buttons = WindowInsets.tappableElement.getBottom(density)
+    if (buttons <= 0) return
+    Box(modifier.fillMaxWidth().height(with(density) { buttons.toDp() }).background(navBandColor(light)).testTag("playerNavBand"))
+}
+
+/**
+ * The cover's size: a little smaller while paused when asked, unless the listener chose Reduce motion themselves. A
+ * Full width cover ([fullWidth]) stays edge to edge (#276: it shrank away from the screen's sides).
+ */
+internal fun pausedCoverScale(playing: Boolean, shrinkWhenPaused: Boolean, ownReduceMotion: Boolean, fullWidth: Boolean = false): Float =
+    if (playing || !shrinkWhenPaused || ownReduceMotion || fullWidth) 1f else 0.86f
+
+/**
+ * The player's cover, [width] by [height], in a box [maxWidth] by [maxHeight] (the player's side margins [extra] wide
+ * each, which Large and Full width reach into). It's square as big as the box lets it be; a Full width cover ([full])
+ * always meets the screen's sides (#276: on most phones the player is too short for a square that wide, so Full kept the
+ * margins in the Standard layout, looking just like Large), its top and bottom then cropped a little instead.
+ */
+internal fun coverBox(maxWidth: Dp, maxHeight: Dp, extra: Dp, full: Boolean, titleRoom: Dp = ART_TITLE_GAP + HEADER_HEIGHT, least: Dp = THUMB_SIZE): Pair<Dp, Dp> {
+    val across = maxWidth + extra * 2
+    val side = minOf(across, maxHeight - titleRoom).coerceAtLeast(least)
+    return (if (full) maxOf(side, across) else side) to side
+}
+
+/**
+ * [width] by [height] (a square when they're the same); it may be wider than the slot (a Large / Full width cover
+ * reaches into the side margins). Taller than the slot, both sides give up the same.
+ */
+private fun Modifier.measuredBox(width: () -> Dp, height: () -> Dp): Modifier = layout { measurable, constraints ->
+    val wanted = height().roundToPx()
+    val h = wanted.coerceAtMost(constraints.maxHeight)
+    val w = (width().roundToPx() - (wanted - h)).coerceAtLeast(0)
+    val p = measurable.measure(Constraints.fixed(w, h))
+    layout(minOf(p.width, constraints.maxWidth), p.height) { p.placeRelative(0, 0) }
+}
 
 @Composable
 fun rememberPosition(fast: Boolean, hold: Boolean = false): Long = rememberPositionState(fast, hold).value
@@ -162,12 +254,6 @@ fun rememberPositionState(fast: Boolean, hold: Boolean = false): androidx.compos
     return pos
 }
 
-/** A square of [side]; it may be wider than the slot (a Large / Full width cover reaches into the side margins). */
-private fun Modifier.measuredSquare(side: () -> Dp): Modifier = layout { measurable, constraints ->
-    val px = side().roundToPx().coerceAtMost(constraints.maxHeight)
-    val p = measurable.measure(Constraints.fixed(px, px))
-    layout(minOf(p.width, constraints.maxWidth), p.height) { p.placeRelative(0, 0) }
-}
 
 /**
  * Now Playing, modelled on BitChord v1.7 (itself after Apple Music): artwork
@@ -206,13 +292,14 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     var showOutputs by remember { mutableStateOf(false) }
     var showPlaylists by remember { mutableStateOf(false) }
     var showShare by remember { mutableStateOf(false) }
+    var showSpeed by remember { mutableStateOf(false) }
     var fullscreenVideo by rememberSaveable { mutableStateOf(false) }
     var videoFill by rememberSaveable { mutableStateOf(true) }
 
     // A sheet over the player (⋯, lyrics source, sleep timer): what moves underneath it every frame (the animated
     // cover, the word sweep, the title marquee) holds still, since both windows draw on the same thread and dragging
     // the sheet stuttered. The timing sheet isn't counted: the lyrics are what's being lined up there.
-    val covered = showActions || showProviders || showSleep || showSing || showOutputs || showPlaylists || showShare
+    val covered = showActions || showProviders || showSleep || showSing || showOutputs || showPlaylists || showShare || showSpeed
     // Where the lyrics are on show (the lyrics view, immersive mode, the source sheet): with "Lyrics on mobile data"
     // off, that's when they're looked up on mobile data (#95).
     // Settings → Player → Layout (1.7.4); a wide player (tablet, landscape) keeps its own.
@@ -232,7 +319,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
 
     // The player is always dark, so it owns light system-bar icons, and the navigation bar's scrim (three-button
     // navigation) is a dark one: in light mode a light grey strip sat under the player.
-    DisposableEffect(Unit) {
+    // Player → Show on the player → "Band behind the navigation buttons" (#250, 1.7.9.1): off, the player shows through.
+    val navBand = settings.playerNavBand
+    DisposableEffect(navBand) {
         val window = (view.context as? Activity)?.window
         val ctl = window?.let { WindowCompat.getInsetsController(it, view) }
         val previous = ctl?.isAppearanceLightStatusBars
@@ -242,12 +331,17 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         @Suppress("DEPRECATION")
         val previousNavColor = window?.navigationBarColor
         @Suppress("DEPRECATION")
-        window?.navigationBarColor = android.graphics.Color.argb(0x80, 0x1b, 0x1b, 0x1b)
+        window?.navigationBarColor = if (navBand) android.graphics.Color.argb(0x80, 0x1b, 0x1b, 0x1b) else android.graphics.Color.TRANSPARENT
+        // Android's own scrim behind three buttons (10+) would put a band back. On 15+ the color above isn't drawn (edge to
+        // edge is enforced) and the player draws its band itself ([PlayerNavBand]), so the system's scrim stays off there.
+        val previousEnforced = if (android.os.Build.VERSION.SDK_INT >= 29) window?.isNavigationBarContrastEnforced else null
+        if (android.os.Build.VERSION.SDK_INT >= 29 && (!navBand || android.os.Build.VERSION.SDK_INT >= 35)) window?.isNavigationBarContrastEnforced = false
         onDispose {
             if (previous != null) ctl.isAppearanceLightStatusBars = previous
             if (previousNav != null) ctl.isAppearanceLightNavigationBars = previousNav
             @Suppress("DEPRECATION")
             if (previousNavColor != null) window.navigationBarColor = previousNavColor
+            if (android.os.Build.VERSION.SDK_INT >= 29 && previousEnforced != null) window?.isNavigationBarContrastEnforced = previousEnforced
         }
     }
     // Lyrics on screen keep it awake (a wide player shows them unless its other pane is picked), and so does a music
@@ -259,12 +353,18 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         onDispose { view.keepScreenOn = false }
     }
 
-    val openLyrics = { lyricsControlsOpen = true; lyricsOpen = true; queueOpen = false; statsOpen = false }
+    // Settings → Player → "Lyrics and the queue" (#193, #197): the controls hide after a moment (as before), always stay,
+    // or start hidden so the lyrics and the queue get the whole screen (a tap or a swipe up brings them).
+    val panelPlayer = settings.view.panelPlayer
+    // Small (#230): they stay too, in less room.
+    val controlsStay = panelPlayer == com.vinz.music.data.prefs.PanelPlayer.ALWAYS || panelPlayer == com.vinz.music.data.prefs.PanelPlayer.SMALL
+    val controlsAtOpen = panelPlayer != com.vinz.music.data.prefs.PanelPlayer.HIDDEN
+    val openLyrics = { lyricsControlsOpen = controlsAtOpen; lyricsOpen = true; queueOpen = false; statsOpen = false }
     val closeLyrics = { lyricsControlsOpen = false; lyricsOpen = false }
     val toggleQueue = {
         val opening = !queueOpen
         queueOpen = opening
-        if (opening) { closeLyrics(); statsOpen = false; queueControlsOpen = true }
+        if (opening) { closeLyrics(); statsOpen = false; queueControlsOpen = controlsAtOpen }
     }
     val toggleStats = {
         val opening = !statsOpen
@@ -273,15 +373,21 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     }
     // Sing's controls up over the lyrics: the deck stays (it holds them), and comes back when they're opened.
     val singing by c.sing.on.collectAsState()
-    val singControls = singing && SingUi.panel
+    // Sing's button held as a slider (1.7.8, V): the deck stays up while it's in use.
+    val singControls = singing && SingUi.holding
     LaunchedEffect(singControls) { if (singControls) lyricsControlsOpen = true }
-    LaunchedEffect(lyricsOpen, lyricsControlsOpen, volume.dragging, singControls) {
-        if (lyricsOpen && lyricsControlsOpen && !volume.dragging && !singControls) { delay(5000); lyricsControlsOpen = false }
+    LaunchedEffect(lyricsOpen, lyricsControlsOpen, volume.dragging, singControls, controlsStay) {
+        if (lyricsOpen && lyricsControlsOpen && !volume.dragging && !singControls && !controlsStay) { delay(5000); lyricsControlsOpen = false }
     }
     // Cover layout: a tap on the cover brings the controls up; they go again after a few seconds of music.
     var coverDeck by remember { mutableStateOf(false) }
-    LaunchedEffect(coverDeck, isPlaying, volume.dragging) {
-        if (coverDeck && isPlaying && !volume.dragging && layout == com.vinz.music.data.prefs.PlayerLayout.COVER) { delay(5000); coverDeck = false }
+    // A playing music video does the same when "Controls hide over videos" is on (#166): they show as the video starts,
+    // go after a few seconds, and a tap on the video brings them; they stay away from song to song.
+    val videoHidesDeck = settings.view.videoControlsHide && videoMode
+    val deckOnTap = layout == com.vinz.music.data.prefs.PlayerLayout.COVER || videoHidesDeck
+    LaunchedEffect(videoHidesDeck) { if (videoHidesDeck) coverDeck = true }
+    LaunchedEffect(coverDeck, isPlaying, volume.dragging, deckOnTap) {
+        if (coverDeck && isPlaying && !volume.dragging && deckOnTap) { delay(5000); coverDeck = false }
     }
     // Lyrics layout: each song opens on its lyrics once they're in (a song without any stays on the cover).
     val hasLyrics = lyricsState.lyrics != null
@@ -290,6 +396,15 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     }
 
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Sideways, a video fills the screen; its exit (or Back) keeps it in the player instead, until the phone turns or the
+    // video's switched off (#245: on a Fold held sideways it went straight back to full screen, no way out but turning it).
+    var sidewaysInPlayer by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(landscape, videoMode) { if (!landscape || !videoMode) sidewaysInPlayer = false }
+    val sidewaysFull = landscape && !sidewaysInPlayer
+    fun leaveFullscreenVideo() {
+        fullscreenVideo = false
+        if (landscape) sidewaysInPlayer = true
+    }
     // How far the player has been pulled down (px). Closing slides it the rest of the way, from wherever it is, the same
     // way for Back and for a swipe (#26: a swipe used to hand over to a different exit animation part-way down).
     val dismiss = remember { Animatable(0f) }
@@ -309,7 +424,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     DisposableEffect(cover) { onDispose { cover.pulled = false } }
     BackHandler {
         when {
-            fullscreenVideo -> fullscreenVideo = false
+            fullscreenVideo || (videoMode && sidewaysFull) -> leaveFullscreenVideo()
             // A wide player always shows its lyrics pane: "open" (left from portrait) isn't something Back undoes there.
             lyricsOpen && !wide -> closeLyrics()
             queueOpen -> queueOpen = false
@@ -329,8 +444,8 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         )
         onDispose { activity?.setPipEligible(false) }
     }
-    if (videoMode && (fullscreenVideo || landscape || inPip)) {
-        FullscreenVideo(song, forceLandscape = fullscreenVideo && !inPip, pip = inPip, onExit = { fullscreenVideo = false })
+    if (videoMode && (fullscreenVideo || sidewaysFull || inPip)) {
+        FullscreenVideo(song, forceLandscape = fullscreenVideo && !inPip, pip = inPip, onExit = { leaveFullscreenVideo() })
         return
     }
 
@@ -338,10 +453,16 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     val collapse = animateFloatAsState(if (lyricsOpen || queueOpen || statsOpen) 1f else 0f, tween(420, easing = FastOutSlowInEasing), label = "collapse")
     val p: () -> Float = { collapse.value }
     val collapsePastHalf = collapse.value >= 0.5f
+    // Settings → Player → What's on the player (1.8.0): a hidden part leaves the player; the cover, title and buttons come
+    // back in the header over the lyrics and the queue, where they say which song it is.
+    val inHeader = { part: PlayerPart -> settings.shows(part) || collapsePastHalf }
     val panelsSettled = collapse.value >= 1f
     val panelFade by animateFloatAsState(if (panelsSettled) 1f else 0f, tween(200, easing = FastOutSlowInEasing), label = "panelFade")
+    // The listener's own Reduce motion, not Performance mode's (Reddit, 1.7.9.3: Performance mode turns Reduce motion on,
+    // which took the shrink away too; it's one scale of one layer, nothing to save).
+    val ownReduceMotion = c.settings.stored.collectAsState().value.reduceMotion
     val artScale by animateFloatAsState(
-        if (isPlaying || !settings.artShrinkOnPause || settings.reduceMotion) 1f else 0.86f,
+        pausedCoverScale(isPlaying, settings.artShrinkOnPause, ownReduceMotion, fullWidth = settings.coverSize == com.vinz.music.data.prefs.CoverSize.FULL),
         spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
         label = "artScale",
     )
@@ -368,7 +489,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     var canvasCover by remember(canvas) { mutableFloatStateOf(0f) }
 
     // ---------------------------------------------------------------- Artwork
-    val artUrl = hiRes(song.thumbnail, 1200)
+    // The cover picked for the song or its album (#305), else its own.
+    val songArt = c.covers.art(song)
+    val artUrl = hiRes(songArt, 1200)
     // Decoded at full size whatever size the cover is first laid out at (#86): opened mid-animation or with lyrics
     // open it starts out small, and the picture decoded for that size was then stretched over the whole cover.
     val artRequest = remember(artUrl) { coil3.request.ImageRequest.Builder(context).data(artUrl).size(1200).build() }
@@ -385,12 +508,40 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     // in the full-bleed cover's place; the box it would sit in keeps only its buttons.
     val videoBehind = settings.videoFullBleed && videoMode && !wide
     var heroHeight by remember { mutableStateOf(0.dp) }
-    val heroT = animateFloatAsState(if (heroMode && (artLoaded || canvasCover > 0f)) 1f else 0f, tween(420, easing = FastOutSlowInEasing), label = "hero")
+    // #244 (1.7.9.3): once the full-bleed cover has shown it stays up while the next song's picture loads, over the last
+    // one (it used to drop to the square cover for every new song, then grow back, a jump on each skip).
+    var heroPicture by remember { mutableStateOf<coil3.request.ImageRequest?>(null) }
+    LaunchedEffect(heroMode) { if (!heroMode) heroPicture = null }
+    val heroT = animateFloatAsState(if (heroTarget(heroMode, artLoaded || heroPicture != null, canvasCover > 0f)) 1f else 0f, tween(420, easing = FastOutSlowInEasing), label = "hero")
     val heroVisible: () -> Float = { heroT.value * (1f - p()) }
-    val mesh = rememberArtworkMesh(song.thumbnail)
-    val blurImage = rememberFullArtworkBlur(song.thumbnail, settings.playerBlur)
+    val mesh = rememberArtworkMesh(songArt)
+    val blurImage = rememberFullArtworkBlur(songArt, settings.playerBlur)
     val fullBlur by animateFloatAsState(if (lyricsOpen || queueOpen || statsOpen) 1f else 0f, tween(360, easing = FastOutSlowInEasing), label = "fullBlur")
-    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // #320: over the White background the type and controls are dark ([PlayerInk]); over the lyrics and the queue (their
+    // dark blurred cover), a canvas or a video behind, a wide player or immersive mode they're white as ever.
+    val inkLight = settings.playerBackground == com.vinz.music.data.prefs.PlayerBackground.WHITE && !wide && !canvasBehind && !videoBehind &&
+        fullBlur < 0.5f && !(settings.immersivePlayer && (!videoMode || settings.view.immersiveVideo))
+    PlayerInk.light = inkLight
+    DisposableEffect(Unit) { onDispose { PlayerInk.light = false } }
+    // The status bar's and the navigation bar's icons dark over it too.
+    DisposableEffect(inkLight, settings.playerNavBand) {
+        if (!inkLight) return@DisposableEffect onDispose {}
+        val window = (view.context as? Activity)?.window
+        val ctl = window?.let { WindowCompat.getInsetsController(it, view) }
+        ctl?.isAppearanceLightStatusBars = true
+        ctl?.isAppearanceLightNavigationBars = true
+        @Suppress("DEPRECATION")
+        val previousNavColor = window?.navigationBarColor
+        @Suppress("DEPRECATION")
+        if (settings.playerNavBand) window?.navigationBarColor = android.graphics.Color.argb(0x80, 0xf2, 0xf2, 0xf4)
+        onDispose {
+            ctl?.isAppearanceLightStatusBars = false
+            ctl?.isAppearanceLightNavigationBars = false
+            @Suppress("DEPRECATION")
+            if (previousNavColor != null) window.navigationBarColor = previousNavColor
+        }
+    }
+    val statusTop = statusBarRoom().asPaddingValues().calculateTopPadding()
     // Collapsed into the header thumbnail, the sleeve keeps gentle corners whatever the setting.
     // A Full width cover meets the screen's edges, so it has square corners until it shrinks into the header.
     val artCorners = if (settings.coverSize == com.vinz.music.data.prefs.CoverSize.FULL) 0.dp else settings.playerArtCorners.dp
@@ -411,13 +562,31 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         vizStyle != com.vinz.music.data.prefs.VisualizerStyle.OFF && !settings.reduceMotion && !covered && !videoMode && isPlaying,
     )
     val vizBrush: Brush = if (viz == null) androidx.compose.ui.graphics.SolidColor(Color.White) else
-        scrubberFill(settings.visualizerColor, song.thumbnail)
+        scrubberFill(settings.visualizerColor, songArt)
             ?: Brush.horizontalGradient(*com.vinz.music.ui.theme.VinzTokens.spectrumColors(true).toTypedArray())
     val vizColor: Color = (vizBrush as? androidx.compose.ui.graphics.SolidColor)?.value
         ?: com.vinz.music.ui.theme.VinzTokens.spectrumColors(true).let { it[it.size / 2].second }
 
     // Only ever the song's album (tapping it opens the album); nothing for songs without one.
     val originAlbum = song.album?.takeIf { it.id != null && it.title.isNotBlank() }
+
+    // The bottom row's buttons that open something over the player (Settings → Player → Buttons).
+    val onButton: (com.vinz.music.data.prefs.PlayerButton) -> Unit = { b ->
+        when (b) {
+            com.vinz.music.data.prefs.PlayerButton.SLEEP -> showSleep = true
+            com.vinz.music.data.prefs.PlayerButton.OUTPUT -> showOutputs = true
+            com.vinz.music.data.prefs.PlayerButton.ADD_TO_PLAYLIST -> showPlaylists = true
+            com.vinz.music.data.prefs.PlayerButton.SHARE -> showShare = true
+            com.vinz.music.data.prefs.PlayerButton.SPEED -> showSpeed = true
+            // Sing on (with the lyrics opening) or off; the download sheet the first time.
+            com.vinz.music.data.prefs.PlayerButton.SING -> {
+                if (c.sing.engineReady() && !c.sing.on.value) openLyrics()
+                toggleSing(c) { showSing = true }
+            }
+            com.vinz.music.data.prefs.PlayerButton.EQUALIZER -> { onCollapse(); nav.go(Routes.settings(com.vinz.music.ui.screens.SettingsSection.SOUND.key)) }
+            else -> {}
+        }
+    }
 
     // The sheets that open over the player (in immersive mode too).
     val playerSheets = @Composable {
@@ -427,15 +596,24 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             hasCanvas = songCanvas != null,
             statsShown = statsOpen,
             hasNext = hasNext,
+            // What the player's hidden parts did (1.8.0): open the lyrics or the queue, the music video, the buttons.
+            onOpenLyrics = { openLyrics() },
+            onOpenQueue = { if (!queueOpen) toggleQueue() },
+            videoMode = videoMode,
+            videoAvailable = videoAvailable,
+            onVideoMode = { pc.setVideoMode(it) },
+            onButton = { onButton(it) },
             onLyricsSource = { showProviders = true },
             onLyricsTiming = { showTiming = true },
             onRedownloadLyrics = { lyricsState.redownload() },
             onToggleStats = { toggleStats() },
             onSleepTimer = { showSleep = true },
+            onSpeedPitch = { showSpeed = true },
             onCollapse = onCollapse,
             romanizable = hasForeignScript(lyricsState),
             // Sing from the menu: the lyrics open with Sing on and its controls up (the download sheet the first time).
-            onSing = { if (c.sing.engineReady()) { openLyrics(); if (!c.sing.on.value) c.sing.setOn(true); SingUi.panel = true } else showSing = true },
+            // ⋯ → Sing: its sheet (Sing on or off, the voice, the key; the one-time download first).
+            onSing = { showSing = true },
         ) { showActions = false }
         if (showSleep) SleepTimerDialog { showSleep = false }
         if (showTiming) LyricsTimingSheet { showTiming = false }
@@ -444,35 +622,21 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         if (BestPartEditor.open) BestPartSheet { BestPartEditor.open = false }
         if (showOutputs) {
             val profile by c.account.profile.collectAsState()
-            val name = (profile?.name ?: settings.accountName).trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() }?.let { "$it's Phone" } ?: "This Phone"
+            val name = (profile?.name ?: settings.accountName).trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() }?.let { tr(R.string.s_phone, it) } ?: tr(R.string.this_phone)
             OutputPickerSheet(name) { showOutputs = false }
         }
         if (showPlaylists) com.vinz.music.ui.components.PlaylistPicker(song) { showPlaylists = false }
         if (showShare) com.vinz.music.ui.components.ShareSheet(song.shareTarget()) { showShare = false }
-    }
-    // The bottom row's buttons that open something over the player (Settings → Player → Buttons).
-    val onButton: (com.vinz.music.data.prefs.PlayerButton) -> Unit = { b ->
-        when (b) {
-            com.vinz.music.data.prefs.PlayerButton.SLEEP -> showSleep = true
-            com.vinz.music.data.prefs.PlayerButton.OUTPUT -> showOutputs = true
-            com.vinz.music.data.prefs.PlayerButton.ADD_TO_PLAYLIST -> showPlaylists = true
-            com.vinz.music.data.prefs.PlayerButton.SHARE -> showShare = true
-            // As ⋯ → Sing: the lyrics open with Sing on and its controls up (the download sheet the first time).
-            com.vinz.music.data.prefs.PlayerButton.SING ->
-                if (!c.sing.engineReady()) showSing = true
-                else if (c.sing.on.value) c.sing.setOn(false)
-                else { openLyrics(); c.sing.setOn(true); SingUi.panel = true }
-            com.vinz.music.data.prefs.PlayerButton.EQUALIZER -> { onCollapse(); nav.go(Routes.settings(com.vinz.music.ui.screens.SettingsSection.SOUND.key)) }
-            else -> {}
-        }
+        if (showSpeed) SpeedPitchSheet(song) { showSpeed = false }
     }
 
     // ------------------------------------------------ Immersive mode (⋯ menu): the cover fills the screen, lyrics over it
-    if (settings.immersivePlayer && !videoMode) {
+    // A music video playing leaves it for the normal player, unless immersive's "Show the video" is on (#170).
+    if (settings.immersivePlayer && (!videoMode || settings.view.immersiveVideo)) {
         // Back leaves immersive mode for the normal player, as it leaves a full-screen video; Back again closes it.
         BackHandler { c.settings.setImmersivePlayer(false) }
         ImmersivePlayer(
-            song, canvas, canvasSaved, isPlaying, lyricsState, covered,
+            song, canvas, canvasSaved, isPlaying, lyricsState, covered, video = videoMode,
             onExit = { c.settings.setImmersivePlayer(false) },
             onLyricsTiming = { showTiming = true },
             onLyricsSource = { showProviders = true },
@@ -506,13 +670,24 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 if (fullBlur > 0f) FullArtworkBlurBackdrop(blurImage, Modifier.graphicsLayer { alpha = fullBlur })
             }
             // "Show background" lifts the darkening: about as before at its default, down to a light veil at full.
-            com.vinz.music.data.prefs.PlayerBackground.BLUR -> FullArtworkBlurBackdrop(blurImage, scrim = 1.3f - 0.95f * settings.playerBackdropShow)
+            com.vinz.music.data.prefs.PlayerBackground.BLUR -> {
+                FullArtworkBlurBackdrop(blurImage, scrim = 1.3f - 0.95f * settings.playerBackdropShow.coerceAtLeast(0f))
+                // #309: below 0 the slider darkens on, to black at its start.
+                backdropBlackout(settings.playerBackdropShow).takeIf { it > 0f }?.let { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = it))) }
+            }
             com.vinz.music.data.prefs.PlayerBackground.APPEARANCE -> {
-                AppearanceBackdrop(settings.playerBackdropShow)
+                AppearanceBackdrop(settings.playerBackdropShow.coerceAtLeast(0f))
+                backdropBlackout(settings.playerBackdropShow).takeIf { it > 0f }?.let { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = it))) }
                 if (fullBlur > 0f) FullArtworkBlurBackdrop(blurImage, Modifier.graphicsLayer { alpha = fullBlur })
             }
             com.vinz.music.data.prefs.PlayerBackground.THEME -> ThemeBackdrop()
             com.vinz.music.data.prefs.PlayerBackground.BLACK -> Box(Modifier.fillMaxSize().background(Color.Black))
+            // #320: white, the type dark ([PlayerInk]); the lyrics and the queue fade to the dark blurred cover as the
+            // mesh does. A wide player keeps the mesh (its two panes are drawn for a dark ground).
+            com.vinz.music.data.prefs.PlayerBackground.WHITE -> if (wide) ArtworkMeshBackdrop(mesh, speed = 0f, intensity = settings.meshIntensity, blur = settings.playerBlur) else {
+                Box(Modifier.fillMaxSize().background(PlayerWhiteBackdrop))
+                if (fullBlur > 0f) FullArtworkBlurBackdrop(blurImage, Modifier.graphicsLayer { alpha = fullBlur })
+            }
         }
         // Settings → Lyrics → Background (1.7.5): while the lyrics are open, their own background over the player's.
         val lyricsGround = settings.lyricsPageBackground()
@@ -520,7 +695,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             if (lyricsOpen && lyricsGround != com.vinz.music.data.prefs.LyricsBackground.PLAYER) 1f else 0f, tween(420, easing = FastOutSlowInEasing), label = "lyricsGround",
         )
         if (lyricsGroundT > 0f) LyricsBackdrop(
-            lyricsGround, settings, song.thumbnail, blurImage, canvas, canvasSaved, isPlaying,
+            lyricsGround, settings, songArt, blurImage, canvas, canvasSaved, isPlaying,
             Modifier.fillMaxSize().graphicsLayer { alpha = lyricsGroundT }, hold = covered,
         )
         // The visualizer's Glow behind everything, and its Bars along the bottom, under the controls.
@@ -528,7 +703,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             com.vinz.music.data.prefs.VisualizerStyle.GLOW -> VisualizerGlow(viz, vizColor, Modifier.fillMaxSize())
             com.vinz.music.data.prefs.VisualizerStyle.BARS -> VisualizerBars(
                 viz, vizBrush,
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.2f).padding(horizontal = 12.dp).navigationBarsPadding(),
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.2f).padding(horizontal = 12.dp).navigationBarsPadding().inked(),
             )
             else -> {}
         }
@@ -550,10 +725,11 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
 
         // ------------------------------------------------ Full-bleed banner (+ canvas)
         if (heroMode && heroHeight > 0.dp && !(collapsePastHalf && heroVisible() < 0.001f)) {
-            AsyncImage(
-                artRequest, null, contentScale = ContentScale.Crop,
-                onState = { if (it is AsyncImagePainter.State.Success) artLoaded = true },
-                modifier = Modifier
+            // "Whole cover" (#175): the square cover isn't cropped to the banner's shape; it sits whole on a blurred,
+            // cropped copy of itself that fills the rest.
+            val fit = settings.view.bleedFit == com.vinz.music.data.prefs.BleedFit.FIT
+            Box(
+                Modifier
                     .fillMaxWidth()
                     .height(heroHeight)
                     .graphicsLayer {
@@ -567,7 +743,22 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             blendMode = BlendMode.DstIn,
                         )
                     },
-            )
+            ) {
+                // Vinz's own software frost of the cover, so it's soft below Android 12 too.
+                val frost = if (fit) com.vinz.music.ui.components.rememberFrost(artUrl) else null
+                if (frost != null) androidx.compose.foundation.Image(
+                    frost.image, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0.8f },
+                )
+                // The last song's picture under the new one until it's in (#244).
+                heroPicture?.takeIf { it != artRequest }?.let { last ->
+                    AsyncImage(last, null, contentScale = if (fit) ContentScale.Fit else ContentScale.Crop, modifier = Modifier.matchParentSize())
+                }
+                AsyncImage(
+                    artRequest, null, contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
+                    onState = { if (it is AsyncImagePainter.State.Success) { artLoaded = true; heroPicture = artRequest } },
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
             canvas?.takeIf { !collapsePastHalf }?.let { clip ->
                 CanvasPlayer(
                     clip, canvasSaved, isPlaying,
@@ -578,8 +769,8 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 )
             }
         }
-        // Status-bar scrim
-        Box(Modifier.fillMaxWidth().height(statusTop + DISMISS_STRIP).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.32f), Color.Transparent))))
+        // Status-bar scrim (none on the White background, whose status bar has dark icons)
+        if (!inkLight) Box(Modifier.fillMaxWidth().height(statusTop + DISMISS_STRIP).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.32f), Color.Transparent))))
 
         val dismissGesture = Modifier.pointerInput(Unit) {
             detectVerticalDragGestures(
@@ -652,7 +843,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         val doubleTap = settings.coverDoubleTap.takeUnless { it == com.vinz.music.data.prefs.PlayerGesture.SEEK_SIDES && seekStep <= 0 }
             ?: com.vinz.music.data.prefs.PlayerGesture.NONE
         val longPress = settings.coverLongPress
-        val tapForDeck = layout == com.vinz.music.data.prefs.PlayerLayout.COVER
+        val tapForDeck = deckOnTap
         val doubleTapSeek = Modifier.pointerInput(lyricsOpen, queueOpen, statsOpen, seekStep, doubleTap, longPress, tapForDeck) {
             if (lyricsOpen || queueOpen || statsOpen) return@pointerInput
             if (doubleTap == com.vinz.music.data.prefs.PlayerGesture.NONE && longPress == com.vinz.music.data.prefs.PlayerGesture.NONE && !tapForDeck) return@pointerInput
@@ -688,9 +879,12 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     scope.launch { swipe.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
                 },
             ) { _, d ->
-                if ((kotlin.math.abs(total) < threshold) != (kotlin.math.abs(total + d) < threshold)) haptics.threshold()
+                val now = c.settings.current
+                // #222: toward a swipe set to Nothing the cover stays still, and gives no tick.
+                val off = (if (total + d < 0f) now.coverSwipeLeft else now.coverSwipeRight) == com.vinz.music.data.prefs.PlayerGesture.NONE
+                if (!off && (kotlin.math.abs(total) < threshold) != (kotlin.math.abs(total + d) < threshold)) haptics.threshold()
                 total += d
-                scope.launch { swipe.snapTo(total * 0.35f) }
+                scope.launch { swipe.snapTo(if (off) 0f else total * 0.35f) }
             }
         }
 
@@ -711,12 +905,16 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             onSing = { showSing = true },
             onSingNeedsDownload = { showSing = true },
             onButton = onButton,
-        ) else
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().then(skipGesture), horizontalAlignment = Alignment.CenterHorizontally) {
+        ) else Column(
+            Modifier.fillMaxSize().windowInsetsPadding(statusBarRoom()).navigationBarsPadding().then(skipGesture),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             // ------------------------------------------------ Handle + caption
-            Box(Modifier.fillMaxWidth().height(DISMISS_STRIP).then(dismissGesture)) {
-                Box(
-                    Modifier.align(Alignment.TopCenter)
+            Box(Modifier.fillMaxWidth().height(DISMISS_STRIP).then(dismissGesture).inked()) {
+                // Settings → Player → Show on the player → Handle at the top (Reddit, 1.7.9.1): off, the strip still
+                // takes the swipe down.
+                if (settings.playerHandle) Box(
+                    Modifier.align(Alignment.TopCenter).testTag("playerHandle")
                         .offset { IntOffset(0, lerp(6.dp, (DISMISS_STRIP - 5.dp) / 2, p()).roundToPx()) }
                         .size(36.dp, 4.dp)
                         .clip(RoundedCornerShape(2.dp))
@@ -724,7 +922,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 )
                 if (collapse.value < 0.999f && settings.showPlayingFrom && originAlbum != null) PlaybackOriginCaption(
                     // The song's own album, which needn't be what's playing (a playlist, a radio): not "Playing from".
-                    "From the album ${originAlbum.title}",
+                    tr(R.string.from_the_album_2, originAlbum.title),
                     Modifier.align(Alignment.BottomCenter).graphicsLayer { alpha = 1f - p() },
                 ) {
                     onCollapse(); nav.go(Routes.album(originAlbum.id!!))
@@ -732,11 +930,22 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             }
 
             Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PLAYER_GUTTER), horizontalAlignment = Alignment.CenterHorizontally) {
-                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(top = ART_BOX_TOP_PAD, bottom = if (roomyCover) 12.dp else 18.dp)) {
+                BoxWithConstraints(
+                    Modifier.weight(1f).fillMaxWidth()
+                        // #276: a swipe down anywhere round the cover closes the player, not only on the cover and the strip
+                        // at the top (the Cover and Minimal layouts leave room above the cover that took nothing). What's
+                        // on it (the cover, the title's buttons) takes its own drags first.
+                        .then(if (lyricsOpen || queueOpen || statsOpen) Modifier else dismissGesture)
+                        .testTag("playerArtBox")
+                        .padding(top = ART_BOX_TOP_PAD, bottom = if (roomyCover) 12.dp else 18.dp),
+                ) {
                     // Settings → Player → Cover size: Large and Full width reach into the side margins (still square).
                     // The Cover layout's cover is at least Large (its controls are out of the way).
                     val extra = if (layout == com.vinz.music.data.prefs.PlayerLayout.COVER) maxOf(settings.coverSize.extra, com.vinz.music.data.prefs.CoverSize.LARGE.extra) else settings.coverSize.extra
-                    val fullArt = minOf(maxWidth + extra.dp * 2, maxHeight - ART_TITLE_GAP - HEADER_HEIGHT).coerceAtLeast(THUMB_SIZE)
+                    // Full width meets the screen's sides whatever the player's height (#276); a record, a tape and a
+                    // shaped cover stay whole.
+                    val fullWidth = settings.coverSize == com.vinz.music.data.prefs.CoverSize.FULL && !vinyl && !cassette && settings.shapes.player == com.vinz.music.data.prefs.CoverShape.ROUNDED
+                    val (artWidth, fullArt) = coverBox(maxWidth, maxHeight, extra.dp, fullWidth)
                     // Room the cover can't use (a tall screen) is shared above and below it, as before 1.6.4 (all of it
                     // above pushed the whole player down). The title drops into part of the room below, so no blank
                     // band opens up between the artist and the scrubber (issue #9).
@@ -747,8 +956,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     if (!lyricsOpen && !queueOpen && !statsOpen && bannerBottom != heroHeight) SideEffect { heroHeight = bannerBottom }
                     val sleeveMaxWidth = maxWidth
                     fun artSize(): Dp = lerp(fullArt, THUMB_SIZE, p())
+                    fun artWidthNow(): Dp = lerp(artWidth, THUMB_SIZE, p())
                     fun artTop(): Dp = lerp(groupTop, 0.dp, p())
-                    fun artStart(): Dp = lerp((maxWidth - fullArt) / 2, 0.dp, p())
+                    fun artStart(): Dp = lerp((maxWidth - artWidth) / 2, 0.dp, p())
                     fun titleTop(): Dp = lerp(groupTop + fullArt + ART_TITLE_GAP + titleDrop, 0.dp, p())
                     fun titleStart(): Dp = lerp(0.dp, THUMB_SIZE + 12.dp, p())
 
@@ -762,21 +972,25 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                 .requiredWidth(sleeveMaxWidth + PLAYER_GUTTER * 2)
                                 .height(fullArt + ART_TITLE_GAP / 2)
                                 .graphicsLayer { alpha = 1f - 2f * p() }
-                                .then(sleeveGesture),
+                                .then(sleeveGesture)
+                                // Controls hidden over the video (#166): a tap on it brings them, another sends them away.
+                                .then(
+                                    if (videoHidesDeck) Modifier.pointerInput(Unit) { detectTapGestures(onTap = { coverDeck = !coverDeck }) } else Modifier
+                                ),
                         ) {
                             // One video view at a time: full-bleed, it's drawn behind the player (see videoBehind).
                             if (!videoBehind) MusicVideoSurface(Modifier.fillMaxSize(), fill = videoFill)
                             Row(Modifier.align(Alignment.BottomEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (!videoBehind) VideoChip(VinzIcons.AspectRatio, if (videoFill) "Fit video" else "Fill") { videoFill = !videoFill }
-                                if (!wide) VideoChip(VinzIcons.FillIn, if (videoBehind) "Video in a box" else "Full-bleed video") {
+                                if (!videoBehind) VideoChip(VinzIcons.AspectRatio, if (videoFill) tr(R.string.fit_video) else tr(R.string.fill)) { videoFill = !videoFill }
+                                if (!wide) VideoChip(VinzIcons.FillIn, if (videoBehind) tr(R.string.video_in_a_box) else tr(R.string.full_bleed_video)) {
                                     c.settings.setVideoFullBleed(!settings.videoFullBleed)
                                 }
-                                if (activity != null) VideoChip(VinzIcons.PictureInPicture, "Picture-in-picture") {
+                                if (activity != null) VideoChip(VinzIcons.PictureInPicture, tr(R.string.picture_in_picture)) {
                                     if (!activity.enterPip()) android.widget.Toast.makeText(
-                                        context, "Picture-in-picture is off for Vinz in Android's settings", android.widget.Toast.LENGTH_SHORT,
+                                        context, tr(R.string.picture_in_picture_is_off_for), android.widget.Toast.LENGTH_SHORT,
                                     ).show()
                                 }
-                                VideoChip(VinzIcons.Fullscreen, "Full screen") { fullscreenVideo = true }
+                                VideoChip(VinzIcons.Fullscreen, tr(R.string.full_screen)) { fullscreenVideo = true }
                             }
                         }
                     }
@@ -785,7 +999,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     Box(
                         Modifier
                             .offset { IntOffset(artStart().roundToPx(), artTop().roundToPx()) }
-                            .measuredSquare(::artSize)
+                            .measuredBox(::artWidthNow, ::artSize)
                             .then(if (!videoMode) sleeveGesture.then(doubleTapSeek) else Modifier)
                             .graphicsLayer {
                                 val idle = artScale + (1f - artScale) * p()
@@ -797,8 +1011,11 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
+                        // A hidden cover (What's on the player, 1.8.0) isn't drawn at all until it shrinks into the header:
+                        // no animated cover decoding, no record or tape turning, no blend or ring around nothing.
+                        val coverAway = !settings.drawsCover(collapsePastHalf)
                         // The visualizer's Ring, behind the cover (it reaches out past the edge).
-                        if (viz != null && vizStyle == com.vinz.music.data.prefs.VisualizerStyle.RING && !collapsePastHalf && !heroMode) {
+                        if (viz != null && vizStyle == com.vinz.music.data.prefs.VisualizerStyle.RING && !collapsePastHalf && !heroMode && !coverAway) {
                             // A tape is wider than tall, with its own corners (Cassette.kt).
                             val cornerPx = with(LocalDensity.current) { if (cassette) 0f else artCorners.toPx() }
                             VisualizerRing(
@@ -806,13 +1023,19 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                 aspect = if (cassette) CASSETTE_ASPECT else 1f,
                             )
                         }
+                        // The cover flying in from the mini player lands here (#199): where it is, and unseen until then.
+                        val flightTarget = !vinyl && !cassette && !heroMode && !videoMode
                         Box(
                             Modifier
                                 .fillMaxSize()
+                                .then(if (flightTarget) with(CoverFlight) { Modifier.playerCover() } else Modifier)
                                 .graphicsLayer {
                                     alpha = when {
+                                        CoverFlight.flying -> 0f
                                         videoMode -> (2f * p() - 1f).coerceIn(0f, 1f)
-                                        heroMode && artLoaded -> 1f - heroVisible()
+                                        heroMode && (artLoaded || heroPicture != null) -> 1f - heroVisible()
+                                        // Hidden (1.8.0): it shows only as it shrinks into the header.
+                                        !settings.shows(PlayerPart.COVER) -> p()
                                         else -> 1f
                                     }
                                 }
@@ -823,10 +1046,10 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         ) {
                             // Vinyl: the cover as a record's label, turning while it plays (the animated cover isn't used).
                             if (vinyl) VinylRecord(
-                                artRequest, isPlaying, settings.vinylTonearm, Modifier.fillMaxSize(), hold = covered,
+                                artRequest, isPlaying, settings.vinylTonearm, Modifier.fillMaxSize(), hold = covered || coverAway,
                                 collapsed = p, onArtLoaded = { artLoaded = true },
                             ) else if (cassette) CassetteTape(
-                                artRequest, isPlaying, Modifier.fillMaxSize(), hold = covered,
+                                artRequest, isPlaying, Modifier.fillMaxSize(), hold = covered || coverAway,
                                 collapsed = p, onArtLoaded = { artLoaded = true },
                             ) else {
                             // A file on the phone with no artwork gets a cover of its own rather than a bare note.
@@ -839,8 +1062,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                 onState = { if (it is AsyncImagePainter.State.Success) artLoaded = true },
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            if (!videoMode && !coverAway) BlendingCover(song.id, Modifier.fillMaxSize())
                             }
-                            if (!heroMode && !videoMode && !canvasBehind && !vinyl && !cassette) canvas?.takeIf { !collapsePastHalf }?.let { clip ->
+                            if (!heroMode && !videoMode && !canvasBehind && !vinyl && !cassette && !coverAway) canvas?.takeIf { !collapsePastHalf }?.let { clip ->
                                 CanvasPlayer(clip, canvasSaved, isPlaying, Modifier.fillMaxSize(), onCoverChanged = { canvasCover = it })
                             }
                         }
@@ -852,7 +1076,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     // The visualizer's Wave, behind the title.
                     if (viz != null && vizStyle == com.vinz.music.data.prefs.VisualizerStyle.WAVE && !collapsePastHalf) VisualizerWave(
                         viz, vizBrush,
-                        Modifier.fillMaxWidth().height(HEADER_HEIGHT).offset { IntOffset(0, titleTop().roundToPx()) }.graphicsLayer { alpha = 1f - 2f * p() },
+                        Modifier.fillMaxWidth().height(HEADER_HEIGHT).offset { IntOffset(0, titleTop().roundToPx()) }.graphicsLayer { alpha = 1f - 2f * p() }.inked(),
                     )
                     // ---- Credits: title, artist, like, menu
                     Row(
@@ -867,7 +1091,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                 }
                             }
                             .height(HEADER_HEIGHT)
-                            .then(sleeveGesture),
+                            .then(sleeveGesture)
+                            // #320: dark over the White background.
+                            .inked(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         // Settings → Player → Title (1.7.4): centred titles sit in the middle of the screen (a space as wide
@@ -876,7 +1102,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         // Like picked for the buttons row: one heart is enough while that row is on screen (the
                         // header keeps its own over the lyrics and the queue, and with Cover / Minimal, which hide the row).
                         val heartBelow = com.vinz.music.data.prefs.PlayerButton.LIKE in settings.playerButtons &&
-                            com.vinz.music.data.prefs.DeckPart.BUTTONS in settings.playerDeck &&
+                            settings.shows(PlayerPart.BUTTONS) &&
                             layout != com.vinz.music.data.prefs.PlayerLayout.MINIMAL && layout != com.vinz.music.data.prefs.PlayerLayout.COVER &&
                             !lyricsOpen && !queueOpen && !statsOpen
                         if (centred) Spacer(Modifier.width(if (heartBelow) TITLE_BUTTONS_WIDTH - LIKE_GLYPH_ROOM else TITLE_BUTTONS_WIDTH))
@@ -890,20 +1116,28 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         ) {
                             val scrolls = collapse.value < 0.01f && !covered && settings.playerTitleScroll
                             val titleScale = settings.playerTitleSize.scale
-                            PlayerMarquee(
+                            // With the ⋯ button hidden (1.8.0), a long press on the title or the artist opens the menu.
+                            val menuHeld: (() -> Unit)? = if (settings.shows(PlayerPart.MENU)) null else ({ showActions = true })
+                            // #328: the title, artists and album of the version picked to play in its place, if any.
+                            @Suppress("NAME_SHADOWING") val song = com.vinz.music.data.SongVersions.shownOf(song)
+                            if (inHeader(PlayerPart.TITLE)) PlayerMarquee(
                                 // The title leads, the artist under it a size smaller (#41). Spectrum: large and light
                                 // (a tenth under headlineMedium, so longer titles fit before they scroll).
                                 song.title, MaterialTheme.typography.headlineMedium.let { it.copy(fontSize = it.fontSize * 0.9f * titleScale, lineHeight = it.lineHeight * 0.9f * titleScale, fontWeight = settings.type.playerTitleWeight.title ?: it.fontWeight) }, Color.White, scrolls,
-                                Modifier.clickable(enabled = song.album?.id != null) { song.album?.id?.let { onCollapse(); nav.go(Routes.album(it)) } },
+                                Modifier.testTag("playerTitle").combinedClickable(enabled = song.album?.id != null || menuHeld != null, onLongClick = menuHeld) {
+                                    song.album?.id?.let { onCollapse(); nav.go(Routes.album(it)) }
+                                },
                             )
                             // With more than one artist, the name asks which one to open (#42).
                             // Artists YouTube names without a link open by name (#78).
                             val linked = com.vinz.music.ui.components.openableArtists(song)
                             var pickArtist by remember(song.id) { mutableStateOf(false) }
-                            Box {
+                            if (inHeader(PlayerPart.ARTIST)) Box {
+                                // #289 (1.8.1): each name its own link, if asked for; a tap between them still asks.
+                                val artistLine = artistLinkText(song.artistText, linked, settings.view.artistLinks) { a -> onCollapse(); nav.go(Routes.artist(a)) }
                                 PlayerMarquee(
-                                    song.artistText, MaterialTheme.typography.bodyLarge.let { it.copy(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = settings.type.playerTitleWeight.artist ?: it.fontWeight) }, Color.White.copy(alpha = 0.6f), scrolls,
-                                    Modifier.clickable(enabled = linked.isNotEmpty()) {
+                                    artistLine, MaterialTheme.typography.bodyLarge.let { it.copy(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = settings.type.playerTitleWeight.artist ?: it.fontWeight) }, Color.White.copy(alpha = 0.6f), scrolls,
+                                    Modifier.testTag("playerArtist").combinedClickable(enabled = linked.isNotEmpty() || menuHeld != null, onLongClick = menuHeld) {
                                         if (linked.size > 1) pickArtist = true else linked.firstOrNull()?.let { onCollapse(); nav.go(Routes.artist(it)) }
                                     },
                                     delayMs = 5500,
@@ -926,13 +1160,13 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                         }
                         val isLiked = song.id in liked
-                        if (!heartBelow) {
-                            CircleGlyph(if (isLiked) VinzIcons.HeartFilled else VinzIcons.Heart, if (isLiked) "Remove from liked" else "Like", isLiked) {
+                        if (!heartBelow && inHeader(PlayerPart.LIKE)) {
+                            CircleGlyph(if (isLiked) VinzIcons.HeartFilled else VinzIcons.Heart, if (isLiked) tr(R.string.remove_from_liked) else tr(R.string.widget_like), isLiked) {
                                 c.library.toggleLike(song)
                             }
                             Spacer(Modifier.width(8.dp))
                         }
-                        CircleGlyph(VinzIcons.More, "Song options") { showActions = true }
+                        if (settings.showsMenuButton() || collapsePastHalf) CircleGlyph(VinzIcons.More, tr(R.string.song_options)) { showActions = true }
                     }
 
                     // ---- Lyrics and queue panels, under the collapsed header
@@ -940,8 +1174,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         LyricsPanel(
                             lyricsState, isPlaying && !covered, lyricsControlsOpen,
                             onRevealControls = { lyricsControlsOpen = true },
-                            onHideControls = { lyricsControlsOpen = false },
+                            onHideControls = { if (!controlsStay) lyricsControlsOpen = false },
                             modifier = Modifier.fillMaxSize().padding(top = HEADER_HEIGHT).graphicsLayer { alpha = panelFade },
+                            onChangeSource = { showProviders = true },
                         )
                     }
                     if (statsOpen && panelsSettled) {
@@ -955,7 +1190,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     if (queueOpen && panelsSettled) {
                         InlineQueue(
                             onRevealPlayer = { queueControlsOpen = true },
-                            onHidePlayer = { queueControlsOpen = false },
+                            onHidePlayer = { if (!controlsStay) queueControlsOpen = false },
                             onClose = { haptics.gestureEnd(); toggleQueue() },
                             modifier = Modifier.fillMaxSize().padding(top = HEADER_HEIGHT + 8.dp).graphicsLayer {
                                 alpha = panelFade
@@ -967,17 +1202,45 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
 
                 // ------------------------------------------------ The deck
                 // Cover layout: the deck stays away until the cover's tapped (the lyrics and queue bring it as before).
-                val deckShown = (!lyricsOpen || lyricsControlsOpen) && (!queueOpen || queueControlsOpen) &&
-                    (layout != com.vinz.music.data.prefs.PlayerLayout.COVER || coverDeck || lyricsOpen || queueOpen || statsOpen)
+                val deckShown = (!lyricsOpen || lyricsControlsOpen || controlsStay) && (!queueOpen || queueControlsOpen || controlsStay) &&
+                    (!deckOnTap || coverDeck || lyricsOpen || queueOpen || statsOpen || (videoHidesDeck && !isPlaying))
                 AnimatedVisibility(
                     deckShown,
                     enter = expandVertically(tween(420, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) + fadeIn(tween(420)),
                     exit = shrinkVertically(tween(420, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) + fadeOut(tween(300)),
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Settings → Controls & gestures → "Swipe up for the queue" (#200, #197): up on the controls opens the
+                    // queue (from their right half) or the lyrics (left half); down closes whichever is open. One-handed,
+                    // instead of reaching for the buttons or the top of the screen.
+                    val swipes = if (!settings.behavior.panelSwipes) Modifier else Modifier.pointerInput(panelPlayer) {
+                        var total = 0f
+                        var fromRight = true
+                        detectVerticalDragGestures(
+                            onDragStart = { at -> total = 0f; fromRight = at.x > size.width / 2 },
+                            onDragEnd = {
+                                when {
+                                    total < -PANEL_SWIPE_PX && !lyricsOpen && !queueOpen -> { haptics.gestureEnd(); if (fromRight) toggleQueue() else openLyrics() }
+                                    total > PANEL_SWIPE_PX && queueOpen -> { haptics.gestureEnd(); toggleQueue() }
+                                    total > PANEL_SWIPE_PX && lyricsOpen -> { haptics.gestureEnd(); closeLyrics() }
+                                }
+                            },
+                        ) { change, amount -> change.consume(); total += amount }
+                    }
+                    // #259 (1.7.9.2): "Gestures anywhere on the player": the cover's swipes, double tap and long press work
+                    // around the controls too (the buttons and bars keep their own taps and drags).
+                    val coverGestures = if (settings.behavior.panelSwipes || !settings.behavior.gesturesEverywhere || lyricsOpen || queueOpen || statsOpen) Modifier
+                        else sleeveGesture.then(doubleTapSeek)
+                    Column(swipes.then(coverGestures).testTag("playerDeck").inked(), horizontalAlignment = Alignment.CenterHorizontally) {
                         val deckGap = if (roomyCover) 12.dp else 18.dp
-                        // With the lyrics open: the glass foot of the lyrics (their source, and Sing with its controls).
-                        if (lyricsOpen) LyricsFooter(lyricsState, song, onChangeSource = { showProviders = true }, onNeedsDownload = { showSing = true }, modifier = Modifier.padding(bottom = 6.dp))
+                        if (settings.showNextTrack && !lyricsOpen && !queueOpen && !statsOpen && !covered) {
+                            NextTrackPreview(
+                                onOpenQueue = { if (!queueOpen) toggleQueue() },
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                        // With the lyrics open: Sing's one button at their lower right (1.7.8, V; their source is a line
+                        // at their end), and the source as a button at the lower left when asked for (1.7.9).
+                        if (lyricsOpen) LyricsButtonsRow(song, lyricsState, onChangeSource = { showProviders = true }, onNeedsDownload = { showSing = true }, modifier = Modifier.padding(bottom = 6.dp))
                         // Minimal: play, and gestures for the rest (the lyrics and queue still have the whole deck).
                         if (layout == com.vinz.music.data.prefs.PlayerLayout.MINIMAL && !lyricsOpen && !queueOpen && !statsOpen) {
                             MinimalPlay(isPlaying, buffering)
@@ -985,20 +1248,30 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         } else {
                             // The parts in the listener's order (Settings → Player → Arrange, 1.7.4); what's switched off
                             // elsewhere stays off.
+                            // Small (#230): over the lyrics or the queue, only the progress, a smaller transport and the
+                            // buttons (they switch between lyrics and queue), so the list keeps most of the screen.
+                            val small = (lyricsOpen || queueOpen) && panelPlayer == com.vinz.music.data.prefs.PanelPlayer.SMALL
                             val parts = settings.playerDeck.filter { it != com.vinz.music.data.prefs.DeckPart.STRIP || (!lyricsOpen && settings.lyricsOnPlayer) }
-                            parts.forEachIndexed { i, part ->
+                                .filter { !small || it == com.vinz.music.data.prefs.DeckPart.SCRUBBER || it == com.vinz.music.data.prefs.DeckPart.TRANSPORT || it == com.vinz.music.data.prefs.DeckPart.BUTTONS }
+                                // What's on the player (1.8.0): the progress bar and the buttons row can go too.
+                                .filter { it != com.vinz.music.data.prefs.DeckPart.SCRUBBER || settings.shows(PlayerPart.PROGRESS) }
+                                .filter { it != com.vinz.music.data.prefs.DeckPart.BUTTONS || settings.shows(PlayerPart.BUTTONS) }
+                            // #329: what's hidden leaves no hole; the hidden volume bar's room is shared between the gaps.
+                            val spacing = deckSpacing(parts, settings.shows(PlayerPart.VOLUME), small)
+                            spacing.parts.forEachIndexed { i, part ->
                                 when (part) {
                                     com.vinz.music.data.prefs.DeckPart.STRIP -> CurrentLyricStrip(lyricsState, isPlaying && !covered, openLyrics)
                                     com.vinz.music.data.prefs.DeckPart.SCRUBBER -> PlayheadScrubber(position, pc.duration) {
                                         // Settings → Player → "Stream quality" hides it (the full stats stay in the ⋯ menu).
                                         // In a song's opening seconds the middle offers its best part instead, while it's still ahead.
-                                        if (!BestPartChip() && settings.showQuality) QualityLabel(Modifier.align(Alignment.Center), selected = statsOpen) { toggleStats() }
+                                        if (!SingWord() && !BestPartChip() && settings.showQuality) QualityLabel(Modifier.align(Alignment.Center), selected = statsOpen) { toggleStats() }
                                     }
                                     com.vinz.music.data.prefs.DeckPart.TRANSPORT ->
-                                        TransportRow(isPlaying, buffering, previousEnabled = hasPrevious || pastStart, nextEnabled = hasNext, episode = song.isEpisode)
-                                    // A hidden volume bar keeps its room, so the transport sits where it always has (giving it
-                                    // to a Large / Full width cover in 1.6.4 dropped the controls toward the bottom row).
-                                    com.vinz.music.data.prefs.DeckPart.VOLUME -> if (!settings.hideVolumeBar) VolumeRow(volume) else Spacer(Modifier.height(VOLUME_ROW_HEIGHT))
+                                        TransportRow(
+                                            isPlaying, buffering, previousEnabled = hasPrevious || pastStart, nextEnabled = hasNext, compact = small, episode = song.isEpisode,
+                                            skips = settings.shows(PlayerPart.PREV_NEXT),
+                                        )
+                                    com.vinz.music.data.prefs.DeckPart.VOLUME -> VolumeRow(volume)
                                     com.vinz.music.data.prefs.DeckPart.BUTTONS -> PlayerActionRow(
                                         lyricsOpen, queueOpen, videoMode, videoAvailable,
                                         onToggleLyrics = { if (lyricsOpen) closeLyrics() else openLyrics() },
@@ -1008,24 +1281,39 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                         onButton = onButton,
                                     )
                                 }
-                                // The gaps the deck always had after each part (none after the last).
-                                if (i < parts.lastIndex) Spacer(Modifier.height(DECK_GAP_AFTER[part] ?: 8.dp))
+                                // The gaps the deck always had after each part (none after the last); Small keeps them tight.
+                                spacing.gaps.getOrNull(i)?.let { Spacer(Modifier.height(it)) }
                             }
-                            Spacer(Modifier.height(deckGap))
+                            Spacer(Modifier.height((if (small) 6.dp else deckGap) + spacing.below))
                         }
+                        val smallDeck = (lyricsOpen || queueOpen) && panelPlayer == com.vinz.music.data.prefs.PanelPlayer.SMALL
                         // The device line, with the sleep timer beside it while one is set (on its own when the line is hidden).
-                        if (settings.showOutputDevice) Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (smallDeck) SleepBadge()
+                        else if (settings.showOutputDevice) Row(verticalAlignment = Alignment.CenterVertically) {
                             OutputCaption()
                             SleepBadge(Modifier.padding(start = 8.dp))
                         } else {
                             SleepBadge()
                             if (!roomyCover) Spacer(Modifier.height(14.dp))
                         }
-                        Spacer(Modifier.height(deckGap))
+                        Spacer(Modifier.height(if (smallDeck) 6.dp else deckGap))
                     }
                 }
+                // The controls away over the lyrics or the queue: a swipe up from the bottom edge brings them back (a tap
+                // on the lyrics or the queue does too).
+                if (!deckShown && (lyricsOpen || queueOpen)) Box(
+                    Modifier.fillMaxWidth().height(40.dp).pointerInput(Unit) {
+                        var total = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { total = 0f },
+                            onDragEnd = { if (total < -40f) { lyricsControlsOpen = true; queueControlsOpen = true } },
+                        ) { change, amount -> change.consume(); total += amount }
+                    },
+                )
             }
         }
+        // #250 on Android 15 and later, where a window's navigation bar color isn't drawn: the band is the player's own.
+        if (drawsNavBand(android.os.Build.VERSION.SDK_INT, navBand)) PlayerNavBand(inkLight, Modifier.align(Alignment.BottomCenter))
     }
     }
 
@@ -1145,7 +1433,7 @@ private fun FullscreenVideo(song: Song, forceLandscape: Boolean, pip: Boolean = 
         ctl?.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
             // Back to the bars as the settings have them (#115: the status bar may stay hidden).
-            com.vinz.music.ui.components.SystemBars.apply(ctl, prefs.current.hideStatusBar)
+            com.vinz.music.ui.components.SystemBars.apply(ctl, com.vinz.music.ui.components.SystemBars.hidden(prefs.current))
             if (forceLandscape) activity?.requestedOrientation = previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
@@ -1164,12 +1452,12 @@ private fun FullscreenVideo(song: Song, forceLandscape: Boolean, pip: Boolean = 
                 Box(
                     Modifier.align(Alignment.TopEnd).padding(16.dp).size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).clickable(onClick = onExit),
                     contentAlignment = Alignment.Center,
-                ) { Icon(VinzIcons.FullscreenExit, "Exit full screen", tint = Color.White) }
+                ) { Icon(VinzIcons.FullscreenExit, tr(R.string.exit_full_screen), tint = Color.White) }
                 Box(
                     Modifier.align(Alignment.Center).size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f))
                         .clickable(remember { MutableInteractionSource() }, indication = null) { pc.togglePlay() },
                     contentAlignment = Alignment.Center,
-                ) { Icon(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, "Play/pause", tint = Color.White, modifier = Modifier.size(44.dp)) }
+                ) { Icon(if (isPlaying) VinzIcons.Pause else VinzIcons.Play, tr(R.string.play_pause), tint = Color.White, modifier = Modifier.size(44.dp)) }
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 32.dp, vertical = 16.dp)) {
                     PlayheadScrubber(position, pc.duration)
                 }
@@ -1197,3 +1485,33 @@ internal fun SeekLabel(f: SeekFlash, modifier: Modifier) {
         if (f.ahead) Icon(VinzIcons.Next, null, tint = Color.White, modifier = Modifier.size(16.dp))
     }
 }
+
+/**
+ * "Covers blend too" (1.7.8, A6, after Apple Music): while a crossfade plays into [songId], the ending song's cover lies
+ * over it and fades away over the blend, so the cover changes with the sound instead of at the blend's start. With
+ * Reduce motion it simply switches halfway. Nothing is drawn otherwise.
+ */
+@Composable
+private fun BlendingCover(songId: String, modifier: Modifier) {
+    val c = LocalContainer.current
+    val settings = com.vinz.music.ui.theme.LocalAppSettings.current
+    if (!settings.view.blendCovers) return
+    val blend by c.mixState.blend.collectAsState()
+    val now = blend?.takeIf { it.toId == songId } ?: return
+    val queue by c.player.queue.collectAsState()
+    val from = remember(now.fromId) { queue.firstOrNull { it.song.id == now.fromId }?.song } ?: return
+    val alpha = if (settings.reduceMotion) (if (now.progress < 0.5f) 1f else 0f) else 1f - now.progress
+    if (alpha <= 0f) return
+    coil3.compose.AsyncImage(
+        hiRes(from.thumbnail, 1200), null, contentScale = ContentScale.Crop,
+        modifier = modifier.graphicsLayer { this.alpha = alpha },
+    )
+}
+
+/**
+ * The status bar's room at the top, also while it's hidden (Hide status bar): the player keeps its place and only the bar
+ * goes (the owner, 1.8.0: it moved the whole player up).
+ */
+@kotlin.OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun statusBarRoom(): WindowInsets = WindowInsets.statusBarsIgnoringVisibility

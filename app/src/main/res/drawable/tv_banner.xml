@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="320dp" android:height="180dp" />
+            <corners android:radius="8dp" />
+            <gradient android:angle="0" android:startColor="#050507" android:centerColor="#0B0B0F" android:endColor="#101014" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/vinz_logo" android:width="168dp" android:height="168dp" android:gravity="center" />
+</layer-list>

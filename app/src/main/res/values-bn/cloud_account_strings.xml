@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">সাইন ইন করুন এবং আপনার ক্লাউড প্রোফাইল পরিচালনা করুন</string>
+    <string name="cloud_account_intro">আপনার ক্লাউড প্রোফাইল YouTube Music থেকে আলাদা। সাইন ইন না করেই স্থানীয় সঙ্গীত এবং প্লেব্যাক কাজ করে।</string>
+    <string name="cloud_account_email">ইমেইল ঠিকানা</string>
+    <string name="cloud_account_password">পাসওয়ার্ড</string>
+    <string name="cloud_account_username">ব্যবহারকারীর নাম</string>
+    <string name="cloud_account_display_name">প্রদর্শনের নাম</string>
+    <string name="cloud_account_username_hint">3-24 ছোট হাতের অক্ষর, সংখ্যা বা আন্ডারস্কোর</string>
+    <string name="cloud_account_password_hint">কমপক্ষে 8 টি অক্ষর ব্যবহার করুন।</string>
+    <string name="cloud_account_create">ক্লাউড অ্যাকাউন্ট তৈরি করুন</string>
+    <string name="cloud_account_existing">আমি ইতিমধ্যে একটি অ্যাকাউন্ট আছে</string>
+    <string name="cloud_account_forgot">পাসওয়ার্ড ভুলে গেছেন?</string>
+    <string name="cloud_account_recovery">পুনরুদ্ধার ইমেল পাঠান</string>
+    <string name="cloud_account_recovery_sent">এই ঠিকানার জন্য একটি অ্যাকাউন্ট বিদ্যমান থাকলে, একটি পুনরুদ্ধার ইমেল পাঠানো হয়েছে৷</string>
+    <string name="cloud_account_confirmation">আপনার অ্যাকাউন্ট নিশ্চিত করতে আপনার ইমেল চেক করুন, তারপর সাইন ইন করতে ফিরে যান।</string>
+    <string name="cloud_account_setup">আপনার প্রোফাইল সেট আপ শেষ করুন.</string>
+    <string name="cloud_account_bio">বায়ো</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">পাবলিক প্রোফাইল</string>
+    <string name="cloud_account_public_hint">অন্যান্য Vinz ব্যবহারকারীদের আপনার প্রোফাইল দেখার অনুমতি দিন।</string>
+    <string name="cloud_account_discoverable">আবিষ্কারযোগ্য</string>
+    <string name="cloud_account_discoverable_hint">ব্যবহারকারীর আবিষ্কারে আপনার প্রোফাইল প্রদর্শিত হওয়ার অনুমতি দিন।</string>
+    <string name="cloud_account_saved">আপনার ক্লাউড প্রোফাইল সংরক্ষিত হয়.</string>
+    <string name="cloud_account_signed_out">আপনি আপনার ক্লাউড অ্যাকাউন্ট থেকে সাইন আউট করেছেন।</string>
+    <string name="cloud_account_signed_in">%1$s হিসাবে সাইন ইন করেছেন৷</string>
+    <string name="cloud_account_load_failed">আপনার প্রোফাইল লোড করা যাবে না. সম্পাদনা করার আগে আবার চেষ্টা করুন.</string>
+    <string name="cloud_account_request_failed">এই অ্যাকাউন্টের অনুরোধটি সম্পূর্ণ করা যায়নি। আপনার সংযোগ পরীক্ষা করুন এবং আবার চেষ্টা করুন.</string>
+    <string name="cloud_account_sign_in_failed">সাইন-ইন সম্পূর্ণ করা যায়নি। আপনার বিশদ বিবরণ এবং সংযোগ পরীক্ষা করুন, তারপর আবার চেষ্টা করুন।</string>
+    <string name="cloud_account_save_failed">আপনার প্রোফাইল সংরক্ষণ করা যায়নি. আপনার বিশদ বিবরণ এবং সংযোগ পরীক্ষা করুন, তারপর আবার চেষ্টা করুন।</string>
+    <string name="cloud_account_recovery_failed">পুনরুদ্ধারের অনুরোধ সম্পূর্ণ করা যায়নি। পরে আবার চেষ্টা করুন.</string>
+    <string name="cloud_account_sign_out_failed">সাইন-আউট সম্পূর্ণ করা যায়নি। আবার চেষ্টা করুন</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

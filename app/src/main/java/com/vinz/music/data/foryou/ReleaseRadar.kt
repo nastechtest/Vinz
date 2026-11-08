@@ -1,5 +1,7 @@
 package com.vinz.music.data.foryou
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.content.Context
 import android.util.Log
 import androidx.work.Constraints
@@ -120,15 +122,17 @@ class ReleaseRadar(private val c: AppContainer) {
      * watched for new releases: Vinz's own mixes from your music don't use this.
      */
     private suspend fun artists(): List<FavoriteRef> {
-        val out = LinkedHashMap<String, FavoriteRef>()
-        c.artistPrefs.favorites.value.forEach { out.putIfAbsent(it.id, FavoriteRef(it.id, it.name)) }
-        if (c.settings.current.isLoggedIn) runCatching { withContext(Dispatchers.IO) { c.ytm.librarySubscriptions() } }.getOrNull()
-            ?.forEach { out.putIfAbsent(it.id, FavoriteRef(it.id, it.title)) }
-        c.library.artists.value.forEach { out.putIfAbsent(it.id, FavoriteRef(it.id, it.title)) }
         val now = System.currentTimeMillis()
-        c.db.plays().tasteTopArtists(now - 90L * 86_400_000, now, 60).filter { it.artistId != null }.take(30)
-            .forEach { out.putIfAbsent(it.artistId!!, FavoriteRef(it.artistId, it.artistName)) }
-        return out.values.filter { !c.exclusions.isArtistExcluded(it.id, it.name) }.take(MAX_ARTISTS)
+        val starred = c.artistPrefs.favorites.value.map { FavoriteRef(it.id, it.name) }
+        val played = c.imports.taste.tasteTopArtists(now - 90L * 86_400_000, now, 60).filter { it.artistId != null }
+            .map { FavoriteRef(it.artistId!!, it.artistName) }
+        val followed = if (!c.settings.current.isLoggedIn) emptyList() else
+            runCatching { withContext(Dispatchers.IO) { c.ytm.librarySubscriptions() } }.getOrNull().orEmpty().map { FavoriteRef(it.id, it.title) }
+        val library = c.library.artists.value.map { FavoriteRef(it.id, it.title) }
+        val turn = prefs.getInt(TURN, 0)
+        val list = watchList(starred, played, followed, library, turn) { c.exclusions.isArtistExcluded(it.id, it.name) }
+        prefs.edit().putInt(TURN, turn + 1).apply()
+        return list
     }
 
     data class FavoriteRef(val id: String, val name: String)
@@ -142,12 +146,12 @@ class ReleaseRadar(private val c: AppContainer) {
         if (worth.isNotEmpty() && c.settings.current.releaseNotifications) {
             val names = worth.map { it.artistName }.distinct()
             val title = when (names.size) {
-                1 -> "New from ${names[0]}"
-                2 -> "New from ${names[0]} and ${names[1]}"
-                else -> "New from ${names[0]}, ${names[1]} and ${names.size - 2} more"
+                1 -> tr(R.string.new_from, names[0])
+                2 -> tr(R.string.new_from_and, names[0], names[1])
+                else -> tr(R.string.new_from_and_more, names[0], names[1], names.size - 2)
             }
             val text = worth.take(4).joinToString(" · ") { "${it.title} (${it.kind.lowercase()})" }
-            Notifications.post(c.app, Notifications.NEW_RELEASES, NOTIFICATION_ID, title, text, "vinz://releases")
+            Notifications.post(c.app, Notifications.NEW_RELEASES, NOTIFICATION_ID, title, text, "vinz://releases", iconRes = R.drawable.ic_notification_release)
         }
         c.db.releases().setNotified(pending.map { it.id }, System.currentTimeMillis())
     }
@@ -171,8 +175,8 @@ class ReleaseRadar(private val c: AppContainer) {
         }
         val artists = releases.map { it.artistName }.distinct()
         c.forYou.saveMix(
-            MadeForYou.RADAR, "Release Radar",
-            if (songs.isEmpty()) "New music from your artists will show up here" else "New from ${MadeForYou.namesLine(artists)}",
+            MadeForYou.RADAR, tr(R.string.release_radar),
+            if (songs.isEmpty()) tr(R.string.new_music_from_your_artists_will) else tr(R.string.new_from, MadeForYou.namesLine(artists)),
             artists.take(4), RADAR_COLOR, songs,
         )
         prefs.edit().putString(PLAYLIST_WEEK, week).apply()
@@ -194,7 +198,7 @@ class ReleaseRadar(private val c: AppContainer) {
         private suspend fun get(http: okhttp3.OkHttpClient, url: okhttp3.HttpUrl): JsonObject = withContext(Dispatchers.IO) {
             delay(DEEZER_GAP_MS)
             http.newCall(Request.Builder().url(url).build()).execute().use { r ->
-                if (!r.isSuccessful) throw java.io.IOException("Deezer answered HTTP ${r.code}")
+                if (!r.isSuccessful) throw java.io.IOException(tr(R.string.deezer_answered_http, r.code))
                 json.parseToJsonElement(r.body.string()).jsonObject
             }
         }
@@ -235,12 +239,36 @@ class ReleaseRadar(private val c: AppContainer) {
         private const val LAST_RUN = "last_run"
         private const val CHECKED = "checked"
         private const val PLAYLIST_WEEK = "playlist_week"
-        private const val MAX_ARTISTS = 150
+        private const val TURN = "turn"
+        /** Artists looked at in one go (about a second each): 200 since 1.8.1 (was 150). */
+        const val MAX_ARTISTS = 200
+        /** Followed and library artists looked at each time however many are starred and played. */
+        private const val MIN_ROTATING = 50
         private const val MAX_SONGS = 40
         private const val PAGE_GAP_MS = 1_000L
         private const val DEEZER_GAP_MS = 250L
         private const val NOTIFICATION_ID = 4101
         private const val RADAR_COLOR = 0xFF2E7D6B.toInt()
+
+        /**
+         * Who to look at this time ([turn] counts the looks). Starred artists and the 30 most played lately always (Reddit,
+         * 1.7.9: "New from your artists" missed some of the listener's artists: followed and library artists came first,
+         * so with many of them the cap was reached before the ones actually played, which were never looked at). The
+         * followed and library artists past the cap take turns, a different stretch each look, so every one of them
+         * comes up within a few looks instead of the same ones always being left out.
+         */
+        fun watchList(
+            starred: List<FavoriteRef>, played: List<FavoriteRef>, followed: List<FavoriteRef>, library: List<FavoriteRef>,
+            turn: Int, max: Int = MAX_ARTISTS, excluded: (FavoriteRef) -> Boolean = { false },
+        ): List<FavoriteRef> {
+            val must = (starred + played.take(30)).distinctBy { it.id }.filterNot(excluded)
+            val mustIds = must.map { it.id }.toSet()
+            val rest = (followed + library).distinctBy { it.id }.filter { it.id !in mustIds && !excluded(it) }
+            val room = (max - must.size).coerceAtLeast(MIN_ROTATING)
+            if (rest.size <= room) return must + rest
+            val start = ((turn.toLong() * room) % rest.size).toInt()
+            return must + (rest.drop(start) + rest.take(start)).take(room)
+        }
 
         /** The releases on an artist's page: its shelves of albums (YouTube's Albums, Singles & EPs, in any language). */
         fun discography(page: ArtistPage): List<Seen> = page.shelves
@@ -265,6 +293,27 @@ class ReleaseRadar(private val c: AppContainer) {
             .replace(Regex("""\s+-\s+(single|ep)$"""), "")
             .replace(Regex("""\s+(ep|single)$"""), "")
             .filter { it.isLetterOrDigit() }
+
+        /**
+         * #311 (1.8.1): the New releases page's "Favorite artists only" (kept with its other filters, in the library's
+         * sort choices; Home's section follows it). Off, every watched artist's releases show, as before.
+         */
+        const val STARRED_ONLY = "releases:starred_only"
+
+        /** The releases by the starred artists ([starred], their ids). */
+        fun fromFavorites(releases: List<ReleaseEntity>, starred: Set<String>): List<ReleaseEntity> = releases.filter { it.artistId in starred }
+
+        /**
+         * The artists to pick one of on the New releases page (#311): those with releases in [releases], the ones played
+         * most lately ([mostPlayed], artist ids, most first) leading, then by name; as (id, name).
+         */
+        fun artistsToPick(releases: List<ReleaseEntity>, mostPlayed: List<String>, max: Int = 12): List<Pair<String, String>> {
+            val rank = mostPlayed.withIndex().associate { (i, id) -> id to i }
+            return releases.distinctBy { it.artistId }
+                .sortedWith(compareBy<ReleaseEntity> { rank[it.artistId] ?: Int.MAX_VALUE }.thenBy { it.artistName.lowercase() })
+                .take(max)
+                .map { it.artistId to it.artistName }
+        }
 
         /** Out within the last [days] days, by its date where known, else by when Vinz first saw it. */
         fun isRecent(r: ReleaseEntity, today: LocalDate, days: Int): Boolean {

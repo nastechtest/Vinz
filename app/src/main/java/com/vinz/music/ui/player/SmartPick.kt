@@ -1,5 +1,7 @@
 package com.vinz.music.ui.player
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -26,6 +28,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * What adding a Smart Shuffle pick to the playlist [title] did ([result] null: it failed), as Add to playlist says it
+ * ("Added to …", "Already in …", "Couldn't add to …"; 1.8.1: "Added" showed when the song was already there), and
+ * whether the song is the playlist's own now (no longer a pick).
+ */
+internal fun smartPickAdded(result: com.vinz.music.data.innertube.YouTubeMusic.PlaylistAdd?, title: String): Pair<String, Boolean> =
+    com.vinz.music.ui.components.addedMessage(result, title, many = false) to (result != null && (result.added > 0 || result.alreadyThere > 0))
+
+/**
  * Beside the like button while a Smart Shuffle pick plays: add it to the playlist it was picked for (a playlist on the
  * signed-in account), or "Not for me" (disliked, and on to the next song).
  */
@@ -37,27 +47,29 @@ fun SmartPickButton(song: Song) {
     val source by c.queue.source.collectAsState()
     val playlist = source.originId?.takeIf { source.kind == QueueKind.PLAYLIST && c.settings.current.isLoggedIn && it.startsWith("PL") }
     Box {
-        CircleGlyph(VinzIcons.SmartShuffle, "Smart Shuffle pick", active = true) { open = true }
+        CircleGlyph(VinzIcons.SmartShuffle, tr(R.string.smart_shuffle_pick), active = true) { open = true }
         DropdownMenu(open, { open = false }) {
             Text(
-                "Picked for this queue by Smart Shuffle", style = MaterialTheme.typography.labelMedium,
+                tr(R.string.picked_for_this_queue_by_smart), style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             if (playlist != null) DropdownMenuItem(
-                { Text("Add to ${source.title.ifBlank { "this playlist" }}") },
+                { Text(tr(R.string.add_to, source.title.ifBlank { tr(R.string.this_playlist_2) })) },
                 {
                     open = false
                     c.scope.launch(Dispatchers.Main) {
-                        val ok = runCatching { withContext(Dispatchers.IO) { c.ytm.addToPlaylist(playlist, song.id) } }.isSuccess
+                        val result = runCatching { withContext(Dispatchers.IO) { c.ytm.addSongsToPlaylist(playlist, listOf(song.id)) } }.getOrNull()
+                        val (message, kept) = smartPickAdded(result, source.title.ifBlank { tr(R.string.this_playlist_2) })
                         // Kept: it's the playlist's own song now, not a pick.
-                        if (ok) c.queue.smartPicks.value = c.queue.smartPicks.value - song.id
-                        Toast.makeText(context, if (ok) "Added to ${source.title}" else "Couldn't add it to the playlist", Toast.LENGTH_SHORT).show()
+                        if (kept) c.queue.smartPicks.value = c.queue.smartPicks.value - song.id
+                        if ((result?.added ?: 0) > 0) c.library.playlistChanged(playlist)
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
                 },
                 leadingIcon = { Icon(VinzIcons.PlaylistAdd, null) },
             )
             DropdownMenuItem(
-                { Text("Not for me") },
+                { Text(tr(R.string.not_for_me)) },
                 { open = false; c.library.setDisliked(song, true); c.player.next() },
                 leadingIcon = { Icon(VinzIcons.ThumbDown, null) },
             )

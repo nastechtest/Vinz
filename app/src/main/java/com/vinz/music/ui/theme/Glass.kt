@@ -11,6 +11,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -28,6 +29,29 @@ import dev.chrisbanes.haze.glass.hazeGlass
 
 /** The backdrop that glass surfaces in the current subtree refract. */
 val LocalHazeState = compositionLocalOf<HazeState?> { null }
+
+internal enum class GlassPath { LIQUID, FROSTED, SOLID }
+
+/** Android 12: the first with real blur. */
+private const val BLUR_SDK = 31
+
+/**
+ * How [GlassSurface] draws: Liquid Glass and Frosted need something behind to sample ([haze]) and Android 12's blur.
+ * Without blur, Clear glass showed everything behind it sharp, so below Android 12 there's no glass: the surface is
+ * solid (1.8.1.1), and nothing behind it needs copying ([glassSamplesThePage]).
+ */
+internal fun glassPath(sdk: Int, liquid: Boolean, frosted: Boolean, haze: Boolean, refract: Boolean = true): GlassPath = when {
+    !haze || sdk < BLUR_SDK -> GlassPath.SOLID
+    liquid && refract -> GlassPath.LIQUID
+    liquid || frosted -> GlassPath.FROSTED
+    else -> GlassPath.SOLID
+}
+
+/**
+ * Whether anything will draw glass, which is the only reason to copy the whole page into a layer on every change of it
+ * (hazeSource). With glass off (Performance mode: #343) or below Android 12 that was work for nothing.
+ */
+internal fun glassSamplesThePage(sdk: Int, liquid: Boolean, frosted: Boolean): Boolean = sdk >= BLUR_SDK && (liquid || frosted)
 
 /**
  * A surface that renders as refractive Liquid Glass when enabled in
@@ -48,6 +72,11 @@ fun GlassSurface(
      * Glass on (issue #5): in a page it's frosted with the page's own fill instead.
      */
     inPage: Boolean = false,
+    /**
+     * False for flat, edge-to-edge bars (the docked tab bar): frosted even with Liquid Glass on. As a lens it bent
+     * everything behind it across the tabs and showed its edges at the screen's sides (#273, 1.7.9.3).
+     */
+    refract: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val settings = LocalAppSettings.current
@@ -59,14 +88,10 @@ fun GlassSurface(
                 .shadow(elevation * 0.5f, shape, ambientColor = Color.Black.copy(alpha = 0.22f), spotColor = Color.Black.copy(alpha = 0.22f))
                 .clip(shape)
                 .background(if (tint.isSpecified) tint else if (onMedia) Color.Black.copy(alpha = 0.35f) else com.vinz.music.ui.components.frostFill(1.4f))
-                .border(
-                    0.6.dp,
-                    Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark || onMedia) 0.18f else 0.6f), Color.White.copy(alpha = 0.03f))),
-                    shape,
-                ),
+                .rim(Color.White.copy(alpha = if (dark || onMedia) 0.18f else 0.6f), Color.White.copy(alpha = 0.03f), shape, all = refract),
             content = content,
         )
-    } else if (settings.liquidGlass && haze != null) {
+    } else if (glassPath(android.os.Build.VERSION.SDK_INT, settings.liquidGlass, settings.frostedGlass, haze != null, refract) == GlassPath.LIQUID) {
         val clear = onMedia || settings.glassKind == GlassKind.CLEAR
         val style = remember(shape, tint, clear, dark) {
             val baseStyle = if (clear) GlassStyle.clear else GlassStyle.regular
@@ -83,7 +108,7 @@ fun GlassSurface(
                 .clip(shape),
             content = content,
         )
-    } else if (settings.frostedGlass && haze != null) {
+    } else if (glassPath(android.os.Build.VERSION.SDK_INT, settings.liquidGlass, settings.frostedGlass, haze != null, refract) == GlassPath.FROSTED) {
         val scheme = MaterialTheme.colorScheme
         val wash = when {
             tint.isSpecified -> tint
@@ -102,31 +127,34 @@ fun GlassSurface(
                 .shadow(elevation * 0.6f, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
                 .clip(shape)
                 .hazeBlur(input = HazeInput.Backdrop(haze), style = style)
-                .border(
-                    0.6.dp,
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = if (dark || onMedia) 0.18f else 0.55f), Color.White.copy(alpha = 0.03f))
-                    ),
-                    shape,
-                ),
+                .rim(Color.White.copy(alpha = if (dark || onMedia) 0.18f else 0.55f), Color.White.copy(alpha = 0.03f), shape, all = refract),
             content = content,
         )
     } else {
         val scheme = MaterialTheme.colorScheme
-        val fill = if (onMedia) Color.Black.copy(alpha = 0.35f) else scheme.surfaceContainerHigh.copy(alpha = 0.97f)
+        // Opaque: with no glass, rows scrolling under the mini player read through even a 3% see-through fill.
+        // Glass asked for where there's no blur (Android 11 or older): a see-through tint thick enough to read over.
+        val noBlur = android.os.Build.VERSION.SDK_INT < BLUR_SDK && (settings.liquidGlass || settings.frostedGlass)
+        val fill = if (onMedia) Color.Black.copy(alpha = if (noBlur) 0.55f else 0.35f) else scheme.surfaceContainerHigh
         Box(
             modifier
                 .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
                 .clip(shape)
-                .background(if (tint.isSpecified) tint else fill)
-                .border(
-                    0.6.dp,
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = if (dark || onMedia) 0.16f else 0.6f), Color.White.copy(alpha = 0.02f))
-                    ),
-                    shape,
-                ),
+                .background(if (tint.isSpecified) (if (noBlur) tint.copy(alpha = tint.alpha.coerceAtLeast(0.88f)) else tint) else fill)
+                .rim(Color.White.copy(alpha = if (dark || onMedia) 0.16f else 0.6f), Color.White.copy(alpha = 0.02f), shape, all = refract),
             content = content,
         )
     }
 }
+
+/**
+ * The glass's lit edge: brightest at the top ([top]), fading to [bottom] down its sides. Not [all] (a flat bar from one
+ * side of the screen to the other, the docked tab bar), only the top edge's hairline: down the screen's sides the edge
+ * showed as two bright lines (#290).
+ */
+private fun Modifier.rim(top: Color, bottom: Color, shape: RoundedCornerShape, all: Boolean): Modifier =
+    if (all) border(0.6.dp, Brush.verticalGradient(listOf(top, bottom)), shape)
+    else drawWithContent {
+        drawContent()
+        drawLine(top, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 0.6.dp.toPx())
+    }

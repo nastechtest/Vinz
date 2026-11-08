@@ -47,7 +47,13 @@ object Routes {
     const val PICK_ARTISTS = "pick_artists"
     /** The Vinz Account: make one (after the welcome screen, or from Settings) or change it. */
     const val ACCOUNT = "vinz_account"
+    /** Cloud-backed Vinz identity, authentication and public/private profile editor. */
+    const val VINZ_CLOUD_ACCOUNT = "vinz_cloud_account"
     const val EXCLUSIONS = "exclusions"
+    /** Bring your history (1.8.1): Spotify's data download, Google Takeout, Last.fm. */
+    const val BRING_HISTORY = "bring_history"
+    /** The imported songs that need a look: pick which song each is. */
+    const val IMPORT_REVIEW = "import_review"
     /** Blend: your code, scanning a friend's, and your Blends. */
     const val BLENDS = "blends"
     const val BLEND_SCAN = "blend_scan"

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_account_summary">Conectați-vă și gestionați-vă profilul cloud</string>
+    <string name="cloud_account_intro">Profilul dvs. cloud este separat de YouTube Music. Muzica locală și redarea funcționează fără a vă conecta.</string>
+    <string name="cloud_account_email">Adresa de e-mail</string>
+    <string name="cloud_account_password">Parolă</string>
+    <string name="cloud_account_username">Nume de utilizator</string>
+    <string name="cloud_account_display_name">Numele de afișare</string>
+    <string name="cloud_account_username_hint">3–24 de litere mici, cifre sau litere de subliniere</string>
+    <string name="cloud_account_password_hint">Utilizați cel puțin 8 caractere.</string>
+    <string name="cloud_account_create">Creați un cont cloud</string>
+    <string name="cloud_account_existing">Am deja un cont</string>
+    <string name="cloud_account_forgot">Aţi uitat parola?</string>
+    <string name="cloud_account_recovery">Trimite e-mail de recuperare</string>
+    <string name="cloud_account_recovery_sent">Dacă există un cont pentru această adresă, a fost trimis un e-mail de recuperare.</string>
+    <string name="cloud_account_confirmation">Verificați e-mailul pentru a vă confirma contul, apoi reveniți pentru a vă conecta.</string>
+    <string name="cloud_account_setup">Finalizați configurarea profilului dvs.</string>
+    <string name="cloud_account_bio">bio</string>
+    <string name="cloud_account_bio_count">%1$d/160</string>
+    <string name="cloud_account_public">Profil public</string>
+    <string name="cloud_account_public_hint">Permiteți altor utilizatori Vinz să vă vadă profilul.</string>
+    <string name="cloud_account_discoverable">Descoperibil</string>
+    <string name="cloud_account_discoverable_hint">Permiteți profilului dvs. să apară în descoperirea utilizatorilor.</string>
+    <string name="cloud_account_saved">Profilul dvs. cloud este salvat.</string>
+    <string name="cloud_account_signed_out">V-ați deconectat de la contul dvs. cloud.</string>
+    <string name="cloud_account_signed_in">Conectat ca %1$s</string>
+    <string name="cloud_account_load_failed">Profilul dvs. nu a putut fi încărcat. Încercați din nou înainte de a edita.</string>
+    <string name="cloud_account_request_failed">Această solicitare de cont nu a putut fi finalizată. Verificați conexiunea și încercați din nou.</string>
+    <string name="cloud_account_sign_in_failed">Conectarea nu a putut fi finalizată. Verificați detaliile și conexiunea, apoi încercați din nou.</string>
+    <string name="cloud_account_save_failed">Profilul dvs. nu a putut fi salvat. Verificați detaliile și conexiunea, apoi încercați din nou.</string>
+    <string name="cloud_account_recovery_failed">Solicitarea de recuperare nu a putut fi finalizată. Încercați din nou mai târziu.</string>
+    <string name="cloud_account_sign_out_failed">Deconectarea nu a putut fi finalizată. Încearcă din nou.</string>
+    <!-- English fallback for new account guidance, pending translation. -->
+    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+</resources>

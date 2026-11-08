@@ -5,6 +5,28 @@ downloads this folder's `index.json` only when someone opens that list, and a Lo
 Every Look shows as a preview first, and a Look can only change how Vinz looks: never accounts, playback or anything
 else.
 
+## Nastech Research collection
+
+Ten original, code-only Looks are credited to **Nastech Research**. Their editable profiles live in
+[`nastech-research.json`](nastech-research.json); no external photos, fonts or additional renderer are needed.
+
+- **True-black AMOLED:** Obsidian AMOLED, Black Jade AMOLED, Carbon Gold AMOLED. Pages, player and both lyrics
+  modes use black; no moving background or glass layer is requested.
+- **Black-base / glass:** Noctilucent uses subdued drifting midnight fields over a black base; Crystal Tide uses
+  clear liquid glass over ocean light fields; Glacier Frost is a still, frosted mist-blue Look.
+- **Water / polished motion:** Ripple Lagoon, Pelagic Flow, Opal Silk and Ember Prism use Vinz's existing animated
+  ripples, waves, silk ribbons and light fields. They do not add a separate animation engine.
+
+The six moving Looks honor **Reduce motion** and **Performance mode**. Applying, importing or resetting a Look
+must not change the listener's Reduce motion preference; legacy codes carrying `reduce_motion` ignore that key.
+All presets leave playback and experimental navigation opt-in untouched. They use Vinz's default icon style.
+
+After editing a profile, regenerate its gallery code with `python3 scripts/generate-nastech-looks.py`. Reviewers
+and CI can verify reproducibility without writing files using `python3 scripts/generate-nastech-looks.py --check`.
+The generator preserves the other gallery entries. `NastechResearchLooksTest`, `LookTest` and `ThemeGalleryTest`
+check the generated entries against the real Android settings and Look decoder. Device appearance review is still
+required; automated tests do not establish visual approval or authorize release.
+
 ## Add yours
 
 1. Make your Look in Vinz, then save it: **Appearance → Looks → Save as a Look**.

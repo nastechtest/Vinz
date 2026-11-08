@@ -1,5 +1,7 @@
 package com.vinz.music.ui.theme
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -21,18 +23,18 @@ import kotlin.math.sin
  * [DrawScope.drawVinzAvatar] so `AvatarRenderTest` can put them all on one sheet. Ids are stored: never rename one.
  */
 enum class VinzAvatar(val id: String, val label: String) {
-    VINZ("vinz", "Vinz"),
-    RING("ring", "Ring"),
-    BARS("bars", "The mark"),
-    AURORA("aurora", "Aurora"),
-    DAWN("dawn", "Dawn"),
-    SPLIT("split", "Split light"),
-    ORBIT("orbit", "Orbits"),
-    PETALS("petals", "Color wheel"),
-    WAVE("wave", "Waves"),
-    GLASS("glass", "Glass"),
-    MONO("mono", "White light"),
-    NIGHT("night", "Night sky");
+    VINZ("vinz", tr(R.string.app_name)),
+    RING("ring", tr(R.string.ring)),
+    BARS("bars", tr(R.string.the_mark)),
+    AURORA("aurora", tr(R.string.aurora)),
+    DAWN("dawn", tr(R.string.dawn)),
+    SPLIT("split", tr(R.string.split_light)),
+    ORBIT("orbit", tr(R.string.orbits)),
+    PETALS("petals", tr(R.string.color_wheel)),
+    WAVE("wave", tr(R.string.waves)),
+    GLASS("glass", tr(R.string.glass)),
+    MONO("mono", tr(R.string.white_light)),
+    NIGHT("night", tr(R.string.night_sky));
 
     companion object {
         fun of(id: String?): VinzAvatar? = entries.firstOrNull { it.id == id }

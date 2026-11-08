@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import com.vinz.music.ui.components.VinzSlider
 import com.vinz.music.ui.components.VinzSwitch
 import com.vinz.music.ui.theme.VinzIcons
@@ -98,12 +100,12 @@ fun MoreOptions(groups: List<String>, content: @Composable () -> Unit) {
     val ui = LocalUi.current
     Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(22.dp)) {
         Row(
-            Modifier.fillMaxWidth().clip(ui.card).pane(ui.card).clickable(onClickLabel = if (open) "Show fewer options" else "Show more options") { open = !open }
+            Modifier.fillMaxWidth().clip(ui.card).pane(ui.card).clickable(onClickLabel = if (open) tr(R.string.show_fewer_options) else tr(R.string.show_more_options)) { open = !open }
                 .padding(horizontal = 16.dp, vertical = ui.gap(14.dp)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(if (open) "Fewer options" else "More options", style = MaterialTheme.typography.bodyLarge)
+                Text(if (open) tr(R.string.fewer_options) else tr(R.string.more_options), style = MaterialTheme.typography.bodyLarge)
                 if (!open) Text(groups.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(if (open) VinzIcons.ChevronUp else VinzIcons.ChevronDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -141,7 +143,7 @@ fun Note(text: String) {
 @Composable
 fun InfoMark(open: Boolean, about: String, onClick: () -> Unit) {
     Icon(
-        VinzIcons.Info, if (open) "Hide details" else "More about $about",
+        VinzIcons.Info, if (open) tr(R.string.hide_details) else tr(R.string.more_about, about),
         Modifier.padding(start = 6.dp).size(28.dp).clip(androidx.compose.foundation.shape.CircleShape)
             .clickable(onClick = onClick).padding(6.dp),
         tint = if (open) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.ink3,
@@ -219,16 +221,13 @@ fun ShowChips(options: List<ShowOption>) {
             com.vinz.music.ui.components.VinzChip(
                 o.on, { o.onChange(!o.on) }, o.label,
                 icon = if (o.on) VinzIcons.Check else null,
-                modifier = androidx.compose.ui.Modifier.semantics { role = androidx.compose.ui.semantics.Role.Checkbox; stateDescription = if (o.on) "Shown" else "Hidden" },
+                modifier = androidx.compose.ui.Modifier.semantics { role = androidx.compose.ui.semantics.Role.Checkbox; stateDescription = if (o.on) tr(R.string.shown) else tr(R.string.hidden) },
             )
         }
     }
 }
 
-/**
- * A row that opens another page: an icon, title, summary, chevron. With a [hue] (Settings' sections, red to violet in
- * the spectrum's order) the icon sits on a tile of that color.
- */
+/** Opens a settings page. Colour belongs to the symbol; its surrounding slot stays transparent. */
 @Composable
 fun NavRow(icon: ImageVector, title: String, subtitle: String?, selected: Boolean = false, hint: String? = null, hue: Color? = null, onClick: () -> Unit) {
     val ui = LocalUi.current
@@ -239,11 +238,14 @@ fun NavRow(icon: ImageVector, title: String, subtitle: String?, selected: Boolea
             .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = ui.gap(11.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (hue != null) androidx.compose.foundation.layout.Box(
-            Modifier.size(34.dp).clip(ui.smallArt).background(hue), contentAlignment = Alignment.Center,
-        ) { Icon(icon, null, Modifier.size(20.dp), tint = Color.White) }
-        else Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(if (hue != null) 14.dp else 18.dp))
+        val ink = settingsIconColor(
+            hue ?: com.vinz.music.ui.theme.VinzTokens.spectrumAt(((icon.name.hashCode() ushr 1) % 101) / 100f),
+            MaterialTheme.colorScheme.surface,
+        )
+        androidx.compose.foundation.layout.Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(22.dp), tint = ink)
+        }
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -276,8 +278,10 @@ fun SliderSetting(
     info: String? = null,
     onSave: (Float) -> Unit,
 ) {
-    var v by remember { mutableFloatStateOf(value) }
-    LaunchedEffect(value) { v = value }
+    // Do not pass malformed imported preferences to either the label formatter or the slider.
+    val safeValue = value.takeIf { it.isFinite() }?.coerceIn(range.start, range.endInclusive) ?: range.start
+    var v by remember { mutableFloatStateOf(safeValue) }
+    LaunchedEffect(safeValue) { v = safeValue }
     var open by androidx.compose.runtime.saveable.rememberSaveable(title, "slider") { androidx.compose.runtime.mutableStateOf(false) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -291,6 +295,12 @@ fun SliderSetting(
         VinzSlider(v, { v = it }, enabled = enabled, valueRange = range, steps = steps, onValueChangeFinished = { onSave(v) })
     }
 }
+
+/**
+ * A slider's value as a word and its number ("Airy · 140%"): the word says what it does, the number lets you come back
+ * to exactly the same place (#209: some sliders only said "Balanced").
+ */
+fun worded(word: String, v: Float) = "$word · ${kotlin.math.round(v * 100).toInt()}%"
 
 /**
  * A round tick: filled in ink with a check when on, an empty hairline circle when off (the Tabs list). The 48 dp row

@@ -1,0 +1,173 @@
+{
+  "format": 1,
+  "by": "Nastech Research",
+  "base": {
+    "theme_mode": "s:DARK",
+    "color_source": "s:CUSTOM",
+    "accent_exact": "b:1",
+    "light_style": "s:WHITE",
+    "surface_tint": "s:NEUTRAL",
+    "contrast_level": "s:MEDIUM",
+    "pure_black": "b:0",
+    "liquid_glass": "b:0",
+    "glass_kind": "s:REGULAR",
+    "frosted_glass": "b:0",
+    "frosted_pages": "b:0",
+    "backdrop_dim": "f:0.35",
+    "backdrop_motion": "b:0",
+    "font_choice": "s:CLEAN",
+    "corners": "s:ROUND",
+    "player_background": "s:APPEARANCE",
+    "mesh_speed": "f:0.35",
+    "mesh_intensity": "f:0.8",
+    "lyrics_background": "s:PLAYER",
+    "immersive_background": "s:PLAYER"
+  },
+  "looks": [
+    {
+      "id": "nr-obsidian",
+      "name": "Obsidian AMOLED",
+      "note": "True-black pages, player and lyrics; ice-blue accents, no moving backdrop.",
+      "accent": "A8D8FF",
+      "values": {
+        "pure_black": "b:1",
+        "contrast_level": "s:HIGH",
+        "player_background": "s:BLACK",
+        "lyrics_background": "s:COLOR",
+        "immersive_background": "s:COLOR",
+        "lyrics_bg_color": "i:-16777216",
+        "lyrics_bg_color2": "i:0",
+        "corners": "s:SUBTLE"
+      }
+    },
+    {
+      "id": "nr-black-jade",
+      "name": "Black Jade AMOLED",
+      "note": "True-black pages, player and lyrics; jade controls and clean rounded type.",
+      "accent": "65E6B5",
+      "values": {
+        "pure_black": "b:1",
+        "contrast_level": "s:HIGH",
+        "player_background": "s:BLACK",
+        "lyrics_background": "s:COLOR",
+        "immersive_background": "s:COLOR",
+        "lyrics_bg_color": "i:-16777216",
+        "lyrics_bg_color2": "i:0",
+        "font_choice": "s:ROUNDED"
+      }
+    },
+    {
+      "id": "nr-carbon-gold",
+      "name": "Carbon Gold AMOLED",
+      "note": "True-black pages, player and lyrics; warm gold with precise geometric type.",
+      "accent": "F3CF7A",
+      "values": {
+        "pure_black": "b:1",
+        "contrast_level": "s:HIGH",
+        "player_background": "s:BLACK",
+        "lyrics_background": "s:COLOR",
+        "immersive_background": "s:COLOR",
+        "lyrics_bg_color": "i:-16777216",
+        "lyrics_bg_color2": "i:0",
+        "font_choice": "s:GEOMETRIC",
+        "corners": "s:SUBTLE"
+      }
+    },
+    {
+      "id": "nr-noctilucent",
+      "name": "Noctilucent",
+      "note": "Black-base drifting midnight fields, violet accents and clear glass.",
+      "accent": "C3B0FF",
+      "backdrop": "MIDNIGHT",
+      "values": {
+        "pure_black": "b:1",
+        "liquid_glass": "b:1",
+        "glass_kind": "s:CLEAR",
+        "backdrop_motion": "b:1",
+        "backdrop_dim": "f:0.4",
+        "font_choice": "s:AIRY"
+      }
+    },
+    {
+      "id": "nr-crystal-tide",
+      "name": "Crystal Tide",
+      "note": "Clear liquid glass over animated ocean fields, with bright aqua accents.",
+      "accent": "7DE8F0",
+      "backdrop": "OCEAN",
+      "values": {
+        "liquid_glass": "b:1",
+        "glass_kind": "s:CLEAR",
+        "frosted_pages": "b:1",
+        "backdrop_motion": "b:1",
+        "corners": "s:EXTRA",
+        "font_choice": "s:AIRY"
+      }
+    },
+    {
+      "id": "nr-glacier-frost",
+      "name": "Glacier Frost",
+      "note": "Still mist-blue backgrounds and frosted glass; a calm, non-moving Look.",
+      "accent": "B6DFFF",
+      "backdrop": "MIST",
+      "values": {
+        "frosted_glass": "b:1",
+        "frosted_pages": "b:1",
+        "corners": "s:EXTRA"
+      }
+    },
+    {
+      "id": "nr-ripple-lagoon",
+      "name": "Ripple Lagoon",
+      "note": "Animated concentric water rings, turquoise accents and softly frosted panels.",
+      "accent": "62E6D4",
+      "backdrop": "RIPPLES",
+      "values": {
+        "frosted_glass": "b:1",
+        "frosted_pages": "b:1",
+        "backdrop_motion": "b:1",
+        "font_choice": "s:ROUNDED"
+      }
+    },
+    {
+      "id": "nr-pelagic-flow",
+      "name": "Pelagic Flow",
+      "note": "Slow blue wave lines and regular liquid glass for a deep-water feel.",
+      "accent": "7EC6FF",
+      "backdrop": "WAVES",
+      "values": {
+        "liquid_glass": "b:1",
+        "backdrop_motion": "b:1",
+        "font_choice": "s:GEOMETRIC"
+      }
+    },
+    {
+      "id": "nr-opal-silk",
+      "name": "Opal Silk",
+      "note": "Animated silk ribbons, opal-pink accents and rounded clear-glass controls.",
+      "accent": "F2B9E5",
+      "backdrop": "SILK",
+      "values": {
+        "liquid_glass": "b:1",
+        "glass_kind": "s:CLEAR",
+        "frosted_pages": "b:1",
+        "backdrop_motion": "b:1",
+        "corners": "s:EXTRA",
+        "font_choice": "s:AIRY"
+      }
+    },
+    {
+      "id": "nr-ember-prism",
+      "name": "Ember Prism",
+      "note": "Drifting ember light fields, amber accents and a polished frosted finish.",
+      "accent": "FFC18A",
+      "backdrop": "EMBER",
+      "values": {
+        "frosted_glass": "b:1",
+        "frosted_pages": "b:1",
+        "backdrop_motion": "b:1",
+        "font_choice": "s:GEOMETRIC",
+        "backdrop_dim": "f:0.4"
+      }
+    }
+  ]
+}

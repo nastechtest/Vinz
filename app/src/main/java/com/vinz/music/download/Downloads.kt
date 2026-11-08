@@ -1,7 +1,10 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.download
 
+import com.vinz.music.tr
 import android.app.Notification
 import android.content.Context
+import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
@@ -40,8 +43,17 @@ import java.util.concurrent.TimeUnit
 
 const val DOWNLOAD_CHANNEL = "downloads"
 
-/** [lossless]: a lossless file on the phone that lossless sync matched to this song (see [LosslessSync]). */
-data class DownloadInfo(val song: Song?, val state: Int, val percent: Float, val bytes: Long, val addedAt: Long = 0, val lossless: Boolean = false)
+/**
+ * [lossless]: a file on the phone that lossless sync matched to this song (see [LosslessSync]): a lossless one, or with
+ * [ownFile] one of your own MP3/AAC/Ogg files (1.8.1, #314), whose quality that is ("MP3 · 320 kbps").
+ */
+data class DownloadInfo(val song: Song?, val state: Int, val percent: Float, val bytes: Long, val addedAt: Long = 0, val lossless: Boolean = false, val ownFile: String? = null)
+
+/**
+ * A list row's download: its own, or for a music video that was downloaded as its song ("Songs, not videos"), the
+ * song's ([standIns]: video id -> song id). #315: a playlist's video rows showed as not downloaded.
+ */
+fun Map<String, DownloadInfo>.forRow(id: String, standIns: Map<String, String>): DownloadInfo? = this[id] ?: standIns[id]?.let { this[it] }
 
 /** A song's music video saved for offline: its picture, plus the video's own audio when that isn't the song's. */
 data class VideoDownload(val videoId: String, val state: Int, val percent: Float, val bytes: Long)
@@ -80,8 +92,27 @@ class DownloadRepository(private val context: Context, private val c: AppContain
     private val _lossless = MutableStateFlow<Map<String, DownloadInfo>>(emptyMap())
     private val _downloads = MutableStateFlow<Map<String, DownloadInfo>>(emptyMap())
     val downloads: StateFlow<Map<String, DownloadInfo>> = _downloads
+    /**
+     * Music videos that were downloaded as their song (#186, "Songs, not videos"), video id -> the song's id: a
+     * playlist's video row shows its song's download (#315: those rows read "not downloaded" whatever was saved).
+     */
+    private val standInPrefs = context.getSharedPreferences("download_standins", Context.MODE_PRIVATE)
+    private val _standIns = MutableStateFlow(standInPrefs.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap())
+
+    private fun standIn(videoId: String, songId: String) {
+        if (videoId == songId || _standIns.value[videoId] == songId) return
+        _standIns.value = _standIns.value + (videoId to songId)
+        standInPrefs.edit().putString(videoId, songId).apply()
+        publish()
+    }
+
+    /** The id a download is kept under: a music video downloaded as its song is kept under the song's. */
+    private fun keptAs(id: String): String = if (id in _media.value || id in _lossless.value) id else _standIns.value[id] ?: id
+
     private fun publish() {
         _downloads.value = _lossless.value + _media.value
+        c.downloadStandIns.value = _standIns.value
+        c.downloadState.value = _downloads.value
         c.smartPickBytes = _smartIds.value.sumOf { _media.value[it]?.bytes ?: 0L }
     }
 
@@ -134,6 +165,7 @@ class DownloadRepository(private val context: Context, private val c: AppContain
             }
             songId to VideoDownload(videoId, state, parts.map { it.percentDownloaded.coerceAtLeast(0f) }.average().toFloat(), parts.sumOf { it.bytesDownloaded })
         }.toMap()
+        c.videoState.value = _videos.value
     }
 
     private fun Download.part(): VideoPart? = runCatching { InnerTube.json.decodeFromString(VideoPart.serializer(), String(request.data)) }.getOrNull()
@@ -171,7 +203,7 @@ class DownloadRepository(private val context: Context, private val c: AppContain
     init {
         NotificationManagerCompat.from(context).createNotificationChannel(
             NotificationChannelCompat.Builder(DOWNLOAD_CHANNEL, NotificationManagerCompat.IMPORTANCE_LOW)
-                .setName(context.getString(R.string.downloads)).build()
+                .setName(tr(R.string.downloads)).build()
         )
         scope.launch(Dispatchers.IO) {
             val map = mutableMapOf<String, DownloadInfo>()
@@ -250,7 +282,10 @@ class DownloadRepository(private val context: Context, private val c: AppContain
             c.losslessSync.songs.collect { synced ->
                 val known = _lossless.value
                 _lossless.value = synced.mapValues { (id, v) ->
-                    DownloadInfo(v.first, Download.STATE_COMPLETED, 100f, v.second.size, known[id]?.addedAt ?: System.currentTimeMillis(), lossless = true)
+                    DownloadInfo(
+                        v.first, Download.STATE_COMPLETED, 100f, v.second.size, known[id]?.addedAt ?: System.currentTimeMillis(), lossless = true,
+                        ownFile = v.second.takeIf { it.lossy }?.let(com.vinz.music.data.local.OwnFiles::label),
+                    )
                 }
                 publish()
                 // Lyrics come with synced songs too, like with any download (same Wi-Fi-only rule).
@@ -365,16 +400,40 @@ class DownloadRepository(private val context: Context, private val c: AppContain
     /**
      * A finished download the player couldn't read (its file is broken: #183, two formats stitched together by a
      * download that resumed in another one): it's thrown away and fetched again, whole. True when it was a download.
+     * [unfinished]: one still coming down starts over too (another version was picked: what's come so far is the
+     * version before, and finishing it would keep that recording as the song's download).
      */
-    fun redownload(id: String): Boolean {
+    fun redownload(id: String, unfinished: Boolean = false): Boolean {
         val d = runCatching { manager.downloadIndex.getDownload(id) }.getOrNull() ?: return false
-        if (d.state != Download.STATE_COMPLETED) return false
+        if (d.state != Download.STATE_COMPLETED && !(unfinished && d.state in UNFINISHED)) return false
         mainHandler.post {
             manager.removeDownload(id)
             c.forgetDownloadFormat(id)
             add(d.request)
         }
         return true
+    }
+
+    /**
+     * Finished song downloads below Premium's 256 kbps (#149): by the format they came in, or, for ones from before
+     * Vinz kept that (1.7.7.1), by their size against the song's length. Lossless files and videos aren't counted.
+     */
+    fun belowPremium(): List<String> = _downloads.value.filter { (id, d) ->
+        d.state == Download.STATE_COMPLETED && !d.lossless && !isVideoPart(id) && !id.startsWith(Song.LOCAL_PREFIX)
+    }.keys.filter { id ->
+        c.downloadedItag(id)?.let { it !in PREMIUM_ITAGS } ?: run {
+            val dl = runCatching { manager.downloadIndex.getDownload(id) }.getOrNull() ?: return@run false
+            val sec = runCatching { InnerTube.json.decodeFromString(Song.serializer(), String(dl.request.data)).durationSec }.getOrDefault(0)
+            sec > 30 && dl.bytesDownloaded * 8 / 1000 / sec < PREMIUM_KBPS
+        }
+    }
+
+    /** Fetches [ids] again, whole (in Premium quality when it's on and the account has it). */
+    fun downloadAgain(ids: Collection<String>) = ids.forEach { redownload(it) }
+
+    /** The notification's Cancel (R14): every download that hasn't finished is taken out; finished ones stay. */
+    fun cancelUnfinished() = mainHandler.post {
+        manager.currentDownloads.filter { it.state != Download.STATE_COMPLETED }.forEach { manager.removeDownload(it.request.id) }
     }
 
     /** The YouTube id a download's bytes come from (a video part's is its video's). */
@@ -450,12 +509,26 @@ class DownloadRepository(private val context: Context, private val c: AppContain
     /** True when this song is only here as a lossless file on the phone (not downloaded by Vinz). */
     fun isLosslessOnly(id: String) = id in _lossless.value && id !in _media.value
 
-    fun download(song: Song) {
+    fun download(song: Song, asIs: Boolean = false) {
         // A file on the phone is already offline.
         if (song.isLocal) return
         // A lossless file that was taken out of Downloads just comes back.
         if (c.losslessSync.unhide(song.id)) return
-        if (_downloads.value[song.id]?.state.let { it == Download.STATE_COMPLETED || it == Download.STATE_DOWNLOADING || it == Download.STATE_QUEUED }) return
+        // (A music video already downloaded as its song counts as downloaded.)
+        if (_downloads.value[keptAs(song.id)]?.state.let { it == Download.STATE_COMPLETED || it == Download.STATE_DOWNLOADING || it == Download.STATE_QUEUED }) return
+        // A music video comes down as its song (#186), with "Songs, not videos" on: the audio, without the video's intro
+        // and outro. When there's no song for it, the video's own sound, as before.
+        if (!asIs && song.isVideo && !song.isUpload && !song.isLive && !song.isEpisode && c.settings.current.radioSongsOnly) {
+            c.scope.launch {
+                val audio = c.player.songFor(song)
+                if (audio != null) {
+                    com.vinz.music.playback.AudioDiagnostics.log("download", "${song.id} is a music video: downloading its song ${audio.id} instead")
+                    standIn(song.id, audio.id)
+                }
+                download(audio ?: song, asIs = true)
+            }
+            return
+        }
         val request = DownloadRequest.Builder(song.id, android.net.Uri.parse("vinz://audio/${song.id}"))
             .setCustomCacheKey(song.id)
             .setData(InnerTube.json.encodeToString(Song.serializer(), song).toByteArray())
@@ -491,7 +564,7 @@ class DownloadRepository(private val context: Context, private val c: AppContain
         c.scope.launch {
             val videoId = if (song.isVideo) song.id else c.queue.counterparts[song.id]
                 ?: runCatching { kotlinx.coroutines.withContext(Dispatchers.IO) { c.ytm.findMusicVideo(song) } }.getOrNull()?.also { c.queue.counterparts[song.id] = it }
-            if (videoId == null) { c.player.reportError("No music video to download for this song"); return@launch }
+            if (videoId == null) { c.player.reportError(tr(R.string.no_music_video_to_download_for)); return@launch }
             val data = InnerTube.json.encodeToString(VideoPart.serializer(), VideoPart(song, videoId)).toByteArray()
             val picture = DownloadRequest.Builder(VIDEO_PICTURE + song.id, android.net.Uri.parse("vinz://video/$videoId"))
                 .setCustomCacheKey("video:$videoId").setData(data).build()
@@ -509,7 +582,9 @@ class DownloadRepository(private val context: Context, private val c: AppContain
         _videoParts.value.keys.filter { partSongId(it) == songId }.forEach { manager.removeDownload(it) }
     }
 
-    fun remove(id: String) {
+    fun remove(asked: String) {
+        // A video row's download is its song's (#315).
+        val id = keptAs(asked)
         if (isLosslessOnly(id)) { c.losslessSync.hide(listOf(id)); return }
         DownloadService.sendRemoveDownload(context, VinzDownloadService::class.java, id, false)
         removeVideo(id)
@@ -517,7 +592,8 @@ class DownloadRepository(private val context: Context, private val c: AppContain
     }
 
     /** Deletes many downloads at once, straight through the manager (no intent per song). */
-    fun removeMany(ids: Collection<String>) {
+    fun removeMany(asked: Collection<String>) {
+        val ids = asked.map(::keptAs).distinct()
         c.losslessSync.hide(ids.filter(::isLosslessOnly))
         ids.forEach { manager.removeDownload(it); removeVideo(it) }
         c.scope.launch(Dispatchers.IO) { ids.forEach { c.db.songs().setSmart(it, false) }; refreshSmartIds() }
@@ -615,10 +691,59 @@ class VinzDownloadService : DownloadService(
 
     override fun getScheduler(): Scheduler? = null
 
-    override fun getForegroundNotification(downloads: MutableList<Download>, notMetRequirements: Int): Notification =
-        DownloadNotificationHelper(this, DOWNLOAD_CHANNEL)
-            .buildProgressNotification(this, R.drawable.ic_notification, null, null, downloads, notMetRequirements)
+    /**
+     * How many songs are coming down, the one now and how far they've got, with Cancel (#149, R14: Media3's own said
+     * neither how many nor offered a way to stop them). Cancel takes out only what hasn't finished.
+     */
+    override fun getForegroundNotification(downloads: MutableList<Download>, notMetRequirements: Int): Notification {
+        // The songs: a music video's picture and sound come down as parts of their song.
+        val active = downloads.filter {
+            (it.state == Download.STATE_DOWNLOADING || it.state == Download.STATE_QUEUED || it.state == Download.STATE_RESTARTING) &&
+                !it.request.id.startsWith("vpic:") && !it.request.id.startsWith("vaud:")
+        }
+        val now = active.firstOrNull { it.state == Download.STATE_DOWNLOADING } ?: active.firstOrNull()
+        val title = now?.let { d -> runCatching { InnerTube.json.decodeFromString(Song.serializer(), String(d.request.data)).title }.getOrNull() }
+        val known = active.map { it.percentDownloaded }.filter { it >= 0f }
+        val percent = if (known.isEmpty()) -1 else known.average().roundToInt()
+        val waiting = when {
+            notMetRequirements == 0 -> null
+            notMetRequirements and androidx.media3.exoplayer.scheduler.Requirements.NETWORK_UNMETERED != 0 -> tr(R.string.waiting_for_wi_fi)
+            else -> tr(R.string.waiting_for_a_connection)
+        }
+        val cancel = android.app.PendingIntent.getBroadcast(
+            this, 0, Intent(this, CancelDownloadsReceiver::class.java),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            android.app.PendingIntent.getActivity(this, 0, it, android.app.PendingIntent.FLAG_IMMUTABLE)
+        }
+        return androidx.core.app.NotificationCompat.Builder(this, DOWNLOAD_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification_download)
+            .setContentTitle(com.vinz.music.trp(R.plurals.downloading_n_songs, active.size.coerceAtLeast(1)))
+            .setContentText(waiting ?: title ?: tr(R.string.getting_ready))
+            .setProgress(100, percent.coerceAtLeast(0), percent < 0 && waiting == null)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setSilent(true)
+            .apply { if (open != null) setContentIntent(open) }
+            .addAction(0, tr(R.string.cancel), cancel)
+            .build()
+    }
 }
+
+/** The downloads notification's Cancel: every download that hasn't finished goes; finished ones stay. */
+class CancelDownloadsReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: android.content.Context, intent: Intent) {
+        context.container.downloads.cancelUnfinished()
+    }
+}
+
+private val PREMIUM_ITAGS = com.vinz.music.data.stream.StreamResolver.PREMIUM_ITAGS
+/** A download on its way (or waiting to be): [Downloads.redownload] can start it over. */
+private val UNFINISHED = setOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_STOPPED, Download.STATE_FAILED)
+/** Below this a download isn't Premium's 256 kbps (normal quality is 128–160). */
+private const val PREMIUM_KBPS = 200
 
 /** The stop reason [DownloadRepository] uses for a moment to restart a stalled download. */
 private const val STALL_STOP = 7
@@ -637,6 +762,6 @@ private fun kbps(q: AudioQuality) = when (q) { AudioQuality.HIGH -> 150; AudioQu
 /** Rough size of a download at a quality; long mixes and missing durations count as a typical song. */
 fun estimatedSongBytes(durationSec: Int, q: AudioQuality): Long = (durationSec.takeIf { it in 30..1200 } ?: 210) * kbps(q) * 125L
 
-fun smartSongEstimate(gb: Float, q: AudioQuality): String =
-    "%,d".format((gb * 1_073_741_824.0 / estimatedSongBytes(210, q)).toLong())
+fun smartSongEstimate(gb: Float, q: AudioQuality): Long =
+    (gb * 1_073_741_824.0 / estimatedSongBytes(210, q)).toLong()
 

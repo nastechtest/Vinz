@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import com.vinz.music.R
+import com.vinz.music.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,9 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.clipRect
 import com.vinz.music.ui.player.drawRibbonStrands
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,8 +47,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.vinz.music.data.prefs.DeckPart
 import com.vinz.music.data.prefs.PlayerButton
+import com.vinz.music.data.prefs.PlayerPart
+import com.vinz.music.data.prefs.canHide
+import com.vinz.music.data.prefs.shows
 import com.vinz.music.data.prefs.PlayerGesture
 import com.vinz.music.data.prefs.PlayerLayout
 import com.vinz.music.data.prefs.PlayerTimes
@@ -74,17 +90,17 @@ fun PlayerLayoutGroup() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     val layoutInfo = when (s.playerLayout) {
-        PlayerLayout.MINIMAL -> "Minimal: swipe the cover for the next or previous song, and double-tap it to skip ahead or back (Gestures, below). "
-        PlayerLayout.COVER -> "Cover: tap the cover for the controls; they tuck away again after a few seconds. "
+        PlayerLayout.MINIMAL -> tr(R.string.minimal_swipe_the_cover_for_the)
+        PlayerLayout.COVER -> tr(R.string.cover_tap_the_cover_for_the)
         else -> ""
-    } + "Tablets and phones turned sideways keep their side-by-side player."
-    Group("Layout", info = layoutInfo) {
+    } + tr(R.string.tablets_and_phones_turned_sideways_keep)
+    Group(tr(R.string.layout), info = layoutInfo) {
         ChoiceCards(
             PlayerLayout.entries, s.playerLayout,
             title = { it.label }, detail = { it.note },
             onSelect = { prefs.setPlayerLayout(it) },
         ) { LayoutSample(it) }
-        if (s.playerLayout == PlayerLayout.VINYL) Toggle("Tonearm", "Swings onto the record while it plays", s.vinylTonearm) { prefs.setVinylTonearm(it) }
+        if (s.playerLayout == PlayerLayout.VINYL) Toggle(tr(R.string.tonearm), tr(R.string.swings_onto_the_record_while_it), s.vinylTonearm) { prefs.setVinylTonearm(it) }
     }
 }
 
@@ -175,42 +191,284 @@ private fun SampleScreen(modifier: Modifier, content: @Composable BoxScope.() ->
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A2140), PlayerDark))), content = content)
 }
 
-// ---------------------------------------------------------------------------- Buttons
+// ---------------------------------------------------------------------------- What's on the player (1.8.0)
 
+/** 1.8.0: the buttons row is edited in [PlayerPartsGroup] now (the Customize sheet over the player still calls this). */
 @Composable
-fun PlayerButtonsGroup() {
+fun PlayerButtonsGroup() = PlayerPartsGroup()
+
+/**
+ * What's on the player (1.8.0, replacing "Show on the player", "Under the title" and the buttons editor): the player
+ * drawn as it is now, every part a tap to hide or show it (a hidden one stays, faint, to tap back); under it the order
+ * of what's under the title and the row's buttons, to drag. Only play / pause always stays; what a hidden part did is in
+ * the ⋯ menu, which is edited here too.
+ */
+@Composable
+fun PlayerPartsGroup() {
     val s = LocalAppSettings.current
-    val prefs = LocalContainer.current.settings
-    val chosen = s.playerButtons
-    Group("Buttons", info = "Pick ${PlayerButton.MIN} to ${PlayerButton.MAX} for the row under the controls. Hold one (or drag its grip) to put them in your order. The rest stay in the player's ⋯ menu.") {
-        // The row as it'll be.
-        SampleScreen(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(64.dp)) {
-            Row(
-                Modifier.align(Alignment.Center).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(horizontal = 10.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
-            ) { chosen.forEach { Icon(buttonIcon(it), it.label, Modifier.size(22.dp), tint = Color.White.copy(alpha = 0.85f)) } }
-        }
-        // The picked ones, in their order, to drag; then the rest to pick from.
-        com.vinz.music.ui.components.ReorderList(chosen, { it }, { prefs.setPlayerButtons(it) }) { b, i, held, mod ->
+    val c = LocalContainer.current
+    val prefs = c.settings
+    var editMenu by remember { mutableStateOf(false) }
+    Group(tr(R.string.what_s_on_the_player), info = tr(R.string.tap_a_part_of_the_player_to_hide_or_show_it)) {
+        PlayerPartsPreview(s, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { part -> prefs.setPartShown(part, !s.shows(part)) }
+        val hidden = PlayerPart.entries.filter { !s.shows(it) && it != PlayerPart.NAV_BAND && (s.mix || it !in PlayerPart.CROSSFADE) }
+        if (hidden.isNotEmpty()) Note(tr(R.string.hidden_s, hidden.joinToString(", ") { it.label }))
+        Toggle(tr(R.string.show_next_track_preview), tr(R.string.show_next_track_preview_detail), s.showNextTrack) { prefs.setShowNextTrack(it) }
+        // The parts under the title, top to bottom, as they sit on the player.
+        Label(tr(R.string.under_the_title), info = tr(R.string.top_to_bottom_as_they_sit))
+        val order = s.playerDeck
+        com.vinz.music.ui.components.ReorderList(order, { it }, { prefs.setPlayerDeck(it) }) { deck, i, held, mod ->
+            val part = deckPart(deck)
             OrderRow(
-                b.label, buttonIcon(b), true,
-                canCheck = chosen.size > PlayerButton.MIN,
-                onCheck = { v -> if (!v) prefs.setPlayerButtons(chosen - b) },
-                onUp = if (i > 0) ({ prefs.setPlayerButtons(chosen.toMutableList().apply { add(i - 1, removeAt(i)) }) }) else null,
-                onDown = if (i < chosen.lastIndex) ({ prefs.setPlayerButtons(chosen.toMutableList().apply { add(i + 1, removeAt(i)) }) }) else null,
+                deck.label, deckIcon(deck), part == null || s.shows(part), canCheck = part != null && s.canHide(part),
+                onCheck = { v -> if (part != null) prefs.setPartShown(part, v) },
+                onUp = if (i > 0) ({ prefs.setPlayerDeck(order.toMutableList().apply { add(i - 1, removeAt(i)) }) }) else null,
+                onDown = if (i < order.lastIndex) ({ prefs.setPlayerDeck(order.toMutableList().apply { add(i + 1, removeAt(i)) }) }) else null,
                 modifier = mod, grip = Modifier.dragHandle(), held = held,
             )
         }
-        PlayerButton.entries.filter { it !in chosen }.forEach { b ->
-            OrderRow(
-                b.label, buttonIcon(b), false, canCheck = chosen.size < PlayerButton.MAX,
-                onCheck = { v -> if (v) prefs.setPlayerButtons(chosen + b) }, onUp = null, onDown = null,
-            )
+        if (order != DeckPart.entries) com.vinz.music.ui.components.VinzTextButton({ prefs.setPlayerDeck(DeckPart.entries) }, Modifier.padding(start = 12.dp)) {
+            Text(tr(R.string.back_to_vinz_s_order))
         }
-        if (chosen != PlayerButton.DEFAULT) com.vinz.music.ui.components.VinzTextButton({ prefs.setPlayerButtons(PlayerButton.DEFAULT) }, Modifier.padding(start = 12.dp)) {
-            Text("Back to Lyrics, Video and Up next")
+        if (s.shows(PlayerPart.BUTTONS)) RowButtons()
+        // GitHub #116: a volume just for Vinz, for phones whose volume buttons don't work (or to keep other apps' as they are).
+        if (s.shows(PlayerPart.VOLUME)) {
+            Label(
+                tr(R.string.the_volume_slider_changes),
+                info = s.volumeControl.label + ": " + if (s.volumeControl == com.vinz.music.data.prefs.VolumeControl.VINZ)
+                    tr(R.string.only_vinz_gets_quieter_or_louder)
+                else tr(R.string.like_the_phone_s_volume_buttons),
+            )
+            Chips(com.vinz.music.data.prefs.VolumeControl.entries, s.volumeControl, { it.label }) { v -> prefs.setVolumeControl(v) }
+        }
+        Toggle(
+            tr(R.string.hide_controls_over_videos), tr(R.string.they_come_back_with_a_tap), s.view.videoControlsHide,
+            info = tr(R.string.while_a_music_video_plays_the),
+        ) { prefs.setVideoControlsHide(it) }
+        // The ⋯ menu: its tiles and what it shows (also from the menu itself).
+        Item(tr(R.string.edit_this_menu), tr(R.string.the_player_s_menu_its_tiles_and_actions), onClick = { editMenu = true }, icon = VinzIcons.More) { Chevron() }
+    }
+    if (editMenu) com.vinz.music.ui.player.MenuEditorSheet { editMenu = false }
+}
+
+/** The row's buttons (three to six), in their order, to drag; the others to add. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun RowButtons() {
+    val s = LocalAppSettings.current
+    val c = LocalContainer.current
+    val prefs = c.settings
+    val chosen = s.playerButtons
+    // The Video button also needs the music video on (the old "Song / Video" switch: off, audio only).
+    fun on(b: PlayerButton) = b != PlayerButton.VIDEO || s.showVideoSwitch
+    Label(tr(R.string.buttons_in_the_row), info = tr(R.string.pick_to_for_the_row_under, PlayerButton.MIN, PlayerButton.MAX))
+    com.vinz.music.ui.components.ReorderList(chosen, { it }, { prefs.setPlayerButtons(it) }) { b, i, held, mod ->
+        OrderRow(
+            b.label, buttonIcon(b), on(b),
+            canCheck = chosen.size > PlayerButton.MIN || !on(b) || b == PlayerButton.VIDEO,
+            onCheck = { v ->
+                when {
+                    b == PlayerButton.VIDEO && v -> prefs.setShowVideoSwitch(true)
+                    v -> {}
+                    chosen.size > PlayerButton.MIN -> prefs.setPlayerButtons(chosen - b)
+                    // The last three: the music video can still go (audio only, as the old Song / Video switch did).
+                    b == PlayerButton.VIDEO -> { prefs.setShowVideoSwitch(false); c.player.setVideoMode(false) }
+                }
+            },
+            onUp = if (i > 0) ({ prefs.setPlayerButtons(chosen.toMutableList().apply { add(i - 1, removeAt(i)) }) }) else null,
+            onDown = if (i < chosen.lastIndex) ({ prefs.setPlayerButtons(chosen.toMutableList().apply { add(i + 1, removeAt(i)) }) }) else null,
+            modifier = mod, grip = Modifier.dragHandle(), held = held,
+        )
+    }
+    val rest = PlayerButton.entries.filter { it !in chosen }
+    if (rest.isNotEmpty() && chosen.size < PlayerButton.MAX) {
+        Label(tr(R.string.add_a_button))
+        androidx.compose.foundation.layout.FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            rest.forEach { b ->
+                com.vinz.music.ui.components.VinzChip(false, {
+                    prefs.setPlayerButtons(chosen + b)
+                    if (b == PlayerButton.VIDEO) prefs.setShowVideoSwitch(true)
+                }, b.label, icon = buttonIcon(b))
+            }
         }
     }
+    if (chosen != PlayerButton.DEFAULT) com.vinz.music.ui.components.VinzTextButton({ prefs.setPlayerButtons(PlayerButton.DEFAULT) }, Modifier.padding(start = 12.dp)) {
+        Text(tr(R.string.back_to_lyrics_video_and_up))
+    }
+}
+
+/** The row in a capsule or apart (1.7.8, #155), each as its own card: a Look choice (Settings → Player → Look). */
+@Composable
+fun ButtonsPillCards() {
+    val s = LocalAppSettings.current
+    val prefs = LocalContainer.current.settings
+    val chosen = s.playerButtons
+    Label(tr(R.string.buttons))
+    ChoiceCards(listOf(true, false), s.view.buttonsPill, { if (it) tr(R.string.in_a_capsule) else tr(R.string.apart) }, { if (it) tr(R.string.one_glass_capsule_as_now) else tr(R.string.spread_across_the_row_as_in) }, onSelect = { prefs.setButtonsPill(it) }) { pill ->
+        SampleScreen(Modifier.padding(6.dp).fillMaxWidth().height(52.dp)) {
+            Row(
+                if (pill) Modifier.align(Alignment.Center).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(horizontal = 8.dp, vertical = 6.dp)
+                else Modifier.align(Alignment.Center).fillMaxWidth(),
+                horizontalArrangement = if (pill) Arrangement.spacedBy(8.dp) else Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
+            ) { chosen.forEach { Icon(buttonIcon(it), it.label, Modifier.size(18.dp), tint = Color.White.copy(alpha = 0.85f)) } }
+        }
+    }
+}
+
+private fun deckPart(d: DeckPart): PlayerPart? = when (d) {
+    DeckPart.STRIP -> PlayerPart.LYRIC_LINE
+    DeckPart.SCRUBBER -> PlayerPart.PROGRESS
+    DeckPart.VOLUME -> PlayerPart.VOLUME
+    DeckPart.BUTTONS -> PlayerPart.BUTTONS
+    // Play stays; previous / next are hidden in the preview.
+    DeckPart.TRANSPORT -> null
+}
+
+/**
+ * The player as it is now, drawn small and dark the way the player is: every part ([PlayerPart]) a switch, faint with an
+ * eye struck through while hidden. The parts under the title follow the listener's order; play / pause never hides.
+ */
+@Composable
+fun PlayerPartsPreview(s: com.vinz.music.data.prefs.AppSettings, modifier: Modifier = Modifier, onToggle: (PlayerPart) -> Unit) {
+    val light = Brush.horizontalGradient(*VinzTokens.spectrumColors(true).toTypedArray())
+    @Composable
+    fun Spot(part: PlayerPart, m: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+        val shown = s.shows(part)
+        val state = if (shown) tr(R.string.shown) else tr(R.string.hidden)
+        Box(
+            m.clip(RoundedCornerShape(6.dp))
+                .toggleable(shown, enabled = s.canHide(part), role = androidx.compose.ui.semantics.Role.Switch) { onToggle(part) }
+                .semantics(mergeDescendants = true) { contentDescription = part.label; stateDescription = state }
+                .then(if (shown) Modifier else Modifier.border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)))
+                .padding(3.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.graphicsLayer { alpha = if (shown) 1f else 0.22f }, contentAlignment = Alignment.Center, content = content)
+            if (!shown) Icon(VinzIcons.Hidden, null, Modifier.align(Alignment.TopEnd).size(12.dp), tint = Color.White.copy(alpha = 0.7f))
+        }
+    }
+    val tiny = 11.sp
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        SampleScreen(Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag("playerPartsPreview")) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Spot(PlayerPart.HANDLE) { Box(Modifier.padding(horizontal = 14.dp, vertical = 3.dp).size(30.dp, 4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.6f))) }
+                Spot(PlayerPart.FROM_ALBUM) { Text(tr(R.string.from_the_album_2, tr(R.string.northern_lights)), color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1) }
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth(0.62f)) {
+                    Spot(PlayerPart.COVER, Modifier.fillMaxWidth()) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Brush.linearGradient(listOf(Color(0xFF8A6BFF), Color(0xFFFF7A59)))))
+                    }
+                    // With Crossfade on: the cover dissolving into the next song's, drawn as the next cover over a corner.
+                    if (s.mix) Spot(PlayerPart.BLEND_COVERS, Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                        Box(Modifier.size(30.dp).clip(RoundedCornerShape(5.dp)).background(Brush.linearGradient(listOf(Color(0xFF2EC5CE).copy(alpha = 0.9f), Color(0xFF8A6BFF).copy(alpha = 0.2f)))))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                        Spot(PlayerPart.TITLE) { Text(tr(R.string.northern_lights), color = Color.White, fontSize = 16.sp, maxLines = 1) }
+                        Spot(PlayerPart.ARTIST) { Text(tr(R.string.vinz_sample), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1) }
+                    }
+                    Spot(PlayerPart.LIKE) { Icon(VinzIcons.Heart, null, Modifier.padding(4.dp).size(18.dp), tint = Color.White) }
+                    Spot(PlayerPart.MENU) { Icon(VinzIcons.More, null, Modifier.padding(4.dp).size(18.dp), tint = Color.White) }
+                }
+                s.playerDeck.forEach { deck ->
+                    Spacer(Modifier.height(6.dp))
+                    when (deck) {
+                        DeckPart.STRIP -> Spot(PlayerPart.LYRIC_LINE, Modifier.fillMaxWidth()) {
+                            Text(tr(R.string.and_the_sky_lit_up), Modifier.fillMaxWidth(), color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1)
+                        }
+                        DeckPart.SCRUBBER -> Column(Modifier.fillMaxWidth()) {
+                            Spot(PlayerPart.PROGRESS, Modifier.fillMaxWidth()) {
+                                Box(Modifier.padding(vertical = 5.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Faint)) {
+                                    Box(Modifier.fillMaxWidth(0.4f).height(3.dp).background(light))
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Spot(PlayerPart.TIMES) { Text("1:12", color = Color.White.copy(alpha = 0.6f), fontSize = tiny) }
+                                Spacer(Modifier.weight(1f))
+                                Spot(PlayerPart.BEST_PART) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(VinzIcons.Flame, null, Modifier.size(11.dp), tint = Color.White.copy(alpha = 0.8f))
+                                        Text(" " + tr(R.string.best_part), color = Color.White.copy(alpha = 0.8f), fontSize = tiny, maxLines = 1)
+                                    }
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Spot(PlayerPart.QUALITY) { Text(tr(R.string.sample_stream_quality), color = Color.White.copy(alpha = 0.6f), fontSize = tiny, maxLines = 1) }
+                                // With Crossfade on: the mark where the next song comes in.
+                                if (s.mix) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Spot(PlayerPart.CROSSFADE_MARK) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(Modifier.size(2.dp, 10.dp).background(Color.White.copy(alpha = 0.85f)))
+                                            Text(" " + tr(R.string.crossfade_mark), color = Color.White.copy(alpha = 0.6f), fontSize = tiny, maxLines = 1)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Spot(PlayerPart.TIMES) { Text("−2:31", color = Color.White.copy(alpha = 0.6f), fontSize = tiny) }
+                            }
+                        }
+                        DeckPart.TRANSPORT -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                            Spot(PlayerPart.SHUFFLE_REPEAT) { Icon(VinzIcons.Shuffle, null, Modifier.size(16.dp), tint = Ink) }
+                            Spot(PlayerPart.PREV_NEXT) { Icon(VinzIcons.Previous, null, Modifier.size(22.dp), tint = Color.White) }
+                            // Play / pause always stays.
+                            Box(
+                                Modifier.size(40.dp).clip(CircleShape).background(Color.White).semantics { contentDescription = tr(R.string.play_pause_always_stays) },
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(VinzIcons.Pause, null, Modifier.size(20.dp), tint = Color.Black) }
+                            Spot(PlayerPart.PREV_NEXT) { Icon(VinzIcons.Next, null, Modifier.size(22.dp), tint = Color.White) }
+                            Spot(PlayerPart.SHUFFLE_REPEAT) { Icon(VinzIcons.Repeat, null, Modifier.size(16.dp), tint = Ink) }
+                        }
+                        DeckPart.VOLUME -> Spot(PlayerPart.VOLUME, Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(VinzIcons.VolumeDown, null, Modifier.size(12.dp), tint = Faint)
+                                Box(Modifier.padding(horizontal = 6.dp).weight(1f).height(3.dp).clip(CircleShape).background(Faint)) {
+                                    Box(Modifier.fillMaxWidth(0.7f).height(3.dp).background(Color.White.copy(alpha = 0.7f)))
+                                }
+                                Icon(VinzIcons.VolumeUp, null, Modifier.size(12.dp), tint = Faint)
+                            }
+                        }
+                        DeckPart.BUTTONS -> Spot(PlayerPart.BUTTONS) {
+                            val pill = s.view.buttonsPill
+                            Row(
+                                if (pill) Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(horizontal = 10.dp, vertical = 5.dp)
+                                else Modifier.padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(if (pill) 10.dp else 18.dp), verticalAlignment = Alignment.CenterVertically,
+                            ) { s.playerButtons.filter { it != PlayerButton.VIDEO || s.showVideoSwitch }.forEach { Icon(buttonIcon(it), null, Modifier.size(16.dp), tint = Ink) } }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Spot(PlayerPart.OUTPUT) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(5.dp).clip(CircleShape).background(light))
+                        Text("  " + tr(R.string.this_phone) + "  ", color = Color.White.copy(alpha = 0.6f), fontSize = tiny, maxLines = 1)
+                        Icon(VinzIcons.Cast, null, Modifier.size(10.dp), tint = Color.White.copy(alpha = 0.6f))
+                    }
+                }
+                // Three-button navigation only: the band behind its buttons (#250).
+                if (threeButtonNav()) {
+                    Spacer(Modifier.height(4.dp))
+                    Spot(PlayerPart.NAV_BAND, Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            repeat(3) { Box(Modifier.size(6.dp).clip(CircleShape).background(Faint)) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A navigation bar tall enough to be three buttons (gesture navigation's is a thin strip). */
+@Composable
+private fun threeButtonNav(): Boolean {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    return with(density) { WindowInsets.navigationBars.getBottom(density).toDp() } >= 40.dp
 }
 
 /** The buttons beside play outside Vinz: the notification, the lock screen, Android Auto (Controls & gestures). */
@@ -219,7 +477,7 @@ fun SessionButtonsGroup() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     val chosen = s.sessionButtons
-    Group("Notification and car", info = "Your phone's notification and lock screen show the first two beside play; Android Auto shows them all, in this order. Hold one to move it.") {
+    Group(tr(R.string.notification_and_car), info = tr(R.string.your_phone_s_notification_and_lock)) {
         // The notification as it'll look: previous, play, next and the first two beside them.
         SampleScreen(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(56.dp)) {
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -246,7 +504,7 @@ fun SessionButtonsGroup() {
             )
         }
         if (chosen != SessionButton.DEFAULT) com.vinz.music.ui.components.VinzTextButton({ prefs.setSessionButtons(SessionButton.DEFAULT) }, Modifier.padding(start = 12.dp)) {
-            Text("Back to Vinz's buttons")
+            Text(tr(R.string.back_to_vinz_s_buttons))
         }
     }
 }
@@ -268,10 +526,10 @@ private fun OrderRow(
         Spacer(Modifier.width(12.dp))
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = if (on) scheme.onSurface else scheme.onSurfaceVariant)
         if (on && !held) {
-            IconButton(onClick = { onUp?.invoke() }, enabled = onUp != null) { Icon(VinzIcons.ChevronUp, "Move $label up") }
-            IconButton(onClick = { onDown?.invoke() }, enabled = onDown != null) { Icon(VinzIcons.ChevronDown, "Move $label down") }
+            IconButton(onClick = { onUp?.invoke() }, enabled = onUp != null) { Icon(VinzIcons.ChevronUp, tr(R.string.move_up_2, label)) }
+            IconButton(onClick = { onDown?.invoke() }, enabled = onDown != null) { Icon(VinzIcons.ChevronDown, tr(R.string.move_down_2, label)) }
         } else if (held) Spacer(Modifier.width(96.dp))
-        if (grip != null) com.vinz.music.ui.components.DragGrip(grip.padding(start = 4.dp, end = 8.dp), "Drag $label")
+        if (grip != null) com.vinz.music.ui.components.DragGrip(grip.padding(start = 4.dp, end = 8.dp), tr(R.string.drag, label))
     }
 }
 
@@ -304,44 +562,6 @@ private fun sessionIcon(b: SessionButton): ImageVector = when (b) {
     SessionButton.AHEAD_30 -> VinzIcons.Forward
 }
 
-// ---------------------------------------------------------------------------- Arrange
-
-/** The parts under the title, top to bottom: move them, and tick the ones that can be hidden. */
-@Composable
-fun PlayerArrangeGroup() {
-    val s = LocalAppSettings.current
-    val prefs = LocalContainer.current.settings
-    val order = s.playerDeck
-    Group("Under the title", info = "Top to bottom, as they sit on the player; hold one to move it. The progress bar, controls and buttons are always there.") {
-        com.vinz.music.ui.components.ReorderList(order, { it }, { prefs.setPlayerDeck(it) }) { part, i, held, mod ->
-            val shown = when (part) { DeckPart.STRIP -> s.lyricsOnPlayer; DeckPart.VOLUME -> !s.hideVolumeBar; else -> true }
-            val hideable = part == DeckPart.STRIP || part == DeckPart.VOLUME
-            OrderRow(
-                part.label, deckIcon(part), shown || !hideable, canCheck = hideable,
-                onCheck = { v -> if (part == DeckPart.STRIP) prefs.setLyricsOnPlayer(v) else prefs.setHideVolumeBar(!v) },
-                onUp = if (i > 0) ({ prefs.setPlayerDeck(order.toMutableList().apply { add(i - 1, removeAt(i)) }) }) else null,
-                onDown = if (i < order.lastIndex) ({ prefs.setPlayerDeck(order.toMutableList().apply { add(i + 1, removeAt(i)) }) }) else null,
-                modifier = mod, grip = Modifier.dragHandle(), held = held,
-            )
-        }
-        if (order != DeckPart.entries) com.vinz.music.ui.components.VinzTextButton({ prefs.setPlayerDeck(DeckPart.entries) }, Modifier.padding(start = 12.dp)) {
-            Text("Back to Vinz's order")
-        }
-        // GitHub #116: a volume just for Vinz, for phones whose volume buttons don't work (or to keep other apps' as they are).
-        Label(
-            "The volume slider changes",
-            info = s.volumeControl.label + ": " + if (s.volumeControl == com.vinz.music.data.prefs.VolumeControl.VINZ)
-                "only Vinz gets quieter or louder; other apps and the phone's volume stay as they are. The phone's volume buttons still change the phone's volume."
-            else "like the phone's volume buttons, every app's music volume.",
-        )
-        Chips(com.vinz.music.data.prefs.VolumeControl.entries, s.volumeControl, { it.label }) { v ->
-            prefs.setVolumeControl(v)
-            // Picking Vinz's own volume is picking the slider: show it if it was hidden.
-            if (v == com.vinz.music.data.prefs.VolumeControl.VINZ && s.hideVolumeBar) prefs.setHideVolumeBar(false)
-        }
-    }
-}
-
 private fun deckIcon(p: DeckPart): ImageVector = when (p) {
     DeckPart.STRIP -> VinzIcons.Lyrics
     DeckPart.SCRUBBER -> VinzIcons.Timer
@@ -356,49 +576,86 @@ private fun deckIcon(p: DeckPart): ImageVector = when (p) {
 fun PlayerTitleGroup() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
-    Group("Title and times") {
+    Group(tr(R.string.title_and_times)) {
         ChoiceCards(
-            PlayerTitleAlign.entries, s.playerTitleAlign, title = { it.label }, detail = { if (it == PlayerTitleAlign.START) "Under the cover's left edge" else "In the middle" },
+            PlayerTitleAlign.entries, s.playerTitleAlign, title = { it.label }, detail = { if (it == PlayerTitleAlign.START) tr(R.string.under_the_cover_s_left_edge) else tr(R.string.in_the_middle) },
             onSelect = { prefs.setPlayerTitleAlign(it) },
         ) { TitleSample(it) }
-        Label("Title size")
+        Label(tr(R.string.title_size))
         Chips(com.vinz.music.data.prefs.PlayerTitleSize.entries, s.playerTitleSize, { it.label }) { prefs.setPlayerTitleSize(it) }
-        Label("Title weight", info = "Light is Vinz's own, and follows Text → Weight. Bold makes the artist's name heavier too.")
+        Label(tr(R.string.title_weight), info = tr(R.string.light_is_vinz_s_own_and))
         ChoiceCards(
             com.vinz.music.data.prefs.PlayerTitleWeight.entries, s.type.playerTitleWeight, title = { it.label }, detail = { null },
             onSelect = { prefs.setPlayerTitleWeight(it) },
         ) { TitleSample(s.playerTitleAlign, it) }
-        Toggle("Scrolling titles", "A long title scrolls across (off: it ends with …)", s.playerTitleScroll) { prefs.setPlayerTitleScroll(it) }
-        Label("Times under the progress bar")
+        Toggle(tr(R.string.scrolling_titles), tr(R.string.a_long_title_scrolls_across_off), s.playerTitleScroll) { prefs.setPlayerTitleScroll(it) }
+        // #289 (1.8.1): with several artists, each name a link of its own; off, the line asks which (as before).
+        Label(tr(R.string.each_artist_its_own_link), info = tr(R.string.each_artist_its_own_link_info))
+        ChoiceCards(
+            listOf(false, true), s.view.artistLinks,
+            title = { if (it) tr(R.string.each_name_opens_its_artist) else tr(R.string.one_tap_asks_which) },
+            detail = { if (it) tr(R.string.a_tap_between_names_still_asks) else tr(R.string.as_now) },
+            onSelect = { prefs.setArtistLinks(it) },
+        ) { ArtistLinksSample(it) }
+        Label(tr(R.string.times_under_the_progress_bar))
         ChoiceCards(
             PlayerTimes.entries, s.playerTimes, title = { it.label }, detail = { null }, onSelect = { prefs.setPlayerTimes(it) },
         ) { TimesSample(it) }
-        Label("Progress bar color")
+    }
+}
+
+/** The progress bar (1.8.0, one group): its style first, then its color, thickness and knob, and the volume bar like it. */
+@Composable
+fun PlayerProgressGroup() {
+    val s = LocalAppSettings.current
+    val prefs = LocalContainer.current.settings
+    Group(
+        tr(R.string.progress_bar),
+        info = when (s.scrubberStyle) {
+            com.vinz.music.data.prefs.ScrubberStyle.WAVE -> tr(R.string.waveform_each_song_s_own_shape)
+            com.vinz.music.data.prefs.ScrubberStyle.RIBBONS -> tr(R.string.ribbons_flow_only_while_a_song)
+            else -> null
+        },
+    ) {
+        ScrubberStyleCards()
+        Label(tr(R.string.progress_bar_color))
         ChoiceCards(
             ScrubberColor.entries, s.scrubberColor, title = { it.label },
             detail = {
                 when (it) {
-                    ScrubberColor.SPECTRUM -> "The split light"
-                    ScrubberColor.ACCENT -> "Your accent color"
-                    ScrubberColor.WHITE -> "Plain white"
-                    ScrubberColor.COVER -> "The song's cover's color"
+                    ScrubberColor.SPECTRUM -> tr(R.string.the_split_light)
+                    ScrubberColor.ACCENT -> tr(R.string.your_accent_color)
+                    ScrubberColor.WHITE -> tr(R.string.plain_white)
+                    ScrubberColor.COVER -> tr(R.string.the_song_s_cover_s_color)
                 }
             },
             onSelect = { prefs.setScrubberColor(it) },
         ) { BarSample(it) }
         // Thickness and the knob (1.7.4): the waveform keeps its own height.
         SliderSetting(
-            "Progress bar thickness", s.scrubberThickness, 0.6f..2f, { if (it < 0.85f) "Thinner" else if (it <= 1.15f) "As the style" else "Thicker" },
-            info = if (s.scrubberStyle == com.vinz.music.data.prefs.ScrubberStyle.WAVE) "The waveform keeps its own height; thickness shows until a song has been scanned." else null,
+            tr(R.string.progress_bar_thickness), s.scrubberThickness, 0.6f..2f, { worded(if (it < 0.85f) tr(R.string.thinner) else if (it <= 1.15f) tr(R.string.as_the_style) else tr(R.string.thicker), it) },
+            info = if (s.scrubberStyle == com.vinz.music.data.prefs.ScrubberStyle.WAVE) tr(R.string.the_waveform_keeps_its_own_height) else null,
         ) {
             prefs.setScrubberThickness(if (it in 0.93f..1.07f) 1f else it)
         }
-        Label("Knob at the playhead")
+        Label(tr(R.string.knob_at_the_playhead))
         ChoiceCards(
             com.vinz.music.data.prefs.ScrubberThumb.entries, s.scrubberThumb, title = { it.label },
-            detail = { if (it == com.vinz.music.data.prefs.ScrubberThumb.AUTO) "A dot with the Thumb style" else null },
+            detail = { if (it == com.vinz.music.data.prefs.ScrubberThumb.AUTO) tr(R.string.a_dot_with_the_thumb_style) else null },
             onSelect = { prefs.setScrubberThumb(it) },
         ) { KnobSample(it, s.scrubberThickness) }
+        // 1.8.1 (the owner's): the bar shaped by the crossfade, an option; off it's the bar as before.
+        Label(tr(R.string.crossfade_on_the_progress_bar), info = tr(R.string.crossfade_shape_info))
+        ChoiceCards(
+            listOf(false, true), s.view.crossfadeShape,
+            title = { if (it) tr(R.string.shaped_by_the_crossfade) else tr(R.string.plain) },
+            detail = { if (it) tr(R.string.the_end_tapers_as_the_song_fades) else tr(R.string.as_now) },
+            onSelect = { prefs.setCrossfadeShape(it) },
+        ) { CrossfadeShapeSample(it, s.sound.crossfadeCurve, s.scrubberColor) }
+        // Reddit, 1.7.9.1: the volume bar as thick as the progress bar (its style's height and this thickness).
+        Toggle(tr(R.string.volume_bar_like_the_progress_bar), tr(R.string.same_style_and_thickness), s.volumeMatchesProgress) {
+            prefs.setVolumeMatchesProgress(it)
+        }
     }
 }
 
@@ -427,6 +684,39 @@ private fun KnobSample(knob: com.vinz.music.data.prefs.ScrubberThumb, thickness:
     }
 }
 
+/**
+ * A song's bar near its end, as the mockup draws it: the last quarter its blend, the playhead in it ([shaped]: tapering
+ * along [curve], the knob riding it; else the plain bar).
+ */
+@Composable
+private fun CrossfadeShapeSample(shaped: Boolean, curve: com.vinz.music.data.prefs.CrossfadeCurve, color: ScrubberColor) {
+    val fill = com.vinz.music.ui.player.scrubberFill(color, LocalContainer.current.player.currentSong.value?.thumbnail)
+        ?: Brush.horizontalGradient(*VinzTokens.spectrumColors(true).toTypedArray())
+    val outline = remember { com.vinz.music.ui.player.BlendBarPath() }
+    val shape = remember(curve) { com.vinz.music.ui.player.BlendShape(curve, outFrom = 0.75f, outTo = 1f) }
+    SampleScreen(Modifier.fillMaxWidth().height(40.dp)) {
+        androidx.compose.foundation.Canvas(Modifier.align(Alignment.Center).padding(horizontal = 14.dp).fillMaxWidth().height(16.dp)) {
+            val h = 7.dp.toPx()
+            val y = size.height / 2
+            val played = size.width * 0.86f
+            translate(top = y - h / 2) {
+                val bar = androidx.compose.ui.geometry.Size(size.width, h)
+                if (shaped) {
+                    val path = outline.outline(shape, bar.width, h)
+                    drawPath(path, Faint)
+                    clipRect(right = played) { drawPath(path, fill) }
+                } else {
+                    val r = androidx.compose.ui.geometry.CornerRadius(h / 2)
+                    drawRoundRect(Faint, size = bar, cornerRadius = r)
+                    drawRoundRect(fill, size = androidx.compose.ui.geometry.Size(played, h), cornerRadius = r)
+                }
+            }
+            val knob = 6.dp.toPx() * (if (shaped) com.vinz.music.ui.player.BlendShape.knobScale(shape.height(0.86f)) else 1f)
+            drawCircle(Color.White, knob, androidx.compose.ui.geometry.Offset(played, y))
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------- Visualizer
 
 /**
@@ -437,16 +727,16 @@ private fun KnobSample(knob: com.vinz.music.data.prefs.ScrubberThumb, thickness:
 fun PlayerVisualizerGroup() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
-    Group("Visualizer", info = "It listens to Vinz's own sound (no microphone) and only runs while the player is open and playing. On an older phone, Off keeps the player lightest.") {
+    Group(tr(R.string.visualizer), info = tr(R.string.it_listens_to_vinz_s_own)) {
         ChoiceCards(
             com.vinz.music.data.prefs.VisualizerStyle.entries, s.visualizer, title = { it.label }, detail = { it.note },
             onSelect = { prefs.setVisualizer(it) },
         ) { VisualizerSample(it, s.visualizerColor) }
         if (s.visualizer != com.vinz.music.data.prefs.VisualizerStyle.OFF) {
-            Label("Visualizer color")
+            Label(tr(R.string.visualizer_color))
             Chips(ScrubberColor.entries, s.visualizerColor, { it.label }) { prefs.setVisualizerColor(it) }
             // Why it doesn't move: a state, so it stays in view.
-            if (s.reduceMotion) Note("Reduce motion is on, so it stays still.")
+            if (s.reduceMotion) Note(tr(R.string.reduce_motion_is_on_so_it))
         }
     }
 }
@@ -518,15 +808,44 @@ private fun TitleSample(align: PlayerTitleAlign, weight: com.vinz.music.data.pre
             if (align == PlayerTitleAlign.CENTER) Spacer(Modifier.width(22.dp))
             Column(Modifier.weight(1f), horizontalAlignment = if (align == PlayerTitleAlign.CENTER) Alignment.CenterHorizontally else Alignment.Start) {
                 Text(
-                    "Northern Lights", color = Color.White, fontSize = 12.sp, maxLines = 1, textAlign = if (align == PlayerTitleAlign.CENTER) TextAlign.Center else TextAlign.Start,
+                    tr(R.string.northern_lights), color = Color.White, fontSize = 12.sp, maxLines = 1, textAlign = if (align == PlayerTitleAlign.CENTER) TextAlign.Center else TextAlign.Start,
                     // Vinz's own big titles are light; at this size their own weight wouldn't show it.
                     fontWeight = weight.title ?: androidx.compose.ui.text.font.FontWeight.Light,
                 )
-                Text("Vinz Sample", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1, fontWeight = weight.artist)
+                Text(tr(R.string.vinz_sample), color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1, fontWeight = weight.artist)
             }
             Box(Modifier.size(9.dp).clip(CircleShape).background(Faint))
             Spacer(Modifier.width(4.dp))
             Box(Modifier.size(9.dp).clip(CircleShape).background(Faint))
+        }
+    }
+}
+
+/**
+ * The artists under a title (#289): [separate], each name underlined on its own and the tap going straight to one;
+ * else the whole line one target, a small menu of the names under it.
+ */
+@Composable
+private fun ArtistLinksSample(separate: Boolean) {
+    SampleScreen(Modifier.fillMaxWidth().height(72.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(tr(R.string.northern_lights), color = Color.White, fontSize = 12.sp, maxLines = 1, fontWeight = androidx.compose.ui.text.font.FontWeight.Light)
+            val names = listOf(tr(R.string.sample_artist_one), tr(R.string.sample_artist_two), tr(R.string.sample_artist_three))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                names.forEachIndexed { i, n ->
+                    val mark = if (separate) Modifier.drawBehind {
+                        drawLine(Color.White.copy(alpha = if (i == 1) 0.9f else 0.35f), androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height), 1.dp.toPx())
+                    } else Modifier
+                    Text(n, mark, color = Color.White.copy(alpha = if (separate && i == 1) 0.95f else 0.6f), fontSize = 10.sp, maxLines = 1)
+                    if (i < names.lastIndex) Text(", ", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            if (separate) Text(tr(R.string.opens_artist_page, names[1]), color = Color.White.copy(alpha = 0.8f), fontSize = 9.sp)
+            else Row(
+                Modifier.clip(RoundedCornerShape(5.dp)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) { names.forEach { Text(it, color = Color.White.copy(alpha = 0.8f), fontSize = 8.sp) } }
         }
     }
 }
@@ -556,11 +875,11 @@ fun ScrubberStyleCards() {
         com.vinz.music.data.prefs.ScrubberStyle.entries, s.scrubberStyle, title = { it.label },
         detail = {
             when (it) {
-                com.vinz.music.data.prefs.ScrubberStyle.HAIRLINE -> "A thin line"
-                com.vinz.music.data.prefs.ScrubberStyle.BOLD -> "A thicker bar"
-                com.vinz.music.data.prefs.ScrubberStyle.THUMB -> "A line and a knob"
-                com.vinz.music.data.prefs.ScrubberStyle.WAVE -> "Each song's own shape"
-                com.vinz.music.data.prefs.ScrubberStyle.RIBBONS -> "Strands flow along while it plays"
+                com.vinz.music.data.prefs.ScrubberStyle.HAIRLINE -> tr(R.string.a_thin_line)
+                com.vinz.music.data.prefs.ScrubberStyle.BOLD -> tr(R.string.a_thicker_bar)
+                com.vinz.music.data.prefs.ScrubberStyle.THUMB -> tr(R.string.a_line_and_a_knob)
+                com.vinz.music.data.prefs.ScrubberStyle.WAVE -> tr(R.string.each_song_s_own_shape)
+                com.vinz.music.data.prefs.ScrubberStyle.RIBBONS -> tr(R.string.strands_flow_along_while_it_plays)
             }
         },
         onSelect = { prefs.setScrubberStyle(it) },
@@ -622,18 +941,40 @@ private fun BarSample(color: ScrubberColor) {
 
 // ---------------------------------------------------------------------------- Background
 
-/** The color mesh's motion and strength, and how soft the blurred cover is (under Look → Background). */
+/** Background movement [v] (0 still … 1 lively) as the mesh's speed and its colors' strength (1 = as the cover … 1.5). */
+fun meshMovement(v: Float): Pair<Float, Float> = if (v < 0.05f) 0f to 1f else v to 1f + 0.5f * v
+
+/**
+ * Why the color mesh holds still though its movement is up (#284), or null: Reduce motion, Performance mode, or the
+ * phone's animations turned off (Settings → Accessibility, or developer options' animation scale).
+ */
+internal fun meshHeldBy(s: com.vinz.music.data.prefs.AppSettings, context: android.content.Context): String? = when {
+    s.reduceMotion -> tr(R.string.reduce_motion_is_on_so_it)
+    s.performanceMode -> tr(R.string.performance_mode_is_on_so_it_stays_still)
+    android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f ->
+        tr(R.string.your_phone_s_animations_are_off_so_it_stays_still)
+    else -> null
+}
+
+/** The color mesh's movement, and how soft the blurred cover is (under Look → Background). */
 @Composable
 fun PlayerBackgroundTuning() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
     if (s.playerBackground == com.vinz.music.data.prefs.PlayerBackground.MESH) {
-        SliderSetting("Motion", s.meshSpeed, 0f..1f, { if (it < 0.05f) "Still" else if (it < 0.5f) "Slow drift" else "Drifting" }) { prefs.setMeshSpeed(if (it < 0.05f) 0f else it) }
-        if (s.reduceMotion && s.meshSpeed > 0f) Note("Reduce motion is on, so it stays still.")
-        SliderSetting("Colors", s.meshIntensity, 0.4f..1.6f, { if (it < 0.8f) "Soft" else if (it <= 1.2f) "As the cover" else "Rich" }) { prefs.setMeshIntensity(it) }
+        // 1.8.0: Motion and Colors as one feeling, still → lively: the mesh drifts faster and its colors grow richer
+        // together. The slider stands where the motion is; colors set apart before keep until it's moved.
+        SliderSetting(
+            tr(R.string.background_movement), s.meshSpeed, 0f..1f,
+            { if (it < 0.05f) tr(R.string.still) else worded(if (it < 0.5f) tr(R.string.gentle) else tr(R.string.lively), it) },
+        ) { v -> meshMovement(v).let { (speed, colors) -> prefs.setMeshSpeed(speed); prefs.setMeshIntensity(colors) } }
+        // #284: what else holds it still says so too (the page shows the settings as set, which Performance mode and the
+        // phone's own animations switch leave alone).
+        if (s.meshSpeed > 0f) meshHeldBy(s, androidx.compose.ui.platform.LocalContext.current)?.let { Note(it) }
     }
-    if (s.playerBackground == com.vinz.music.data.prefs.PlayerBackground.MESH || s.playerBackground == com.vinz.music.data.prefs.PlayerBackground.BLUR) {
-        SliderSetting("Softness", s.playerBlur, 0.5f..1.5f, { "${(it * 100).roundToInt()}%" }) { prefs.setPlayerBlur(it) }
+    // How soft the blurred cover is (1.8.0: only for Blurred cover, where it shows).
+    if (s.playerBackground == com.vinz.music.data.prefs.PlayerBackground.BLUR) {
+        SliderSetting(tr(R.string.softness), s.playerBlur, 0.5f..1.5f, { "${(it * 100).roundToInt()}%" }) { prefs.setPlayerBlur(it) }
     }
 }
 
@@ -644,22 +985,27 @@ fun PlayerBackgroundTuning() {
 fun PlayerGesturesGroup() {
     val s = LocalAppSettings.current
     val prefs = LocalContainer.current.settings
-    Group("Gestures", info = "On the player's cover. Swiping down always closes the player.") {
-        GestureRow("Swipe left", s.coverSwipeLeft, PlayerGesture.choices()) { prefs.setGesture("cover_swipe_left", it) }
-        GestureRow("Swipe right", s.coverSwipeRight, PlayerGesture.choices()) { prefs.setGesture("cover_swipe_right", it) }
-        GestureRow("Swipe up", s.coverSwipeUp, PlayerGesture.choices()) { prefs.setGesture("cover_swipe_up", it) }
-        GestureRow("Double tap", s.coverDoubleTap, PlayerGesture.choices(double = true)) {
+    Group(tr(R.string.gestures), info = tr(R.string.on_the_player_s_cover_swiping)) {
+        GestureRow(tr(R.string.swipe_left), s.coverSwipeLeft, PlayerGesture.choices()) { prefs.setGesture("cover_swipe_left", it) }
+        GestureRow(tr(R.string.swipe_right), s.coverSwipeRight, PlayerGesture.choices()) { prefs.setGesture("cover_swipe_right", it) }
+        GestureRow(tr(R.string.swipe_up), s.coverSwipeUp, PlayerGesture.choices()) { prefs.setGesture("cover_swipe_up", it) }
+        GestureRow(tr(R.string.double_tap), s.coverDoubleTap, PlayerGesture.choices(double = true)) {
             prefs.setGesture("cover_double_tap", it)
             // Seek by side needs a step; it used to be switched off by setting none.
             if (it == PlayerGesture.SEEK_SIDES && s.doubleTapSeekSeconds <= 0) prefs.setDoubleTapSeekSeconds(10)
         }
-        if (s.coverDoubleTap == PlayerGesture.SEEK_SIDES) Chips(listOf(3, 5, 10, 15), s.doubleTapSeekSeconds.coerceAtLeast(3), { "$it s a tap" }) { prefs.setDoubleTapSeekSeconds(it) }
-        GestureRow("Long press", s.coverLongPress, PlayerGesture.choices()) { prefs.setGesture("cover_long_press", it) }
-        Label("Mini player")
-        GestureRow("Swipe left", s.miniSwipeLeft, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_left", it) }
-        GestureRow("Swipe right", s.miniSwipeRight, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_right", it) }
-        GestureRow("Swipe up", s.miniSwipeUp, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_up", it) }
-        GestureRow("Pull down", s.miniSwipeDown, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_down", it) }
+        if (s.coverDoubleTap == PlayerGesture.SEEK_SIDES) Chips(listOf(3, 5, 10, 15), s.doubleTapSeekSeconds.coerceAtLeast(3), { tr(R.string.s_a_tap, it) }) { prefs.setDoubleTapSeekSeconds(it) }
+        GestureRow(tr(R.string.long_press), s.coverLongPress, PlayerGesture.choices()) { prefs.setGesture("cover_long_press", it) }
+        // #259 (1.7.9.2): the same gestures around the controls too.
+        Toggle(
+            tr(R.string.gestures_anywhere_on_the_player), tr(R.string.not_only_on_the_cover_around_the_controls_too), s.behavior.gesturesEverywhere,
+            info = tr(R.string.your_swipes_double_tap_and_long_press_work_below_the_title_too),
+        ) { prefs.setGesturesEverywhere(it) }
+        Label(tr(R.string.mini_player))
+        GestureRow(tr(R.string.swipe_left), s.miniSwipeLeft, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_left", it) }
+        GestureRow(tr(R.string.swipe_right), s.miniSwipeRight, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_right", it) }
+        GestureRow(tr(R.string.swipe_up), s.miniSwipeUp, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_up", it) }
+        GestureRow(tr(R.string.pull_down), s.miniSwipeDown, PlayerGesture.choices(mini = true)) { prefs.setGesture("mini_swipe_down", it) }
     }
 }
 
@@ -669,7 +1015,7 @@ private fun GestureRow(title: String, value: PlayerGesture, choices: List<Player
     var open by remember { mutableStateOf(false) }
     Box {
         Row(
-            Modifier.fillMaxWidth().clickable(onClickLabel = "Change what $title does") { open = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().clickable(onClickLabel = tr(R.string.change_what_does, title)) { open = true }.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)

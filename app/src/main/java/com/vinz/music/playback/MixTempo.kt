@@ -307,16 +307,29 @@ class MixTempo(
     private val prefs = context.getSharedPreferences("mix_tempo", Context.MODE_PRIVATE)
     /** Song id -> integrated loudness (LUFS; NaN when it couldn't be measured). Also marks a song as scanned. */
     private val loudPrefs = context.getSharedPreferences("song_loudness", Context.MODE_PRIVATE)
+    /** Song id -> its loudest sample (dBFS), measured with its loudness since 1.8.0: how far Normalize may lift it. */
+    private val peakPrefs = context.getSharedPreferences("song_peak", Context.MODE_PRIVATE)
     /** Song id -> its key ([MusicKey.encode], or "none" when it has no clear one); DJ mode's harmonic ordering. */
     private val keyPrefs = context.getSharedPreferences("song_key", Context.MODE_PRIVATE)
     private val failed = ConcurrentHashMap.newKeySet<String>()
     /** One song at a time: decoding a whole song is the heaviest thing Vinz does in the background. */
     private val lock = Mutex()
 
+    /** Forgets what was measured of [id] (another version of it plays now), so it's measured again. */
+    fun forget(id: String) {
+        for (p in listOf(prefs, loudPrefs, peakPrefs, keyPrefs, quickPrefs)) p.edit().remove(id).apply()
+    }
+
     fun cached(id: String): Tempo? = prefs.getString(id, null)?.let(Tempo::decode)
 
     /** The song's measured loudness (integrated LUFS), once it's been scanned. */
     fun loudness(id: String): Float? = loudPrefs.getFloat(id, Float.NaN).takeIf { !it.isNaN() }
+
+    /** The song's loudest sample (dBFS), once it's been scanned (by 1.8.0 or later). */
+    fun peak(id: String): Float? = peakPrefs.getFloat(id, Float.NaN).takeIf { !it.isNaN() }
+
+    /** Measured before peaks were (1.8.0): Normalize can lift it no more than 6 dB until it's scanned again. */
+    private fun noPeak(id: String) = loudness(id) != null && !peakPrefs.contains(id)
 
     /** The song's key once it's been scanned for one (null for none clear, or not scanned yet). */
     fun key(id: String): MusicKey? = keyPrefs.getString(id, null)?.let(MusicKey::decode)
@@ -329,7 +342,7 @@ class MixTempo(
     /** Scanned before the song's fade-out and intro were measured (for Mix's Auto length): scanned again once. */
     private fun old(id: String) = prefs.getString(id, null)?.let(Tempo::isOld) == true
 
-    private class Scan(val tempo: Tempo?, val lufs: Float?, val key: MusicKey?)
+    private class Scan(val tempo: Tempo?, val lufs: Float?, val key: MusicKey?, val peakDb: Float?)
 
     // ---------------------------------------------------------------- DJ mode's quick scan
 
@@ -355,24 +368,24 @@ class MixTempo(
      * DJ mode's look at a song: its key, tempo and loudness from three stretches of it ([QuickScan]), fetched by range
      * when it isn't on the phone ([network] allowing). A song already scanned for its key is [QuickResult.KEYED] at once.
      */
-    suspend fun quickScan(id: String, network: Boolean): QuickResult {
+    suspend fun quickScan(id: String, network: Boolean, priority: Int = android.os.Process.THREAD_PRIORITY_BACKGROUND): QuickResult {
         if (keyed(id)) return QuickResult.KEYED
         if (id in failed) return QuickResult.FAILED
         // While music plays, one at a time (Reddit 1.7: "DJ mode is so laggy": three decodes beside playback were too
         // much for mid-range phones); while paused, a few at once.
-        return quickGate.withPermit { if (playing()) playingGate.withLock { quickScanNow(id, network) } else quickScanNow(id, network) }
+        return quickGate.withPermit { if (playing()) playingGate.withLock { quickScanNow(id, network, priority) } else quickScanNow(id, network, priority) }
     }
 
     /** One quick scan at a time while music plays ([quickScan]). */
     private val playingGate = kotlinx.coroutines.sync.Mutex()
 
-    private suspend fun quickScanNow(id: String, network: Boolean): QuickResult {
+    private suspend fun quickScanNow(id: String, network: Boolean, priority: Int): QuickResult {
         if (keyed(id)) return QuickResult.KEYED
         return run {
             withContext(Dispatchers.IO) {
                 val started = System.nanoTime()
                 val before = android.os.Process.getThreadPriority(android.os.Process.myTid())
-                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                android.os.Process.setThreadPriority(priority)
                 runCatching { yieldToPlaying() }
                 AudioDiagnostics.log("background", "DJ quick scan of $id started")
                 try {
@@ -433,10 +446,14 @@ class MixTempo(
      * Scans the song now if it hasn't been ([network]: whether its audio may be downloaded when it isn't on the phone),
      * and returns its tempo; null when it has none that's clear, or it can't be scanned yet. [edges]: a song scanned
      * before its fade-out and intro were measured is scanned again (only Crossfade's automatic length needs them), and
-     * with [key], one scanned before its key was (DJ mode), and with [wave], one with no outline for the waveform bar.
+     * with [key], one scanned before its key was (DJ mode), with [wave], one with no outline for the waveform bar, and
+     * with [peak], one scanned before its peak was (Normalize).
      */
-    suspend fun measure(id: String, network: Boolean = true, edges: Boolean = true, key: Boolean = false, wave: Boolean = false): Tempo? {
-        fun done() = scanned(id) && !(edges && old(id)) && !(key && !keyed(id)) && !(wave && waves?.has(id) == false)
+    suspend fun measure(
+        id: String, network: Boolean = true, edges: Boolean = true, key: Boolean = false, wave: Boolean = false, peak: Boolean = false,
+    ): Tempo? {
+        fun done() = scanned(id) && !(edges && old(id)) && !(key && !keyed(id)) && !(wave && waves?.has(id) == false) &&
+            !(peak && noPeak(id))
         if (done() || id in failed) return cached(id)
         return lock.withLock {
             if (done()) return@withLock cached(id)
@@ -460,6 +477,7 @@ class MixTempo(
                     else -> {
                         prefs.edit().putString(id, s.tempo?.encode() ?: "none").apply()
                         loudPrefs.edit().putFloat(id, s.lufs ?: Float.NaN).apply()
+                        peakPrefs.edit().putFloat(id, s.peakDb ?: Float.NaN).apply()
                         keyPrefs.edit().putString(id, s.key?.encode() ?: "none:${MusicKey.VERSION}").apply()
                         val ms = (System.nanoTime() - started) / 1_000_000
                         val t = s.tempo
@@ -490,7 +508,7 @@ class MixTempo(
                 }
                 android.net.Uri.fromFile(file)
             }
-            val (pcm, rate) = decodeAll(uri) ?: throw java.io.IOException("couldn't decode its audio")
+            val (pcm, rate, peak) = decodeAll(uri) ?: throw java.io.IOException("couldn't decode its audio")
             val lufs = integratedLoudness(pcm, rate)?.let { it + MONO_TO_STEREO_DB }
             // The waveform progress bar's outline, from the same audio (1.7.4).
             waves?.let { w -> runCatching { w.put(id, com.vinz.music.data.SongWaves.outline(pcm)) } }
@@ -502,17 +520,22 @@ class MixTempo(
                     File(dir, "mix_${id}_$rate.f32").writeBytes(bb.array())
                 }
             }
+            // The analysis steps are seconds of work each on a slow phone: each waits its turn too ([ease]).
+            ease()
             val bands = VideoSync.bandFeatures(pcm, rate)
             val frameMs = (rate / 100) * 1000.0 / rate
+            ease()
             val key = runCatching { KeyDetector.detect(pcm, rate) }.getOrNull()
-            return Scan(Tempo.analyze(bands, frameMs, offsetMs = VideoSync.WINDOW / 2 * 1000.0 / rate), lufs, key)
+            ease()
+            val peakDb = peak.takeIf { it > 0f }?.let { (20 * kotlin.math.log10(it.toDouble())).toFloat() }
+            return Scan(Tempo.analyze(bands, frameMs, offsetMs = VideoSync.WINDOW / 2 * 1000.0 / rate), lufs, key, peakDb)
         } finally {
             file.delete()
         }
     }
 
-    /** The whole file as mono PCM, decimated to roughly 11 kHz. */
-    private fun decodeAll(uri: android.net.Uri): Pair<FloatArray, Int>? {
+    /** The whole file as mono PCM, decimated to roughly 11 kHz, its rate, and its loudest sample before (0 … 1). */
+    private fun decodeAll(uri: android.net.Uri): Triple<FloatArray, Int, Float>? {
         val ex = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -532,6 +555,7 @@ class MixTempo(
             var count = 0
             var acc = 0f
             var n = 0
+            var peak = 0f
             val info = MediaCodec.BufferInfo()
             var inputDone = false
             while (true) {
@@ -563,7 +587,11 @@ class MixTempo(
                     val frames = info.size / (channels * (if (isFloat) 4 else 2))
                     for (f in 0 until frames) {
                         var m = 0f
-                        for (c in 0 until channels) m += if (isFloat) buf.float else buf.short / 32768f
+                        for (c in 0 until channels) {
+                            val v = if (isFloat) buf.float else buf.short / 32768f
+                            if (v > peak) peak = v else if (-v > peak) peak = -v
+                            m += v
+                        }
                         acc += m / channels
                         if (++n == factor) {
                             if (count == out.size) out = out.copyOf(out.size * 2)
@@ -580,7 +608,7 @@ class MixTempo(
             }
             val sr = rate / factor
             if (count < sr * 20) return null
-            return out.copyOf(count) to sr
+            return Triple(out.copyOf(count), sr, peak)
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
@@ -606,7 +634,49 @@ class MixTempo(
             while (android.os.SystemClock.elapsedRealtime() - lastUnderrunAt < EASE_AFTER_UNDERRUN_MS && waited < MAX_EASE_MS) {
                 Thread.sleep(250); waited += 250
             }
+            // And on a phone with few cores, while the listener scrolls or taps (GitHub #343: a Redmi A3 lagged
+            // scrolling playlists while the next songs were decoded beside it).
+            waited = 0
+            while (waited < MAX_TOUCH_WAIT_MS && stepsAside(slowPhone, touchDown, android.os.SystemClock.uptimeMillis() - touchedAt, urgentScans.get())) {
+                Thread.sleep(100); waited += 100
+            }
         }
+
+        /** Whether this phone's scans make way for the listener's touches: few cores, little memory or Performance mode. */
+        @Volatile var slowPhone: () -> Boolean = { false }
+        @Volatile private var touchDown = false
+        @Volatile private var touchedAt = -TOUCH_QUIET_MS
+        /** Scans the song's end is waiting for (Crossfade near the end of a song): no scan steps aside meanwhile. */
+        private val urgentScans = java.util.concurrent.atomic.AtomicInteger()
+
+        /** Every touch on Vinz's screen (MainActivity.dispatchTouchEvent): a volatile write or two, nothing more. */
+        fun touched(action: Int) {
+            touchedAt = android.os.SystemClock.uptimeMillis()
+            when (action) {
+                android.view.MotionEvent.ACTION_DOWN -> touchDown = true
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> touchDown = false
+            }
+        }
+
+        /**
+         * A scan waits while a finger is on the screen and for [TOUCH_QUIET_MS] after the last touch (a fling goes on
+         * after the finger's lifted), on slow phones only, and never while a song's end is waiting for a scan.
+         */
+        internal fun stepsAside(slow: () -> Boolean, down: Boolean, sinceTouchMs: Long, urgent: Int): Boolean =
+            (down || sinceTouchMs < TOUCH_QUIET_MS) && urgent == 0 && slow()
+
+        /** Cores, memory and Performance mode, as [slowPhone] reads them. */
+        internal fun isSlowPhone(cores: Int, mayBeSlow: Boolean, performanceMode: Boolean) = cores <= 4 || mayBeSlow || performanceMode
+
+        /** [block] is a scan a song's end waits for: other scans stop stepping aside for touches until it's done. */
+        internal suspend fun <T> urgently(block: suspend () -> T): T {
+            urgentScans.incrementAndGet()
+            try { return block() } finally { urgentScans.decrementAndGet() }
+        }
+
+        private const val TOUCH_QUIET_MS = 2_000L
+        /** A minute at most per step: a scan still finishes while someone scrolls on and on. */
+        private const val MAX_TOUCH_WAIT_MS = 60_000
 
         private const val EASE_AFTER_UNDERRUN_MS = 4_000L
         /** At most this long per step, so a scan still finishes on a phone that keeps running dry. */
