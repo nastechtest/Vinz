@@ -181,6 +181,8 @@ else
   pass "no pull_request_target"
 fi
 
+bash "$repo_root/scripts/tests/prefetch-robolectric-test.sh" || failures=$((failures + 1))
+
 bash "$repo_root/scripts/tests/publish-main-test.sh" || failures=$((failures + 1))
 
 printf '\n%s checks, %s failure(s)\n' "$checks" "$failures"
