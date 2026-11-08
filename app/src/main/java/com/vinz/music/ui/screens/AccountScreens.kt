@@ -95,6 +95,7 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
         state = state, actions = controller, onBack = onDone,
         onContinue = if (onboarding) onDone else null,
         bottomPadding = bottomPadding,
+        cinematicOnboarding = onboarding,
     ) {
         if (!onboarding) LocalMusicSummary()
     }
