@@ -36,6 +36,7 @@ const requiredFiles = [
   "platform/cloudflare/vinz-api.js",
   "supabase/migrations/20261107131815_vinz_account_foundation.sql",
   "supabase/migrations/20261107200000_vinz_account_2_username_and_avatar_hardening.sql",\n  "supabase/tests/vinz_account_access_contract.sql",
+  "supabase/tests/vinz_youtube_access_contract.sql",
   "supabase/migrations/20261108100000_vinz_youtube_music_import.sql",
   "platform/cloudflare/youtube-import.js",
   "platform/cloudflare/youtube-import.test.js",
