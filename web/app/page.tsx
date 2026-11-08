@@ -31,7 +31,7 @@ export default function Home() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive) setUser(session?.user ?? null);
     });
-    return () => { alive = false; listener.subscription.unsubscribe(); };
+  return () => { alive = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   useEffect(() => {
@@ -44,6 +44,34 @@ export default function Home() {
       })
       .catch(() => setApiStatus("offline"));
   }, []);
+
+  async function googleSignIn() {
+    if (!supabase) return;
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + "/auth/callback?next=%2Faccount" },
+    });
+    if (error) { setMessage(error.message); setBusy(false); }
+  }
+
+  async function resendOtp() {
+    if (!supabase) return;
+    setBusy(true);
+    const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+    setMessage(error?.message ?? "A new verification code has been sent.");
+    setBusy(false);
+  }
+
+  async function recoverPassword() {
+    if (!supabase || !email.trim()) { setMessage("Enter your email address first."); return; }
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin + "/auth/callback?next=%2Fauth%2Freset-password",
+    });
+    setMessage(error?.message ?? "If the account exists, a password reset email has been sent.");
+    setBusy(false);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,7 +150,7 @@ export default function Home() {
             <p className="eyebrow">ACCOUNT CONNECTED</p>
             <h2>Welcome to Vinz.</h2>
             <p className="muted">{user.email}</p>
-            <button className="primary" onClick={signOut}>Sign out</button>
+            <a className="primary account-entry" href="/account">Open account</a><button className="secondary-action" onClick={signOut}>Sign out</button>
           </div>
         ) : needsOtp ? (
           <form onSubmit={verifyEmail}>
@@ -131,7 +159,7 @@ export default function Home() {
             <p className="muted">Enter the verification code sent to {email}.</p>
             <label htmlFor="otp">Verification code</label>
             <input id="otp" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => setOtp(e.target.value)} required maxLength={8} />
-            <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify email"}</button>
+            <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify email"}</button><button type="button" className="text-button" disabled={busy} onClick={resendOtp}>Resend verification code</button>
             <button type="button" className="text-button" onClick={() => { setNeedsOtp(false); setMessage(""); }}>Back</button>
           </form>
         ) : (
@@ -147,7 +175,7 @@ export default function Home() {
               <input id="email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
               <label htmlFor="password">Password</label>
               <input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={e => setPassword(e.target.value)} minLength={8} required />
-              <button className="primary" disabled={busy}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}</button>
+              <button className="primary" disabled={busy}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}</button>{mode === "login" && <button type="button" className="text-button" onClick={recoverPassword}>Forgot password?</button>}<div className="auth-divider"><span>OR</span></div><button type="button" className="google-button" disabled={busy} onClick={googleSignIn}><span className="google-mark">G</span> Continue with Google</button>
             </form>
           </>
         )}
