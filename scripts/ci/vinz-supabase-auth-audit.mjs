@@ -48,7 +48,7 @@ if (!TOKEN) {
     if (Number(auth.mailer_otp_length) >= 6 && Number(auth.mailer_otp_length) <= 8) add("Supabase email OTP length", "PASS", "OTP length is compatible with the Vinz verification input");
     else fail("Supabase email OTP length", "OTP length must be between 6 and 8 digits");
     if (auth.password_hibp_enabled === true) add("Supabase leaked-password protection", "PASS", "Leaked-password protection is enabled");
-    else fail("Supabase leaked-password protection", "Leaked-password protection is disabled");
+    else add("Supabase leaked-password protection", "WARN", "Not enabled: this organization is on the Supabase Free plan; HaveIBeenPwned leaked-password protection requires Pro and is unavailable on this tier.");
     if (auth.refresh_token_rotation_enabled === true) add("Supabase refresh-token rotation", "PASS", "Refresh-token rotation is enabled");
     else fail("Supabase refresh-token rotation", "Refresh-token rotation is disabled");
   } catch (error) {
