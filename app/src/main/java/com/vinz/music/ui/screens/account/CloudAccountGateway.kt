@@ -12,8 +12,8 @@ internal interface CloudAccountGateway {
     suspend fun recover(email: String)
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
     suspend fun youtubeStatus(): VinzCloudAccount.YouTubeStatus = VinzCloudAccount.YouTubeStatus(false)
-    suspend fun youtubeConnectUrl(): String = error("YouTube connection is unavailable.")
-    suspend fun importYouTubeMusic(): VinzCloudAccount.YouTubeImportResult = error("YouTube import is unavailable.")
+    suspend fun youtubeConnectUrl(): String = throw UnsupportedOperationException()
+    suspend fun importYouTubeMusic(): VinzCloudAccount.YouTubeImportResult = throw UnsupportedOperationException()
     suspend fun disconnectYouTubeMusic() { }
     suspend fun signOut()
 }
