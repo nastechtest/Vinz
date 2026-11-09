@@ -110,3 +110,12 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 
 - Follow-up hardening: sign-in and OTP session writes now share the refresh lock, preventing a slow refresh from overwriting a newly authenticated account. Session clearing compares both access and refresh token versions before removing state. Added a regression test for rotated-token version detection.
+
+
+## Live resource inspection — 2026-11-09
+
+- The connected Supabase project `Vinz` is active. Live schema confirms `vinz_profiles`, `vinz_account_private`, `vinz_account_settings`, `vinz_backups` and `vinz_share_links` exist. The private `vinz-cloud-backups` bucket is capped at 50 MiB.
+- Live migration history currently ends at `20261108082934_vinz_youtube_music_import`. Repository migrations `20261108140500_vinz_require_verified_email_for_account_policies.sql` and `20261109150000_vinz_public_username_availability.sql` are not applied to the connected project. Live policy inspection also confirms the verified-email RLS gate is not yet active. No production migration was applied.
+- The current Cloudflare connection resolves to a different account than the previously recorded account ID. Read-only inventory found Workers `api`, `backup`, `home`, `share`, `staging` and `vinz`. The `api`, `backup` and `share` scripts are small path-gating wrappers that forward to `env.VINZ.fetch`; the `vinz` script contains the Supabase-backed API implementation, so it is not currently a Hello World-only Worker. No Worker, binding, secret or deployment was changed.
+- Feature branch head at inspection: `4c6379d622f6c076501bc44999a113cfe6434855`; comparison with `main`: 18 commits ahead and 150 behind. PR #37 was already merged on 2026-11-07; follow-up remains on this feature branch and in the existing PR conversation. No replacement PR, merge or rebase was performed.
+- Session-refresh Android validation for code head `4c6379d622f6c076501bc44999a113cfe6434855` is queued in run [42646360263](https://github.com/nastechtest/Vinz/actions/runs/42646360263). The prior green build at `64e913d00b9819370554076b1c4ccd53852a0cc6` is only a baseline and does not include session refresh.
