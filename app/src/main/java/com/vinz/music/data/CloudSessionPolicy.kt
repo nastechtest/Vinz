@@ -16,4 +16,11 @@ internal object CloudSessionPolicy {
         nowEpochSeconds: Long,
     ): Long = expiresAtEpochSeconds.takeIf { it > 0L }
         ?: nowEpochSeconds + expiresInSeconds.coerceAtLeast(1L)
+
+    fun sameSessionVersion(
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        currentAccessToken: String,
+        currentRefreshToken: String,
+    ): Boolean = expectedAccessToken == currentAccessToken && expectedRefreshToken == currentRefreshToken
 }
