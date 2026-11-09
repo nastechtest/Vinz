@@ -98,3 +98,12 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Added Worker edge rate limiting (120 requests/minute per hashed Cloudflare client IP) and a boolean-only SQL RPC. No user ID, email, private profile or account details are returned by this endpoint.
 - Consolidated duplicate Worker-only tests into the existing platform checks workflow. Android unit tests and platform checks are pending for this commit; do not call the increment green until both finish.
 - Production rollout is blocked on approval to apply `20261109150000_vinz_public_username_availability.sql` and deploy the `USERNAME_CHECK_LIMITER` binding to the existing `vinz` Worker. No production schema, Worker, secret, deployment or release was changed.
+
+
+## Latest implementation — 2026-11-09 session reliability
+
+- Added absolute access-token expiry to the encrypted Vinz session record while remaining backward-compatible with existing encrypted records that do not contain an expiry.
+- Authenticated Supabase requests now refresh proactively within a 60-second expiry window. A single 401 can trigger one refresh-and-retry; concurrent requests share the rotated session rather than consuming the same refresh token twice.
+- Refresh-token rejection clears the invalid local session; transient server/network failures retain it for retry. A retried 401 clears only the same user/session version, avoiding accidental sign-out of a newer account.
+- Added pure JVM regression tests for server expiry, relative expiry, refresh leeway and legacy sessions. Android CI is pending for this increment.
+- The current feature head before this increment was `64e913d00b9819370554076b1c4ccd53852a0cc6`. No production Supabase settings, schema, Worker, OAuth configuration or credentials were changed.
