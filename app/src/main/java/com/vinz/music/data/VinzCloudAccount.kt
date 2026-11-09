@@ -26,7 +26,13 @@ class CloudAuthException(val failure: CloudAuthFailure) : IllegalStateException(
  * The Supabase publishable key is public client configuration; privileged keys never belong in this app.
  */
 class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
-    data class Session(val accessToken: String, val refreshToken: String, val userId: String, val email: String)
+    data class Session(
+        val accessToken: String,
+        val refreshToken: String,
+        val userId: String,
+        val email: String,
+        val expiresAtEpochSeconds: Long = 0,
+    )
     data class Profile(
         val id: String,
         val username: String,
@@ -44,6 +50,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
 
     private val app = context.applicationContext
     private val store = EncryptedSessionStore(app)
+    private val refreshLock = Any()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     val session: Session? get() = store.read()?.let(::decodeSession)
@@ -93,8 +100,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val refresh = result.optString("refresh_token")
         val userId = user.optString("id")
         if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The account session was incomplete.")
-        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh)
-            .put("user_id", userId).put("email", user.optString("email", normalizedEmail)).toString())
+        store.write(encodeSession(sessionFromAuthResponse(result, user, normalizedEmail)))
         store.clearPendingVerification()
         AuthResult.SignedIn(loadProfile())
     }
@@ -121,8 +127,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val refresh = result.optString("refresh_token")
         val userId = user.optString("id")
         if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The verified account session was incomplete.")
-        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh)
-            .put("user_id", userId).put("email", verifiedEmail.ifBlank { normalizedEmail }).toString())
+        store.write(encodeSession(sessionFromAuthResponse(result, user, verifiedEmail.ifBlank { normalizedEmail })))
 
         // The auth-user trigger created a safe default row. Apply signup profile data only after verification.
         // A username collision leaves the verified session active so the user can choose another username.
@@ -180,18 +185,10 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         request("/auth/v1/recover", "POST", JSONObject().put("email", email.trim()).toString(), authenticated = false)
     }
 
+    /** Explicit refresh entry point; normal authenticated requests refresh automatically as needed. */
     suspend fun refreshSession(): Boolean = withContext(Dispatchers.IO) {
         val saved = store.read()?.let(::decodeSession) ?: return@withContext false
-        val result = request("/auth/v1/token?grant_type=refresh_token", "POST",
-            JSONObject().put("refresh_token", saved.refreshToken).toString(), authenticated = false)
-        val access = result.optString("access_token")
-        val refresh = result.optString("refresh_token")
-        val user = result.optJSONObject("user")
-        if (access.isBlank() || refresh.isBlank()) return@withContext false
-        store.write(JSONObject().put("access_token", access).put("refresh_token", refresh)
-            .put("user_id", user?.optString("id")?.takeIf { it.isNotBlank() } ?: saved.userId)
-            .put("email", user?.optString("email")?.takeIf { it.isNotBlank() } ?: saved.email).toString())
-        true
+        refreshStoredSession(saved, force = true) != null
     }
 
     /** Uses a public boolean-only endpoint; no email, user ID or private profile data is returned. */
@@ -240,49 +237,179 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     suspend fun signOut() = withContext(Dispatchers.IO) {
         val s = session
         if (s != null) runCatching { request("/auth/v1/logout", "POST", null) }
-        store.clear()
+        synchronized(refreshLock) { store.clear() }
     }
 
-    private fun request(path: String, method: String, body: String? = null, authenticated: Boolean = true, prefer: String? = null): JSONObject {
-        val s = if (authenticated) session else null
+    private data class HttpResult(val code: Int, val body: String) {
+        val successful: Boolean get() = code in 200..299
+    }
+
+    private fun executeRequest(
+        path: String,
+        method: String,
+        body: String?,
+        session: Session?,
+        prefer: String?,
+    ): HttpResult {
         val builder = Request.Builder().url(SUPABASE_URL + path)
             .header("apikey", SUPABASE_PUBLISHABLE_KEY)
             .header("Accept", "application/json")
-        if (s != null) builder.header("Authorization", "Bearer ${s.accessToken}")
+        if (session != null) builder.header("Authorization", "Bearer ${session.accessToken}")
         else builder.header("Authorization", "Bearer $SUPABASE_PUBLISHABLE_KEY")
         if (body != null) builder.header("Content-Type", "application/json").method(method, body.toRequestBody(jsonType))
         else builder.method(method, null)
         prefer?.let { builder.header("Prefer", it) }
         http.newCall(builder.build()).execute().use { response ->
-            val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                val payload = runCatching { JSONObject(text) }.getOrNull()
-                val message = listOf("message", "msg", "error_description", "error")
-                    .map { payload?.optString(it).orEmpty() }.joinToString(" ").lowercase()
-                val code = payload?.optString("code").orEmpty()
-                val failure = when {
-                    response.code == 429 || message.contains("rate limit") || message.contains("too many") ->
-                        CloudAuthFailure.RATE_LIMITED
-                    path.contains("/verify") && (message.contains("expired") || code == "otp_expired") ->
-                        CloudAuthFailure.OTP_EXPIRED
-                    path.contains("/verify") && (message.contains("invalid") || message.contains("token")) ->
-                        CloudAuthFailure.INVALID_OTP
-                    message.contains("email not confirmed") || code == "email_not_confirmed" ->
-                        CloudAuthFailure.EMAIL_NOT_CONFIRMED
-                    path.startsWith("/rest/v1/vinz_profiles") && (response.code == 409 || code == "23505") ->
-                        CloudAuthFailure.USERNAME_TAKEN
-                    else -> null
-                }
-                if (failure != null) throw CloudAuthException(failure)
-                error("Vinz Account request failed (${response.code}).")
-            }
-            return if (text.isBlank()) JSONObject() else if (text.trimStart().startsWith("[")) JSONObject().put("data", org.json.JSONArray(text)) else JSONObject(text)
+            HttpResult(response.code, response.body?.string().orEmpty())
         }
+    }
+
+    /**
+     * Authenticated REST calls refresh before expiry and retry one 401 after a rotated token.
+     * The refresh lock prevents concurrent requests from consuming the same single-use refresh token.
+     */
+    private fun request(path: String, method: String, body: String? = null, authenticated: Boolean = true, prefer: String? = null): JSONObject {
+        val originalSession = if (authenticated) sessionForRequest() else null
+        var response = executeRequest(path, method, body, originalSession, prefer)
+        if (response.code == 401 && originalSession != null) {
+            val refreshed = refreshStoredSession(originalSession, force = true)
+            if (refreshed != null && refreshed.userId == originalSession.userId) {
+                response = executeRequest(path, method, body, refreshed, prefer)
+                if (response.code == 401) clearSessionIfCurrent(refreshed)
+            }
+        }
+        return parseResponse(path, response)
+    }
+
+    private fun sessionForRequest(): Session {
+        val saved = store.read()?.let(::decodeSession) ?: error("Sign in to your Vinz Account first.")
+        return refreshStoredSession(saved, force = false)
+            ?: error("Your Vinz Account session expired. Sign in again.")
+    }
+
+    private fun refreshStoredSession(expected: Session, force: Boolean): Session? = synchronized(refreshLock) {
+        val current = store.read()?.let(::decodeSession) ?: return@synchronized null
+        if (current.userId != expected.userId) return@synchronized null
+        // Another request may already have rotated the refresh token. Reuse its newer session.
+        if (current.accessToken != expected.accessToken || current.refreshToken != expected.refreshToken) {
+            return@synchronized current
+        }
+        val now = System.currentTimeMillis() / 1_000L
+        if (!force && !CloudSessionPolicy.shouldRefresh(current.expiresAtEpochSeconds, now)) {
+            return@synchronized current
+        }
+        val refreshResponse = executeRequest(
+            "/auth/v1/token?grant_type=refresh_token",
+            "POST",
+            JSONObject().put("refresh_token", current.refreshToken).toString(),
+            session = null,
+            prefer = null,
+        )
+        if (!refreshResponse.successful) {
+            // Invalid/revoked refresh tokens are terminal; transient failures retain the session.
+            if (refreshResponse.code == 400 || refreshResponse.code == 401) {
+                store.clear()
+                return@synchronized null
+            }
+            error("Vinz Account session refresh failed (${refreshResponse.code}).")
+        }
+        val payload = runCatching { JSONObject(refreshResponse.body) }.getOrNull()
+            ?: error("Vinz Account session refresh returned an invalid response.")
+        val user = payload.optJSONObject("user")
+        val refreshedUserId = user?.optString("id")?.takeIf { it.isNotBlank() } ?: current.userId
+        if (refreshedUserId != current.userId) {
+            store.clear()
+            return@synchronized null
+        }
+        val access = payload.optString("access_token")
+        val refresh = payload.optString("refresh_token")
+        if (access.isBlank() || refresh.isBlank()) {
+            store.clear()
+            return@synchronized null
+        }
+        val expiresAt = CloudSessionPolicy.expiryEpochSeconds(
+            payload.optLong("expires_at", 0L),
+            payload.optLong("expires_in", 3_600L),
+            now,
+        )
+        val rotated = Session(
+            accessToken = access,
+            refreshToken = refresh,
+            userId = current.userId,
+            email = user?.optString("email")?.takeIf { it.isNotBlank() } ?: current.email,
+            expiresAtEpochSeconds = expiresAt,
+        )
+        store.write(encodeSession(rotated))
+        rotated
+    }
+
+    private fun clearSessionIfCurrent(expected: Session) {
+        synchronized(refreshLock) {
+            val current = store.read()?.let(::decodeSession)
+            if (current?.userId == expected.userId && current.accessToken == expected.accessToken) store.clear()
+        }
+    }
+
+    private fun sessionFromAuthResponse(payload: JSONObject, user: JSONObject, fallbackEmail: String): Session {
+        val now = System.currentTimeMillis() / 1_000L
+        return Session(
+            accessToken = payload.optString("access_token"),
+            refreshToken = payload.optString("refresh_token"),
+            userId = user.optString("id"),
+            email = user.optString("email").takeIf { it.isNotBlank() } ?: fallbackEmail,
+            expiresAtEpochSeconds = CloudSessionPolicy.expiryEpochSeconds(
+                payload.optLong("expires_at", 0L),
+                payload.optLong("expires_in", 3_600L),
+                now,
+            ),
+        )
+    }
+
+    private fun encodeSession(session: Session): String = JSONObject()
+        .put("access_token", session.accessToken)
+        .put("refresh_token", session.refreshToken)
+        .put("user_id", session.userId)
+        .put("email", session.email)
+        .put("expires_at", session.expiresAtEpochSeconds)
+        .toString()
+
+    private fun parseResponse(path: String, response: HttpResult): JSONObject {
+        if (!response.successful) {
+            val payload = runCatching { JSONObject(response.body) }.getOrNull()
+            val message = listOf("message", "msg", "error_description", "error")
+                .map { payload?.optString(it).orEmpty() }.joinToString(" ").lowercase()
+            val code = payload?.optString("code").orEmpty()
+            val failure = when {
+                response.code == 429 || message.contains("rate limit") || message.contains("too many") ->
+                    CloudAuthFailure.RATE_LIMITED
+                path.contains("/verify") && (message.contains("expired") || code == "otp_expired") ->
+                    CloudAuthFailure.OTP_EXPIRED
+                path.contains("/verify") && (message.contains("invalid") || message.contains("token")) ->
+                    CloudAuthFailure.INVALID_OTP
+                message.contains("email not confirmed") || code == "email_not_confirmed" ->
+                    CloudAuthFailure.EMAIL_NOT_CONFIRMED
+                path.startsWith("/rest/v1/vinz_profiles") && (response.code == 409 || code == "23505") ->
+                    CloudAuthFailure.USERNAME_TAKEN
+                else -> null
+            }
+            if (failure != null) throw CloudAuthException(failure)
+            error("Vinz Account request failed (${response.code}).")
+        }
+        val text = response.body
+        return if (text.isBlank()) JSONObject()
+        else if (text.trimStart().startsWith("[")) JSONObject().put("data", org.json.JSONArray(text))
+        else JSONObject(text)
     }
 
     private fun decodeSession(value: String): Session {
         val j = JSONObject(value)
-        return Session(j.getString("access_token"), j.getString("refresh_token"), j.getString("user_id"), j.optString("email"))
+        return Session(
+            accessToken = j.getString("access_token"),
+            refreshToken = j.getString("refresh_token"),
+            userId = j.getString("user_id"),
+            email = j.optString("email"),
+            expiresAtEpochSeconds = j.optLong("expires_at", 0L),
+        )
     }
 
     private fun JSONObject.toProfile() = Profile(
