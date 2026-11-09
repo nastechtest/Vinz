@@ -2,6 +2,7 @@ package com.vinz.music
 
 import com.vinz.music.ui.screens.account.CloudAccountMode
 import com.vinz.music.ui.screens.account.CloudAccountState
+import com.vinz.music.ui.screens.account.UsernameAvailability
 import com.vinz.music.ui.screens.account.CloudAccountValidation
 import com.vinz.music.ui.screens.account.CloudProfileDraft
 import java.util.Locale
@@ -120,11 +121,16 @@ class CloudAccountValidationTest {
         assertTrue(CloudAccountValidation.canSubmit(base.copy(password = "one")))
         assertFalse(CloudAccountValidation.canSubmit(base.copy(mode = CloudAccountMode.SIGN_UP, password = "short")))
         assertFalse(CloudAccountValidation.canSubmit(base.copy(mode = CloudAccountMode.SIGN_UP, password = "password8")))
-        assertTrue(CloudAccountValidation.canSubmit(base.copy(
+        val signup = base.copy(
             mode = CloudAccountMode.SIGN_UP,
             password = "password8",
             draft = CloudProfileDraft("artist_7", "Artist"),
-        )))
+        )
+        assertFalse(CloudAccountValidation.canSubmit(signup))
+        assertFalse(CloudAccountValidation.canSubmit(signup.copy(usernameAvailability = UsernameAvailability.CHECKING)))
+        assertFalse(CloudAccountValidation.canSubmit(signup.copy(usernameAvailability = UsernameAvailability.UNAVAILABLE)))
+        assertFalse(CloudAccountValidation.canSubmit(signup.copy(usernameAvailability = UsernameAvailability.ERROR)))
+        assertTrue(CloudAccountValidation.canSubmit(signup.copy(usernameAvailability = UsernameAvailability.AVAILABLE)))
     }
 
     @Test fun `otp input keeps only six ASCII digits`() {

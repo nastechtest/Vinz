@@ -25,6 +25,7 @@ import com.vinz.music.ui.screens.account.CloudAccountController
 import com.vinz.music.ui.screens.account.CloudAccountGateway
 import com.vinz.music.ui.screens.account.CloudAccountIdentity
 import com.vinz.music.ui.screens.account.CloudAccountMode
+import com.vinz.music.ui.screens.account.UsernameAvailability
 import com.vinz.music.ui.screens.account.CloudProfileDraft
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +71,7 @@ class CloudAccountFlowTest {
         compose.onNodeWithTag("cloud-account-password").assertIsFocused().performScrollTo().performTextInput("safe-password")
         compose.onNodeWithTag("cloud-account-password").performImeAction()
         compose.onNodeWithTag("cloud-account-username").assertIsFocused().performScrollTo().performTextInput("test_artist")
+        compose.waitUntil(5_000) { controller.state.value.usernameAvailability == UsernameAvailability.AVAILABLE }
         compose.onNodeWithTag("cloud-account-username").performImeAction()
         compose.onNodeWithTag("cloud-account-display-name").assertIsFocused().performScrollTo().performTextInput("Test Artist")
         compose.onNodeWithTag("cloud-account-display-name").performImeAction()
@@ -96,6 +98,7 @@ class CloudAccountFlowTest {
         compose.onNodeWithTag("cloud-account-username").performScrollTo().assertIsEnabled().performTextClearance()
         compose.onNodeWithTag("cloud-account-save").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithTag("cloud-account-username").performScrollTo().performTextInput("updated_artist")
+        compose.waitUntil(5_000) { controller.state.value.usernameAvailability == UsernameAvailability.AVAILABLE }
         compose.onNodeWithTag("cloud-account-public").performScrollTo().performClick()
         compose.onNodeWithTag("cloud-account-discoverable").performScrollTo().performClick()
         compose.onNodeWithTag("cloud-account-save").performScrollTo().assertIsEnabled().performClick()

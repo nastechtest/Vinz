@@ -247,15 +247,9 @@ test("notification device registration rejects malformed push tokens", async (t)
   assert.equal((await response.json()).error, "invalid_notification_device");
 });
 
-test("username availability rejects malformed names before the RPC", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  ));
+test("username availability rejects malformed names before rate limiting or RPC", async () => {
   const response = await handleRequest(
-    new Request("https://api.vinz.example/v1/usernames/bad%20name/availability", {
-      headers: { authorization: "Bearer test-token" },
-    }),
+    new Request("https://api.vinz.example/v1/usernames/bad%20name/availability"),
     SUPABASE_ENV,
   );
   assert.equal(response.status, 400);
@@ -437,18 +431,56 @@ test("friend request response only accepts accepted or declined", async (t) => {
 });
 
 
-test("username availability normalizes case before the authenticated RPC", async (t) => {
-  t.mock.method(globalThis, "fetch", async (input) => {
-    const url = String(input);
-    if (url.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), { status: 200 });
-    assert.match(url, /\/rest\/v1\/rpc\/vinz_username_available$/);
+test("signup username availability uses an anonymous boolean RPC behind a hashed-IP rate limit", async (t) => {
+  let rateKey = "";
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    assert.match(String(input), /\/rest\/v1\/rpc\/vinz_username_available_for_signup$/);
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("authorization"), `Bearer ${SUPABASE_ENV.SUPABASE_PUBLISHABLE_KEY}`);
+    assert.equal(headers.get("apikey"), SUPABASE_ENV.SUPABASE_PUBLISHABLE_KEY);
     return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
   });
-  const response = await handleRequest(new Request("https://api.vinz.example/v1/usernames/Artist_Name/availability", {
-    headers: { authorization: "Bearer test-token" },
-  }), SUPABASE_ENV);
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/usernames/Artist_Name/availability", {
+      headers: { "cf-connecting-ip": "203.0.113.10" },
+    }),
+    {
+      ...SUPABASE_ENV,
+      USERNAME_CHECK_LIMITER: {
+        limit: async ({ key }) => { rateKey = key; return { success: true }; },
+      },
+    },
+  );
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { username: "artist_name", available: true });
+  assert.match(rateKey, /^username-check:[a-f0-9]{32}$/);
+  assert.equal(rateKey.includes("203.0.113.10"), false);
+});
+
+test("username availability stops before Supabase when the edge rate limit is exceeded", async (t) => {
+  let upstreamCalls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    upstreamCalls++;
+    return new Response("true", { status: 200 });
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/usernames/artist_7/availability", {
+      headers: { "cf-connecting-ip": "203.0.113.11" },
+    }),
+    { ...SUPABASE_ENV, USERNAME_CHECK_LIMITER: { limit: async () => ({ success: false }) } },
+  );
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "60");
+  assert.equal(upstreamCalls, 0);
+});
+
+test("username availability fails closed when its rate-limit binding is absent", async () => {
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/usernames/artist_7/availability"),
+    SUPABASE_ENV,
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "username_check_unavailable");
 });
 
 test("profile updates canonicalize username before the database write", async (t) => {

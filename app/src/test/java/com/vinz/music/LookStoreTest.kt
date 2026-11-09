@@ -126,6 +126,7 @@ class LookStoreTest {
             withTimeout(5_000) { looks.currentId.first { it == "paper" } }
             looks.apply(harvest)
             withTimeout(5_000) { looks.currentId.first { it == "harvest" } }
+            assertEquals(true, looks.isOn(harvest))
             // Still November: nothing ends.
             assertEquals(false, looks.endSeasons(java.time.LocalDate.of(2026, 11, 30)))
             assertEquals("harvest", looks.currentId.value)

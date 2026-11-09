@@ -923,6 +923,50 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     return json({ error: "backend_not_configured", request_id: requestId }, 503, headers);
   }
 
+  const usernameAvailability = url.pathname.match(/^\/v1\/usernames\/([^/]+)\/availability$/);
+  if (usernameAvailability) {
+    if (request.method !== "GET") {
+      return json({ error: "method_not_allowed", request_id: requestId }, 405, { ...headers, allow: "GET, OPTIONS" });
+    }
+    let username;
+    try {
+      username = decodeURIComponent(usernameAvailability[1]).trim().toLowerCase();
+    } catch {
+      return json({ error: "invalid_username", available: false, request_id: requestId }, 400, headers);
+    }
+    if (!/^[a-z0-9_]{3,24}$/.test(username)) {
+      return json({ error: "invalid_username", available: false, request_id: requestId }, 400, headers);
+    }
+    if (typeof env.USERNAME_CHECK_LIMITER?.limit !== "function") {
+      return json({ error: "username_check_unavailable", request_id: requestId }, 503, headers);
+    }
+    const address = request.headers.get("cf-connecting-ip") || "unknown";
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(address));
+    let limit;
+    try {
+      limit = await env.USERNAME_CHECK_LIMITER.limit({ key: `username-check:${hex(digest).slice(0, 32)}` });
+    } catch {
+      return json({ error: "username_check_unavailable", request_id: requestId }, 503, headers);
+    }
+    if (typeof limit?.success !== "boolean") {
+      return json({ error: "username_check_unavailable", request_id: requestId }, 503, headers);
+    }
+    if (!limit.success) {
+      return json({ error: "username_check_rate_limited", request_id: requestId }, 429, { ...headers, "retry-after": "60" });
+    }
+    const availability = await restRequest(config, `Bearer ${config.key}`, "rpc/vinz_username_available_for_signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ p_username: username }),
+    });
+    if (!availability.ok) return json({ error: "username_check_failed", request_id: requestId }, 502, headers);
+    const available = await availability.json();
+    if (typeof available !== "boolean") {
+      return json({ error: "username_check_failed", request_id: requestId }, 502, headers);
+    }
+    return json({ username, available }, 200, headers);
+  }
+
   if (url.pathname === "/v1/profiles" || url.pathname.startsWith("/v1/profiles/")) {
     if (request.method !== "GET") return json({ error: "method_not_allowed", request_id: requestId }, 405, { ...headers, allow: "GET, OPTIONS" });
     const auth = await authenticate(request, config);
@@ -1025,21 +1069,6 @@ export async function handleRequest(request, env = {}, ctx = undefined) {
     const artistReleasesMatch = url.pathname.match(/^\/v1\/catalog\/artists\/([0-9]+)\/releases$/);
     if (artistReleasesMatch && request.method === "GET") {
       return withHeaders(await artistReleases(url, env, artistReleasesMatch[1], requestId), headers);
-    }
-
-    const usernameAvailability = url.pathname.match(/^\/v1\/usernames\/([^/]+)\/availability$/);
-    if (usernameAvailability && request.method === "GET") {
-      const username = decodeURIComponent(usernameAvailability[1]).trim().toLowerCase();
-      if (!/^[a-z0-9_]{3,24}$/.test(username)) {
-        return json({ error: "invalid_username", available: false, request_id: requestId }, 400, headers);
-      }
-      const availability = await restRequest(config, auth.authorization, "rpc/vinz_username_available", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ p_username: username }),
-      });
-      if (!availability.ok) return json({ error: "username_check_failed", request_id: requestId }, 502, headers);
-      return json({ username, available: await availability.json() === true }, 200, headers);
     }
 
     if (url.pathname === "/v1/me" && request.method === "GET") {

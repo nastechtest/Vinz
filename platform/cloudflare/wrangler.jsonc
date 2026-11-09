@@ -4,6 +4,13 @@
   "compatibility_date": "2026-11-07",
   "workers_dev": true,
   "preview_urls": false,
+  "ratelimits": [
+    {
+      "name": "USERNAME_CHECK_LIMITER",
+      "namespace_id": "6201109",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
   "vars": {
     "SUPABASE_URL": "https://iszghebmetrbkfhnnoqq.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe",

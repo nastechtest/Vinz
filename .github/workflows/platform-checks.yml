@@ -9,7 +9,7 @@ on:
       - ".github/workflows/**"
       - ".github/dependabot.yml"
   push:
-    branches: [main, stable, feat/frontend-experience-refresh]
+    branches: ["**"]
     paths:
       - "platform/cloudflare/**"
       - "supabase/**"
@@ -57,15 +57,27 @@ jobs:
           node <<'NODE'
           const fs = require("node:fs");
           const assert = require("node:assert/strict");
-          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
-          assert.equal(config.name, "vinz-api-staging");
-          assert.equal(config.main, "vinz-api.js");
-          assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(config.compatibility_date));
-          assert.ok(config.kv_namespaces?.some((binding) => binding.binding === "CATALOG_CACHE" && binding.id));
-          assert.ok(config.r2_buckets?.some((binding) => binding.binding === "BACKUPS_BUCKET" && binding.bucket_name));
-          assert.equal(config.observability?.enabled, true);
-          assert.equal(config.observability?.traces?.enabled, true);
-          console.log("Wrangler config and Worker bindings are consistent.");
+          const configs = [
+            { file: "wrangler.jsonc", name: "vinz-api-staging" },
+            { file: "wrangler.production.jsonc", name: "vinz" },
+          ];
+          for (const expected of configs) {
+            const config = JSON.parse(fs.readFileSync(expected.file, "utf8"));
+            assert.equal(config.name, expected.name);
+            assert.equal(config.main, "vinz-api.js");
+            assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(config.compatibility_date));
+            assert.ok(config.kv_namespaces?.some((binding) => binding.binding === "CATALOG_CACHE" && binding.id));
+            assert.ok(config.r2_buckets?.some((binding) => binding.binding === "BACKUPS_BUCKET" && binding.bucket_name));
+            assert.ok(config.ratelimits?.some((binding) =>
+              binding.name === "USERNAME_CHECK_LIMITER" &&
+              binding.simple?.limit === 120 &&
+              binding.simple?.period === 60
+            ));
+            assert.equal(config.observability?.enabled, true);
+            assert.equal(config.observability?.traces?.enabled, true);
+            assert.equal(JSON.stringify(config).includes("SUPABASE_SERVICE_ROLE_KEY"), false);
+          }
+          console.log("Staging and production Wrangler bindings are consistent and contain no privileged key.");
           NODE
 
       - name: Run Cloudflare API tests
@@ -161,6 +173,34 @@ jobs:
                   if required_clause not in clause:
                       raise SystemExit(f"{name} is missing {required_clause}")
           print("Avatar object writes are owner-scoped and require a verified email.")
+          PY
+
+      - name: Require least-privilege signup username RPC
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("supabase/migrations/20261109150000_vinz_public_username_availability.sql")
+          sql = path.read_text()
+          lowered = sql.lower()
+          required = [
+              "create or replace function public.vinz_username_available_for_signup",
+              "returns boolean",
+              "security definer",
+              "set search_path = ''",
+              "revoke all on function public.vinz_username_available_for_signup(text) from public, anon, authenticated, service_role",
+              "grant execute on function public.vinz_username_available_for_signup(text) to anon",
+              "vinz_profiles_username_lower_uidx",
+          ]
+          missing = [item for item in required if item not in lowered]
+          if missing:
+              raise SystemExit("Signup username RPC is incomplete: " + ", ".join(missing))
+          body = lowered.split("$function$", 2)[1]
+          if any(term in body for term in ("auth.users", "email", "user_id")):
+              raise SystemExit("Signup username RPC must not read private account or email data.")
+          if "grant execute on function public.vinz_username_available_for_signup(text) to authenticated" in lowered:
+              raise SystemExit("Signup username RPC should remain limited to the anonymous boolean lookup.")
+          print("Signup availability RPC is boolean-only, hardened and granted only to anon.")
           PY
 
       - name: Check Edge Function source is present

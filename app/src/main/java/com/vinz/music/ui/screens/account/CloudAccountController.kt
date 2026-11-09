@@ -18,6 +18,7 @@ internal class CloudAccountController(
     private val gateway: CloudAccountGateway,
     private val scope: CoroutineScope,
     private val resendCooldownSeconds: Int = 60,
+    private val usernameDebounceMillis: Long = 400,
 ) {
     private val mutable = MutableStateFlow(CloudAccountState(identity = gateway.identity).let {
         it.copy(email = it.identity?.email.orEmpty())
@@ -33,6 +34,7 @@ internal class CloudAccountController(
     fun mode(mode: CloudAccountMode) {
         if (mutable.value.busy) return
         resendJob?.cancel()
+        usernameCheckJob?.cancel()
         mutable.value = mutable.value.copy(mode = mode, password = "", otp = "", resendSecondsRemaining = 0, message = null, error = null)
     }
     fun email(value: String) = edit { copy(email = value, message = null, error = null) }
@@ -45,26 +47,39 @@ internal class CloudAccountController(
         val clean = CloudAccountValidation.username(value)
         usernameCheckJob?.cancel()
         val current = mutable.value
+        val valid = clean.matches(Regex("^[a-z0-9_]{3,24}$"))
+        val shouldCheck = (current.identity == null && current.mode == CloudAccountMode.SIGN_UP) ||
+            (current.identity != null && clean != current.originalUsername)
         val status = when {
-            current.identity == null -> UsernameAvailability.IDLE
-            clean == current.originalUsername -> UsernameAvailability.UNCHANGED
-            !clean.matches(Regex("^[a-z0-9_]{3,24}$")) -> UsernameAvailability.INVALID
-            else -> UsernameAvailability.CHECKING
+            !valid -> UsernameAvailability.INVALID
+            current.identity != null && clean == current.originalUsername -> UsernameAvailability.UNCHANGED
+            shouldCheck -> UsernameAvailability.CHECKING
+            else -> UsernameAvailability.IDLE
         }
-        mutable.value = current.copy(draft = current.draft.copy(username = clean),
-            usernameAvailability = status, message = null, error = null)
-        if (status == UsernameAvailability.CHECKING) {
-            usernameCheckJob = scope.launch {
-                delay(400)
-                try {
-                    val available = gateway.checkUsernameAvailable(clean)
-                    if (mutable.value.draft.username == clean) mutable.value = mutable.value.copy(
-                        usernameAvailability = if (available) UsernameAvailability.AVAILABLE else UsernameAvailability.UNAVAILABLE,
-                    )
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) {
-                    if (mutable.value.draft.username == clean) mutable.value = mutable.value.copy(usernameAvailability = UsernameAvailability.ERROR)
-                }
+        mutable.value = current.copy(
+            draft = current.draft.copy(username = clean),
+            usernameAvailability = status,
+            message = null,
+            error = null,
+        )
+        if (status == UsernameAvailability.CHECKING) scheduleUsernameCheck(clean)
+    }
+
+    private fun scheduleUsernameCheck(username: String) {
+        usernameCheckJob?.cancel()
+        usernameCheckJob = scope.launch {
+            delay(usernameDebounceMillis.coerceAtLeast(0))
+            try {
+                val available = gateway.checkUsernameAvailable(username)
+                if (mutable.value.draft.username == username) mutable.value = mutable.value.copy(
+                    usernameAvailability = if (available) UsernameAvailability.AVAILABLE else UsernameAvailability.UNAVAILABLE,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (mutable.value.draft.username == username) mutable.value = mutable.value.copy(
+                    usernameAvailability = UsernameAvailability.ERROR,
+                )
             }
         }
     }
@@ -183,13 +198,21 @@ internal class CloudAccountController(
         } else {
             resendJob?.cancel()
             val keepSignupDraft = before.mode == CloudAccountMode.SIGN_UP || before.mode == CloudAccountMode.VERIFY_EMAIL
+            val draft = result.profile?.draft() ?: if (keepSignupDraft) before.draft else CloudProfileDraft()
+            val usernameStatus = when {
+                result.profile != null -> UsernameAvailability.UNCHANGED
+                keepSignupDraft && draft.username.matches(Regex("^[a-z0-9_]{3,24}$")) -> UsernameAvailability.CHECKING
+                keepSignupDraft -> UsernameAvailability.INVALID
+                else -> UsernameAvailability.IDLE
+            }
             mutable.value = CloudAccountState(
                 identity = identity, email = identity.email, busy = true, profileReady = true,
-                draft = result.profile?.draft() ?: if (keepSignupDraft) before.draft else CloudProfileDraft(),
+                draft = draft,
                 originalUsername = result.profile?.username.orEmpty(),
-                usernameAvailability = if (result.profile == null) UsernameAvailability.IDLE else UsernameAvailability.UNCHANGED,
+                usernameAvailability = usernameStatus,
                 message = if (result.profile == null) R.string.cloud_account_setup else null,
             )
+            if (usernameStatus == UsernameAvailability.CHECKING) scheduleUsernameCheck(draft.username)
         }
     }
 
@@ -220,6 +243,7 @@ internal class CloudAccountController(
 
     fun signOut(): Job? {
         if (mutable.value.identity == null) return null
+        usernameCheckJob?.cancel()
         return request(R.string.cloud_account_sign_out_failed) {
             gateway.signOut()
             mutable.value = CloudAccountState(busy = true, message = R.string.cloud_account_signed_out)
@@ -228,6 +252,7 @@ internal class CloudAccountController(
 
     private fun resetForCurrentIdentity() {
         resendJob?.cancel()
+        usernameCheckJob?.cancel()
         val identity = gateway.identity
         mutable.value = CloudAccountState(
             identity = identity, email = identity?.email.orEmpty(), busy = true,

@@ -194,20 +194,21 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         true
     }
 
-    /** Checks username availability through the authenticated Supabase RPC; the unique index still decides saves. */
+    /** Uses a public boolean-only endpoint; no email, user ID or private profile data is returned. */
     suspend fun checkUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
         require(username.matches(Regex("^[a-z0-9_]{3,24}$"))) { "Invalid username." }
-        val s = session ?: error("Sign in to your Vinz Account first.")
-        val body = JSONObject().put("p_username", username).toString()
-        val request = Request.Builder().url(SUPABASE_URL + "/rest/v1/rpc/vinz_username_available")
-            .header("apikey", SUPABASE_PUBLISHABLE_KEY)
-            .header("Authorization", "Bearer ${s.accessToken}")
-            .header("Content-Type", "application/json")
-            .post(body.toRequestBody(jsonType)).build()
+        val request = Request.Builder().url("$VINZ_API_URL/v1/usernames/$username/availability")
+            .header("Accept", "application/json")
+            .get().build()
         http.newCall(request).execute().use { response ->
-            val value = response.body?.string().orEmpty().trim()
+            val body = response.body?.string().orEmpty()
+            if (response.code == 429) error("Username availability is temporarily rate limited.")
             if (!response.isSuccessful) error("Username availability service is unavailable.")
-            value.toBooleanStrictOrNull() ?: error("Username availability service returned an invalid response.")
+            val payload = runCatching { JSONObject(body) }.getOrNull()
+                ?: error("Username availability service returned an invalid response.")
+            if (payload.optString("username") != username) error("Username availability service returned a mismatched response.")
+            payload.opt("available") as? Boolean
+                ?: error("Username availability service returned an invalid response.")
         }
     }
 
@@ -320,6 +321,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     }
 
     companion object {
+        const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"
         const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
         // Publishable client key only. Never embed service-role or secret keys in the Android app.
         const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe"

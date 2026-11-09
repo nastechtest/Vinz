@@ -4,6 +4,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Working branch: `feat/frontend-experience-refresh`
 - Historical review: [PR #37](https://github.com/nastechtest/Vinz/pull/37) was merged on 2026-11-08. It cannot remain draft or include new branch commits. Per the user's one-PR/no-new-PR rule, no replacement PR is created; follow-up work remains on the named feature branch until review routing is explicitly changed.
+- The feature branch is currently 8 commits ahead and 150 commits behind `main`; no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
 - Backend: Supabase Auth/Postgres/RLS/Storage remains the account foundation. Cloudflare Workers and Durable Objects are reserved for link resolution and real-time room coordination.
 - Local music, playback and library remain usable without signing in. Vinz Account remains separate from YouTube Music provider login.
 - No production Supabase schema, Cloudflare resources, secrets, deployments or releases are changed by this branch work.
@@ -17,7 +18,8 @@ This is the single agreed development roadmap for the Android repository `nastec
 - [x] OTP resend flow with a 60-second UI cooldown; Supabase remains authoritative for expiry, request throttling and failed-attempt limits. Safe invalid/expired/rate-limit feedback is mapped without exposing response bodies.
 - [x] Encrypted pending verification email/profile metadata survives process restarts and reopens the OTP screen; passwords and typed OTPs are never persisted.
 - [ ] Verify hosted Supabase Auth configuration: Email confirmations must be enabled and the signup/email OTP template must render `{{ .Token }}` (not only `{{ .ConfirmationURL }}`) for numeric-code entry. Confirm configured OTP expiry and provider rate limits. This is a provider-console check; no production setting was changed.
-- [ ] Pre-auth username availability while registering; current RPC is authenticated-only, so registration still relies on the database unique constraint at final save.
+- [x] Pre-auth username availability in the registration UI: debounced Android checks call a public Worker endpoint backed by an anon-only, boolean-returning SQL function; no email, user ID or private profile data is returned. The lower(username) unique index remains the final race-safe authority.
+- [ ] Production rollout of signup availability: apply the new repository migration and deploy the Worker rate-limit binding only after explicit approval. The connected production Worker has not yet been changed.
 - [ ] Google OAuth with PKCE and verified Android callback.
 - [ ] Automatic session refresh/401 retry, expiry/revocation handling, account switching, identity linking/unlinking.
 - [ ] Password reset completion screen and recovery callback/deep link.
@@ -27,7 +29,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 - [x] Supabase profile row is owner-updated; public/private profile visibility fields are persisted.
 - [ ] Full name private by default, public profile route and canonical profile URL.
 - [ ] Avatar upload/change/remove UI and image validation. The repository now has verified-email + owner-scoped avatar object write policies; upload functionality is not yet implemented.
-- [ ] Username availability during registration and race-condition UI recovery (server unique index remains final authority).
+- [x] Username availability during registration and race-condition UI recovery (server unique index remains final authority).
 
 ### Phase 3 — Account settings and security
 - [x] Existing account overview, security/reset request and connected-services sections.
@@ -70,6 +72,10 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Added Supabase email OTP verify/resend API handling, a numeric verification screen, resend cooldown, server-error mapping, encrypted pending verification metadata and controller/UI regression tests.
 - Added a repository-only migration that gates account-owned RLS policies and private backup objects on the authoritative `auth.users.email_confirmed_at` timestamp. It has not been applied to the connected Supabase project.
+- Added pre-auth username availability end to end: Android now debounces registration checks and blocks signup until the Worker reports availability; the Worker returns only `{ username, available }`, hashes the Cloudflare client IP before its 120/minute rate-limit key, and calls a new anon-only SQL function. No email, user ID or private profile data is returned; the unique lower(username) index remains the final authority.
+- Added staging/production Wrangler rate-limit bindings. The migration and Worker config are repository-only; neither was applied/deployed. The connected `vinz` Worker currently has no `USERNAME_CHECK_LIMITER` binding, so signup availability remains fail-closed until rollout is approved.
+- Fixed a LookStore state race: `isOn()` now compares the canonical `SettingsRepository.current` snapshot with the Look preview, rather than the separately collected `lookValues` flow.
+- Consolidated duplicate Worker tests into the existing platform checks workflow, which now runs on all branch pushes and validates both Wrangler configs plus the signup RPC.
 
 - Security follow-up: added a repository migration that also requires verified email for avatar object insert/update/delete while retaining owner-folder isolation. The platform workflow now asserts all three policies. This migration is not applied to the connected Supabase project.
 - Added feature-branch Android and migration checks by extending existing workflows; no duplicate pipeline was created.
@@ -82,3 +88,13 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Fixed the controller to handle all three OTP outcomes explicitly. A regression test now asserts that a second `VerificationRequired` response keeps the account locked on the OTP screen and does not create a signed-in identity.
 - The Android run for the OTP fix compiled successfully and executed 1,175 JVM tests: 2 failed, 9 skipped. All four OTP-controller tests passed, including the new regression. The two failures were existing integration assumptions exposed by the new strings: the locale test required every locale to duplicate base strings instead of allowing Android's normal `values/` fallback, and the gateway test seam contained two hardcoded English exception messages rejected by the i18n guard. Both are corrected in the next patch; a fresh Android run is required before claiming a green build.
 - The avatar-policy platform run passed on commit `d586b75cf3e926e7425cf4a00f4d5cc33b7cce02`: migration ordering/integrity, the verified-email account policy check, the avatar write-policy check, Cloudflare Worker tests and workflow hygiene all passed. No production schema or Worker was changed.
+
+
+## Latest implementation — 2026-11-09
+
+- Feature head before this increment: `c59df02553d63b4299f7c887a3cb091c26c485b3`.
+- Fixed the Android unit-test failure in `LookStoreTest.theEndOfTheSeasonBringsBackTheLookBefore` by correcting the production `LookStore.isOn` snapshot comparison; a regression assertion was added.
+- Added pre-auth registration username availability across Android, Cloudflare Worker and Supabase migration. Signup and changed profile usernames remain blocked while checking, when taken, or when the service fails; database uniqueness remains final authority.
+- Added Worker edge rate limiting (120 requests/minute per hashed Cloudflare client IP) and a boolean-only SQL RPC. No user ID, email, private profile or account details are returned by this endpoint.
+- Consolidated duplicate Worker-only tests into the existing platform checks workflow. Android unit tests and platform checks are pending for this commit; do not call the increment green until both finish.
+- Production rollout is blocked on approval to apply `20261109150000_vinz_public_username_availability.sql` and deploy the `USERNAME_CHECK_LIMITER` binding to the existing `vinz` Worker. No production schema, Worker, secret, deployment or release was changed.

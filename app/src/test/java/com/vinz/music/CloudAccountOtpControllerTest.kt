@@ -25,7 +25,7 @@ class CloudAccountOtpControllerTest {
 
     @Test fun `signup waits for OTP then binds only the verified identity`() = runBlocking {
         val gateway = FakeGateway()
-        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0)
+        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0, usernameDebounceMillis = 0)
         controller.mode(CloudAccountMode.SIGN_UP)
         controller.email("new@example.test")
         controller.password("safe-password-123")
@@ -52,7 +52,7 @@ class CloudAccountOtpControllerTest {
 
     @Test fun `resend is unavailable during the server cooldown`() = runBlocking {
         val gateway = FakeGateway()
-        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 60)
+        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 60, usernameDebounceMillis = 0)
         controller.mode(CloudAccountMode.SIGN_UP)
         controller.email("new@example.test")
         controller.password("safe-password-123")
@@ -66,7 +66,7 @@ class CloudAccountOtpControllerTest {
 
     @Test fun `resend requests a new server code after cooldown`() = runBlocking {
         val gateway = FakeGateway()
-        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0)
+        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0, usernameDebounceMillis = 0)
         controller.mode(CloudAccountMode.SIGN_UP)
         controller.email("new@example.test")
         controller.password("safe-password-123")
@@ -84,7 +84,7 @@ class CloudAccountOtpControllerTest {
         val gateway = FakeGateway().apply {
             nextVerificationResult = VinzCloudAccount.AuthResult.VerificationRequired("new@example.test")
         }
-        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0)
+        val controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 0, usernameDebounceMillis = 0)
         controller.mode(CloudAccountMode.SIGN_UP)
         controller.email("new@example.test")
         controller.password("safe-password-123")

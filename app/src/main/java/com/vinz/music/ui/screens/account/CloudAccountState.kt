@@ -37,5 +37,7 @@ internal data class CloudAccountState(
     val canContinue: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed
     val canSubmit: Boolean get() = !busy && identity == null && CloudAccountValidation.canSubmit(this)
     val canResendOtp: Boolean get() = !busy && identity == null && mode == CloudAccountMode.VERIFY_EMAIL && resendSecondsRemaining == 0
-    val canSave: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed && CloudAccountValidation.validProfile(draft)
+    val canSave: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed &&
+        CloudAccountValidation.validProfile(draft) &&
+        usernameAvailability in setOf(UsernameAvailability.AVAILABLE, UsernameAvailability.UNCHANGED)
 }

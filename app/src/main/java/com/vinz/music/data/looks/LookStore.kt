@@ -538,7 +538,7 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
     // ---------------------------------------------------------------- Seasons
 
     /** Whether the look is [look] exactly (its settings and icons), as stored: Performance mode doesn't hide it. */
-    fun isOn(look: Look): Boolean = look.icons == currentIcons() && settings.lookValues.value == settings.lookAfter(resolved(look))
+    fun isOn(look: Look): Boolean = look.icons == currentIcons() && settings.previewLook(resolved(look)) == settings.current
 
     /**
      * When a seasonal Look's month is over (once for each turn, so a Look picked afterwards is left alone): a listener on

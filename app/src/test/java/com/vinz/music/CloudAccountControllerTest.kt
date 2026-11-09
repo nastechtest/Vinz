@@ -6,6 +6,7 @@ import com.vinz.music.ui.screens.account.CloudAccountController
 import com.vinz.music.ui.screens.account.CloudAccountGateway
 import com.vinz.music.ui.screens.account.CloudAccountIdentity
 import com.vinz.music.ui.screens.account.CloudAccountMode
+import com.vinz.music.ui.screens.account.UsernameAvailability
 import com.vinz.music.ui.screens.account.CloudProfileDraft
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +30,7 @@ class CloudAccountControllerTest {
     @Before fun setUp() {
         gateway = FakeGateway()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
     }
 
     @After fun tearDown() = runBlocking { scope.cancel() }
@@ -79,7 +80,7 @@ class CloudAccountControllerTest {
 
     @Test fun `load profile prefills all editable profile fields`() = runBlocking {
         gateway.identityValue = identity()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         gateway.profile = profile(username = "artist_7", displayName = "  Artist  ", bio = "bio", isPublic = false, discoverable = false)
 
         controller.loadProfile()!!.join()
@@ -92,7 +93,7 @@ class CloudAccountControllerTest {
 
     @Test fun `null loaded profile enters setup state`() = runBlocking {
         gateway.identityValue = identity()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
 
         controller.loadProfile()!!.join()
 
@@ -104,7 +105,7 @@ class CloudAccountControllerTest {
     @Test fun `failed profile load prevents unsafe save`() = runBlocking {
         gateway.identityValue = identity()
         gateway.onLoad = { throw IllegalStateException("private backend detail") }
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
 
         controller.loadProfile()!!.join()
 
@@ -144,6 +145,44 @@ class CloudAccountControllerTest {
         assertEquals(R.string.cloud_account_sign_in_failed, controller.state.value.error)
         assertEquals("", controller.state.value.password)
         assertFalse(controller.state.value.busy)
+    }
+
+    @Test fun `signup checks username while typing and blocks until it is available`() = runBlocking {
+        gateway.onSignUp = { email, _, _, _ -> VinzCloudAccount.AuthResult.VerificationRequired(email) }
+        controller.mode(CloudAccountMode.SIGN_UP)
+        controller.email("new@example.test")
+        controller.password("password8")
+        controller.displayName("New Artist")
+
+        gateway.usernameAvailable = false
+        controller.username("new_artist")
+        assertEquals(UsernameAvailability.UNAVAILABLE, controller.state.value.usernameAvailability)
+        assertFalse(controller.state.value.canSubmit)
+        assertNull(controller.submit())
+        assertEquals(0, gateway.signUpCalls)
+
+        gateway.usernameAvailable = true
+        controller.username("new_artist2")
+        assertEquals(UsernameAvailability.AVAILABLE, controller.state.value.usernameAvailability)
+        controller.submit()!!.join()
+
+        assertEquals(1, gateway.signUpCalls)
+        assertEquals(listOf("new_artist", "new_artist2"), gateway.usernameChecks)
+        assertEquals(CloudAccountMode.VERIFY_EMAIL, controller.state.value.mode)
+    }
+
+    @Test fun `signup username check failure fails closed`() = runBlocking {
+        gateway.usernameCheckFailure = IllegalStateException("private backend detail")
+        controller.mode(CloudAccountMode.SIGN_UP)
+        controller.email("new@example.test")
+        controller.password("password8")
+        controller.username("new_artist")
+        controller.displayName("New Artist")
+
+        assertEquals(UsernameAvailability.ERROR, controller.state.value.usernameAvailability)
+        assertFalse(controller.state.value.canSubmit)
+        assertNull(controller.submit())
+        assertEquals(0, gateway.signUpCalls)
     }
 
     @Test fun `signup confirmation clears password and returns to sign in`() = runBlocking {
@@ -203,7 +242,7 @@ class CloudAccountControllerTest {
 
     @Test fun `sign out clears identity draft password and private flags`() = runBlocking {
         gateway.identityValue = identity()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         controller.email("user@example.test")
         controller.password("test-password")
         controller.username("private_7")
@@ -225,7 +264,7 @@ class CloudAccountControllerTest {
     @Test fun `save requires ready valid signed in profile`() = runBlocking {
         assertNull(controller.save())
         gateway.identityValue = identity()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         assertNull(controller.save())
         controller.loadProfile()!!.join()
         assertNull(controller.save())
@@ -241,7 +280,7 @@ class CloudAccountControllerTest {
     @Test fun `save trims name and preserves returned privacy fields`() = runBlocking {
         gateway.identityValue = identity()
         gateway.profile = profile(username = "artist_7", displayName = "Artist")
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         controller.loadProfile()!!.join()
         controller.displayName("  Artist Updated  ")
         controller.publicProfile(false)
@@ -260,7 +299,7 @@ class CloudAccountControllerTest {
     @Test fun `different active account never receives old profile edits`() = runBlocking {
         gateway.identityValue = identity()
         gateway.profile = profile()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         controller.loadProfile()!!.join()
         controller.bio("private previous user bio")
         gateway.identityValue = identity("another-user", "another@example.test")
@@ -280,7 +319,7 @@ class CloudAccountControllerTest {
             gateway.identityValue = identity("next-user", "next@example.test")
             profile(bio = "previous user private bio")
         }
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
 
         controller.loadProfile()!!.join()
 
@@ -293,7 +332,7 @@ class CloudAccountControllerTest {
     @Test fun `failed reload blocks previously valid profile from saving`() = runBlocking {
         gateway.identityValue = identity()
         gateway.profile = profile()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         controller.loadProfile()!!.join()
         assertTrue(controller.state.value.canSave)
         gateway.onLoad = { throw IllegalStateException("temporary failure") }
@@ -346,7 +385,7 @@ class CloudAccountControllerTest {
     @Test fun `load rejects profile owned by another identity even when session stays stable`() = runBlocking {
         gateway.identityValue = identity()
         gateway.profile = profile(username = "private_artist").copy(id = "other-user")
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         controller.loadProfile()!!.join()
         assertForeignProfileBlocked()
         assertNull(controller.save())
@@ -355,7 +394,7 @@ class CloudAccountControllerTest {
     @Test fun `save never paints response owned by another identity`() = runBlocking {
         gateway.identityValue = identity()
         gateway.profile = profile()
-        controller = CloudAccountController(gateway, scope)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
         controller.loadProfile()!!.join()
         gateway.savedProfile = profile(username = "private_artist").copy(id = "other-user")
         controller.save()!!.join()
@@ -389,6 +428,10 @@ class CloudAccountControllerTest {
         var savedProfile: VinzCloudAccount.Profile? = null
         var recoverCalls = 0
         var saveCalls = 0
+        var signUpCalls = 0
+        var usernameAvailable = true
+        val usernameChecks = mutableListOf<String>()
+        var usernameCheckFailure: Exception? = null
         var lastSignInEmail: String? = null
         var lastRecoveryEmail: String? = null
         var lastSavedDraft: CloudProfileDraft? = null
@@ -398,12 +441,19 @@ class CloudAccountControllerTest {
         var onRecover: suspend (String) -> Unit = { }
 
         override suspend fun loadProfile() = onLoad()
+        override suspend fun checkUsernameAvailable(username: String): Boolean {
+            usernameChecks += username
+            usernameCheckFailure?.let { throw it }
+            return usernameAvailable
+        }
         override suspend fun signIn(email: String, password: String): VinzCloudAccount.AuthResult {
             lastSignInEmail = email
             return onSignIn(email, password)
         }
-        override suspend fun signUp(email: String, password: String, username: String, displayName: String) =
-            onSignUp(email, password, username, displayName)
+        override suspend fun signUp(email: String, password: String, username: String, displayName: String): VinzCloudAccount.AuthResult {
+            signUpCalls++
+            return onSignUp(email, password, username, displayName)
+        }
         override suspend fun recover(email: String) {
             recoverCalls++
             lastRecoveryEmail = email
