@@ -119,3 +119,12 @@ This is the single agreed development roadmap for the Android repository `nastec
 - The current Cloudflare connection resolves to a different account than the previously recorded account ID. Read-only inventory found Workers `api`, `backup`, `home`, `share`, `staging` and `vinz`. The `api`, `backup` and `share` scripts are small path-gating wrappers that forward to `env.VINZ.fetch`; the `vinz` script contains the Supabase-backed API implementation, so it is not currently a Hello World-only Worker. No Worker, binding, secret or deployment was changed.
 - Feature branch head at inspection: `4c6379d622f6c076501bc44999a113cfe6434855`; comparison with `main`: 18 commits ahead and 150 behind. PR #37 was already merged on 2026-11-07; follow-up remains on this feature branch and in the existing PR conversation. No replacement PR, merge or rebase was performed.
 - Session-refresh Android validation for code head `4c6379d622f6c076501bc44999a113cfe6434855` is queued in run [42646360263](https://github.com/nastechtest/Vinz/actions/runs/42646360263). The prior green build at `64e913d00b9819370554076b1c4ccd53852a0cc6` is only a baseline and does not include session refresh.
+
+## Android CI compile failure correction — 2026-11-09
+
+- Inspected the actual feature-branch push run [42646360263](https://github.com/nastechtest/Vinz/actions/runs/42646360263), rather than relying on the earlier PR-run baseline. Both the JVM/build job and Android Lint failed at Kotlin compilation.
+- Root cause: `VinzCloudAccount.executeRequest()` declared an `HttpResult` return type but ended with a `use { ... }` expression in a block-bodied function without an explicit `return`. Kotlin reported `VinzCloudAccount.kt:265:5 Missing return statement`.
+- Fixed the implementation by explicitly returning the OkHttp response's `use` result. No auth behavior, credentials, production settings or backend resources changed.
+- Code commit: `6c6227dce1c763a678d05ecec92e9dce9abf754e`.
+- A new feature-branch push run is expected to validate compile, JVM tests, Lint, APK assembly and APK verification. Until that run completes successfully, this fix is not marked green and no new APK is claimed.
+- Current next priorities remain session-refresh tests, Google OAuth/PKCE and recovery callbacks, full profile/settings, then cloud backup/restore, canonical share/deferred install links and cloud-coordinated Listen Together. Username availability and mandatory email OTP remain required.
