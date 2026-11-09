@@ -100,7 +100,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val refresh = result.optString("refresh_token")
         val userId = user.optString("id")
         if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The account session was incomplete.")
-        store.write(encodeSession(sessionFromAuthResponse(result, user, normalizedEmail)))
+        persistSession(sessionFromAuthResponse(result, user, normalizedEmail))
         store.clearPendingVerification()
         AuthResult.SignedIn(loadProfile())
     }
@@ -127,7 +127,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val refresh = result.optString("refresh_token")
         val userId = user.optString("id")
         if (access.isBlank() || refresh.isBlank() || userId.isBlank()) error("The verified account session was incomplete.")
-        store.write(encodeSession(sessionFromAuthResponse(result, user, verifiedEmail.ifBlank { normalizedEmail })))
+        persistSession(sessionFromAuthResponse(result, user, verifiedEmail.ifBlank { normalizedEmail }))
 
         // The auth-user trigger created a safe default row. Apply signup profile data only after verification.
         // A username collision leaves the verified session active so the user can choose another username.
@@ -291,7 +291,9 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val current = store.read()?.let(::decodeSession) ?: return@synchronized null
         if (current.userId != expected.userId) return@synchronized null
         // Another request may already have rotated the refresh token. Reuse its newer session.
-        if (current.accessToken != expected.accessToken || current.refreshToken != expected.refreshToken) {
+        if (!CloudSessionPolicy.sameSessionVersion(
+                expected.accessToken, expected.refreshToken, current.accessToken, current.refreshToken,
+            )) {
             return@synchronized current
         }
         val now = System.currentTimeMillis() / 1_000L
@@ -346,7 +348,9 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     private fun clearSessionIfCurrent(expected: Session) {
         synchronized(refreshLock) {
             val current = store.read()?.let(::decodeSession)
-            if (current?.userId == expected.userId && current.accessToken == expected.accessToken) store.clear()
+            if (current?.userId == expected.userId && current != null && CloudSessionPolicy.sameSessionVersion(
+                    expected.accessToken, expected.refreshToken, current.accessToken, current.refreshToken,
+                )) store.clear()
         }
     }
 
@@ -372,6 +376,11 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         .put("email", session.email)
         .put("expires_at", session.expiresAtEpochSeconds)
         .toString()
+
+    /** Serialize sign-in/OTP writes with refresh rotation so an older refresh cannot overwrite a new login. */
+    private fun persistSession(session: Session) {
+        synchronized(refreshLock) { store.write(encodeSession(session)) }
+    }
 
     private fun parseResponse(path: String, response: HttpResult): JSONObject {
         if (!response.successful) {
