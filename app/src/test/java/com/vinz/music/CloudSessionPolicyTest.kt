@@ -29,3 +29,9 @@ class CloudSessionPolicyTest {
         assertEquals(1_001L, CloudSessionPolicy.expiryEpochSeconds(0L, -10L, 1_000L))
     }
 }
+
+    @Test fun rotatedAccessOrRefreshTokenIsRecognizedAsANewerSessionVersion() {
+        assertFalse(CloudSessionPolicy.sameSessionVersion("access-1", "refresh-1", "access-2", "refresh-2"))
+        assertFalse(CloudSessionPolicy.sameSessionVersion("access-1", "refresh-1", "access-1", "refresh-2"))
+        assertTrue(CloudSessionPolicy.sameSessionVersion("access-1", "refresh-1", "access-1", "refresh-1"))
+    }
