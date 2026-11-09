@@ -259,7 +259,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         if (body != null) builder.header("Content-Type", "application/json").method(method, body.toRequestBody(jsonType))
         else builder.method(method, null)
         prefer?.let { builder.header("Prefer", it) }
-        http.newCall(builder.build()).execute().use { response ->
+        return http.newCall(builder.build()).execute().use { response ->
             HttpResult(response.code, response.body?.string().orEmpty())
         }
     }
