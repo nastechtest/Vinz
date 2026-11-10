@@ -26,6 +26,7 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override val identity: CloudAccountIdentity? get() = cloud.session?.let { CloudAccountIdentity(it.userId, it.email) }
     override val sessionChanges: Flow<Long> get() = cloud.sessionChanges
     override fun pendingVerificationEmail() = cloud.pendingVerificationEmail()
+    override fun otpResendSecondsRemaining() = cloud.otpResendSecondsRemaining()
     override suspend fun loadProfile() = cloud.loadProfile()
     override suspend fun checkUsernameAvailable(username: String) = cloud.checkUsernameAvailable(username)
     override suspend fun beginGoogleOAuth() = cloud.beginGoogleOAuth()
