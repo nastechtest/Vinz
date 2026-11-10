@@ -62,6 +62,10 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     val session: Session? get() = store.read()?.let(::decodeSession)
     fun pendingVerificationEmail(): String? = if (session == null) pendingVerification()?.email else null
 
+    /** Remaining resend cooldown is stored inside the encrypted pending-verification record. */
+    fun otpResendSecondsRemaining(nowEpochSeconds: Long = System.currentTimeMillis() / 1_000L): Int =
+        OtpResendCooldown.remainingSeconds(pendingVerification()?.resendAvailableAtEpochSeconds ?: 0L, nowEpochSeconds)
+
     suspend fun signUp(email: String, password: String, username: String, displayName: String): AuthResult = withContext(Dispatchers.IO) {
         val normalizedEmail = email.trim()
         require(normalizedEmail.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) { "Enter a valid email address." }
@@ -80,6 +84,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         // If hosted email confirmations are disabled, signup may return a session immediately.
         // Discard it and send a separate OTP so this app still requires explicit code verification.
         if (hasImmediateSession) sendEmailOtp(normalizedEmail)
+        markOtpSent()
         AuthResult.VerificationRequired(normalizedEmail)
     }
 
@@ -94,12 +99,14 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
             if (failure.failure != CloudAuthFailure.EMAIL_NOT_CONFIRMED) throw failure
             store.writePendingVerification(pendingVerificationJson(normalizedEmail, "", "", "signup"))
             resendSignupOtp(normalizedEmail)
+            markOtpSent()
             return@withContext AuthResult.VerificationRequired(normalizedEmail)
         }
         val user = result.optJSONObject("user") ?: error("Supabase did not return the account.")
         if (!isEmailConfirmed(user)) {
             store.writePendingVerification(pendingVerificationJson(normalizedEmail, "", "", "signup"))
             resendSignupOtp(normalizedEmail)
+            markOtpSent()
             return@withContext AuthResult.VerificationRequired(normalizedEmail)
         }
         val access = result.optString("access_token")
@@ -153,7 +160,9 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         if (pending != null && !pending.email.equals(normalizedEmail, ignoreCase = true)) {
             error("The verification request does not match this email address.")
         }
+        if (otpResendSecondsRemaining() > 0) throw CloudAuthException(CloudAuthFailure.RATE_LIMITED)
         if (pending?.resendType == "email") sendEmailOtp(normalizedEmail) else resendSignupOtp(normalizedEmail)
+        markOtpSent()
     }
 
     private fun sendEmailOtp(email: String) {
@@ -166,17 +175,31 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
             JSONObject().put("type", "signup").put("email", email).toString(), authenticated = false)
     }
 
-    private fun pendingVerificationJson(email: String, username: String, displayName: String, resendType: String) =
-        JSONObject().put("email", email).put("username", username).put("display_name", displayName)
-            .put("resend_type", resendType).toString()
+    private fun pendingVerificationJson(
+        email: String, username: String, displayName: String, resendType: String,
+        resendAvailableAtEpochSeconds: Long = 0L,
+    ) = JSONObject().put("email", email).put("username", username).put("display_name", displayName)
+        .put("resend_type", resendType).put("resend_available_at", resendAvailableAtEpochSeconds).toString()
 
-    private data class PendingVerification(val email: String, val username: String, val displayName: String, val resendType: String)
+    private data class PendingVerification(
+        val email: String, val username: String, val displayName: String, val resendType: String,
+        val resendAvailableAtEpochSeconds: Long,
+    )
+
+    private fun markOtpSent() {
+        val pending = pendingVerification() ?: return
+        store.writePendingVerification(pendingVerificationJson(
+            pending.email, pending.username, pending.displayName, pending.resendType,
+            System.currentTimeMillis() / 1_000L + OTP_RESEND_COOLDOWN_SECONDS,
+        ))
+    }
 
     private fun pendingVerification(): PendingVerification? = store.readPendingVerification()?.let { raw ->
         runCatching {
             val value = JSONObject(raw)
             PendingVerification(value.optString("email"), value.optString("username"),
-                value.optString("display_name"), value.optString("resend_type", "signup"))
+                value.optString("display_name"), value.optString("resend_type", "signup"),
+                value.optLong("resend_available_at", 0L))
         }.getOrNull()
     }
 
@@ -542,6 +565,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     }
 
     companion object {
+        private const val OTP_RESEND_COOLDOWN_SECONDS = 60L
         const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"
         const val VINZ_OAUTH_REDIRECT_URI = "vinz://auth/callback"
         const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
