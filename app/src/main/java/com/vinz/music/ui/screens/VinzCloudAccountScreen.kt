@@ -1,5 +1,7 @@
 package com.vinz.music.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -57,6 +61,13 @@ internal fun CloudAccountContent(
     bottomPadding: Dp = 0.dp,
     supplementalContent: @Composable () -> Unit = {},
 ) {
+    val context = LocalContext.current
+    LaunchedEffect(state.oauthUrl) {
+        val url = state.oauthUrl ?: return@LaunchedEffect
+        val opened = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
+        actions.consumeGoogleOAuthUrl()
+        if (!opened) actions.googleOAuthLaunchFailed()
+    }
     var section by remember(state.identity?.userId) { mutableStateOf("profile") }
     Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
         Column(
@@ -166,6 +177,11 @@ private fun CloudAccountFormBody(
                 CloudAccountMode.VERIFY_EMAIL -> R.string.cloud_account_otp_verify
             }))
         }
+        if (state.mode == CloudAccountMode.SIGN_IN) VinzTextButton(
+            onClick = { actions.beginGoogleOAuth() },
+            modifier = Modifier.fillMaxWidth().testTag("cloud-account-google"),
+            enabled = !state.busy,
+        ) { Text(tr(R.string.sign_in_with_google)) }
         VinzTextButton(
             onClick = { actions.mode(if (registering || recovery) CloudAccountMode.SIGN_IN else CloudAccountMode.SIGN_UP) },
             modifier = Modifier.testTag("cloud-account-mode"), enabled = !state.busy,

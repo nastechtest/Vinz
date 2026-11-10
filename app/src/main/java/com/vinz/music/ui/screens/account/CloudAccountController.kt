@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
@@ -29,6 +30,36 @@ internal class CloudAccountController(
 
     init {
         if (gateway.identity == null) gateway.pendingVerificationEmail()?.takeIf { it.isNotBlank() }?.let(::beginVerification)
+        scope.launch { gateway.sessionChanges.collect { refreshIdentity() } }
+    }
+
+    /** Rebinds the account screen after a browser OAuth callback without retaining tokens in UI state. */
+    fun refreshIdentity() {
+        if (mutable.value.busy) return
+        val identity = gateway.identity
+        if (identity?.userId == mutable.value.identity?.userId) {
+            if (identity != null && !mutable.value.profileReady) loadProfile()
+            return
+        }
+        resendJob?.cancel()
+        usernameCheckJob?.cancel()
+        mutable.value = CloudAccountState(identity = identity, email = identity?.email.orEmpty())
+        if (identity != null) loadProfile()
+    }
+
+    fun beginGoogleOAuth(): Job? {
+        if (mutable.value.identity != null || mutable.value.mode != CloudAccountMode.SIGN_IN) return null
+        return request(R.string.cloud_account_sign_in_failed) {
+            mutable.value = mutable.value.copy(oauthUrl = gateway.beginGoogleOAuth())
+        }
+    }
+
+    fun consumeGoogleOAuthUrl() {
+        mutable.value = mutable.value.copy(oauthUrl = null)
+    }
+
+    fun googleOAuthLaunchFailed() {
+        mutable.value = mutable.value.copy(error = R.string.cloud_account_sign_in_failed)
     }
 
     fun mode(mode: CloudAccountMode) {

@@ -5,6 +5,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -51,6 +54,9 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     private val app = context.applicationContext
     private val store = EncryptedSessionStore(app)
     private val refreshLock = Any()
+    private val mutableSessionChanges = MutableStateFlow(0L)
+    /** Emits only after an external auth callback has established a new account session. */
+    val sessionChanges: StateFlow<Long> = mutableSessionChanges.asStateFlow()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     val session: Session? get() = store.read()?.let(::decodeSession)
@@ -174,6 +180,13 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         }.getOrNull()
     }
 
+    private fun pendingGoogleOAuth(): VinzOAuthPkce.Pending? = store.readPendingOAuth()?.let { raw ->
+        runCatching {
+            val value = JSONObject(raw)
+            VinzOAuthPkce.Pending(value.getString("verifier"), value.getString("state"), value.getLong("created_at"))
+        }.getOrNull()
+    }
+
     private fun isEmailConfirmed(user: JSONObject): Boolean =
         listOf("email_confirmed_at", "confirmed_at").any { key ->
             val value = user.opt(key)
@@ -183,6 +196,73 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     suspend fun sendPasswordRecovery(email: String) = withContext(Dispatchers.IO) {
         require(android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) { "Enter a valid email address." }
         request("/auth/v1/recover", "POST", JSONObject().put("email", email.trim()).toString(), authenticated = false)
+    }
+
+    /** Starts Google sign-in with a one-use PKCE verifier kept only in encrypted Android Keystore storage. */
+    suspend fun beginGoogleOAuth(): String = withContext(Dispatchers.IO) {
+        val pending = VinzOAuthPkce.create()
+        store.writePendingOAuth(
+            JSONObject().put("verifier", pending.verifier).put("state", pending.state)
+                .put("created_at", pending.createdAtEpochMillis).toString(),
+        )
+        VinzOAuthPkce.authorizationUrl(SUPABASE_URL, VINZ_OAUTH_REDIRECT_URI, pending)
+    }
+
+    /** Validates the app callback, exchanges the one-use code, and persists only a verified Supabase identity. */
+    suspend fun completeGoogleOAuth(callback: String): AuthResult = withContext(Dispatchers.IO) {
+        val pending = pendingGoogleOAuth() ?: error("No Google sign-in is waiting for a callback.")
+        when (val result = VinzOAuthPkce.parseCallback(callback, pending)) {
+            VinzOAuthPkce.Callback.InvalidState ->
+                error("Google sign-in callback did not match the pending request.")
+            VinzOAuthPkce.Callback.Expired -> {
+                store.clearPendingOAuth()
+                error("Google sign-in expired. Start again.")
+            }
+            is VinzOAuthPkce.Callback.Denied -> {
+                store.clearPendingOAuth()
+                error("Google sign-in was cancelled or declined.")
+            }
+            VinzOAuthPkce.Callback.Invalid -> {
+                store.clearPendingOAuth()
+                error("Google sign-in returned an invalid callback.")
+            }
+            is VinzOAuthPkce.Callback.Code -> {
+                val response = try {
+                    request(
+                        "/auth/v1/token?grant_type=pkce",
+                        "POST",
+                        JSONObject().put("auth_code", result.value).put("code_verifier", pending.verifier).toString(),
+                        authenticated = false,
+                    )
+                } catch (network: java.io.IOException) {
+                    // Keep the encrypted verifier for a retry if the exchange never reached the server.
+                    throw network
+                } catch (failure: Exception) {
+                    store.clearPendingOAuth()
+                    throw failure
+                }
+                val user = response.optJSONObject("user") ?: run {
+                    store.clearPendingOAuth()
+                    error("Google sign-in did not return a Supabase account.")
+                }
+                if (!isEmailConfirmed(user)) {
+                    store.clearPendingOAuth()
+                    throw CloudAuthException(CloudAuthFailure.EMAIL_NOT_CONFIRMED)
+                }
+                val email = user.optString("email")
+                val userId = user.optString("id")
+                val access = response.optString("access_token")
+                val refresh = response.optString("refresh_token")
+                if (email.isBlank() || userId.isBlank() || access.isBlank() || refresh.isBlank()) {
+                    store.clearPendingOAuth()
+                    error("Google sign-in returned an incomplete account session.")
+                }
+                persistSession(sessionFromAuthResponse(response, user, email))
+                store.clearPendingOAuth()
+                mutableSessionChanges.value = mutableSessionChanges.value + 1L
+                AuthResult.SignedIn(runCatching { loadProfile() }.getOrNull())
+            }
+        }
     }
 
     /** Explicit refresh entry point; normal authenticated requests refresh automatically as needed. */
@@ -453,11 +533,17 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         fun writePendingVerification(value: String) { prefs.edit().putString("pending_verification", encrypt(value)).apply() }
         fun readPendingVerification(): String? = decrypt(prefs.getString("pending_verification", null))
         fun clearPendingVerification() { prefs.edit().remove("pending_verification").apply() }
-        fun clear() { prefs.edit().remove("session").remove("pending_verification").apply() }
+        fun writePendingOAuth(value: String) { prefs.edit().putString("pending_google_oauth", encrypt(value)).apply() }
+        fun readPendingOAuth(): String? = decrypt(prefs.getString("pending_google_oauth", null))
+        fun clearPendingOAuth() { prefs.edit().remove("pending_google_oauth").apply() }
+        fun clear() {
+            prefs.edit().remove("session").remove("pending_verification").remove("pending_google_oauth").apply()
+        }
     }
 
     companion object {
         const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"
+        const val VINZ_OAUTH_REDIRECT_URI = "vinz://auth/callback"
         const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
         // Publishable client key only. Never embed service-role or secret keys in the Android app.
         const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe"

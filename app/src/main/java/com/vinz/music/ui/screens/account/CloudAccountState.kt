@@ -31,6 +31,7 @@ internal data class CloudAccountState(
     val busy: Boolean = false,
     val profileReady: Boolean = false,
     val profileLoadFailed: Boolean = false,
+    val oauthUrl: String? = null,
     @param:StringRes val message: Int? = null,
     @param:StringRes val error: Int? = null,
 ) {

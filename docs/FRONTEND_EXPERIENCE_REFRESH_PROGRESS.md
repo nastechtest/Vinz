@@ -128,3 +128,14 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Code commit: `6c6227dce1c763a678d05ecec92e9dce9abf754e`.
 - A new feature-branch push run is expected to validate compile, JVM tests, Lint, APK assembly and APK verification. Until that run completes successfully, this fix is not marked green and no new APK is claimed.
 - Current next priorities remain session-refresh tests, Google OAuth/PKCE and recovery callbacks, full profile/settings, then cloud backup/restore, canonical share/deferred install links and cloud-coordinated Listen Together. Username availability and mandatory email OTP remain required.
+
+## Google identity sign-in — 2026-11-10
+
+- Added a native **Sign in with Google** action to the separate Vinz Account screen. It opens the Supabase-hosted provider authorization page in the user's browser; it does not use or change the YouTube Music cookie login.
+- Added RFC 7636 S256 PKCE generation, a random per-attempt state value, a ten-minute callback window, exact `vinz://auth/callback` scheme/host/path validation, constant-time state comparison and one-use authorization-code exchange.
+- The PKCE verifier/state/timestamp are encrypted with the existing Android Keystore-backed store. The app exchanges the code directly with Supabase Auth using the public publishable key; no Google client secret, service-role key or Cloudflare credential is included in Android.
+- The callback rechecks Supabase's confirmed-email fields before persisting a session. The account controller refreshes its identity/profile after the external callback without putting access or refresh tokens in Compose state.
+- Added pure JVM tests for the RFC 7636 challenge vector, verifier secrecy in the authorization URL, valid callback, state mismatch, expired callback, provider denial and strict callback host/path.
+- This is repository code only. The connected Supabase project has not been modified. **Google sign-in remains blocked until** Google is enabled in Supabase Auth, its provider client ID/secret are configured server-side, and `vinz://auth/callback*` is added to Supabase's allowed redirect URLs. The Google provider's registered OAuth redirect must remain Supabase's `/auth/v1/callback`; no provider secret belongs in Vinz.
+- Prior Android CI for the preceding Kotlin return fix passed all four jobs, including deterministic unit tests, APK assembly/verification and Lint, on code commit `6c6227dce1c763a678d05ecec92e9dce9abf754e` (run [42648340791](https://github.com/nastechtest/Vinz/actions/runs/42648340791)). The new OAuth increment requires its own fresh CI run before it is marked green.
+- Remaining roadmap is unchanged: mandatory email OTP and race-safe username uniqueness; OAuth/recovery completion; full private/public profile and avatar; account settings; cloud backup/restore; canonical song sharing and deferred install; Durable Object Listen Together; community/discovery last.

@@ -1361,6 +1361,28 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
     val list = uri.getQueryParameter("list")
     val path = uri.pathSegments
     when {
+        // Supabase Google OAuth returns a short-lived PKCE code to this app-owned callback.
+        uri.scheme == "vinz" && uri.host == "auth" && uri.path == "/callback" -> {
+            nav.go(Routes.ACCOUNT + "?onboarding=false")
+            c.scope.launch(Dispatchers.IO) {
+                val outcome = runCatching { c.vinzCloudAccount.completeGoogleOAuth(uri.toString()) }
+                withContext(Dispatchers.Main) {
+                    outcome.onSuccess { result ->
+                        if (result is com.vinz.music.data.VinzCloudAccount.AuthResult.SignedIn) {
+                            Toast.makeText(
+                                c.app,
+                                tr(R.string.cloud_account_signed_in, c.vinzCloudAccount.session?.email.orEmpty()),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        } else {
+                            Toast.makeText(c.app, tr(R.string.cloud_account_sign_in_failed), Toast.LENGTH_LONG).show()
+                        }
+                    }.onFailure {
+                        Toast.makeText(c.app, tr(R.string.cloud_account_sign_in_failed), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
         // A Vinz TV's QR code, read by the phone's camera (1.8.0): pairs with that TV (and offers it the sign-in).
         uri.scheme == "vinz" && uri.host == "pair" -> c.handoff.pairFromLink(uri)
         // Back from Last.fm's page in the browser, with the token it gave for this listener (#133).
