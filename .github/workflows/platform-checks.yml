@@ -175,32 +175,45 @@ jobs:
           print("Avatar object writes are owner-scoped and require a verified email.")
           PY
 
-      - name: Require least-privilege signup username RPC
+      - name: Require least-privilege username RPC wrappers
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("supabase/migrations/20261109150000_vinz_public_username_availability.sql")
-          sql = path.read_text()
-          lowered = sql.lower()
+          signup = Path("supabase/migrations/20261109150000_vinz_public_username_availability.sql").read_text().lower()
+          hardening = Path("supabase/migrations/20261110190000_vinz_username_rpc_security_hardening.sql").read_text().lower()
           required = [
-              "create or replace function public.vinz_username_available_for_signup",
-              "returns boolean",
-              "security definer",
-              "set search_path = ''",
-              "revoke all on function public.vinz_username_available_for_signup(text) from public, anon, authenticated, service_role",
-              "grant execute on function public.vinz_username_available_for_signup(text) to anon",
               "vinz_profiles_username_lower_uidx",
+              "create or replace function vinz_private.vinz_username_available_for_signup",
+              "create or replace function public.vinz_username_available_for_signup",
+              "create or replace function public.vinz_username_available",
+              "revoke all on function vinz_private.vinz_username_available_for_signup(text)",
+              "grant execute on function vinz_private.vinz_username_available_for_signup(text) to anon",
+              "grant execute on function public.vinz_username_available_for_signup(text) to anon",
+              "grant execute on function public.vinz_username_available(text) to authenticated",
+              "set search_path = ''",
           ]
-          missing = [item for item in required if item not in lowered]
+          missing = [item for item in required if item not in signup + hardening]
           if missing:
-              raise SystemExit("Signup username RPC is incomplete: " + ", ".join(missing))
-          body = lowered.split("$function$", 2)[1]
-          if any(term in body for term in ("auth.users", "email", "user_id")):
-              raise SystemExit("Signup username RPC must not read private account or email data.")
-          if "grant execute on function public.vinz_username_available_for_signup(text) to authenticated" in lowered:
-              raise SystemExit("Signup username RPC should remain limited to the anonymous boolean lookup.")
-          print("Signup availability RPC is boolean-only, hardened and granted only to anon.")
+              raise SystemExit("Username RPC hardening is incomplete: " + ", ".join(missing))
+
+          def function_body(source, signature):
+              start = source.index("create or replace function " + signature)
+              end = source.index("$function$;", start)
+              return source[start:end]
+
+          private_signup = function_body(hardening, "vinz_private.vinz_username_available_for_signup")
+          public_signup = function_body(hardening, "public.vinz_username_available_for_signup")
+          public_profile = function_body(hardening, "public.vinz_username_available(")
+          if "security definer" not in private_signup or "security invoker" not in public_signup or "security invoker" not in public_profile:
+              raise SystemExit("Only private lookup helpers may be SECURITY DEFINER; exposed RPC wrappers must be SECURITY INVOKER.")
+          if "security definer" in public_signup or "security definer" in public_profile:
+              raise SystemExit("An exposed public username RPC still uses SECURITY DEFINER.")
+          if any(term in private_signup for term in ("auth.users", "email", "user_id")):
+              raise SystemExit("Signup availability helper must not read private account or email data.")
+          if "grant execute on function public.vinz_username_available_for_signup(text) to authenticated" in hardening:
+              raise SystemExit("Signup availability wrapper must remain limited to anon boolean lookup.")
+          print("Public username RPCs are invoker-only; the boolean signup helper is private and narrowly granted.")
           PY
 
       - name: Check Edge Function source is present
