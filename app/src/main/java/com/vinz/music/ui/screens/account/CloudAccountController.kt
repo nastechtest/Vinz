@@ -186,17 +186,18 @@ internal class CloudAccountController(
         return request(R.string.cloud_account_otp_resend_failed) {
             gateway.resendOtp(before.email.trim())
             mutable.value = mutable.value.copy(otp = "", message = R.string.cloud_account_otp_resent)
-            startResendCooldown(resendCooldownSeconds)
+            startResendCooldown(gateway.otpResendSecondsRemaining() ?: resendCooldownSeconds)
         }
     }
 
     private fun beginVerification(email: String) {
         resendJob?.cancel()
+        val cooldown = gateway.otpResendSecondsRemaining() ?: resendCooldownSeconds
         mutable.value = mutable.value.copy(
             mode = CloudAccountMode.VERIFY_EMAIL, email = email.trim(), password = "", otp = "",
-            resendSecondsRemaining = resendCooldownSeconds, message = R.string.cloud_account_otp_sent, error = null,
+            resendSecondsRemaining = cooldown, message = R.string.cloud_account_otp_sent, error = null,
         )
-        startResendCooldown(resendCooldownSeconds)
+        startResendCooldown(cooldown)
     }
 
     private fun startResendCooldown(seconds: Int) {
@@ -310,6 +311,9 @@ internal class CloudAccountController(
                 }
                 val identity = gateway.identity
                 val changed = identity?.userId != mutable.value.identity?.userId
+                if (auth.failure == CloudAuthFailure.RATE_LIMITED) {
+                    gateway.otpResendSecondsRemaining()?.takeIf { it > 0 }?.let(::startResendCooldown)
+                }
                 mutable.value = if (changed) CloudAccountState(
                     identity = identity, email = identity?.email.orEmpty(), busy = true,
                     profileLoadFailed = identity != null,
