@@ -20,7 +20,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 - [ ] Verify hosted Supabase Auth configuration: Email confirmations must be enabled and the signup/email OTP template must render `{{ .Token }}` (not only `{{ .ConfirmationURL }}`) for numeric-code entry. Confirm configured OTP expiry and provider rate limits. This is a provider-console check; no production setting was changed.
 - [x] Pre-auth username availability in the registration UI: debounced Android checks call a public Worker endpoint backed by an anon-only, boolean-returning SQL function; no email, user ID or private profile data is returned. The lower(username) unique index remains the final race-safe authority.
 - [ ] Production rollout of signup availability: apply the new repository migration and deploy the Worker rate-limit binding only after explicit approval. The connected production Worker has not yet been changed.
-- [ ] Google OAuth with PKCE and verified Android callback.
+- [x] Native Google OAuth PKCE flow, encrypted one-use verifier/state, strict `vinz://auth/callback` validation and app callback handling; Supabase Google provider credentials/redirect allowlist still require hosted-console verification.
 - [ ] Automatic session refresh/401 retry, expiry/revocation handling, account switching, identity linking/unlinking.
 - [ ] Password reset completion screen and recovery callback/deep link.
 
@@ -139,3 +139,13 @@ This is the single agreed development roadmap for the Android repository `nastec
 - This is repository code only. The connected Supabase project has not been modified. **Google sign-in remains blocked until** Google is enabled in Supabase Auth, its provider client ID/secret are configured server-side, and `vinz://auth/callback*` is added to Supabase's allowed redirect URLs. The Google provider's registered OAuth redirect must remain Supabase's `/auth/v1/callback`; no provider secret belongs in Vinz.
 - Prior Android CI for the preceding Kotlin return fix passed all four jobs, including deterministic unit tests, APK assembly/verification and Lint, on code commit `6c6227dce1c763a678d05ecec92e9dce9abf754e` (run [42648340791](https://github.com/nastechtest/Vinz/actions/runs/42648340791)). The new OAuth increment requires its own fresh CI run before it is marked green.
 - Remaining roadmap is unchanged: mandatory email OTP and race-safe username uniqueness; OAuth/recovery completion; full private/public profile and avatar; account settings; cloud backup/restore; canonical song sharing and deferred install; Durable Object Listen Together; community/discovery last.
+
+## Persisted email OTP resend cooldown — 2026-11-10
+
+- The six-digit verification flow now stores its resend-available timestamp inside the existing encrypted Android Keystore-backed pending-verification record. The email, pending username/display name and cooldown metadata remain encrypted together; passwords and typed OTPs are still never persisted.
+- Signup and unconfirmed-password sign-in start a 60-second deadline only after the Supabase OTP/resend request succeeds. A successful resend advances the same deadline.
+- Reopening the account screen or recreating its controller restores the remaining seconds instead of resetting the timer. The data client also rejects a resend while its persisted deadline is still active; Supabase remains authoritative for provider expiry, abuse/rate limits and failed-attempt limits.
+- Added pure JVM tests for deadline boundaries/overflow and controller tests for restoring the cooldown and using the stored deadline after resend.
+- No Supabase/Cloudflare production resource or provider-console setting was changed. The numeric email template, email confirmation setting, expiry and provider rate limits still require hosted Supabase Auth verification.
+- Implementation commits: `c9bac1ba2e44c617195387f0163fe4621eb8df04`, `ee477f67137041015f5c62209860cc8575e550df`, `49c0b280c9480117a5b6cc88de83b4e4dbf811e2`, `58736e7454212a4cff0e830e27185912f8a5a956`, `3539ee68c2a3c4070c9ef859a1bd7e2f98118e21`, `eb0a31aeff160e6216736b6ef8e3a0e2f0cc721c`, `ee9931083c075f9bc18c5b120a57b17dfbd63a98`.
+- Validation status: previous feature-head CI at `3dec1a7547217bf25a9ec0b81b20acf029366798` passed Lint, wrapper validation, JVM tests, debug APK assembly/signature verification and CI-script/workflow checks. Fresh CI for this cooldown increment must complete before the changes are marked green or an APK is linked.
