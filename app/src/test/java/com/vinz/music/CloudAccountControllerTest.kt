@@ -344,6 +344,30 @@ class CloudAccountControllerTest {
         assertEquals(0, gateway.saveCalls)
     }
 
+    @Test fun `pending verification restores the persisted resend cooldown`() {
+        gateway.pendingEmail = "pending@example.test"
+        gateway.cooldownRemaining = 37
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+
+        assertEquals(CloudAccountMode.VERIFY_EMAIL, controller.state.value.mode)
+        assertEquals("pending@example.test", controller.state.value.email)
+        assertEquals(37, controller.state.value.resendSecondsRemaining)
+        assertFalse(controller.state.value.canResendOtp)
+    }
+
+    @Test fun `successful resend uses the stored deadline rather than a fresh hardcoded timer`() = runBlocking {
+        gateway.pendingEmail = "pending@example.test"
+        gateway.cooldownRemaining = 0
+        gateway.cooldownAfterResend = 23
+        controller = CloudAccountController(gateway, scope, resendCooldownSeconds = 60, usernameDebounceMillis = 0)
+
+        controller.resendOtp()!!.join()
+
+        assertEquals(1, gateway.resendCalls)
+        assertEquals(23, controller.state.value.resendSecondsRemaining)
+        assertFalse(controller.state.value.canResendOtp)
+    }
+
     private fun signIn(email: String, password: String) {
         controller.email(email)
         controller.password(password)
@@ -435,12 +459,18 @@ class CloudAccountControllerTest {
         var lastSignInEmail: String? = null
         var lastRecoveryEmail: String? = null
         var lastSavedDraft: CloudProfileDraft? = null
+        var pendingEmail: String? = null
+        var cooldownRemaining: Int? = null
+        var cooldownAfterResend: Int? = null
+        var resendCalls = 0
         var onLoad: suspend () -> VinzCloudAccount.Profile? = { profile }
         var onSignIn: suspend (String, String) -> VinzCloudAccount.AuthResult = { _, _ -> error("not configured") }
         var onSignUp: suspend (String, String, String, String) -> VinzCloudAccount.AuthResult = { _, _, _, _ -> error("not configured") }
         var onRecover: suspend (String) -> Unit = { }
 
         override suspend fun loadProfile() = onLoad()
+        override fun pendingVerificationEmail() = pendingEmail
+        override fun otpResendSecondsRemaining() = cooldownRemaining
         override suspend fun checkUsernameAvailable(username: String): Boolean {
             usernameChecks += username
             usernameCheckFailure?.let { throw it }
@@ -453,6 +483,10 @@ class CloudAccountControllerTest {
         override suspend fun signUp(email: String, password: String, username: String, displayName: String): VinzCloudAccount.AuthResult {
             signUpCalls++
             return onSignUp(email, password, username, displayName)
+        }
+        override suspend fun resendOtp(email: String) {
+            resendCalls++
+            cooldownRemaining = cooldownAfterResend
         }
         override suspend fun recover(email: String) {
             recoverCalls++
