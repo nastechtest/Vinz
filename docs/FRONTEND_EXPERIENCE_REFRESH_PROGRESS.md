@@ -162,3 +162,10 @@ This is the single agreed development roadmap for the Android repository `nastec
 - No migration was applied and no Cloudflare/Supabase production resource, secret, deployment or release was changed. The repository migration must be applied only after explicit user approval.
 - CI status for this increment: the existing platform checks are triggered by the migration/workflow change; wait for the new run before marking the security assertion green.
 - Implementation commits: `a3309eb3da24e47fe0100c7877da7245e298fbe6` (migration), `0bc125c070591d0350e93c849c12f272835065c3` (platform assertion).
+
+### Validation addendum — 2026-11-10
+
+- Platform backend checks passed on security migration/workflow commit `0bc125c070591d0350e93c849c12f272835065c3`: [run 42878090980](https://github.com/nastechtest/Vinz/actions/runs/42878090980).
+- Android run [42877504616](https://github.com/nastechtest/Vinz/actions/runs/42877504616) is still in progress for OTP cooldown code/test commit `ee9931083c075f9bc18c5b120a57b17dfbd63a98`. CI scripts and Gradle wrapper checks passed; Android Lint and deterministic JVM tests are still running. APK assembly, verification and upload have not started, so this increment has no new verified APK yet.
+- The current branch tip after this progress update is a documentation-only commit; no Android source changed after the Android CI test head. The branch remains `feat/frontend-experience-refresh`, 33 commits ahead and 150 behind `main` at the last comparison. No merge or rebase was performed.
+- PR #37 remains closed and merged. Follow-up evidence was added as comments only; no new PR was created.
