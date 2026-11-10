@@ -9,6 +9,7 @@ internal interface CloudAccountGateway {
     val identity: CloudAccountIdentity?
     val sessionChanges: Flow<Long> get() = emptyFlow()
     fun pendingVerificationEmail(): String? = null
+    fun otpResendSecondsRemaining(): Int? = null
     suspend fun loadProfile(): VinzCloudAccount.Profile?
     suspend fun checkUsernameAvailable(username: String): Boolean = true
     suspend fun beginGoogleOAuth(): String = throw UnsupportedOperationException()
