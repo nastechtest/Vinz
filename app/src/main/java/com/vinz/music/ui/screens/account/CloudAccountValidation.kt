@@ -26,6 +26,7 @@ internal object CloudAccountValidation {
         CloudAccountMode.SIGN_IN -> validEmail(state.email) && state.password.isNotEmpty()
         CloudAccountMode.SIGN_UP -> state.identity == null && validEmail(state.email) && state.password.length >= 8 &&
             validProfile(state.draft) && state.usernameAvailability == UsernameAvailability.AVAILABLE
-        CloudAccountMode.RESET_PASSWORD -> state.identity != null && state.password.length >= 8
+        CloudAccountMode.RESET_PASSWORD -> state.identity != null && state.password.length >= 8 &&
+            state.confirmPassword == state.password
     }
 }
