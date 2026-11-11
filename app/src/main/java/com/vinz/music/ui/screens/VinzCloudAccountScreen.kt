@@ -139,6 +139,15 @@ private fun CloudAccountFormBody(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { submitFromKeyboard() }),
         )
+        androidx.compose.material3.OutlinedTextField(
+            state.confirmPassword, actions::confirmPassword,
+            Modifier.fillMaxWidth().testTag("cloud-account-confirm-password"),
+            enabled = !state.busy, label = { Text(tr(R.string.cloud_account_confirm_password)) },
+            supportingText = { Text(tr(R.string.cloud_account_confirm_password_hint)) },
+            visualTransformation = PasswordVisualTransformation(), singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submitFromKeyboard() }),
+        )
         VinzButton(
             onClick = { actions.submit() },
             modifier = Modifier.fillMaxWidth().testTag("cloud-account-update-password"),
