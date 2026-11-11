@@ -1361,6 +1361,20 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
     val list = uri.getQueryParameter("list")
     val path = uri.pathSegments
     when {
+        // Supabase password recovery returns a signed recovery session to this exact app-owned route.
+        uri.scheme == "vinz" && uri.host == "auth" && uri.path == "/reset-password" -> {
+            nav.go(Routes.ACCOUNT + "?onboarding=false")
+            c.scope.launch(Dispatchers.IO) {
+                val outcome = runCatching { c.vinzCloudAccount.completePasswordRecovery(uri.toString()) }
+                withContext(Dispatchers.Main) {
+                    outcome.onSuccess {
+                        Toast.makeText(c.app, tr(R.string.cloud_account_recovery_verified), Toast.LENGTH_LONG).show()
+                    }.onFailure {
+                        Toast.makeText(c.app, tr(R.string.cloud_account_recovery_failed), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
         // Supabase Google OAuth returns a short-lived PKCE code to this app-owned callback.
         uri.scheme == "vinz" && uri.host == "auth" && uri.path == "/callback" -> {
             nav.go(Routes.ACCOUNT + "?onboarding=false")
