@@ -42,7 +42,7 @@ internal class CloudAccountController(
         val recoveryPending = gateway.passwordRecoveryPending()
         if (identity?.userId == mutable.value.identity?.userId) {
             if (recoveryPending && mutable.value.mode != CloudAccountMode.RESET_PASSWORD) {
-                mutable.value = mutable.value.copy(mode = CloudAccountMode.RESET_PASSWORD, password = "", message = null, error = null)
+                mutable.value = mutable.value.copy(mode = CloudAccountMode.RESET_PASSWORD, password = "", confirmPassword = "", message = null, error = null)
             }
             if (identity != null && !mutable.value.profileReady) loadProfile()
             return
@@ -216,7 +216,7 @@ internal class CloudAccountController(
         resendJob?.cancel()
         val cooldown = gateway.otpResendSecondsRemaining() ?: resendCooldownSeconds
         mutable.value = mutable.value.copy(
-            mode = CloudAccountMode.VERIFY_EMAIL, email = email.trim(), password = "", otp = "",
+            mode = CloudAccountMode.VERIFY_EMAIL, email = email.trim(), password = "", confirmPassword = "", otp = "",
             resendSecondsRemaining = cooldown, message = R.string.cloud_account_otp_sent, error = null,
         )
         startResendCooldown(cooldown)
