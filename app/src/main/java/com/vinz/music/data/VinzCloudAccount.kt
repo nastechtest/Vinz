@@ -44,6 +44,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val avatarPath: String?,
         val isPublic: Boolean,
         val discoverable: Boolean,
+        val fullName: String = "",
     )
     sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
@@ -316,8 +317,13 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val s = session ?: return@withContext null
         val response = request("/rest/v1/vinz_profiles?select=*&id=eq.${s.userId}", "GET")
         val rows = response.optJSONArray("data") ?: return@withContext null
-        if (rows.length() == 0) null else rows.getJSONObject(0).toProfile()
+        val profile = rows.optJSONObject(0)?.toProfile() ?: return@withContext null
+        profile.copy(fullName = loadPrivateFullName(s.userId))
     }
+
+    private fun loadPrivateFullName(userId: String): String =
+        request("/rest/v1/vinz_account_private?select=full_name&user_id=eq.$userId", "GET")
+            .optJSONArray("data")?.optJSONObject(0)?.optString("full_name").orEmpty()
 
     suspend fun saveProfile(username: String, displayName: String, bio: String, isPublic: Boolean, discoverable: Boolean): Profile =
         withContext(Dispatchers.IO) {
@@ -336,6 +342,25 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
             if (pendingVerification()?.email?.equals(s.email, ignoreCase = true) == true) store.clearPendingVerification()
             saved
         }
+
+    /** Saves the private full name separately from the public music profile. */
+    suspend fun savePrivateFullName(fullName: String): String = withContext(Dispatchers.IO) {
+        val normalized = fullName.trim()
+        require(normalized.length <= 120) { "Full name must be 120 characters or fewer." }
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val result = request(
+            "/rest/v1/vinz_account_private?user_id=eq.undefined",
+            "PATCH",
+            JSONObject().put("full_name", normalized).toString(),
+            prefer = "return=representation",
+        )
+        val saved = result.optJSONArray("data")?.optJSONObject(0)?.optString("full_name")
+        if (saved != null) saved else {
+            val reloaded = loadPrivateFullName(s.userId)
+            if (reloaded != normalized) error("Private account details could not be saved.")
+            reloaded
+        }
+    }
 
     suspend fun signOut() = withContext(Dispatchers.IO) {
         val s = session

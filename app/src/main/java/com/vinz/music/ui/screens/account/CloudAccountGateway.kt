@@ -19,6 +19,7 @@ internal interface CloudAccountGateway {
     suspend fun resendOtp(email: String) { throw UnsupportedOperationException() }
     suspend fun recover(email: String)
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
+    suspend fun savePrivateFullName(fullName: String): String = throw UnsupportedOperationException()
     suspend fun signOut()
 }
 
@@ -39,5 +40,6 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun save(draft: CloudProfileDraft) = cloud.saveProfile(
         draft.username, draft.displayName, draft.bio, draft.isPublic, draft.discoverable,
     )
+    override suspend fun savePrivateFullName(fullName: String) = cloud.savePrivateFullName(fullName)
     override suspend fun signOut() { cloud.signOut() }
 }

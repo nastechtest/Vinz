@@ -81,11 +81,11 @@ class CloudAccountControllerTest {
     @Test fun `load profile prefills all editable profile fields`() = runBlocking {
         gateway.identityValue = identity()
         controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
-        gateway.profile = profile(username = "artist_7", displayName = "  Artist  ", bio = "bio", isPublic = false, discoverable = false)
+        gateway.profile = profile(username = "artist_7", displayName = "  Artist  ", bio = "bio", isPublic = false, discoverable = false, fullName = "Ada Lovelace")
 
         controller.loadProfile()!!.join()
 
-        assertEquals(CloudProfileDraft("artist_7", "  Artist  ", "bio", false, false), controller.state.value.draft)
+        assertEquals(CloudProfileDraft("artist_7", "  Artist  ", "bio", false, false, "Ada Lovelace"), controller.state.value.draft)
         assertTrue(controller.state.value.profileReady)
         assertFalse(controller.state.value.profileLoadFailed)
         assertNull(controller.state.value.message)
@@ -259,6 +259,40 @@ class CloudAccountControllerTest {
         assertEquals("", controller.state.value.password)
         assertFalse(controller.state.value.profileReady)
         assertEquals(R.string.cloud_account_signed_out, controller.state.value.message)
+    }
+
+    @Test fun `private full name is saved separately from the public music profile`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.profile = profile(fullName = "Ada Lovelace")
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadProfile()!!.join()
+        assertEquals("Ada Lovelace", controller.state.value.draft.fullName)
+
+        controller.fullName("  Grace Hopper  ")
+        assertEquals(0, gateway.privateSaveCalls)
+        controller.savePrivateDetails()!!.join()
+
+        assertEquals(1, gateway.privateSaveCalls)
+        assertEquals("Grace Hopper", gateway.lastPrivateFullName)
+        assertEquals("Grace Hopper", controller.state.value.draft.fullName)
+        assertEquals(R.string.cloud_account_private_details_saved, controller.state.value.message)
+        assertEquals(0, gateway.saveCalls)
+    }
+
+    @Test fun `private full name save is blocked after the active account changes`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.profile = profile(fullName = "Private Name")
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadProfile()!!.join()
+        controller.fullName("Changed Name")
+        gateway.identityValue = identity("another-user", "another@example.test")
+
+        controller.savePrivateDetails()!!.join()
+
+        assertEquals(0, gateway.privateSaveCalls)
+        assertEquals(identity("another-user", "another@example.test"), controller.state.value.identity)
+        assertEquals("", controller.state.value.draft.fullName)
+        assertTrue(controller.state.value.profileLoadFailed)
     }
 
     @Test fun `save requires ready valid signed in profile`() = runBlocking {
@@ -440,8 +474,8 @@ class CloudAccountControllerTest {
 
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
-        isPublic: Boolean = true, discoverable: Boolean = true,
-    ) = VinzCloudAccount.Profile("user-1", username, displayName, bio, null, isPublic, discoverable)
+        isPublic: Boolean = true, discoverable: Boolean = true, fullName: String = "",
+    ) = VinzCloudAccount.Profile("user-1", username, displayName, bio, null, isPublic, discoverable, fullName)
 
     private class FakeGateway : CloudAccountGateway {
         override var identity: CloudAccountIdentity? = null
@@ -452,6 +486,8 @@ class CloudAccountControllerTest {
         var savedProfile: VinzCloudAccount.Profile? = null
         var recoverCalls = 0
         var saveCalls = 0
+        var privateSaveCalls = 0
+        var lastPrivateFullName: String? = null
         var signUpCalls = 0
         var usernameAvailable = true
         val usernameChecks = mutableListOf<String>()
@@ -497,6 +533,11 @@ class CloudAccountControllerTest {
             saveCalls++
             lastSavedDraft = draft
             return savedProfile ?: profile ?: error("not configured")
+        }
+        override suspend fun savePrivateFullName(fullName: String): String {
+            privateSaveCalls++
+            lastPrivateFullName = fullName
+            return fullName
         }
         override suspend fun signOut() { identity = null }
     }

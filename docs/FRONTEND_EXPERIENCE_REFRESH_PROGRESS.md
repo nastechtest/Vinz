@@ -169,3 +169,14 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Android run [42877504616](https://github.com/nastechtest/Vinz/actions/runs/42877504616) is still in progress for OTP cooldown code/test commit `ee9931083c075f9bc18c5b120a57b17dfbd63a98`. CI scripts and Gradle wrapper checks passed; Android Lint and deterministic JVM tests are still running. APK assembly, verification and upload have not started, so this increment has no new verified APK yet.
 - The current branch tip after this progress update is a documentation-only commit; no Android source changed after the Android CI test head. The branch remains `feat/frontend-experience-refresh`, 33 commits ahead and 150 behind `main` at the last comparison. No merge or rebase was performed.
 - PR #37 remains closed and merged. Follow-up evidence was added as comments only; no new PR was created.
+
+
+## Private full-name profile increment — 2026-11-11
+
+- Re-inspected the feature branch, PR #37, Android/platform workflows, live Supabase schema/migration history, and connected Cloudflare account before changing code. PR #37 is closed and merged; no replacement PR was created.
+- The latest completed Android run for the OTP/username/OAuth branch increment is [42877504616](https://github.com/nastechtest/Vinz/actions/runs/42877504616): all four jobs passed (deterministic JVM tests, debug APK assembly and APK verification/upload, Android Lint, CI script/workflow checks, and Gradle wrapper validation). The APK artifact is `Vinz-feature-620.apk` (artifact id `13792673067`); it predates this private-name increment.
+- Added private full-name loading and saving against the existing owner-only `public.vinz_account_private.full_name` column. Public profile reads/writes remain in `vinz_profiles`; the private full name is never added to public profile output or overview UI.
+- Added a separate private-details editor and save action, 120-character client/server validation, identity-change protection, gateway/controller tests and a Compose UI regression test.
+- No schema change was needed: the existing migration creates the private row on auth-user creation, grants only owner-scoped SELECT/UPDATE, and the verified-email RLS migration gates access. Live Supabase reports the table with RLS enabled. No production migration or data mutation was performed.
+- New code/test increment is committed on `feat/frontend-experience-refresh`; its fresh Android and platform checks must complete before this increment is marked green or its APK is linked.
+- Remaining account work: avatar upload/change/remove, public profile route/canonical URL, persisted notification/privacy settings, connected identity/session management and recovery callback completion. Cloud backup/restore, canonical share/deferred install, and Durable Object Listen Together remain in the agreed priority order.

@@ -232,6 +232,19 @@ private fun CloudAccountFormBody(
         }
         "profile" -> {
             Text(tr(R.string.cloud_account_music_profile), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(tr(R.string.cloud_account_private_details), style = MaterialTheme.typography.titleMedium)
+            VinzTextField(
+                state.draft.fullName, actions::fullName,
+                Modifier.fillMaxWidth().testTag("cloud-account-full-name"), enabled = !state.busy,
+                label = { Text(tr(R.string.cloud_account_full_name)) },
+                supportingText = { Text(tr(R.string.cloud_account_full_name_private_hint)) },
+                singleLine = true,
+            )
+            VinzButton(
+                onClick = { actions.savePrivateDetails() },
+                modifier = Modifier.fillMaxWidth().testTag("cloud-account-save-private-details"),
+                enabled = state.canSavePrivateDetails,
+            ) { Text(tr(R.string.cloud_account_save_private_details)) }
             CloudProfileFields(state, actions)
             VinzTextField(
                 state.draft.bio, actions::bio, Modifier.fillMaxWidth().testTag("cloud-account-bio"), enabled = !state.busy,

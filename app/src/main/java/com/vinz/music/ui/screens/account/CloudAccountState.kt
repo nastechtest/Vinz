@@ -15,6 +15,7 @@ internal data class CloudProfileDraft(
     val bio: String = "",
     val isPublic: Boolean = true,
     val discoverable: Boolean = true,
+    val fullName: String = "",
 )
 
 internal data class CloudAccountState(
@@ -41,4 +42,6 @@ internal data class CloudAccountState(
     val canSave: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed &&
         CloudAccountValidation.validProfile(draft) &&
         usernameAvailability in setOf(UsernameAvailability.AVAILABLE, UsernameAvailability.UNCHANGED)
+    val canSavePrivateDetails: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed &&
+        draft.fullName.length <= 120
 }

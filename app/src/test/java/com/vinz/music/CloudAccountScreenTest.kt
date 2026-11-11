@@ -95,8 +95,22 @@ class CloudAccountScreenTest {
         compose.onNodeWithTag("cloud-account-public").assertIsNotEnabled()
         compose.onNodeWithTag("cloud-account-discoverable").assertIsNotEnabled()
         compose.onNodeWithTag("cloud-account-save").assertIsNotEnabled()
+        compose.onNodeWithTag("cloud-account-full-name").assertIsNotEnabled()
+        compose.onNodeWithTag("cloud-account-save-private-details").assertIsNotEnabled()
         compose.onNodeWithTag("cloud-account-sign-out").assertIsNotEnabled()
         compose.onNodeWithTag("cloud-account-password").assertDoesNotExist()
+    }
+
+    @Test fun privateFullNameIsClearlySeparateFromThePublicMusicProfile() {
+        render(CloudAccountState(
+            identity = CloudAccountIdentity("test-user", "test@example.test"),
+            profileReady = true,
+            draft = CloudProfileDraft("test_artist", "Test Artist", fullName = "Ada Lovelace"),
+        ))
+        compose.onNodeWithTag("cloud-account-full-name").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Visible only to you. It is not shown on your public music profile.").assertExists()
+        compose.onNodeWithTag("cloud-account-save-private-details").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("cloud-account-save").performScrollTo().assertIsEnabled()
     }
 
     @Test fun recoveryNeedsNoPasswordAndEmailUnlocksSubmit() {

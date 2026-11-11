@@ -116,6 +116,7 @@ internal class CloudAccountController(
     }
     fun displayName(value: String) = edit { copy(draft = draft.copy(displayName = value.take(60)), message = null, error = null) }
     fun bio(value: String) = edit { copy(draft = draft.copy(bio = value.take(160)), message = null, error = null) }
+    fun fullName(value: String) = edit { copy(draft = draft.copy(fullName = value.take(120)), message = null, error = null) }
     fun publicProfile(value: Boolean) = edit { copy(draft = draft.copy(isPublic = value), message = null, error = null) }
     fun discoverable(value: Boolean) = edit { copy(draft = draft.copy(discoverable = value), message = null, error = null) }
 
@@ -261,7 +262,33 @@ internal class CloudAccountController(
                 resetForCurrentIdentity()
                 return@request
             }
-            mutable.value = mutable.value.copy(draft = saved.draft(), originalUsername = saved.username, usernameAvailability = UsernameAvailability.UNCHANGED, message = R.string.cloud_account_saved)
+            mutable.value = mutable.value.copy(
+                draft = saved.draft().copy(fullName = before.draft.fullName),
+                originalUsername = saved.username,
+                usernameAvailability = UsernameAvailability.UNCHANGED,
+                message = R.string.cloud_account_saved,
+            )
+        }
+    }
+
+    /** Private identity details are persisted independently of the public music profile. */
+    fun savePrivateDetails(): Job? {
+        val before = mutable.value
+        if (!before.canSavePrivateDetails) return null
+        return request(R.string.cloud_account_private_details_save_failed) {
+            if (gateway.identity?.userId != before.identity?.userId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            val saved = gateway.savePrivateFullName(before.draft.fullName.trim())
+            if (gateway.identity?.userId != before.identity?.userId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(
+                draft = mutable.value.draft.copy(fullName = saved),
+                message = R.string.cloud_account_private_details_saved,
+            )
         }
     }
 
@@ -337,5 +364,6 @@ internal class CloudAccountController(
         }
     }
 
-    private fun VinzCloudAccount.Profile.draft() = CloudProfileDraft(username, displayName, bio, isPublic, discoverable)
+    private fun VinzCloudAccount.Profile.draft() =
+        CloudProfileDraft(username, displayName, bio, isPublic, discoverable, fullName)
 }
