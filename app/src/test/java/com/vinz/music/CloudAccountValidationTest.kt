@@ -140,10 +140,12 @@ class CloudAccountValidationTest {
 
     @Test fun `password reset requires a signed in recovery session and a strong enough password`() {
         val identity = com.vinz.music.ui.screens.account.CloudAccountIdentity("user", "user@example.test")
-        val reset = CloudAccountState(mode = CloudAccountMode.RESET_PASSWORD, identity = identity, password = "short")
+        val reset = CloudAccountState(mode = CloudAccountMode.RESET_PASSWORD, identity = identity, password = "short", confirmPassword = "short")
         assertFalse(CloudAccountValidation.canSubmit(reset))
-        assertTrue(CloudAccountValidation.canSubmit(reset.copy(password = "new-password")))
-        assertFalse(CloudAccountValidation.canSubmit(reset.copy(identity = null, password = "new-password")))
+        assertFalse(CloudAccountValidation.canSubmit(reset.copy(password = "new-password")))
+        assertTrue(CloudAccountValidation.canSubmit(reset.copy(password = "new-password", confirmPassword = "new-password")))
+        assertFalse(CloudAccountValidation.canSubmit(reset.copy(identity = null, password = "new-password", confirmPassword = "new-password")))
+        assertFalse(CloudAccountValidation.canSubmit(reset.copy(password = "new-password", confirmPassword = "different-password")))
     }
 
     @Test fun `verification submit requires exactly six digits`() {
