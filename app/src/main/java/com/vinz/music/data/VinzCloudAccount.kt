@@ -218,8 +218,61 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         }
 
     suspend fun sendPasswordRecovery(email: String) = withContext(Dispatchers.IO) {
-        require(android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) { "Enter a valid email address." }
-        request("/auth/v1/recover", "POST", JSONObject().put("email", email.trim()).toString(), authenticated = false)
+        val normalized = email.trim()
+        require(android.util.Patterns.EMAIL_ADDRESS.matcher(normalized).matches()) { "Enter a valid email address." }
+        val redirect = java.net.URLEncoder.encode(VINZ_PASSWORD_RECOVERY_REDIRECT_URI, Charsets.UTF_8.name())
+        request("/auth/v1/recover?redirect_to=$redirect", "POST", JSONObject().put("email", normalized).toString(), authenticated = false)
+    }
+
+    /** Consumes only a Supabase-issued recovery callback and verifies the resulting identity before storing it. */
+    suspend fun completePasswordRecovery(callback: String) = withContext(Dispatchers.IO) {
+        val parsed = VinzPasswordRecoveryCallback.parse(callback)
+            ?: error("The password recovery link is invalid or has expired.")
+        val recovered = if (parsed.tokenHash != null) {
+            val payload = request(
+                "/auth/v1/verify",
+                "POST",
+                JSONObject().put("type", "recovery").put("token_hash", parsed.tokenHash).toString(),
+                authenticated = false,
+            )
+            val user = payload.optJSONObject("user") ?: error("The recovery link did not return an account.")
+            if (!isEmailConfirmed(user)) throw CloudAuthException(CloudAuthFailure.EMAIL_NOT_CONFIRMED)
+            sessionFromAuthResponse(payload, user, user.optString("email"))
+        } else {
+            val now = System.currentTimeMillis() / 1_000L
+            val candidate = Session(
+                accessToken = parsed.accessToken!!,
+                refreshToken = parsed.refreshToken!!,
+                userId = "",
+                email = "",
+                expiresAtEpochSeconds = now + parsed.expiresInSeconds,
+            )
+            val response = executeRequest("/auth/v1/user", "GET", null, candidate, null)
+            val user = parseResponse("/auth/v1/user", response)
+            if (!isEmailConfirmed(user)) throw CloudAuthException(CloudAuthFailure.EMAIL_NOT_CONFIRMED)
+            val userId = user.optString("id")
+            val email = user.optString("email")
+            if (userId.isBlank() || email.isBlank()) error("The recovery link did not return a complete account.")
+            candidate.copy(userId = userId, email = email)
+        }
+        if (recovered.userId.isBlank() || recovered.accessToken.isBlank() || recovered.refreshToken.isBlank()) {
+            error("The recovery session was incomplete.")
+        }
+        persistSession(recovered)
+        store.clearPendingVerification()
+        store.clearPendingOAuth()
+        store.writePendingPasswordRecovery()
+        mutableSessionChanges.value = mutableSessionChanges.value + 1L
+    }
+
+    fun passwordRecoveryPending(): Boolean = store.readPendingPasswordRecovery() == "1"
+
+    /** Updates the password only while a validated recovery session is pending. */
+    suspend fun updateRecoveredPassword(password: String) = withContext(Dispatchers.IO) {
+        require(password.length >= 8) { "Use a password with at least 8 characters." }
+        if (!passwordRecoveryPending()) error("Start password recovery before changing the password.")
+        request("/auth/v1/user", "PUT", JSONObject().put("password", password).toString())
+        store.clearPendingPasswordRecovery()
     }
 
     /** Starts Google sign-in with a one-use PKCE verifier kept only in encrypted Android Keystore storage. */
@@ -584,8 +637,12 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         fun writePendingOAuth(value: String) { prefs.edit().putString("pending_google_oauth", encrypt(value)).apply() }
         fun readPendingOAuth(): String? = decrypt(prefs.getString("pending_google_oauth", null))
         fun clearPendingOAuth() { prefs.edit().remove("pending_google_oauth").apply() }
+        fun writePendingPasswordRecovery() { prefs.edit().putString("pending_password_recovery", encrypt("1")).apply() }
+        fun readPendingPasswordRecovery(): String? = decrypt(prefs.getString("pending_password_recovery", null))
+        fun clearPendingPasswordRecovery() { prefs.edit().remove("pending_password_recovery").apply() }
         fun clear() {
-            prefs.edit().remove("session").remove("pending_verification").remove("pending_google_oauth").apply()
+            prefs.edit().remove("session").remove("pending_verification").remove("pending_google_oauth")
+                .remove("pending_password_recovery").apply()
         }
     }
 
@@ -593,6 +650,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         private const val OTP_RESEND_COOLDOWN_SECONDS = 60L
         const val VINZ_API_URL = "https://api.vinzmusic.workers.dev"
         const val VINZ_OAUTH_REDIRECT_URI = "vinz://auth/callback"
+        const val VINZ_PASSWORD_RECOVERY_REDIRECT_URI = "vinz://auth/reset-password"
         const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
         // Publishable client key only. Never embed service-role or secret keys in the Android app.
         const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe"
