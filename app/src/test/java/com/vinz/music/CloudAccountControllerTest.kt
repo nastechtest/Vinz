@@ -227,6 +227,7 @@ class CloudAccountControllerTest {
 
         assertEquals(CloudAccountMode.RESET_PASSWORD, controller.state.value.mode)
         controller.password("new-password")
+        controller.confirmPassword("new-password")
         controller.submit()!!.join()
 
         assertEquals(1, gateway.updatePasswordCalls)
