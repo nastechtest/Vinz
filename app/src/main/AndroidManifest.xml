@@ -119,6 +119,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="vinz" android:host="auth" android:path="/callback" />
             </intent-filter>
+            <!-- Supabase password recovery callback; token material is validated before a session is stored. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vinz" android:host="auth" android:path="/reset-password" />
+            </intent-filter>
         </activity>
 
         <!-- App icons (Settings → Appearance → App icon, #20): exactly one of these launcher entries is enabled
