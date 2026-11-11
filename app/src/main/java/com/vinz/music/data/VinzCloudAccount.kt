@@ -255,7 +255,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
             if (userId.isBlank() || email.isBlank()) error("The recovery link did not return a complete account.")
             candidate.copy(userId = userId, email = email)
         }
-        if (recovered.userId.isBlank() || recovered.accessToken.isBlank() || recovered.refreshToken.isBlank()) {
+        if (recovered.userId.isBlank() || recovered.email.isBlank() || recovered.accessToken.isBlank() || recovered.refreshToken.isBlank()) {
             error("The recovery session was incomplete.")
         }
         persistSession(recovered, passwordRecovery = true)
