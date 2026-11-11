@@ -210,3 +210,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 7. Community/discovery remains last.
 
 - Follow-up security hardening: recovery password updates now carry the expected user ID and re-check it against the active encrypted session before calling Supabase. A normal email/OTP/Google sign-in clears any stale recovery marker so a later account switch cannot reuse an earlier recovery authorization. The recovery form also requires matching confirmation and clears both transient password fields after submission.
+
+- Final code commit for this recovery increment: `eabb0fa4f00735db03aace32a95408d7cb6facac`. Follow-up documentation commit: `c743ce136ce9d27890c49869ca993777bce9dc11`.
+- Latest feature-branch Android workflow after the final code commit: [43077694746](https://github.com/nastechtest/Vinz/actions/runs/43077694746), still pending with no job results available at the latest inspection. The earlier pending run `43077254127` targets an older intermediate code head and is not the current validation target. No new APK is available or claimed.
+- Latest branch head at this documentation update: `c743ce136ce9d27890c49869ca993777bce9dc11`; comparison with `main`: 75 commits ahead and 150 behind. The branch remains diverged; no rebase or merge was performed.
