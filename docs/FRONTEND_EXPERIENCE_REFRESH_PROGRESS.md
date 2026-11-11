@@ -217,3 +217,10 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Final account-switch hardening after the initial recovery implementation: the password update request is now pinned to the expected recovered user ID at the authenticated request boundary, not just checked before dispatch. A concurrent sign-in cannot cause a recovery action to update a different account. Final code commit: `9a9f31c9119dadd977b2a75c0e4662ebbcd04fcf`.
 - The latest Android PR-check run for that final code commit is [43078050529](https://github.com/nastechtest/Vinz/actions/runs/43078050529), pending with no jobs/results exposed at the latest poll. The prior run for `eabb0fa` was cancelled when the final account-switch hardening was pushed. No new APK is available.
+
+## Read-only Supabase avatar-storage inspection — 2026-11-11
+
+- Rechecked the connected active project `Vinz` (`iszghebmetrbkfhnnoqq`) after the recovery increment. Live migration history still ends at `20261108082934_vinz_youtube_music_import`; the repository-only verified-email, public username and username RPC hardening migrations are not applied.
+- Live `storage.buckets` inspection found `vinz-cloud-backups` (private, 50 MiB) but no `vinz-avatars` bucket. Live `storage.objects` policy inspection returned no avatar policies.
+- Repository schema already has `vinz_profiles.avatar_path` and the verified-email/owner-folder avatar write policy migration, but no bucket-creation migration or Android upload/change/remove flow yet.
+- No production bucket, policy, schema, Auth setting or migration was changed. The next profile increment must add a repository migration for a constrained avatar bucket, implement validated image processing/upload and profile-path updates, and test failure/replace/remove behavior. Applying the migration to the connected project remains blocked on explicit approval.
