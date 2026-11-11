@@ -208,3 +208,5 @@ This is the single agreed development roadmap for the Android repository `nastec
 5. Implement canonical song links, installed-app routing and deferred install.
 6. Implement the Worker/Durable Object Listen Together control plane and its authorization, ordering, reconnect and drift tests.
 7. Community/discovery remains last.
+
+- Follow-up security hardening: recovery password updates now carry the expected user ID and re-check it against the active encrypted session before calling Supabase. A normal email/OTP/Google sign-in clears any stale recovery marker so a later account switch cannot reuse an earlier recovery authorization. The recovery form also requires matching confirmation and clears both transient password fields after submission.
