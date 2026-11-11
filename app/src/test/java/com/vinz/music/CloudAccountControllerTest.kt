@@ -232,6 +232,7 @@ class CloudAccountControllerTest {
 
         assertEquals(1, gateway.updatePasswordCalls)
         assertEquals("new-password", gateway.lastUpdatedPassword)
+        assertEquals("user-1", gateway.lastUpdatedUserId)
         assertEquals(CloudAccountMode.SIGN_IN, controller.state.value.mode)
         assertEquals(R.string.cloud_account_password_updated, controller.state.value.message)
         assertFalse(gateway.recoveryPending)
@@ -521,6 +522,7 @@ class CloudAccountControllerTest {
         var recoveryPending = false
         var updatePasswordCalls = 0
         var lastUpdatedPassword: String? = null
+        var lastUpdatedUserId: String? = null
         var onLoad: suspend () -> VinzCloudAccount.Profile? = { profile }
         var onSignIn: suspend (String, String) -> VinzCloudAccount.AuthResult = { _, _ -> error("not configured") }
         var onSignUp: suspend (String, String, String, String) -> VinzCloudAccount.AuthResult = { _, _, _, _ -> error("not configured") }
@@ -530,9 +532,11 @@ class CloudAccountControllerTest {
         override fun pendingVerificationEmail() = pendingEmail
         override fun otpResendSecondsRemaining() = cooldownRemaining
         override fun passwordRecoveryPending() = recoveryPending
-        override suspend fun updatePassword(password: String) {
+        override suspend fun updatePassword(password: String, expectedUserId: String) {
+            if (identity?.userId != expectedUserId || !recoveryPending) error("recovery identity changed")
             updatePasswordCalls++
             lastUpdatedPassword = password
+            lastUpdatedUserId = expectedUserId
             recoveryPending = false
         }
         override suspend fun checkUsernameAvailable(username: String): Boolean {
