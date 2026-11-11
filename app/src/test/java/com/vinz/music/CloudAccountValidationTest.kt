@@ -138,6 +138,13 @@ class CloudAccountValidationTest {
         assertEquals("", CloudAccountValidation.otp("１２３４５６"))
     }
 
+    @Test fun `signed in accounts cannot submit sign in signup recovery or email verification forms`() {
+        val identity = com.vinz.music.ui.screens.account.CloudAccountIdentity("user", "user@example.test")
+        assertFalse(CloudAccountValidation.canSubmit(CloudAccountState(identity = identity, email = "user@example.test", password = "password8")))
+        assertFalse(CloudAccountValidation.canSubmit(CloudAccountState(identity = identity, mode = CloudAccountMode.RECOVERY, email = "user@example.test")))
+        assertFalse(CloudAccountValidation.canSubmit(CloudAccountState(identity = identity, mode = CloudAccountMode.VERIFY_EMAIL, email = "user@example.test", otp = "123456")))
+    }
+
     @Test fun `password reset requires a signed in recovery session and a strong enough password`() {
         val identity = com.vinz.music.ui.screens.account.CloudAccountIdentity("user", "user@example.test")
         val reset = CloudAccountState(mode = CloudAccountMode.RESET_PASSWORD, identity = identity, password = "short", confirmPassword = "short")
