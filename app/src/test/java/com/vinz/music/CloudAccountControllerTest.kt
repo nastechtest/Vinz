@@ -218,6 +218,24 @@ class CloudAccountControllerTest {
         assertFalse(controller.state.value.canSave)
     }
 
+    @Test fun `recovery callback switches an existing account into password update mode`() = runBlocking {
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        gateway.recoveryPending = true
+
+        controller.refreshIdentity()
+
+        assertEquals(CloudAccountMode.RESET_PASSWORD, controller.state.value.mode)
+        controller.password("new-password")
+        controller.submit()!!.join()
+
+        assertEquals(1, gateway.updatePasswordCalls)
+        assertEquals("new-password", gateway.lastUpdatedPassword)
+        assertEquals(CloudAccountMode.SIGN_IN, controller.state.value.mode)
+        assertEquals(R.string.cloud_account_password_updated, controller.state.value.message)
+        assertFalse(gateway.recoveryPending)
+    }
+
     @Test fun `recovery always gives anti enumeration success feedback`() = runBlocking {
         recovery("  unknown@example.test ")
 
@@ -499,6 +517,9 @@ class CloudAccountControllerTest {
         var cooldownRemaining: Int? = null
         var cooldownAfterResend: Int? = null
         var resendCalls = 0
+        var recoveryPending = false
+        var updatePasswordCalls = 0
+        var lastUpdatedPassword: String? = null
         var onLoad: suspend () -> VinzCloudAccount.Profile? = { profile }
         var onSignIn: suspend (String, String) -> VinzCloudAccount.AuthResult = { _, _ -> error("not configured") }
         var onSignUp: suspend (String, String, String, String) -> VinzCloudAccount.AuthResult = { _, _, _, _ -> error("not configured") }
@@ -507,6 +528,12 @@ class CloudAccountControllerTest {
         override suspend fun loadProfile() = onLoad()
         override fun pendingVerificationEmail() = pendingEmail
         override fun otpResendSecondsRemaining() = cooldownRemaining
+        override fun passwordRecoveryPending() = recoveryPending
+        override suspend fun updatePassword(password: String) {
+            updatePasswordCalls++
+            lastUpdatedPassword = password
+            recoveryPending = false
+        }
         override suspend fun checkUsernameAvailable(username: String): Boolean {
             usernameChecks += username
             usernameCheckFailure?.let { throw it }
