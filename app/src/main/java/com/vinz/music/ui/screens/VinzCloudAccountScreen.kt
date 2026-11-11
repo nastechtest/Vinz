@@ -206,6 +206,7 @@ private fun CloudAccountFormBody(
                 CloudAccountMode.SIGN_UP -> R.string.cloud_account_create
                 CloudAccountMode.SIGN_IN -> R.string.sign_in
                 CloudAccountMode.VERIFY_EMAIL -> R.string.cloud_account_otp_verify
+                CloudAccountMode.RESET_PASSWORD -> R.string.cloud_account_update_password
             }))
         }
         if (state.mode == CloudAccountMode.SIGN_IN) VinzTextButton(
