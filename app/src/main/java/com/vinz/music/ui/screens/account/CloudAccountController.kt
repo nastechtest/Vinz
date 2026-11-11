@@ -76,13 +76,14 @@ internal class CloudAccountController(
         if (mutable.value.busy) return
         resendJob?.cancel()
         usernameCheckJob?.cancel()
-        mutable.value = mutable.value.copy(mode = mode, password = "", otp = "", resendSecondsRemaining = 0, message = null, error = null)
+        mutable.value = mutable.value.copy(mode = mode, password = "", confirmPassword = "", otp = "", resendSecondsRemaining = 0, message = null, error = null)
     }
     fun email(value: String) = edit { copy(email = value, message = null, error = null) }
     fun password(value: String) = edit { copy(password = value, message = null, error = null) }
+    fun confirmPassword(value: String) = edit { copy(confirmPassword = value, message = null, error = null) }
     fun otp(value: String) = edit { copy(otp = CloudAccountValidation.otp(value), message = null, error = null) }
     /** Release typed secrets when the account screen is disposed. */
-    fun clearPassword() { mutable.value = mutable.value.copy(password = "") }
+    fun clearPassword() { mutable.value = mutable.value.copy(password = "", confirmPassword = "") }
     fun username(value: String) {
         if (mutable.value.busy) return
         val clean = CloudAccountValidation.username(value)
@@ -173,6 +174,7 @@ internal class CloudAccountController(
                     mutable.value = mutable.value.copy(
                         mode = CloudAccountMode.SIGN_IN,
                         password = "",
+                        confirmPassword = "",
                         message = R.string.cloud_account_password_updated,
                     )
                 }
@@ -378,7 +380,7 @@ internal class CloudAccountController(
                     profileLoadFailed = failure == R.string.cloud_account_load_failed || mutable.value.profileLoadFailed,
                 )
             } finally {
-                mutable.value = mutable.value.copy(busy = false, password = "")
+                mutable.value = mutable.value.copy(busy = false, password = "", confirmPassword = "")
             }
         }
     }
