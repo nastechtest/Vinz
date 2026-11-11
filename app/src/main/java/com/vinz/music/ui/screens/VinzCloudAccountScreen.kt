@@ -80,11 +80,17 @@ internal fun CloudAccountContent(
                 modifier = Modifier.testTag(if (onContinue == null) "cloud-account-back" else "cloud-account-skip")) {
                 Text(tr(if (onContinue == null) R.string.back else R.string.skip_for_now))
             }
-            Text(tr(if (state.mode == CloudAccountMode.VERIFY_EMAIL) R.string.cloud_account_otp_title else R.string.your_vinz_account),
-                style = MaterialTheme.typography.headlineMedium)
+            Text(tr(when (state.mode) {
+                CloudAccountMode.VERIFY_EMAIL -> R.string.cloud_account_otp_title
+                CloudAccountMode.RESET_PASSWORD -> R.string.cloud_account_reset_password_title
+                else -> R.string.your_vinz_account
+            }), style = MaterialTheme.typography.headlineMedium)
             Text(
-                if (state.mode == CloudAccountMode.VERIFY_EMAIL) tr(R.string.cloud_account_otp_intro, state.email)
-                else tr(R.string.cloud_account_intro),
+                when (state.mode) {
+                    CloudAccountMode.VERIFY_EMAIL -> tr(R.string.cloud_account_otp_intro, state.email)
+                    CloudAccountMode.RESET_PASSWORD -> tr(R.string.cloud_account_reset_password_intro)
+                    else -> tr(R.string.cloud_account_intro)
+                },
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             CloudAccountFormBody(state, actions, section = section, onSection = { section = it })
@@ -123,6 +129,22 @@ private fun CloudAccountFormBody(
     state.message?.let {
         Text(tr(it), Modifier.testTag("cloud-account-message").semantics { liveRegion = LiveRegionMode.Polite },
             color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+    }
+    if (state.mode == CloudAccountMode.RESET_PASSWORD) {
+        androidx.compose.material3.OutlinedTextField(
+            state.password, actions::password, Modifier.fillMaxWidth().testTag("cloud-account-new-password"),
+            enabled = !state.busy, label = { Text(tr(R.string.cloud_account_password)) },
+            supportingText = { Text(tr(R.string.cloud_account_password_hint)) },
+            visualTransformation = PasswordVisualTransformation(), singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submitFromKeyboard() }),
+        )
+        VinzButton(
+            onClick = { actions.submit() },
+            modifier = Modifier.fillMaxWidth().testTag("cloud-account-update-password"),
+            enabled = state.canSubmit,
+        ) { Text(tr(R.string.cloud_account_update_password)) }
+        return
     }
     if (state.mode == CloudAccountMode.VERIFY_EMAIL) {
         androidx.compose.material3.OutlinedTextField(
