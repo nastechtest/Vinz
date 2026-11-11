@@ -17,6 +17,7 @@
     <string name="cloud_account_reset_password_title">Choose a new password</string>
     <string name="cloud_account_reset_password_intro">Your recovery link is verified. Set a new password for your Vinz Account.</string>
     <string name="cloud_account_password_updated">Your Vinz Account password has been updated.</string>
+    <string name="cloud_account_update_password">Update password</string>
     <string name="cloud_account_confirmation">Your email still needs verification. Check your inbox for the latest code.</string>
     <string name="cloud_account_otp_title">Verify your email</string>
     <string name="cloud_account_otp_intro">Enter the six-digit code sent to %1$s to finish verifying your Vinz Account.</string>
