@@ -122,13 +122,15 @@ class CloudAccountScreenTest {
             identity = identity,
             mode = CloudAccountMode.RESET_PASSWORD,
             password = "new-password",
+            confirmPassword = "new-password",
         ))
         compose.onNodeWithTag("cloud-account-new-password").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("cloud-account-confirm-password").performScrollTo().assertIsEnabled()
         compose.onNodeWithTag("cloud-account-update-password").performScrollTo().assertIsEnabled()
         compose.onNodeWithTag("cloud-account-password").assertDoesNotExist()
         compose.onNodeWithTag("cloud-account-submit").assertDoesNotExist()
 
-        render(CloudAccountState(identity = identity, mode = CloudAccountMode.RESET_PASSWORD, password = "short"))
+        render(CloudAccountState(identity = identity, mode = CloudAccountMode.RESET_PASSWORD, password = "short", confirmPassword = "short"))
         compose.onNodeWithTag("cloud-account-update-password").performScrollTo().assertIsNotEnabled()
     }
 
