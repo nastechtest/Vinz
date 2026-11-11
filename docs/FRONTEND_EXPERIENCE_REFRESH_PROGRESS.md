@@ -183,3 +183,28 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Code-review correction before validation: the first private-name patch had a literal `undefined` in its PATCH filter because the source-generation template expanded Kotlin interpolation too early. Corrected the request path to use the authenticated session's user ID in commit `e870fc219be951a677c3f3d6eae0e48fea72af0d`; no request was sent to production and no live data was changed.
 
 - A source review caught and corrected an initial Kotlin string-interpolation mistake in the private-name PATCH filter before any production request was made; the corrected path is scoped to the authenticated session user in commit `e870fc219be951a677c3f3d6eae0e48fea72af0d`.
+
+## Password recovery callback implementation — 2026-11-11
+
+- Inspected current branch head, repository tree, account client/controller/UI, Android manifest, Supabase migrations, existing Android/platform workflows and recent CI before changing code. PR #37 remains merged/closed; no replacement PR was created.
+- Implemented the app-owned `vinz://auth/reset-password` callback. The manifest registers the exact host/path, and `MainActivity` routes the callback into Vinz Account without logging or rendering callback token material.
+- Recovery requests now include the explicit `redirect_to=vinz://auth/reset-password` target. The Supabase redirect allowlist and recovery email template still require hosted-project configuration; no production Auth settings were changed.
+- Added a strict callback parser that accepts only the exact app route and `type=recovery`. It supports Supabase implicit-session fragments (access/refresh tokens) and custom `token_hash` recovery links, rejects partial/expired/wrong-type payloads, and does not log tokens.
+- Implicit callback sessions are verified against Supabase `/auth/v1/user` before persistence. Token-hash callbacks are verified through `/auth/v1/verify`. Only a confirmed identity is stored, using the existing encrypted Android Keystore session store.
+- A separate encrypted pending-recovery marker causes the account controller to show a new-password form after callback handling. The form requires an eight-character minimum and matching confirmation; password values remain transient in UI state and are cleared after submission/disposal. The update uses the authenticated Supabase `PUT /auth/v1/user` endpoint and clears the pending marker only after success.
+- Added parser tests for fragment and token-hash callbacks, invalid routes/types, incomplete/expired payloads and the manifest route; added controller, validation and Compose UI tests for the recovery transition and password confirmation.
+- Fixed the prior Android test failure in `CloudAccountScreenTest.privateFullNameIsClearlySeparateFromThePublicMusicProfile`: its hand-built state represented a loaded profile but omitted `originalUsername` and `UsernameAvailability.UNCHANGED`, so the profile-save button was correctly disabled. The fixture now represents the state produced by a successful profile load; no production save guard was weakened.
+- CI evidence before this correction: run [43038559618](https://github.com/nastechtest/Vinz/actions/runs/43038559618) completed 1,198 JVM tests with 1 failure and 9 skipped; the only failure was that inconsistent test fixture. Lint, workflow validation and Gradle wrapper validation passed. No APK was produced by that failed run.
+- Current Android validation run for code head `25366142e42904f1e77943945fc81a4298abff7e`: [43077254127](https://github.com/nastechtest/Vinz/actions/runs/43077254127), pending at the time of this update. Do not claim the recovery increment green or link an APK until that run completes successfully.
+- Current feature branch comparison at code head: 65 commits ahead and 150 behind `main`; it remains diverged. No merge/rebase was performed.
+- No production Supabase migration, Auth setting, Cloudflare resource, secret, deployment or release was changed.
+
+### Next incomplete work
+
+1. Confirm Android tests, Lint, debug APK assembly and APK signature/checksum verification on the current code head.
+2. Complete provider-console verification for numeric email OTP, password recovery redirect allowlist/template, Google OAuth redirect allowlist and leaked-password protection.
+3. Complete avatar upload/change/remove with safe image validation and storage policies, then finish account privacy, notification, connected identity and session/device settings.
+4. Implement cloud backup/restore without changing existing local backup/restore.
+5. Implement canonical song links, installed-app routing and deferred install.
+6. Implement the Worker/Durable Object Listen Together control plane and its authorization, ordering, reconnect and drift tests.
+7. Community/discovery remains last.
