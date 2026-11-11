@@ -10,6 +10,7 @@ internal interface CloudAccountGateway {
     val sessionChanges: Flow<Long> get() = emptyFlow()
     fun pendingVerificationEmail(): String? = null
     fun otpResendSecondsRemaining(): Int? = null
+    fun passwordRecoveryPending(): Boolean = false
     suspend fun loadProfile(): VinzCloudAccount.Profile?
     suspend fun checkUsernameAvailable(username: String): Boolean = true
     suspend fun beginGoogleOAuth(): String = throw UnsupportedOperationException()
@@ -18,6 +19,7 @@ internal interface CloudAccountGateway {
     suspend fun verifyOtp(email: String, code: String): VinzCloudAccount.AuthResult = throw UnsupportedOperationException()
     suspend fun resendOtp(email: String) { throw UnsupportedOperationException() }
     suspend fun recover(email: String)
+    suspend fun updatePassword(password: String) { throw UnsupportedOperationException() }
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
     suspend fun savePrivateFullName(fullName: String): String = throw UnsupportedOperationException()
     suspend fun signOut()
@@ -28,6 +30,7 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override val sessionChanges: Flow<Long> get() = cloud.sessionChanges
     override fun pendingVerificationEmail() = cloud.pendingVerificationEmail()
     override fun otpResendSecondsRemaining() = cloud.otpResendSecondsRemaining()
+    override fun passwordRecoveryPending() = cloud.passwordRecoveryPending()
     override suspend fun loadProfile() = cloud.loadProfile()
     override suspend fun checkUsernameAvailable(username: String) = cloud.checkUsernameAvailable(username)
     override suspend fun beginGoogleOAuth() = cloud.beginGoogleOAuth()
@@ -37,6 +40,7 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun verifyOtp(email: String, code: String) = cloud.verifyEmailOtp(email, code)
     override suspend fun resendOtp(email: String) { cloud.resendEmailOtp(email) }
     override suspend fun recover(email: String) { cloud.sendPasswordRecovery(email) }
+    override suspend fun updatePassword(password: String) { cloud.updateRecoveredPassword(password) }
     override suspend fun save(draft: CloudProfileDraft) = cloud.saveProfile(
         draft.username, draft.displayName, draft.bio, draft.isPublic, draft.discoverable,
     )
