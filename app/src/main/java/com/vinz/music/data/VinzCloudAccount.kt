@@ -258,7 +258,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         if (recovered.userId.isBlank() || recovered.accessToken.isBlank() || recovered.refreshToken.isBlank()) {
             error("The recovery session was incomplete.")
         }
-        persistSession(recovered)
+        persistSession(recovered, passwordRecovery = true)
         store.clearPendingVerification()
         store.clearPendingOAuth()
         store.writePendingPasswordRecovery()
@@ -268,9 +268,12 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     fun passwordRecoveryPending(): Boolean = store.readPendingPasswordRecovery() == "1"
 
     /** Updates the password only while a validated recovery session is pending. */
-    suspend fun updateRecoveredPassword(password: String) = withContext(Dispatchers.IO) {
+    suspend fun updateRecoveredPassword(password: String, expectedUserId: String) = withContext(Dispatchers.IO) {
         require(password.length >= 8) { "Use a password with at least 8 characters." }
-        if (!passwordRecoveryPending()) error("Start password recovery before changing the password.")
+        val current = session ?: error("Sign in to your Vinz Account first.")
+        if (current.userId != expectedUserId || !passwordRecoveryPending()) {
+            error("The password recovery session is no longer active.")
+        }
         request("/auth/v1/user", "PUT", JSONObject().put("password", password).toString())
         store.clearPendingPasswordRecovery()
     }
@@ -559,8 +562,12 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         .toString()
 
     /** Serialize sign-in/OTP writes with refresh rotation so an older refresh cannot overwrite a new login. */
-    private fun persistSession(session: Session) {
-        synchronized(refreshLock) { store.write(encodeSession(session)) }
+    private fun persistSession(session: Session, passwordRecovery: Boolean = false) {
+        synchronized(refreshLock) {
+            store.write(encodeSession(session))
+            // A normal sign-in/account switch must never inherit an older recovery authorization.
+            if (!passwordRecovery) store.clearPendingPasswordRecovery()
+        }
     }
 
     private fun parseResponse(path: String, response: HttpResult): JSONObject {
