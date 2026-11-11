@@ -4,8 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.io.File
 
 class VinzPasswordRecoveryCallbackTest {
+    @Test fun androidManifestRegistersTheExactRecoveryCallbackRoute() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertEquals(true, manifest.contains(
+            """android:scheme="vinz" android:host="auth" android:path="/reset-password"""",
+        ))
+    }
+
     @Test fun acceptsSupabaseImplicitSessionInFragment() {
         val callback = VinzPasswordRecoveryCallback.parse(
             "vinz://auth/reset-password#access_token=access.jwt.value&refresh_token=refresh-value&type=recovery&expires_in=1800",
