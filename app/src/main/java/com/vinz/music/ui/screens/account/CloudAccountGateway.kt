@@ -19,7 +19,7 @@ internal interface CloudAccountGateway {
     suspend fun verifyOtp(email: String, code: String): VinzCloudAccount.AuthResult = throw UnsupportedOperationException()
     suspend fun resendOtp(email: String) { throw UnsupportedOperationException() }
     suspend fun recover(email: String)
-    suspend fun updatePassword(password: String) { throw UnsupportedOperationException() }
+    suspend fun updatePassword(password: String, expectedUserId: String) { throw UnsupportedOperationException() }
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
     suspend fun savePrivateFullName(fullName: String): String = throw UnsupportedOperationException()
     suspend fun signOut()
@@ -40,7 +40,7 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun verifyOtp(email: String, code: String) = cloud.verifyEmailOtp(email, code)
     override suspend fun resendOtp(email: String) { cloud.resendEmailOtp(email) }
     override suspend fun recover(email: String) { cloud.sendPasswordRecovery(email) }
-    override suspend fun updatePassword(password: String) { cloud.updateRecoveredPassword(password) }
+    override suspend fun updatePassword(password: String, expectedUserId: String) { cloud.updateRecoveredPassword(password, expectedUserId) }
     override suspend fun save(draft: CloudProfileDraft) = cloud.saveProfile(
         draft.username, draft.displayName, draft.bio, draft.isPublic, draft.discoverable,
     )
