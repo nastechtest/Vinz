@@ -349,7 +349,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         require(normalized.length <= 120) { "Full name must be 120 characters or fewer." }
         val s = session ?: error("Sign in to your Vinz Account first.")
         val result = request(
-            "/rest/v1/vinz_account_private?user_id=eq.undefined",
+            "/rest/v1/vinz_account_private?user_id=eq.${s.userId}",
             "PATCH",
             JSONObject().put("full_name", normalized).toString(),
             prefer = "return=representation",
