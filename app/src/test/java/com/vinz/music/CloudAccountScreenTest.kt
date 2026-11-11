@@ -116,6 +116,22 @@ class CloudAccountScreenTest {
         compose.onNodeWithTag("cloud-account-save").performScrollTo().assertIsEnabled()
     }
 
+    @Test fun passwordRecoveryShowsOnlyTheNewPasswordForm() {
+        val identity = CloudAccountIdentity("test-user", "test@example.test")
+        render(CloudAccountState(
+            identity = identity,
+            mode = CloudAccountMode.RESET_PASSWORD,
+            password = "new-password",
+        ))
+        compose.onNodeWithTag("cloud-account-new-password").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("cloud-account-update-password").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("cloud-account-password").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-account-submit").assertDoesNotExist()
+
+        render(CloudAccountState(identity = identity, mode = CloudAccountMode.RESET_PASSWORD, password = "short"))
+        compose.onNodeWithTag("cloud-account-update-password").performScrollTo().assertIsNotEnabled()
+    }
+
     @Test fun recoveryNeedsNoPasswordAndEmailUnlocksSubmit() {
         render(CloudAccountState(mode = CloudAccountMode.RECOVERY, email = "test@example.test"))
         compose.onNodeWithTag("cloud-account-email").assertIsEnabled()
