@@ -25,6 +25,7 @@ import com.vinz.music.ui.screens.account.CloudAccountIdentity
 import com.vinz.music.ui.screens.account.CloudAccountMode
 import com.vinz.music.ui.screens.account.CloudAccountState
 import com.vinz.music.ui.screens.account.CloudProfileDraft
+import com.vinz.music.ui.screens.account.UsernameAvailability
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -106,6 +107,8 @@ class CloudAccountScreenTest {
             identity = CloudAccountIdentity("test-user", "test@example.test"),
             profileReady = true,
             draft = CloudProfileDraft("test_artist", "Test Artist", fullName = "Ada Lovelace"),
+            originalUsername = "test_artist",
+            usernameAvailability = UsernameAvailability.UNCHANGED,
         ))
         compose.onNodeWithTag("cloud-account-full-name").performScrollTo().assertIsEnabled()
         compose.onNodeWithText("Visible only to you. It is not shown on your public music profile.").assertExists()
