@@ -5,7 +5,7 @@ import androidx.annotation.StringRes
 /** Presentation-only identity: never retain access or refresh tokens in UI state. */
 internal data class CloudAccountIdentity(val userId: String, val email: String)
 
-internal enum class CloudAccountMode { SIGN_IN, SIGN_UP, RECOVERY, VERIFY_EMAIL }
+internal enum class CloudAccountMode { SIGN_IN, SIGN_UP, RECOVERY, VERIFY_EMAIL, RESET_PASSWORD }
 
 internal enum class UsernameAvailability { IDLE, CHECKING, AVAILABLE, UNAVAILABLE, INVALID, ERROR, UNCHANGED }
 
@@ -37,7 +37,7 @@ internal data class CloudAccountState(
     @param:StringRes val error: Int? = null,
 ) {
     val canContinue: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed
-    val canSubmit: Boolean get() = !busy && identity == null && CloudAccountValidation.canSubmit(this)
+    val canSubmit: Boolean get() = !busy && CloudAccountValidation.canSubmit(this)
     val canResendOtp: Boolean get() = !busy && identity == null && mode == CloudAccountMode.VERIFY_EMAIL && resendSecondsRemaining == 0
     val canSave: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed &&
         CloudAccountValidation.validProfile(draft) &&
