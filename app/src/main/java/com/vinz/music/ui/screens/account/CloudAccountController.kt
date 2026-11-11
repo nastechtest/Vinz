@@ -170,7 +170,8 @@ internal class CloudAccountController(
                     mutable.value = mutable.value.copy(email = email, message = R.string.cloud_account_recovery_sent)
                 }
                 CloudAccountMode.RESET_PASSWORD -> {
-                    gateway.updatePassword(before.password)
+                    val expectedUserId = before.identity?.userId ?: error("The recovery account is no longer available.")
+                    gateway.updatePassword(before.password, expectedUserId)
                     mutable.value = mutable.value.copy(
                         mode = CloudAccountMode.SIGN_IN,
                         password = "",
