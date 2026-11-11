@@ -238,6 +238,21 @@ class CloudAccountControllerTest {
         assertFalse(gateway.recoveryPending)
     }
 
+    @Test fun `recovery password update is blocked after an account switch`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.recoveryPending = true
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.password("new-password")
+        controller.confirmPassword("new-password")
+        gateway.identityValue = identity("other-user", "other@example.test")
+
+        controller.submit()!!.join()
+
+        assertEquals(0, gateway.updatePasswordCalls)
+        assertTrue(gateway.recoveryPending)
+        assertEquals(R.string.cloud_account_recovery_failed, controller.state.value.error)
+    }
+
     @Test fun `recovery always gives anti enumeration success feedback`() = runBlocking {
         recovery("  unknown@example.test ")
 
