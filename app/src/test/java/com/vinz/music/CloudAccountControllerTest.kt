@@ -250,7 +250,7 @@ class CloudAccountControllerTest {
 
         assertEquals(0, gateway.updatePasswordCalls)
         assertTrue(gateway.recoveryPending)
-        assertEquals(R.string.cloud_account_recovery_failed, controller.state.value.error)
+        assertEquals(R.string.cloud_account_load_failed, controller.state.value.error)
     }
 
     @Test fun `recovery always gives anti enumeration success feedback`() = runBlocking {
