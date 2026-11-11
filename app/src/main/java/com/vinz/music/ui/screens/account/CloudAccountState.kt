@@ -24,6 +24,7 @@ internal data class CloudAccountState(
     val email: String = "",
     // Passwords and typed OTPs stay in memory only.
     val password: String = "",
+    val confirmPassword: String = "",
     val otp: String = "",
     val resendSecondsRemaining: Int = 0,
     val draft: CloudProfileDraft = CloudProfileDraft(),
