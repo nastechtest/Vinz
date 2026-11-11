@@ -274,7 +274,12 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         if (current.userId != expectedUserId || !passwordRecoveryPending()) {
             error("The password recovery session is no longer active.")
         }
-        request("/auth/v1/user", "PUT", JSONObject().put("password", password).toString())
+        request(
+            "/auth/v1/user",
+            "PUT",
+            JSONObject().put("password", password).toString(),
+            expectedUserId = expectedUserId,
+        )
         store.clearPendingPasswordRecovery()
     }
 
@@ -452,8 +457,18 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
      * Authenticated REST calls refresh before expiry and retry one 401 after a rotated token.
      * The refresh lock prevents concurrent requests from consuming the same single-use refresh token.
      */
-    private fun request(path: String, method: String, body: String? = null, authenticated: Boolean = true, prefer: String? = null): JSONObject {
+    private fun request(
+        path: String,
+        method: String,
+        body: String? = null,
+        authenticated: Boolean = true,
+        prefer: String? = null,
+        expectedUserId: String? = null,
+    ): JSONObject {
         val originalSession = if (authenticated) sessionForRequest() else null
+        if (expectedUserId != null && originalSession?.userId != expectedUserId) {
+            error("The account session changed before this request.")
+        }
         var response = executeRequest(path, method, body, originalSession, prefer)
         if (response.code == 401 && originalSession != null) {
             val refreshed = refreshStoredSession(originalSession, force = true)
