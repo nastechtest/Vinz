@@ -4,7 +4,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Working branch: `feat/frontend-experience-refresh`
 - Historical review: [PR #37](https://github.com/nastechtest/Vinz/pull/37) was merged on 2026-11-08. It cannot remain draft or include new branch commits. Per the user's one-PR/no-new-PR rule, no replacement PR is created; follow-up work remains on the named feature branch until review routing is explicitly changed.
-- The feature branch is currently 8 commits ahead and 150 commits behind `main`; no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
+- The feature branch is currently 38 commits ahead and 150 commits behind `main`; it is diverged, and no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
 - Backend: Supabase Auth/Postgres/RLS/Storage remains the account foundation. Cloudflare Workers and Durable Objects are reserved for link resolution and real-time room coordination.
 - Local music, playback and library remain usable without signing in. Vinz Account remains separate from YouTube Music provider login.
 - No production Supabase schema, Cloudflare resources, secrets, deployments or releases are changed by this branch work.
@@ -178,6 +178,8 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Added private full-name loading and saving against the existing owner-only `public.vinz_account_private.full_name` column. Public profile reads/writes remain in `vinz_profiles`; the private full name is never added to public profile output or overview UI.
 - Added a separate private-details editor and save action, 120-character client/server validation, identity-change protection, gateway/controller tests and a Compose UI regression test.
 - No schema change was needed: the existing migration creates the private row on auth-user creation, grants only owner-scoped SELECT/UPDATE, and the verified-email RLS migration gates access. Live Supabase reports the table with RLS enabled. No production migration or data mutation was performed.
-- New code/test increment is committed on `feat/frontend-experience-refresh`; its fresh Android and platform checks must complete before this increment is marked green or its APK is linked.
+- New code/test increment is committed on `feat/frontend-experience-refresh`. Android CI is pending for the corrected code commit; no platform workflow was triggered because this increment did not change Worker or migration files. The earlier platform run [42878090980](https://github.com/nastechtest/Vinz/actions/runs/42878090980) passed.
 - Remaining account work: avatar upload/change/remove, public profile route/canonical URL, persisted notification/privacy settings, connected identity/session management and recovery callback completion. Cloud backup/restore, canonical share/deferred install, and Durable Object Listen Together remain in the agreed priority order.
 - Code-review correction before validation: the first private-name patch had a literal `undefined` in its PATCH filter because the source-generation template expanded Kotlin interpolation too early. Corrected the request path to use the authenticated session's user ID in commit `e870fc219be951a677c3f3d6eae0e48fea72af0d`; no request was sent to production and no live data was changed.
+
+- A source review caught and corrected an initial Kotlin string-interpolation mistake in the private-name PATCH filter before any production request was made; the corrected path is scoped to the authenticated session user in commit `e870fc219be951a677c3f3d6eae0e48fea72af0d`.
