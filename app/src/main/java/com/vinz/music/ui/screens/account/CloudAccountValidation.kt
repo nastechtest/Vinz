@@ -21,9 +21,9 @@ internal object CloudAccountValidation {
             draft.displayName.trim().length in 1..60 && draft.bio.length <= 160
 
     fun canSubmit(state: CloudAccountState): Boolean = when (state.mode) {
-        CloudAccountMode.VERIFY_EMAIL -> validEmail(state.email) && state.otp.matches(Regex("^[0-9]{6}$"))
-        CloudAccountMode.RECOVERY -> validEmail(state.email)
-        CloudAccountMode.SIGN_IN -> validEmail(state.email) && state.password.isNotEmpty()
+        CloudAccountMode.VERIFY_EMAIL -> state.identity == null && validEmail(state.email) && state.otp.matches(Regex("^[0-9]{6}$"))
+        CloudAccountMode.RECOVERY -> state.identity == null && validEmail(state.email)
+        CloudAccountMode.SIGN_IN -> state.identity == null && validEmail(state.email) && state.password.isNotEmpty()
         CloudAccountMode.SIGN_UP -> state.identity == null && validEmail(state.email) && state.password.length >= 8 &&
             validProfile(state.draft) && state.usernameAvailability == UsernameAvailability.AVAILABLE
         CloudAccountMode.RESET_PASSWORD -> state.identity != null && state.password.length >= 8 &&
