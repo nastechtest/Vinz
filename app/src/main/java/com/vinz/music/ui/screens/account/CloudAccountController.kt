@@ -21,9 +21,11 @@ internal class CloudAccountController(
     private val resendCooldownSeconds: Int = 60,
     private val usernameDebounceMillis: Long = 400,
 ) {
-    private val mutable = MutableStateFlow(CloudAccountState(identity = gateway.identity).let {
-        it.copy(email = it.identity?.email.orEmpty())
-    })
+    private val mutable = MutableStateFlow(CloudAccountState(
+        identity = gateway.identity,
+        email = gateway.identity?.email.orEmpty(),
+        mode = if (gateway.passwordRecoveryPending()) CloudAccountMode.RESET_PASSWORD else CloudAccountMode.SIGN_IN,
+    ))
     val state: StateFlow<CloudAccountState> = mutable.asStateFlow()
     private var usernameCheckJob: Job? = null
     private var resendJob: Job? = null
@@ -37,13 +39,21 @@ internal class CloudAccountController(
     fun refreshIdentity() {
         if (mutable.value.busy) return
         val identity = gateway.identity
+        val recoveryPending = gateway.passwordRecoveryPending()
         if (identity?.userId == mutable.value.identity?.userId) {
+            if (recoveryPending && mutable.value.mode != CloudAccountMode.RESET_PASSWORD) {
+                mutable.value = mutable.value.copy(mode = CloudAccountMode.RESET_PASSWORD, password = "", message = null, error = null)
+            }
             if (identity != null && !mutable.value.profileReady) loadProfile()
             return
         }
         resendJob?.cancel()
         usernameCheckJob?.cancel()
-        mutable.value = CloudAccountState(identity = identity, email = identity?.email.orEmpty())
+        mutable.value = CloudAccountState(
+            identity = identity,
+            email = identity?.email.orEmpty(),
+            mode = if (recoveryPending) CloudAccountMode.RESET_PASSWORD else CloudAccountMode.SIGN_IN,
+        )
         if (identity != null) loadProfile()
     }
 
@@ -148,6 +158,7 @@ internal class CloudAccountController(
         val failure = when (before.mode) {
             CloudAccountMode.RECOVERY -> R.string.cloud_account_recovery_failed
             CloudAccountMode.VERIFY_EMAIL -> R.string.cloud_account_otp_verify_failed
+            CloudAccountMode.RESET_PASSWORD -> R.string.cloud_account_recovery_failed
             else -> R.string.cloud_account_sign_in_failed
         }
         return request(failure) {
@@ -156,6 +167,14 @@ internal class CloudAccountController(
                 CloudAccountMode.RECOVERY -> {
                     gateway.recover(email)
                     mutable.value = mutable.value.copy(email = email, message = R.string.cloud_account_recovery_sent)
+                }
+                CloudAccountMode.RESET_PASSWORD -> {
+                    gateway.updatePassword(before.password)
+                    mutable.value = mutable.value.copy(
+                        mode = CloudAccountMode.SIGN_IN,
+                        password = "",
+                        message = R.string.cloud_account_password_updated,
+                    )
                 }
                 CloudAccountMode.VERIFY_EMAIL -> {
                     when (val result = gateway.verifyOtp(email, before.otp)) {
