@@ -565,6 +565,54 @@ class CloudAccountControllerTest {
         assertNull(controller.state.value.draft.avatarPath)
     }
 
+
+    @Test fun `account settings load and persist the selected preferences`() = runBlocking {
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        gateway.accountSettings = VinzCloudAccount.AccountSettings(
+            allowFriendRequests = false,
+            showListeningActivity = true,
+            notifyNewReleases = false,
+            notifyFriendActivity = true,
+            notifyPodcastUpdates = false,
+        )
+
+        controller.loadSettings()!!.join()
+
+        assertTrue(controller.state.value.settingsReady)
+        assertFalse(controller.state.value.settingsLoadFailed)
+        assertFalse(controller.state.value.settingsDraft.allowFriendRequests)
+        assertTrue(controller.state.value.settingsDraft.showListeningActivity)
+
+        controller.notifyNewReleases(true)
+        controller.notifyPodcastUpdates(true)
+        controller.saveSettings()!!.join()
+
+        assertEquals(1, gateway.settingsSaveCalls)
+        assertTrue(gateway.savedAccountSettings?.notifyNewReleases == true)
+        assertTrue(gateway.savedAccountSettings?.notifyPodcastUpdates == true)
+        assertFalse(gateway.savedAccountSettings?.allowFriendRequests ?: true)
+        assertEquals(R.string.cloud_account_settings_saved, controller.state.value.message)
+    }
+
+    @Test fun `settings load failure is retryable without breaking the profile`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.settingsLoadFailure = IllegalStateException("private backend detail")
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+
+        controller.loadSettings()!!.join()
+
+        assertTrue(controller.state.value.settingsLoadFailed)
+        assertFalse(controller.state.value.profileLoadFailed)
+        assertEquals(R.string.cloud_account_settings_load_failed, controller.state.value.error)
+        assertNull(controller.saveSettings())
+
+        gateway.settingsLoadFailure = null
+        controller.loadSettings()!!.join()
+        assertTrue(controller.state.value.settingsReady)
+        assertFalse(controller.state.value.settingsLoadFailed)
+    }
+
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
         isPublic: Boolean = true, discoverable: Boolean = true, fullName: String = "",
@@ -580,6 +628,10 @@ class CloudAccountControllerTest {
         var recoverCalls = 0
         var saveCalls = 0
         var privateSaveCalls = 0
+        var accountSettings = VinzCloudAccount.AccountSettings()
+        var savedAccountSettings: VinzCloudAccount.AccountSettings? = null
+        var settingsSaveCalls = 0
+        var settingsLoadFailure: Exception? = null
         var avatarUploadCalls = 0
         var avatarRemoveCalls = 0
         var onAvatarUpload: suspend (ByteArray, String) -> VinzCloudAccount.Profile = { _, _ -> error("not configured") }
@@ -647,6 +699,16 @@ class CloudAccountControllerTest {
             privateSaveCalls++
             lastPrivateFullName = fullName
             return fullName
+        }
+        override suspend fun loadSettings(): VinzCloudAccount.AccountSettings {
+            settingsLoadFailure?.let { throw it }
+            return accountSettings
+        }
+        override suspend fun saveSettings(settings: VinzCloudAccount.AccountSettings): VinzCloudAccount.AccountSettings {
+            settingsSaveCalls++
+            savedAccountSettings = settings
+            accountSettings = settings
+            return settings
         }
         override suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String): VinzCloudAccount.Profile {
             avatarUploadCalls++

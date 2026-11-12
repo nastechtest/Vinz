@@ -142,6 +142,9 @@ private fun CloudAccountFormBody(
             }
         }
     }
+    LaunchedEffect(section, state.identity?.userId) {
+        if (section == "settings" && state.identity != null && !state.settingsReady) actions.loadSettings()
+    }
     val submitFromKeyboard: () -> Unit = {
         if (state.canSubmit) { focus.clearFocus(); actions.submit() }
     }
@@ -271,6 +274,7 @@ private fun CloudAccountFormBody(
             "profile" to R.string.kind_profile,
             "security" to R.string.cloud_account_tab_security,
             "connections" to R.string.connections,
+            "settings" to R.string.cloud_account_tab_settings,
         ).forEach { (id, title) ->
             VinzTextButton(onClick = { onSection(id) }, enabled = !state.busy, modifier = Modifier.testTag("cloud-account-tab-$id")) {
                 Text(if (section == id) tr(R.string.cloud_account_selected_tab, tr(title)) else tr(title))
@@ -346,6 +350,52 @@ private fun CloudAccountFormBody(
                 style = MaterialTheme.typography.titleMedium)
             Text(tr(R.string.cloud_account_connections_description),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        "settings" -> {
+            Text(tr(R.string.cloud_account_tab_settings), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            if (state.settingsLoadFailed) {
+                VinzButton(
+                    onClick = { actions.loadSettings() },
+                    modifier = Modifier.fillMaxWidth().testTag("cloud-account-settings-retry"),
+                    enabled = !state.busy,
+                ) { Text(tr(R.string.try_again)) }
+            } else if (!state.settingsReady) {
+                if (!state.busy) CircularProgressIndicator(Modifier.testTag("cloud-account-settings-loading"))
+            } else {
+                Text(tr(R.string.cloud_account_privacy_settings), style = MaterialTheme.typography.titleMedium)
+                CloudPrivacySwitch(
+                    state.settingsDraft.allowFriendRequests, !state.busy,
+                    tr(R.string.cloud_account_allow_friend_requests), tr(R.string.cloud_account_allow_friend_requests_hint),
+                    "cloud-account-allow-friend-requests", actions::allowFriendRequests,
+                )
+                CloudPrivacySwitch(
+                    state.settingsDraft.showListeningActivity, !state.busy,
+                    tr(R.string.cloud_account_show_listening_activity), tr(R.string.cloud_account_show_listening_activity_hint),
+                    "cloud-account-show-listening-activity", actions::showListeningActivity,
+                )
+                Text(tr(R.string.cloud_account_notification_settings), style = MaterialTheme.typography.titleMedium)
+                CloudPrivacySwitch(
+                    state.settingsDraft.notifyNewReleases, !state.busy,
+                    tr(R.string.cloud_account_notify_new_releases), tr(R.string.cloud_account_notify_new_releases_hint),
+                    "cloud-account-notify-new-releases", actions::notifyNewReleases,
+                )
+                CloudPrivacySwitch(
+                    state.settingsDraft.notifyFriendActivity, !state.busy,
+                    tr(R.string.cloud_account_notify_friend_activity), tr(R.string.cloud_account_notify_friend_activity_hint),
+                    "cloud-account-notify-friend-activity", actions::notifyFriendActivity,
+                )
+                CloudPrivacySwitch(
+                    state.settingsDraft.notifyPodcastUpdates, !state.busy,
+                    tr(R.string.cloud_account_notify_podcast_updates), tr(R.string.cloud_account_notify_podcast_updates_hint),
+                    "cloud-account-notify-podcast-updates", actions::notifyPodcastUpdates,
+                )
+                VinzButton(
+                    onClick = { actions.saveSettings() },
+                    modifier = Modifier.fillMaxWidth().testTag("cloud-account-save-settings"),
+                    enabled = state.canSaveSettings,
+                ) { Text(tr(R.string.cloud_account_save_settings)) }
+            }
         }
     }
 }

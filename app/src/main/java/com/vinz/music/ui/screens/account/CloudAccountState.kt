@@ -19,6 +19,14 @@ internal data class CloudProfileDraft(
     val avatarPath: String? = null,
 )
 
+internal data class CloudAccountSettingsDraft(
+    val allowFriendRequests: Boolean = true,
+    val showListeningActivity: Boolean = false,
+    val notifyNewReleases: Boolean = false,
+    val notifyFriendActivity: Boolean = true,
+    val notifyPodcastUpdates: Boolean = false,
+)
+
 internal data class CloudAccountState(
     val identity: CloudAccountIdentity? = null,
     val mode: CloudAccountMode = CloudAccountMode.SIGN_IN,
@@ -34,6 +42,9 @@ internal data class CloudAccountState(
     val busy: Boolean = false,
     val profileReady: Boolean = false,
     val profileLoadFailed: Boolean = false,
+    val settingsDraft: CloudAccountSettingsDraft = CloudAccountSettingsDraft(),
+    val settingsReady: Boolean = false,
+    val settingsLoadFailed: Boolean = false,
     val oauthUrl: String? = null,
     @param:StringRes val message: Int? = null,
     @param:StringRes val error: Int? = null,
@@ -48,4 +59,5 @@ internal data class CloudAccountState(
         draft.fullName.length <= 120
     val canUploadAvatar: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed
     val canRemoveAvatar: Boolean get() = canUploadAvatar && !draft.avatarPath.isNullOrBlank()
+    val canSaveSettings: Boolean get() = !busy && identity != null && settingsReady && !settingsLoadFailed
 }

@@ -237,3 +237,13 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Live Supabase read-only inspection on 2026-11-12 confirms the only Storage bucket is `vinz-cloud-backups`; there is no live `vinz-avatars` bucket or avatar object policy. Live migrations still end at `20261108082934_vinz_youtube_music_import`. Therefore avatar uploads are implemented in the branch but cannot work against the connected production project until the user explicitly approves applying the existing repository migrations. No migration, bucket or policy was applied.
 - The same live Security Advisor still warns that `public.vinz_username_available(text)` is SECURITY DEFINER and that leaked-password protection is disabled. The branch has a repository-only hardening migration, but it is not applied; do not expose the live RPC or claim the production warning is fixed.
 - Android validation for this increment must pass before claiming a verified build or APK. No production Supabase or Cloudflare resources, secrets, deployments, releases, main-branch refs or PR state were changed.
+
+
+## Account privacy and notification settings — 2026-11-12
+
+- Added authenticated reads and whitelisted updates for the existing `vinz_account_settings` row: friend requests, listening-activity visibility, new-release notifications, friend-activity notifications and podcast-update notifications.
+- Added a dedicated Account settings tab with accessible switches, loading/retry states and an explicit Save action. Settings load separately from the profile so a preferences outage does not make profile editing unsafe or unavailable.
+- Added controller tests for settings load/save and retry after a settings-only failure.
+- Updated the avatar picker disclosure: the existing `vinz-avatars` repository migration defines a public-read bucket, so the UI now tells users that anyone with the image link can view the photo even if their music profile is private.
+- No schema migration was needed: `vinz_account_settings` already exists with owner RLS and the five supported preference columns. The live project still lacks the repository's verified-email policy migration, and the avatar bucket migration is not applied. No production changes were made.
+- Android CI for the preceding avatar increment [43243883418](https://github.com/nastechtest/Vinz/actions/runs/43243883418) was still running when this increment was authored; the settings commit's own run must also pass before either increment is declared validated.

@@ -48,6 +48,13 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val discoverable: Boolean,
         val fullName: String = "",
     )
+    data class AccountSettings(
+        val allowFriendRequests: Boolean = true,
+        val showListeningActivity: Boolean = false,
+        val notifyNewReleases: Boolean = false,
+        val notifyFriendActivity: Boolean = true,
+        val notifyPodcastUpdates: Boolean = false,
+    )
     sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
         data class VerificationRequired(val email: String) : AuthResult
@@ -387,6 +394,40 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     private fun loadPrivateFullName(userId: String): String =
         request("/rest/v1/vinz_account_private?select=full_name&user_id=eq.$userId", "GET")
             .optJSONArray("data")?.optJSONObject(0)?.optString("full_name").orEmpty()
+
+
+    /** Loads only the signed-in user's existing private preference row. */
+    suspend fun loadAccountSettings(): AccountSettings = withContext(Dispatchers.IO) {
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val result = request(
+            "/rest/v1/vinz_account_settings?select=allow_friend_requests,show_listening_activity,notify_new_releases,notify_friend_activity,notify_podcast_updates&user_id=eq.${s.userId}",
+            "GET",
+            expectedUserId = s.userId,
+        )
+        result.optJSONArray("data")?.optJSONObject(0)?.toAccountSettings()
+            ?: error("Your account settings could not be loaded.")
+    }
+
+    /** Updates only the five supported preference columns; ownership remains enforced by RLS. */
+    suspend fun saveAccountSettings(settings: AccountSettings): AccountSettings = withContext(Dispatchers.IO) {
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val payload = JSONObject()
+            .put("allow_friend_requests", settings.allowFriendRequests)
+            .put("show_listening_activity", settings.showListeningActivity)
+            .put("notify_new_releases", settings.notifyNewReleases)
+            .put("notify_friend_activity", settings.notifyFriendActivity)
+            .put("notify_podcast_updates", settings.notifyPodcastUpdates)
+        val result = request(
+            "/rest/v1/vinz_account_settings?user_id=eq.${s.userId}",
+            "PATCH",
+            payload.toString(),
+            prefer = "return=representation",
+            expectedUserId = s.userId,
+        )
+        val saved = result.optJSONArray("data")?.optJSONObject(0)?.toAccountSettings() ?: loadAccountSettings()
+        if (session?.userId != s.userId || saved != settings) error("Your account settings were not confirmed.")
+        saved
+    }
 
     suspend fun saveProfile(username: String, displayName: String, bio: String, isPublic: Boolean, discoverable: Boolean): Profile =
         withContext(Dispatchers.IO) {
@@ -772,6 +813,14 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
             expiresAtEpochSeconds = j.optLong("expires_at", 0L),
         )
     }
+
+    private fun JSONObject.toAccountSettings() = AccountSettings(
+        allowFriendRequests = optBoolean("allow_friend_requests", true),
+        showListeningActivity = optBoolean("show_listening_activity", false),
+        notifyNewReleases = optBoolean("notify_new_releases", false),
+        notifyFriendActivity = optBoolean("notify_friend_activity", true),
+        notifyPodcastUpdates = optBoolean("notify_podcast_updates", false),
+    )
 
     private fun JSONObject.toProfile() = Profile(
         id = getString("id"), username = optString("username"), displayName = optString("display_name"),

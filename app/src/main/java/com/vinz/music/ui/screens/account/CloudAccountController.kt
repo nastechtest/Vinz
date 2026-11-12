@@ -362,6 +362,65 @@ internal class CloudAccountController(
         if (!mutable.value.busy) mutable.value = mutable.value.copy(error = R.string.cloud_account_avatar_upload_failed)
     }
 
+
+    fun loadSettings(): Job? {
+        val identity = mutable.value.identity ?: return null
+        if (mutable.value.settingsReady || mutable.value.busy) return null
+        return request(R.string.cloud_account_settings_load_failed) {
+            val loaded = gateway.loadSettings()
+            if (gateway.identity?.userId != identity.userId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(
+                settingsDraft = loaded.toDraft(),
+                settingsReady = true,
+                settingsLoadFailed = false,
+            )
+        }
+    }
+
+    fun allowFriendRequests(value: Boolean) = edit {
+        copy(settingsDraft = settingsDraft.copy(allowFriendRequests = value), message = null, error = null)
+    }
+
+    fun showListeningActivity(value: Boolean) = edit {
+        copy(settingsDraft = settingsDraft.copy(showListeningActivity = value), message = null, error = null)
+    }
+
+    fun notifyNewReleases(value: Boolean) = edit {
+        copy(settingsDraft = settingsDraft.copy(notifyNewReleases = value), message = null, error = null)
+    }
+
+    fun notifyFriendActivity(value: Boolean) = edit {
+        copy(settingsDraft = settingsDraft.copy(notifyFriendActivity = value), message = null, error = null)
+    }
+
+    fun notifyPodcastUpdates(value: Boolean) = edit {
+        copy(settingsDraft = settingsDraft.copy(notifyPodcastUpdates = value), message = null, error = null)
+    }
+
+    fun saveSettings(): Job? {
+        val before = mutable.value
+        val expectedUserId = before.identity?.userId ?: return null
+        if (!before.canSaveSettings) return null
+        return request(R.string.cloud_account_settings_save_failed) {
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            val saved = gateway.saveSettings(before.settingsDraft.toAccountSettings())
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(
+                settingsDraft = saved.toDraft(),
+                message = R.string.cloud_account_settings_saved,
+            )
+        }
+    }
+
     fun sendPasswordReset(): Job? {
         val email = mutable.value.identity?.email?.takeIf { it.isNotBlank() } ?: return null
         return request(R.string.cloud_account_recovery_failed) {
@@ -427,6 +486,7 @@ internal class CloudAccountController(
                 ) else mutable.value.copy(
                     error = failure,
                     profileLoadFailed = failure == R.string.cloud_account_load_failed || mutable.value.profileLoadFailed,
+                    settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed || mutable.value.settingsLoadFailed,
                 )
             } finally {
                 mutable.value = mutable.value.copy(busy = false, password = "", confirmPassword = "")
@@ -436,4 +496,12 @@ internal class CloudAccountController(
 
     private fun VinzCloudAccount.Profile.draft() =
         CloudProfileDraft(username, displayName, bio, isPublic, discoverable, fullName, avatarPath)
+
+    private fun VinzCloudAccount.AccountSettings.toDraft() = CloudAccountSettingsDraft(
+        allowFriendRequests, showListeningActivity, notifyNewReleases, notifyFriendActivity, notifyPodcastUpdates,
+    )
+
+    private fun CloudAccountSettingsDraft.toAccountSettings() = VinzCloudAccount.AccountSettings(
+        allowFriendRequests, showListeningActivity, notifyNewReleases, notifyFriendActivity, notifyPodcastUpdates,
+    )
 }
