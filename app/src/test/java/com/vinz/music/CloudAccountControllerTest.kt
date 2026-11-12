@@ -296,6 +296,23 @@ class CloudAccountControllerTest {
         assertEquals(R.string.cloud_account_signed_out, controller.state.value.message)
     }
 
+    @Test fun `sign out everywhere revokes all sessions and clears the current identity`() = runBlocking {
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+
+        controller.signOutEverywhere()!!.join()
+
+        assertEquals(1, gateway.globalSignOutCalls)
+        assertNull(controller.state.value.identity)
+        assertEquals(CloudProfileDraft(), controller.state.value.draft)
+        assertEquals(R.string.cloud_account_signed_out_everywhere, controller.state.value.message)
+    }
+
+    @Test fun `sign out everywhere is unavailable without a signed in identity`() = runBlocking {
+        assertNull(controller.signOutEverywhere())
+        assertEquals(0, gateway.globalSignOutCalls)
+    }
+
     @Test fun `private full name is saved separately from the public music profile`() = runBlocking {
         gateway.identityValue = identity()
         gateway.profile = profile(fullName = "Ada Lovelace")
@@ -710,6 +727,7 @@ class CloudAccountControllerTest {
         var profile: VinzCloudAccount.Profile? = null
         var savedProfile: VinzCloudAccount.Profile? = null
         var recoverCalls = 0
+        var globalSignOutCalls = 0
         var saveCalls = 0
         var privateSaveCalls = 0
         var accountSettings = VinzCloudAccount.AccountSettings()
@@ -805,5 +823,6 @@ class CloudAccountControllerTest {
             return onAvatarRemove()
         }
         override suspend fun signOut() { identity = null }
+        override suspend fun signOutEverywhere() { globalSignOutCalls++; identity = null }
     }
 }
