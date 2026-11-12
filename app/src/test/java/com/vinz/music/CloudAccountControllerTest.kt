@@ -628,6 +628,29 @@ class CloudAccountControllerTest {
         assertEquals(R.string.cloud_account_confirmation, controller.state.value.error)
     }
 
+
+    @Test fun `settings failure after account switch leaves a retry path`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        gateway.onSettingsLoad = {
+            started.complete(Unit)
+            release.await()
+            throw IllegalStateException("private backend detail")
+        }
+
+        val job = controller.loadSettings()!!
+        started.await()
+        gateway.identityValue = identity("other-user", "other@example.test")
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(identity("other-user", "other@example.test"), controller.state.value.identity)
+        assertTrue(controller.state.value.settingsLoadFailed)
+        assertTrue(controller.state.value.profileLoadFailed)
+    }
+
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
         isPublic: Boolean = true, discoverable: Boolean = true, fullName: String = "",
@@ -647,6 +670,10 @@ class CloudAccountControllerTest {
         var savedAccountSettings: VinzCloudAccount.AccountSettings? = null
         var settingsSaveCalls = 0
         var settingsLoadFailure: Exception? = null
+        var onSettingsLoad: suspend () -> VinzCloudAccount.AccountSettings = {
+            settingsLoadFailure?.let { throw it }
+            accountSettings
+        }
         var avatarUploadCalls = 0
         var avatarRemoveCalls = 0
         var onAvatarUpload: suspend (ByteArray, String) -> VinzCloudAccount.Profile = { _, _ -> error("not configured") }
@@ -715,10 +742,7 @@ class CloudAccountControllerTest {
             lastPrivateFullName = fullName
             return fullName
         }
-        override suspend fun loadSettings(): VinzCloudAccount.AccountSettings {
-            settingsLoadFailure?.let { throw it }
-            return accountSettings
-        }
+        override suspend fun loadSettings(): VinzCloudAccount.AccountSettings = onSettingsLoad()
         override suspend fun saveSettings(settings: VinzCloudAccount.AccountSettings): VinzCloudAccount.AccountSettings {
             settingsSaveCalls++
             savedAccountSettings = settings

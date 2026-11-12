@@ -259,3 +259,9 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Hardened the settings-only loading state for Supabase auth failures: an auth error now marks settings as retryable rather than leaving the settings tab in a perpetual loading state.
 - Added a controller regression test for an unconfirmed/invalid session while loading preferences. This is separate from the profile-load state and does not make offline profile editing unavailable.
+
+
+### Settings account-switch retry state — 2026-11-12
+
+- Extended the settings failure-state handling to account changes that happen while a settings request is in flight. The newly active account now receives a retryable settings state instead of an endless spinner.
+- Added a controller race regression test that switches accounts during a delayed settings request.
