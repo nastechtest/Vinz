@@ -127,6 +127,7 @@ private fun CloudAccountFormBody(
     onSection: (String) -> Unit,
 ) {
     val focus = LocalFocusManager.current
+    var confirmGlobalSignOut by remember(state.identity?.userId) { mutableStateOf(false) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -343,6 +344,28 @@ private fun CloudAccountFormBody(
             VinzButton(onClick = { actions.sendPasswordReset() }, modifier = Modifier.fillMaxWidth().testTag("cloud-account-send-reset"), enabled = !state.busy) {
                 Text(tr(R.string.cloud_account_send_password_reset))
             }
+            Text(tr(R.string.cloud_account_active_sessions), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_active_sessions_description),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            VinzButton(
+                onClick = { confirmGlobalSignOut = true },
+                modifier = Modifier.fillMaxWidth().testTag("cloud-account-sign-out-everywhere"),
+                enabled = !state.busy,
+            ) { Text(tr(R.string.cloud_account_sign_out_everywhere)) }
+            if (confirmGlobalSignOut) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { confirmGlobalSignOut = false },
+                title = { Text(tr(R.string.cloud_account_sign_out_everywhere_title)) },
+                text = { Text(tr(R.string.cloud_account_sign_out_everywhere_confirmation)) },
+                confirmButton = {
+                    VinzTextButton(onClick = {
+                        confirmGlobalSignOut = false
+                        actions.signOutEverywhere()
+                    }, enabled = !state.busy) { Text(tr(R.string.cloud_account_sign_out_everywhere)) }
+                },
+                dismissButton = {
+                    VinzTextButton(onClick = { confirmGlobalSignOut = false }) { Text(tr(R.string.cancel)) }
+                },
+            )
         }
         "connections" -> {
             Text(tr(R.string.cloud_account_connected_services), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
