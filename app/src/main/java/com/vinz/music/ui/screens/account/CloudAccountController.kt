@@ -438,6 +438,16 @@ internal class CloudAccountController(
         }
     }
 
+    /** Revokes the identity's other sessions as well as this device's encrypted session. */
+    fun signOutEverywhere(): Job? {
+        if (mutable.value.identity == null) return null
+        usernameCheckJob?.cancel()
+        return request(R.string.cloud_account_sign_out_failed) {
+            gateway.signOutEverywhere()
+            mutable.value = CloudAccountState(busy = true, message = R.string.cloud_account_signed_out_everywhere)
+        }
+    }
+
     private fun resetSettingsForCurrentIdentity() {
         resetForCurrentIdentity()
         mutable.value = mutable.value.copy(
