@@ -253,3 +253,9 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - The avatar commit's Android test job [43243883418](https://github.com/nastechtest/Vinz/actions/runs/43243883418) ran 1,215 JVM tests: 1,206 passed, 9 skipped and one failed. All avatar controller and image-sanitization tests passed. The sole failure was `I18nGuardTest`, which correctly caught the non-user-facing MIME filter literal `image/*` in a converted UI file.
 - Moved that MIME filter to the data-layer `CloudAvatarImage.PICKER_MIME_TYPE` constant and referenced it from the picker. No user-visible copy or runtime behavior changed. The next feature-branch run must confirm the correction.
+
+
+### Account-settings auth error handling — 2026-11-12
+
+- Hardened the settings-only loading state for Supabase auth failures: an auth error now marks settings as retryable rather than leaving the settings tab in a perpetual loading state.
+- Added a controller regression test for an unconfirmed/invalid session while loading preferences. This is separate from the profile-load state and does not make offline profile editing unavailable.

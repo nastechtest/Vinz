@@ -613,6 +613,21 @@ class CloudAccountControllerTest {
         assertFalse(controller.state.value.settingsLoadFailed)
     }
 
+
+    @Test fun `settings auth failure shows retry instead of an endless loading state`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.settingsLoadFailure = com.vinz.music.data.CloudAuthException(
+            com.vinz.music.data.CloudAuthFailure.EMAIL_NOT_CONFIRMED,
+        )
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+
+        controller.loadSettings()!!.join()
+
+        assertTrue(controller.state.value.settingsLoadFailed)
+        assertFalse(controller.state.value.profileLoadFailed)
+        assertEquals(R.string.cloud_account_confirmation, controller.state.value.error)
+    }
+
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
         isPublic: Boolean = true, discoverable: Boolean = true, fullName: String = "",

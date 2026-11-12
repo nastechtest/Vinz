@@ -473,8 +473,12 @@ internal class CloudAccountController(
                 mutable.value = if (changed) CloudAccountState(
                     identity = identity, email = identity?.email.orEmpty(), busy = true,
                     profileLoadFailed = identity != null,
+                    settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed,
                     error = if (identity != null) R.string.cloud_account_load_failed else mapped,
-                ) else mutable.value.copy(error = mapped)
+                ) else mutable.value.copy(
+                    error = mapped,
+                    settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed || mutable.value.settingsLoadFailed,
+                )
             } catch (_: Exception) {
                 // Never render raw transport messages, response bodies, tokens or private backend details.
                 val identity = gateway.identity
