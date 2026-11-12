@@ -265,3 +265,9 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Extended the settings failure-state handling to account changes that happen while a settings request is in flight. The newly active account now receives a retryable settings state instead of an endless spinner.
 - Added a controller race regression test that switches accounts during a delayed settings request.
+
+
+### Settings identity-switch completion guard — 2026-11-12
+
+- Ensured successful responses from an old account cannot leave the new account's settings page in a loading state. Both load and save now reset to the current identity and expose a retry action when the account changes mid-request.
+- Added controller regression tests for delayed successful load and save responses crossing an account switch.

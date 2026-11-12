@@ -369,7 +369,7 @@ internal class CloudAccountController(
         return request(R.string.cloud_account_settings_load_failed) {
             val loaded = gateway.loadSettings()
             if (gateway.identity?.userId != identity.userId) {
-                resetForCurrentIdentity()
+                resetSettingsForCurrentIdentity()
                 return@request
             }
             mutable.value = mutable.value.copy(
@@ -406,12 +406,12 @@ internal class CloudAccountController(
         if (!before.canSaveSettings) return null
         return request(R.string.cloud_account_settings_save_failed) {
             if (gateway.identity?.userId != expectedUserId) {
-                resetForCurrentIdentity()
+                resetSettingsForCurrentIdentity()
                 return@request
             }
             val saved = gateway.saveSettings(before.settingsDraft.toAccountSettings())
             if (gateway.identity?.userId != expectedUserId) {
-                resetForCurrentIdentity()
+                resetSettingsForCurrentIdentity()
                 return@request
             }
             mutable.value = mutable.value.copy(
@@ -436,6 +436,14 @@ internal class CloudAccountController(
             gateway.signOut()
             mutable.value = CloudAccountState(busy = true, message = R.string.cloud_account_signed_out)
         }
+    }
+
+    private fun resetSettingsForCurrentIdentity() {
+        resetForCurrentIdentity()
+        mutable.value = mutable.value.copy(
+            settingsLoadFailed = true,
+            error = R.string.cloud_account_settings_load_failed,
+        )
     }
 
     private fun resetForCurrentIdentity() {

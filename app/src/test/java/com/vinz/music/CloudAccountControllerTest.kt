@@ -651,6 +651,52 @@ class CloudAccountControllerTest {
         assertTrue(controller.state.value.profileLoadFailed)
     }
 
+
+    @Test fun `settings success response after account switch shows retry`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        gateway.onSettingsLoad = {
+            started.complete(Unit)
+            release.await()
+            VinzCloudAccount.AccountSettings(showListeningActivity = true)
+        }
+
+        val job = controller.loadSettings()!!
+        started.await()
+        gateway.identityValue = identity("other-user", "other@example.test")
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(identity("other-user", "other@example.test"), controller.state.value.identity)
+        assertTrue(controller.state.value.settingsLoadFailed)
+        assertEquals(R.string.cloud_account_settings_load_failed, controller.state.value.error)
+    }
+
+    @Test fun `settings save response after account switch is not applied to the new account`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadSettings()!!.join()
+        gateway.onSettingsSave = { settings ->
+            started.complete(Unit)
+            release.await()
+            settings.copy(showListeningActivity = true)
+        }
+        controller.showListeningActivity(true)
+        val job = controller.saveSettings()!!
+        started.await()
+        gateway.identityValue = identity("other-user", "other@example.test")
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(identity("other-user", "other@example.test"), controller.state.value.identity)
+        assertTrue(controller.state.value.settingsLoadFailed)
+        assertEquals(R.string.cloud_account_settings_load_failed, controller.state.value.error)
+    }
+
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
         isPublic: Boolean = true, discoverable: Boolean = true, fullName: String = "",
@@ -674,6 +720,7 @@ class CloudAccountControllerTest {
             settingsLoadFailure?.let { throw it }
             accountSettings
         }
+        var onSettingsSave: suspend (VinzCloudAccount.AccountSettings) -> VinzCloudAccount.AccountSettings = { it }
         var avatarUploadCalls = 0
         var avatarRemoveCalls = 0
         var onAvatarUpload: suspend (ByteArray, String) -> VinzCloudAccount.Profile = { _, _ -> error("not configured") }
@@ -747,7 +794,7 @@ class CloudAccountControllerTest {
             settingsSaveCalls++
             savedAccountSettings = settings
             accountSettings = settings
-            return settings
+            return onSettingsSave(settings)
         }
         override suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String): VinzCloudAccount.Profile {
             avatarUploadCalls++
