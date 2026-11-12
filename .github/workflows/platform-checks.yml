@@ -216,6 +216,29 @@ jobs:
           print("Public username RPCs are invoker-only; the boolean signup helper is private and narrowly granted.")
           PY
 
+      - name: Require anonymous public-profile reads to expose public fields only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("supabase/migrations/20261112152000_vinz_public_profile_read_access.sql")
+          sql = path.read_text().lower()
+          normalized = " ".join(sql.split())
+          required = [
+              "revoke all on table public.vinz_profiles from anon",
+              "grant select (username, display_name, bio, avatar_path, is_public) on table public.vinz_profiles to anon",
+              'create policy "vinz public profiles read public" on public.vinz_profiles for select to anon using (is_public = true)',
+          ]
+          missing = [item for item in required if item not in normalized]
+          if missing:
+              raise SystemExit("Public profile access is incomplete: " + ", ".join(missing))
+          if any(term in sql for term in ("security definer", "full_name", "email", "auth.users")):
+              raise SystemExit("Anonymous public profile access must not use definer code or expose private account fields.")
+          if "grant select on table public.vinz_profiles to anon" in normalized:
+              raise SystemExit("Anonymous readers must not receive table-wide profile SELECT.")
+          print("Anonymous profile reads are RLS-gated and limited to five public columns.")
+          PY
+
       - name: Check Edge Function source is present
         run: |
           set -euo pipefail

@@ -75,6 +75,8 @@ object Routes {
     /** A folder of playlists in Library (1.7.6). */
     fun folder(id: String) = "folder/${Uri.encode(id)}"
     fun artist(id: String) = "artist/${Uri.encode(id)}"
+    /** A public Vinz profile opened from an in-app profile link. */
+    fun publicProfile(username: String) = "profile/${Uri.encode(username.lowercase())}"
     /** An artist's page; one a song names without a link (#78) is looked up by name when it opens. */
     fun artist(ref: com.vinz.music.data.model.ArtistRef) =
         artist(ref.id ?: (com.vinz.music.data.innertube.YouTubeMusic.ARTIST_BY_NAME + ref.name))

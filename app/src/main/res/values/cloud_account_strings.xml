@@ -85,4 +85,12 @@
     <string name="cloud_account_sign_out_failed">Sign-out could not be completed. Try again.</string>
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="vinz_public_profile_title">Vinz profile</string>
+    <string name="vinz_public_profile_loading">Loading public profile…</string>
+    <string name="vinz_public_profile_not_found">This profile is private or unavailable.</string>
+    <string name="vinz_public_profile_load_failed">This profile could not be loaded. Check your connection and try again.</string>
+    <string name="vinz_public_profile_retry">Try again</string>
+    <string name="vinz_public_profile_avatar">Profile photo</string>
+    <string name="vinz_public_profile_username">@%1$s</string>
+    <string name="vinz_public_profile_no_bio">No bio yet.</string>
 </resources>

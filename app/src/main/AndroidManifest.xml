@@ -112,6 +112,13 @@
                 <!-- A Vinz TV's pairing QR code (1.8.0). -->
                 <data android:scheme="vinz" android:host="pair" />
             </intent-filter>
+            <!-- In-app public profile links. Username validation and public visibility are checked again in the app/API. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vinz" android:host="profile" />
+            </intent-filter>
             <!-- Supabase Google OAuth PKCE callback; exact host/path are validated again in the app. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

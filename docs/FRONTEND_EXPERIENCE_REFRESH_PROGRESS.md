@@ -4,7 +4,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Working branch: `feat/frontend-experience-refresh`
 - Historical review: [PR #37](https://github.com/nastechtest/Vinz/pull/37) was merged on 2026-11-08. It cannot remain draft or include new branch commits. Per the user's one-PR/no-new-PR rule, no replacement PR is created; follow-up work remains on the named feature branch until review routing is explicitly changed.
-- The feature branch is currently 38 commits ahead and 150 commits behind `main`; it is diverged, and no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
+- The feature branch was 86 commits ahead and 150 commits behind `main` before this increment; this commit adds one more feature-branch commit. It remains diverged; no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
 - Backend: Supabase Auth/Postgres/RLS/Storage remains the account foundation. Cloudflare Workers and Durable Objects are reserved for link resolution and real-time room coordination.
 - Local music, playback and library remain usable without signing in. Vinz Account remains separate from YouTube Music provider login.
 - No production Supabase schema, Cloudflare resources, secrets, deployments or releases are changed by this branch work.
@@ -21,19 +21,19 @@ This is the single agreed development roadmap for the Android repository `nastec
 - [x] Pre-auth username availability in the registration UI: debounced Android checks call a public Worker endpoint backed by an anon-only, boolean-returning SQL function; no email, user ID or private profile data is returned. The lower(username) unique index remains the final race-safe authority.
 - [ ] Production rollout of signup availability: apply the new repository migration and deploy the Worker rate-limit binding only after explicit approval. The connected production Worker has not yet been changed.
 - [x] Native Google OAuth PKCE flow, encrypted one-use verifier/state, strict `vinz://auth/callback` validation and app callback handling; Supabase Google provider credentials/redirect allowlist still require hosted-console verification.
-- [ ] Automatic session refresh/401 retry, expiry/revocation handling, account switching, identity linking/unlinking.
-- [ ] Password reset completion screen and recovery callback/deep link.
+- [x] Automatic session refresh/401 retry and expiry handling; [ ] explicit account switching, identity linking/unlinking.
+- [x] Password reset completion screen and recovery callback/deep link; hosted Supabase redirect configuration remains to be verified.
 
 ### Phase 2 — Complete user profiles
 - [x] Account overview and profile editor; username, display name, bio, public/discoverable controls.
 - [x] Supabase profile row is owner-updated; public/private profile visibility fields are persisted.
-- [ ] Full name private by default, public profile route and canonical profile URL.
+- [x] Full name is stored separately and private by default; added an anonymous, RLS-gated public profile viewer and `vinz://profile/<username>` app deep link. [ ] Canonical HTTPS profile URL/App Links remain blocked until a verified custom domain is configured.
 - [x] Android avatar choose/upload/change/remove flow, bounded image decoding, center-square crop, metadata-stripping WebP re-encoding, 5 MiB Storage limit and owner-session-bound Storage API requests. The existing repository migration creates the public-read `vinz-avatars` bucket and owner-folder write policies; production rollout remains blocked because those migrations are not applied to the connected project.
 - [x] Username availability during registration and race-condition UI recovery (server unique index remains final authority).
 
 ### Phase 3 — Account settings and security
 - [x] Existing account overview, security/reset request and connected-services sections.
-- [ ] Persist notification preferences, privacy controls, connected identities, active sessions/devices and revoke controls.
+- [x] Persisted notification preferences and friend/listening privacy controls. [ ] Connected identities, active sessions/devices and revoke controls.
 - [ ] Password change/recovery callback, account export and deletion paths where supported.
 - [x] Repository migration adds a database-side verified-email gate to account-owned RLS and private backup-object policies; it is not applied to the connected production project.
 
@@ -271,3 +271,15 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Ensured successful responses from an old account cannot leave the new account's settings page in a loading state. Both load and save now reset to the current identity and expose a retry action when the account changes mid-request.
 - Added controller regression tests for delayed successful load and save responses crossing an account switch.
+
+
+## Public profile viewer increment — 2026-11-12
+
+- Added `VinzPublicProfile`, a deliberately limited public projection containing only username, display name, bio and a validated avatar object path. It has no account ID, email, private full name, settings or provider data.
+- Added an anonymous Supabase read path for `vinz_profiles`. The repository migration grants `anon` SELECT on only five public columns and adds an RLS policy requiring `is_public = true`; it does not grant table-wide SELECT and does not use SECURITY DEFINER.
+- Added the Android public profile screen and the `vinz://profile/<username>` route. Invalid/reserved usernames, private profiles and unsafe avatar paths are rejected; network errors have a retry state.
+- Added JVM tests for username normalization, private-profile rejection, public-field projection, unsafe avatar paths and app-link construction. Extended the existing platform workflow to statically enforce the least-privilege SQL contract.
+- The connected Cloudflare account currently has no DNS zones or Worker custom domains, so an external canonical HTTPS profile URL cannot be responsibly selected yet. This increment adds the internal app URI only; HTTPS App Links and the shareable canonical domain remain outstanding.
+- Live Supabase remains unchanged. The public-profile migration is repository-only and must not be applied to production without explicit approval.
+- Android and platform CI will run against the new feature head. This increment is not marked validated until those runs complete successfully.
+- Next priorities: finish connected identity/session/device management, then implement cloud backup/restore while preserving local backup/restore; after that complete canonical song sharing/deferred install and the cloud-coordinated Listen Together control plane.

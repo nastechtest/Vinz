@@ -383,6 +383,17 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         }
     }
 
+    /** Reads a public-only profile projection without requiring a signed-in account. RLS remains authoritative. */
+    suspend fun loadPublicProfile(username: String): VinzPublicProfile? = withContext(Dispatchers.IO) {
+        val normalized = VinzPublicProfile.normalizeUsername(username) ?: return@withContext null
+        val response = request(
+            "/rest/v1/vinz_profiles?select=username,display_name,bio,avatar_path,is_public&username=eq.$normalized&limit=1",
+            "GET",
+            authenticated = false,
+        )
+        response.optJSONArray("data")?.optJSONObject(0)?.let(VinzPublicProfile::fromJson)
+    }
+
     suspend fun loadProfile(): Profile? = withContext(Dispatchers.IO) {
         val s = session ?: return@withContext null
         val response = request("/rest/v1/vinz_profiles?select=*&id=eq.${s.userId}", "GET")

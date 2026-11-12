@@ -687,6 +687,13 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
                             )
                         }
+                        composable("profile/{username}", listOf(navArgument("username") { type = NavType.StringType })) {
+                            ScreenBackdrop(BackdropScreen.SETTINGS) {
+                                com.vinz.music.ui.screens.PublicVinzProfileScreen(
+                                    it.arguments?.getString("username").orEmpty(), bottomPadding,
+                                )
+                            }
+                        }
                         // Compatibility destination: old cloud links open the existing account hub, not a second account screen.
                         composable(Routes.VINZ_CLOUD_ACCOUNT) {
                             ScreenBackdrop(BackdropScreen.SETTINGS) {
@@ -1398,6 +1405,8 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
             }
         }
         // A Vinz TV's QR code, read by the phone's camera (1.8.0): pairs with that TV (and offers it the sign-in).
+        // A public Vinz profile link. The profile screen and database both enforce public visibility.
+        uri.scheme == "vinz" && uri.host == "profile" && path.size == 1 -> nav.go(Routes.publicProfile(path[0]))
         uri.scheme == "vinz" && uri.host == "pair" -> c.handoff.pairFromLink(uri)
         // Back from Last.fm's page in the browser, with the token it gave for this listener (#133).
         uri.scheme == "vinz" && uri.host == "lastfm" -> {
