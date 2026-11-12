@@ -4,7 +4,8 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Working branch: `feat/frontend-experience-refresh`
 - Historical review: [PR #37](https://github.com/nastechtest/Vinz/pull/37) was merged on 2026-11-08. It cannot remain draft or include new branch commits. Per the user's one-PR/no-new-PR rule, no replacement PR is created; follow-up work remains on the named feature branch until review routing is explicitly changed.
-- The feature branch was 86 commits ahead and 150 commits behind `main` before this increment; this commit adds one more feature-branch commit. It remains diverged; no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
+- GitHub also shows pre-existing [PR #62](https://github.com/nastechtest/Vinz/pull/62), opened 2026-11-09 from this same feature branch to `main`. It was not created or edited in this run; new branch commits naturally advance its head. Do not create further PRs or change PR #62 metadata under the user's PR #37-only instruction.
+- The feature branch was 86 commits ahead and 150 commits behind `main` before the public-profile increment; its implementation and compile-safety follow-up add two commits, making it 88 ahead and 150 behind. It remains diverged; no merge or rebase was performed. The merged PR cannot be reopened as a draft, so follow-up evidence is posted in its conversation only.
 - Backend: Supabase Auth/Postgres/RLS/Storage remains the account foundation. Cloudflare Workers and Durable Objects are reserved for link resolution and real-time room coordination.
 - Local music, playback and library remain usable without signing in. Vinz Account remains separate from YouTube Music provider login.
 - No production Supabase schema, Cloudflare resources, secrets, deployments or releases are changed by this branch work.
