@@ -27,6 +27,7 @@ internal interface CloudAccountGateway {
     suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String): VinzCloudAccount.Profile = throw UnsupportedOperationException()
     suspend fun removeAvatar(): VinzCloudAccount.Profile = throw UnsupportedOperationException()
     suspend fun signOut()
+    suspend fun signOutEverywhere() { signOut() }
 }
 
 internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) : CloudAccountGateway {
@@ -54,4 +55,5 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String) = cloud.uploadAvatar(imageBytes, contentType)
     override suspend fun removeAvatar() = cloud.removeAvatar()
     override suspend fun signOut() { cloud.signOut() }
+    override suspend fun signOutEverywhere() { cloud.signOutEverywhere() }
 }
