@@ -588,6 +588,25 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         synchronized(refreshLock) { store.clear() }
     }
 
+    /** Revokes every Supabase Auth session for this identity, then clears only that identity locally. */
+    suspend fun signOutEverywhere() = withContext(Dispatchers.IO) {
+        val original = session ?: return@withContext
+        request(
+            "/auth/v1/logout?scope=global",
+            "POST",
+            null,
+            expectedUserId = original.userId,
+        )
+        val cleared = synchronized(refreshLock) {
+            val current = store.read()?.let(::decodeSession)
+            if (current?.userId == original.userId) {
+                store.clear()
+                true
+            } else false
+        }
+        if (cleared) mutableSessionChanges.value = mutableSessionChanges.value + 1L
+    }
+
     private data class HttpResult(val code: Int, val body: String) {
         val successful: Boolean get() = code in 200..299
     }
