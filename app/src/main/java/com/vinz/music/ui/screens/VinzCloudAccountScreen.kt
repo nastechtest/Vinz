@@ -299,7 +299,7 @@ private fun CloudAccountFormBody(
             CloudAvatarPreview(state.draft.avatarPath)
             Text(tr(R.string.cloud_account_avatar_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             VinzButton(
-                onClick = { avatarPicker.launch("image/*") },
+                onClick = { avatarPicker.launch(CloudAvatarImage.PICKER_MIME_TYPE) },
                 modifier = Modifier.fillMaxWidth().testTag("cloud-account-avatar-pick"),
                 enabled = !state.busy,
             ) { Text(tr(R.string.cloud_account_avatar_choose)) }

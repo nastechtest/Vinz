@@ -247,3 +247,9 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Updated the avatar picker disclosure: the existing `vinz-avatars` repository migration defines a public-read bucket, so the UI now tells users that anyone with the image link can view the photo even if their music profile is private.
 - No schema migration was needed: `vinz_account_settings` already exists with owner RLS and the five supported preference columns. The live project still lacks the repository's verified-email policy migration, and the avatar bucket migration is not applied. No production changes were made.
 - Android CI for the preceding avatar increment [43243883418](https://github.com/nastechtest/Vinz/actions/runs/43243883418) was still running when this increment was authored; the settings commit's own run must also pass before either increment is declared validated.
+
+
+### Android CI correction — avatar picker MIME constant
+
+- The avatar commit's Android test job [43243883418](https://github.com/nastechtest/Vinz/actions/runs/43243883418) ran 1,215 JVM tests: 1,206 passed, 9 skipped and one failed. All avatar controller and image-sanitization tests passed. The sole failure was `I18nGuardTest`, which correctly caught the non-user-facing MIME filter literal `image/*` in a converted UI file.
+- Moved that MIME filter to the data-layer `CloudAvatarImage.PICKER_MIME_TYPE` constant and referenced it from the picker. No user-visible copy or runtime behavior changed. The next feature-branch run must confirm the correction.

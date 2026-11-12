@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream
 
 /** Reads and sanitizes a selected profile image before it is sent to Supabase Storage. */
 internal object CloudAvatarImage {
+    const val PICKER_MIME_TYPE = "image/*"
     const val MAX_SOURCE_BYTES = 12 * 1024 * 1024
     const val MAX_UPLOAD_BYTES = 5 * 1024 * 1024
     private const val OUTPUT_EDGE = 512
