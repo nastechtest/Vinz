@@ -22,6 +22,8 @@ internal interface CloudAccountGateway {
     suspend fun updatePassword(password: String, expectedUserId: String) { throw UnsupportedOperationException() }
     suspend fun save(draft: CloudProfileDraft): VinzCloudAccount.Profile
     suspend fun savePrivateFullName(fullName: String): String = throw UnsupportedOperationException()
+    suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String): VinzCloudAccount.Profile = throw UnsupportedOperationException()
+    suspend fun removeAvatar(): VinzCloudAccount.Profile = throw UnsupportedOperationException()
     suspend fun signOut()
 }
 
@@ -45,5 +47,7 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
         draft.username, draft.displayName, draft.bio, draft.isPublic, draft.discoverable,
     )
     override suspend fun savePrivateFullName(fullName: String) = cloud.savePrivateFullName(fullName)
+    override suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String) = cloud.uploadAvatar(imageBytes, contentType)
+    override suspend fun removeAvatar() = cloud.removeAvatar()
     override suspend fun signOut() { cloud.signOut() }
 }

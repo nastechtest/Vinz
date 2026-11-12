@@ -507,6 +507,64 @@ class CloudAccountControllerTest {
 
     private fun identity(userId: String = "user-1", email: String = "user@example.test") = CloudAccountIdentity(userId, email)
 
+
+    @Test fun `avatar upload updates the active profile draft`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.profile = profile()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadProfile()!!.join()
+        val path = "user-1/123e4567-e89b-12d3-a456-426614174000.webp"
+        gateway.onAvatarUpload = { _, type ->
+            assertEquals("image/webp", type)
+            profile().copy(avatarPath = path)
+        }
+
+        controller.uploadAvatar(byteArrayOf(1, 2, 3), "image/webp")!!.join()
+
+        assertEquals(1, gateway.avatarUploadCalls)
+        assertEquals(path, controller.state.value.draft.avatarPath)
+        assertEquals(R.string.cloud_account_avatar_saved, controller.state.value.message)
+    }
+
+    @Test fun `avatar removal clears the active profile draft`() = runBlocking {
+        val path = "user-1/123e4567-e89b-12d3-a456-426614174000.webp"
+        gateway.identityValue = identity()
+        gateway.profile = profile().copy(avatarPath = path)
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadProfile()!!.join()
+        gateway.onAvatarRemove = { profile() }
+
+        controller.removeAvatar()!!.join()
+
+        assertEquals(1, gateway.avatarRemoveCalls)
+        assertNull(controller.state.value.draft.avatarPath)
+        assertEquals(R.string.cloud_account_avatar_removed, controller.state.value.message)
+    }
+
+    @Test fun `avatar upload result is discarded if the account changes mid request`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.identityValue = identity()
+        gateway.profile = profile()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadProfile()!!.join()
+        gateway.onAvatarUpload = { _, _ ->
+            started.complete(Unit)
+            release.await()
+            profile().copy(avatarPath = "user-1/123e4567-e89b-12d3-a456-426614174000.webp")
+        }
+
+        val job = controller.uploadAvatar(byteArrayOf(1), "image/webp")!!
+        started.await()
+        gateway.identityValue = identity("other-user", "other@example.test")
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(identity("other-user", "other@example.test"), controller.state.value.identity)
+        assertTrue(controller.state.value.profileLoadFailed)
+        assertNull(controller.state.value.draft.avatarPath)
+    }
+
     private fun profile(
         username: String = "artist_7", displayName: String = "Artist", bio: String = "",
         isPublic: Boolean = true, discoverable: Boolean = true, fullName: String = "",
@@ -522,6 +580,10 @@ class CloudAccountControllerTest {
         var recoverCalls = 0
         var saveCalls = 0
         var privateSaveCalls = 0
+        var avatarUploadCalls = 0
+        var avatarRemoveCalls = 0
+        var onAvatarUpload: suspend (ByteArray, String) -> VinzCloudAccount.Profile = { _, _ -> error("not configured") }
+        var onAvatarRemove: suspend () -> VinzCloudAccount.Profile = { error("not configured") }
         var lastPrivateFullName: String? = null
         var signUpCalls = 0
         var usernameAvailable = true
@@ -585,6 +647,14 @@ class CloudAccountControllerTest {
             privateSaveCalls++
             lastPrivateFullName = fullName
             return fullName
+        }
+        override suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String): VinzCloudAccount.Profile {
+            avatarUploadCalls++
+            return onAvatarUpload(imageBytes, contentType)
+        }
+        override suspend fun removeAvatar(): VinzCloudAccount.Profile {
+            avatarRemoveCalls++
+            return onAvatarRemove()
         }
         override suspend fun signOut() { identity = null }
     }

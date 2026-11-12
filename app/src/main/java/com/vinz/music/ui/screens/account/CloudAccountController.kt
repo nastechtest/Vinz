@@ -170,7 +170,7 @@ internal class CloudAccountController(
                     mutable.value = mutable.value.copy(email = email, message = R.string.cloud_account_recovery_sent)
                 }
                 CloudAccountMode.RESET_PASSWORD -> {
-                    val expectedUserId = before.identity?.userId ?: error("The recovery account is no longer available.")
+                    val expectedUserId = before.identity?.userId ?: throw IllegalStateException()
                     gateway.updatePassword(before.password, expectedUserId)
                     mutable.value = mutable.value.copy(
                         mode = CloudAccountMode.SIGN_IN,
@@ -314,6 +314,54 @@ internal class CloudAccountController(
         }
     }
 
+
+    fun uploadAvatar(imageBytes: ByteArray, contentType: String): Job? {
+        val before = mutable.value
+        val expectedUserId = before.identity?.userId ?: return null
+        if (!before.canUploadAvatar) return null
+        return request(R.string.cloud_account_avatar_upload_failed) {
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            val saved = gateway.uploadAvatar(imageBytes, contentType)
+            if (gateway.identity?.userId != expectedUserId || saved.id != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(
+                draft = mutable.value.draft.copy(avatarPath = saved.avatarPath),
+                message = R.string.cloud_account_avatar_saved,
+            )
+        }
+    }
+
+    fun removeAvatar(): Job? {
+        val before = mutable.value
+        val expectedUserId = before.identity?.userId ?: return null
+        if (!before.canRemoveAvatar) return null
+        return request(R.string.cloud_account_avatar_remove_failed) {
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            val saved = gateway.removeAvatar()
+            if (gateway.identity?.userId != expectedUserId || saved.id != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(
+                draft = mutable.value.draft.copy(avatarPath = saved.avatarPath),
+                message = R.string.cloud_account_avatar_removed,
+            )
+        }
+    }
+
+    /** Used when the system photo picker returns an unsupported, unreadable or oversized image. */
+    fun avatarInputFailed() {
+        if (!mutable.value.busy) mutable.value = mutable.value.copy(error = R.string.cloud_account_avatar_upload_failed)
+    }
+
     fun sendPasswordReset(): Job? {
         val email = mutable.value.identity?.email?.takeIf { it.isNotBlank() } ?: return null
         return request(R.string.cloud_account_recovery_failed) {
@@ -387,5 +435,5 @@ internal class CloudAccountController(
     }
 
     private fun VinzCloudAccount.Profile.draft() =
-        CloudProfileDraft(username, displayName, bio, isPublic, discoverable, fullName)
+        CloudProfileDraft(username, displayName, bio, isPublic, discoverable, fullName, avatarPath)
 }

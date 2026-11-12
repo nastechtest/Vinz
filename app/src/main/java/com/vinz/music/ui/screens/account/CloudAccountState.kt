@@ -16,6 +16,7 @@ internal data class CloudProfileDraft(
     val isPublic: Boolean = true,
     val discoverable: Boolean = true,
     val fullName: String = "",
+    val avatarPath: String? = null,
 )
 
 internal data class CloudAccountState(
@@ -45,4 +46,6 @@ internal data class CloudAccountState(
         usernameAvailability in setOf(UsernameAvailability.AVAILABLE, UsernameAvailability.UNCHANGED)
     val canSavePrivateDetails: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed &&
         draft.fullName.length <= 120
+    val canUploadAvatar: Boolean get() = !busy && identity != null && profileReady && !profileLoadFailed
+    val canRemoveAvatar: Boolean get() = canUploadAvatar && !draft.avatarPath.isNullOrBlank()
 }

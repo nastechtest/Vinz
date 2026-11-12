@@ -28,7 +28,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 - [x] Account overview and profile editor; username, display name, bio, public/discoverable controls.
 - [x] Supabase profile row is owner-updated; public/private profile visibility fields are persisted.
 - [ ] Full name private by default, public profile route and canonical profile URL.
-- [ ] Avatar upload/change/remove UI and image validation. The repository now has verified-email + owner-scoped avatar object write policies; upload functionality is not yet implemented.
+- [x] Android avatar choose/upload/change/remove flow, bounded image decoding, center-square crop, metadata-stripping WebP re-encoding, 5 MiB Storage limit and owner-session-bound Storage API requests. The existing repository migration creates the public-read `vinz-avatars` bucket and owner-folder write policies; production rollout remains blocked because those migrations are not applied to the connected project.
 - [x] Username availability during registration and race-condition UI recovery (server unique index remains final authority).
 
 ### Phase 3 — Account settings and security
@@ -224,3 +224,16 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Live `storage.buckets` inspection found `vinz-cloud-backups` (private, 50 MiB) but no `vinz-avatars` bucket. Live `storage.objects` policy inspection returned no avatar policies.
 - Repository schema already has `vinz_profiles.avatar_path` and the verified-email/owner-folder avatar write policy migration, but no bucket-creation migration or Android upload/change/remove flow yet.
 - No production bucket, policy, schema, Auth setting or migration was changed. The next profile increment must add a repository migration for a constrained avatar bucket, implement validated image processing/upload and profile-path updates, and test failure/replace/remove behavior. Applying the migration to the connected project remains blocked on explicit approval.
+
+
+## Avatar upload implementation — 2026-11-12
+
+- Inspected current branch head `021d4c59f8e74b1cee6aaeb86d580ae080cbee7f`, merged/closed PR #37, the existing Android PR-check workflow and the latest push run [43078050529](https://github.com/nastechtest/Vinz/actions/runs/43078050529).
+- The latest Android run completed 1,208 JVM tests with one failure: `I18nGuardTest.noTextIsWrittenInTheCode` found a hardcoded recovery-session message in `CloudAccountController.kt`. The message now uses the controller's existing localized failure mapping rather than a literal English exception string.
+- Added Android avatar selection using the system image picker; source images are bounded to 12 MiB, restricted to JPEG/PNG/WebP, decoded with dimension/pixel caps, center-cropped to 512×512 and re-encoded as metadata-stripped WebP. The resulting upload is capped at 5 MiB, matching the existing bucket policy.
+- Added authenticated Supabase Storage upload/delete requests with the same proactive refresh and one-time 401 retry as account REST calls. Each upload uses a unique object path under the current user's UUID folder; profile `avatar_path` is updated only after upload succeeds. Replacing an avatar cleans up the previous owned object; removal clears the profile reference and deletes only a path inside the same user's folder. Account-switch checks prevent stale upload results from painting another user's profile.
+- Added controller tests for upload, removal and account-switch races, plus Robolectric image tests for square WebP output, MIME mismatch, corrupt data and source-size limits.
+- The existing repository migration `20261107200000_vinz_account_2_username_and_avatar_hardening.sql` already creates the public-read `vinz-avatars` bucket (5 MiB; JPEG/PNG/WebP) and owner-folder write policies; `20261108144000_vinz_require_verified_email_for_avatar_writes.sql` adds the verified-email gate. No new schema migration is required for this Android increment.
+- Live Supabase read-only inspection on 2026-11-12 confirms the only Storage bucket is `vinz-cloud-backups`; there is no live `vinz-avatars` bucket or avatar object policy. Live migrations still end at `20261108082934_vinz_youtube_music_import`. Therefore avatar uploads are implemented in the branch but cannot work against the connected production project until the user explicitly approves applying the existing repository migrations. No migration, bucket or policy was applied.
+- The same live Security Advisor still warns that `public.vinz_username_available(text)` is SECURITY DEFINER and that leaked-password protection is disabled. The branch has a repository-only hardening migration, but it is not applied; do not expose the live RPC or claim the production warning is fixed.
+- Android validation for this increment must pass before claiming a verified build or APK. No production Supabase or Cloudflare resources, secrets, deployments, releases, main-branch refs or PR state were changed.

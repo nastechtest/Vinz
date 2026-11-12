@@ -36,6 +36,15 @@
     <string name="cloud_account_otp_resend_failed">A new code could not be sent. Wait before trying again.</string>
     <string name="cloud_account_back_to_sign_in">Back to sign in</string>
     <string name="cloud_account_setup">Finish setting up your profile.</string>
+    <string name="cloud_account_avatar_empty">No profile photo</string>
+    <string name="cloud_account_avatar_description">Vinz Account profile photo</string>
+    <string name="cloud_account_avatar_hint">Choose a JPEG, PNG or WebP image. Vinz crops it to a square and removes image metadata before upload.</string>
+    <string name="cloud_account_avatar_choose">Choose profile photo</string>
+    <string name="cloud_account_avatar_remove">Remove profile photo</string>
+    <string name="cloud_account_avatar_saved">Your profile photo has been updated.</string>
+    <string name="cloud_account_avatar_removed">Your profile photo has been removed.</string>
+    <string name="cloud_account_avatar_upload_failed">The profile photo could not be uploaded. Check your connection and email verification.</string>
+    <string name="cloud_account_avatar_remove_failed">The profile photo could not be removed. Try again.</string>
     <string name="cloud_account_private_details">Private account details</string>
     <string name="cloud_account_full_name">Full name</string>
     <string name="cloud_account_full_name_private_hint">Visible only to you. It is not shown on your public music profile.</string>

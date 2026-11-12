@@ -1,6 +1,7 @@
 package com.vinz.music.data
 
 import android.content.Context
+import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -19,6 +20,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import java.util.UUID
 
 enum class CloudAuthFailure { EMAIL_NOT_CONFIRMED, INVALID_OTP, OTP_EXPIRED, RATE_LIMITED, USERNAME_TAKEN }
 
@@ -423,6 +425,111 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         }
     }
 
+
+    /** Uploads a sanitized, unique avatar object and only then points the owner profile at it. */
+    suspend fun uploadAvatar(imageBytes: ByteArray, contentType: String): Profile = withContext(Dispatchers.IO) {
+        require(contentType == "image/webp") { "Avatar images must be sanitized WebP." }
+        require(imageBytes.isNotEmpty() && imageBytes.size <= MAX_AVATAR_BYTES) { "Avatar image exceeds the storage limit." }
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val current = loadProfile() ?: error("Finish setting up your Vinz profile first.")
+        if (current.id != s.userId || session?.userId != s.userId) error("The account session changed before avatar upload.")
+
+        val path = "${s.userId}/${UUID.randomUUID()}.webp"
+        storageRequest(
+            "/storage/v1/object/vinz-avatars/${Uri.encode(path, "/")}",
+            "POST",
+            imageBytes,
+            contentType,
+            s.userId,
+        )
+        var profilePatchAttempted = false
+        try {
+            profilePatchAttempted = true
+            val updated = request(
+                "/rest/v1/vinz_profiles?id=eq.${s.userId}",
+                "PATCH",
+                JSONObject().put("avatar_path", path).toString(),
+                prefer = "return=representation",
+                expectedUserId = s.userId,
+            )
+            val saved = updated.optJSONArray("data")?.optJSONObject(0)?.toProfile()
+                ?: loadProfile() ?: error("Avatar was uploaded but the profile could not be reloaded.")
+            if (session?.userId != s.userId || saved.id != s.userId || saved.avatarPath != path) {
+                error("The account session changed or the avatar update was not confirmed.")
+            }
+            current.avatarPath?.takeIf { isOwnedAvatarPath(it, s.userId) }?.let { previous ->
+                runCatching { deleteAvatarObject(previous, s.userId) }
+            }
+            saved.copy(fullName = current.fullName)
+        } catch (failure: Exception) {
+            if (profilePatchAttempted) {
+                runCatching {
+                    request(
+                        "/rest/v1/vinz_profiles?id=eq.${s.userId}",
+                        "PATCH",
+                        JSONObject().put("avatar_path", current.avatarPath ?: JSONObject.NULL).toString(),
+                        prefer = "return=representation",
+                        expectedUserId = s.userId,
+                    )
+                }
+            }
+            runCatching { deleteAvatarObject(path, s.userId) }
+            throw failure
+        }
+    }
+
+    /** Removes the profile reference and then deletes only an object in this user's own folder. */
+    suspend fun removeAvatar(): Profile = withContext(Dispatchers.IO) {
+        val s = session ?: error("Sign in to your Vinz Account first.")
+        val current = loadProfile() ?: error("Your Vinz profile could not be loaded.")
+        if (current.id != s.userId || session?.userId != s.userId) error("The account session changed before avatar removal.")
+        val path = current.avatarPath ?: return@withContext current
+        if (!isOwnedAvatarPath(path, s.userId)) error("The stored avatar path is invalid.")
+
+        request(
+            "/rest/v1/vinz_profiles?id=eq.${s.userId}",
+            "PATCH",
+            JSONObject().put("avatar_path", JSONObject.NULL).toString(),
+            prefer = "return=representation",
+            expectedUserId = s.userId,
+        )
+        try {
+            deleteAvatarObject(path, s.userId)
+        } catch (failure: Exception) {
+            runCatching {
+                request(
+                    "/rest/v1/vinz_profiles?id=eq.${s.userId}",
+                    "PATCH",
+                    JSONObject().put("avatar_path", path).toString(),
+                    prefer = "return=representation",
+                    expectedUserId = s.userId,
+                )
+            }
+            throw failure
+        }
+        if (session?.userId != s.userId) error("The account session changed during avatar removal.")
+        current.copy(avatarPath = null)
+    }
+
+    private fun isOwnedAvatarPath(path: String, userId: String): Boolean {
+        if (!path.startsWith("$userId/") || path.length > 512 || path.contains("..")) return false
+        val fileName = path.removePrefix("$userId/")
+        return fileName.isNotBlank() && '/' !in fileName && fileName.length <= 128
+    }
+
+    private fun deleteAvatarObject(path: String, expectedUserId: String) {
+        if (!isOwnedAvatarPath(path, expectedUserId)) return
+        val body = JSONObject().put("prefixes", org.json.JSONArray().put(path))
+            .toString().toByteArray(Charsets.UTF_8)
+        storageRequest(
+            "/storage/v1/object/vinz-avatars",
+            "DELETE",
+            body,
+            "application/json",
+            expectedUserId,
+        )
+    }
+
     suspend fun signOut() = withContext(Dispatchers.IO) {
         val s = session
         if (s != null) runCatching { request("/auth/v1/logout", "POST", null) }
@@ -457,6 +564,48 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
      * Authenticated REST calls refresh before expiry and retry one 401 after a rotated token.
      * The refresh lock prevents concurrent requests from consuming the same single-use refresh token.
      */
+
+    /** Binary Storage requests share the same proactive refresh and one-retry 401 policy as account REST calls. */
+    private fun storageRequest(
+        path: String,
+        method: String,
+        body: ByteArray,
+        contentType: String,
+        expectedUserId: String,
+    ) {
+        val original = sessionForRequest()
+        if (original.userId != expectedUserId) error("The account session changed before the Storage request.")
+        var response = executeStorageRequest(path, method, body, contentType, original)
+        if (response.code == 401) {
+            val refreshed = refreshStoredSession(original, force = true)
+            if (refreshed != null && refreshed.userId == expectedUserId) {
+                response = executeStorageRequest(path, method, body, contentType, refreshed)
+                if (response.code == 401) clearSessionIfCurrent(refreshed)
+            }
+        }
+        if (!response.successful) error("Vinz avatar Storage request failed (${response.code}).")
+    }
+
+    private fun executeStorageRequest(
+        path: String,
+        method: String,
+        body: ByteArray,
+        contentType: String,
+        session: Session,
+    ): HttpResult {
+        val request = Request.Builder()
+            .url(SUPABASE_URL + path)
+            .header("apikey", SUPABASE_PUBLISHABLE_KEY)
+            .header("Authorization", "Bearer ${session.accessToken}")
+            .header("Accept", "application/json")
+            .header("Content-Type", contentType)
+            .method(method, body.toRequestBody(contentType.toMediaType()))
+            .build()
+        return http.newCall(request).execute().use { response ->
+            HttpResult(response.code, response.body?.string().orEmpty())
+        }
+    }
+
     private fun request(
         path: String,
         method: String,
@@ -676,5 +825,11 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         const val SUPABASE_URL = "https://iszghebmetrbkfhnnoqq.supabase.co"
         // Publishable client key only. Never embed service-role or secret keys in the Android app.
         const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9UXwKG0oVl1J9zIkJ-bZKg_W-fkotZe"
+        private const val MAX_AVATAR_BYTES = 5 * 1024 * 1024
+        private val AVATAR_OBJECT_PATH = Regex("^[0-9a-fA-F-]{36}/[0-9a-fA-F-]{36}\\.webp$")
+        fun publicAvatarUrl(path: String?): String? {
+            val safePath = path?.takeIf { AVATAR_OBJECT_PATH.matches(it) } ?: return null
+            return "$SUPABASE_URL/storage/v1/object/public/vinz-avatars/${Uri.encode(safePath, "/")}"
+        }
     }
 }

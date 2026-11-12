@@ -2,6 +2,8 @@ package com.vinz.music.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,10 +30,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -40,7 +47,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import com.vinz.music.R
+import com.vinz.music.data.CloudAvatarImage
+import com.vinz.music.data.VinzCloudAccount
 import com.vinz.music.tr
 import com.vinz.music.ui.components.VinzButton
 import com.vinz.music.ui.components.VinzTextButton
@@ -115,6 +127,21 @@ private fun CloudAccountFormBody(
     onSection: (String) -> Unit,
 ) {
     val focus = LocalFocusManager.current
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) coroutineScope.launch {
+            try {
+                val image = CloudAvatarImage.fromUri(context.contentResolver, uri)
+                actions.uploadAvatar(image.bytes, image.contentType)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                actions.avatarInputFailed()
+            }
+        }
+    }
     val submitFromKeyboard: () -> Unit = {
         if (state.canSubmit) { focus.clearFocus(); actions.submit() }
     }
@@ -252,6 +279,7 @@ private fun CloudAccountFormBody(
     }
     when (section) {
         "overview" -> {
+            CloudAvatarPreview(state.draft.avatarPath)
             Text(tr(R.string.cloud_account_overview), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Text(state.draft.displayName.ifBlank { tr(R.string.cloud_account_profile_default) }, style = MaterialTheme.typography.headlineSmall)
             Text("@${state.draft.username}", style = MaterialTheme.typography.titleMedium)
@@ -264,6 +292,18 @@ private fun CloudAccountFormBody(
         }
         "profile" -> {
             Text(tr(R.string.cloud_account_music_profile), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            CloudAvatarPreview(state.draft.avatarPath)
+            Text(tr(R.string.cloud_account_avatar_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            VinzButton(
+                onClick = { avatarPicker.launch("image/*") },
+                modifier = Modifier.fillMaxWidth().testTag("cloud-account-avatar-pick"),
+                enabled = !state.busy,
+            ) { Text(tr(R.string.cloud_account_avatar_choose)) }
+            if (state.draft.avatarPath != null) VinzTextButton(
+                onClick = { actions.removeAvatar() },
+                modifier = Modifier.testTag("cloud-account-avatar-remove"),
+                enabled = state.canRemoveAvatar,
+            ) { Text(tr(R.string.cloud_account_avatar_remove)) }
             Text(tr(R.string.cloud_account_private_details), style = MaterialTheme.typography.titleMedium)
             VinzTextField(
                 state.draft.fullName, actions::fullName,
@@ -307,5 +347,25 @@ private fun CloudAccountFormBody(
             Text(tr(R.string.cloud_account_connections_description),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+@Composable
+private fun CloudAvatarPreview(path: String?) {
+    val url = remember(path) { VinzCloudAccount.publicAvatarUrl(path) }
+    if (url == null) {
+        Box(
+            Modifier.size(104.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
+                .testTag("cloud-account-avatar-empty"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(tr(R.string.cloud_account_avatar_empty), style = MaterialTheme.typography.labelSmall)
+        }
+    } else {
+        AsyncImage(
+            model = url,
+            contentDescription = tr(R.string.cloud_account_avatar_description),
+            modifier = Modifier.size(104.dp).clip(CircleShape).testTag("cloud-account-avatar-preview"),
+        )
     }
 }
