@@ -277,7 +277,7 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 - Added `VinzPublicProfile`, a deliberately limited public projection containing only username, display name, bio and a validated avatar object path. It has no account ID, email, private full name, settings or provider data.
 - Added an anonymous Supabase read path for `vinz_profiles`. The repository migration grants `anon` SELECT on only five public columns and adds an RLS policy requiring `is_public = true`; it does not grant table-wide SELECT and does not use SECURITY DEFINER.
-- Added the Android public profile screen and the `vinz://profile/<username>` route. Invalid/reserved usernames, private profiles and unsafe avatar paths are rejected; network errors have a retry state.
+- Added the Android public profile screen and the `vinz://profile/<username>` route; the async result is mapped with an explicit sealed-state constructor to keep Kotlin inference straightforward. Invalid/reserved usernames, private profiles and unsafe avatar paths are rejected; network errors have a retry state.
 - Added JVM tests for username normalization, private-profile rejection, public-field projection, unsafe avatar paths and app-link construction. Extended the existing platform workflow to statically enforce the least-privilege SQL contract.
 - The connected Cloudflare account currently has no DNS zones or Worker custom domains, so an external canonical HTTPS profile URL cannot be responsibly selected yet. This increment adds the internal app URI only; HTTPS App Links and the shareable canonical domain remain outstanding.
 - Live Supabase remains unchanged. The public-profile migration is repository-only and must not be applied to production without explicit approval.

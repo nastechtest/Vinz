@@ -53,7 +53,7 @@ internal fun PublicVinzProfileScreen(username: String, bottomPadding: Dp) {
         state = PublicProfileUiState.Loading
         state = try {
             container.vinzCloudAccount.loadPublicProfile(username)
-                ?.let(PublicProfileUiState::Loaded) ?: PublicProfileUiState.Missing
+                ?.let { PublicProfileUiState.Loaded(it) } ?: PublicProfileUiState.Missing
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
