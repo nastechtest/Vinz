@@ -52,4 +52,6 @@
     <string name="optional_playback_session_not_vinz_identity">Optional playback session only. Import your library in Vinz Account → Connections.</string>
     <string name="cloud_account_confirm_password">Confirm password</string>
     <string name="cloud_account_passwords_do_not_match">Passwords do not match</string>
+    <string name="cloud_account_hide_password">Hide</string>
+    <string name="cloud_account_show_password">Show</string>
 </resources>
