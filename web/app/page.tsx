@@ -59,7 +59,8 @@ export default function Home() {
     if (!supabase) return;
     setBusy(true);
     const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
-    setMessage(error?.message ?? "A new verification code has been sent.");
+    if (!error) setOtp("");
+    setMessage(error?.message ?? "A new 6-digit verification code has been sent.");
     setBusy(false);
   }
 
@@ -86,8 +87,9 @@ export default function Home() {
           options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
         });
         if (error) throw error;
+        setOtp("");
         setNeedsOtp(true);
-        setMessage("Check your email for the verification code, then enter it below.");
+        setMessage("Check your email for the 6-digit verification code.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
@@ -103,6 +105,7 @@ export default function Home() {
   async function verifyEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
+    if (!/^\d{6}$/.test(otp.trim())) { setMessage("Enter the 6-digit code from your email."); return; }
     setBusy(true);
     setMessage("");
     try {
@@ -113,6 +116,7 @@ export default function Home() {
       });
       if (error) throw error;
       setNeedsOtp(false);
+      setOtp("");
       setMessage("Email verified. Your Vinz account is ready.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Verification failed.");
@@ -157,10 +161,11 @@ export default function Home() {
           <form onSubmit={verifyEmail}>
             <p className="eyebrow">EMAIL VERIFICATION</p>
             <h2>Check your inbox.</h2>
-            <p className="muted">Enter the verification code sent to {email}.</p>
+            <p className="muted">Enter the 6-digit code sent to {email}.</p>
             <label htmlFor="otp">Verification code</label>
-            <input id="otp" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => setOtp(e.target.value)} required maxLength={8} />
-            <button className="primary" disabled={busy}>{busy ? "Verifying…" : "Verify email"}</button><button type="button" className="text-button" disabled={busy} onClick={resendOtp}>Resend verification code</button>
+            <input id="otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="000000" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} required maxLength={6} aria-label="6-digit email verification code" />
+            <button className="primary" disabled={busy || otp.length !== 6}>{busy ? "Verifying…" : "Verify email"}</button>
+            <button type="button" className="text-button" disabled={busy} onClick={resendOtp}>Resend code</button>
             <button type="button" className="text-button" onClick={() => { setNeedsOtp(false); setMessage(""); }}>Back</button>
           </form>
         ) : (
