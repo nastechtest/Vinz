@@ -337,3 +337,10 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Added MockWebServer contract tests for authenticated upload, token-refresh retry, listing, deletion, checksum verification, oversize rejection and exclusion of provider credentials/downloads.
 - Android UI integration is not yet complete in this increment; the service is wired into AppContainer and will be exposed in Settings next. No production schema, bucket, R2, Worker, Auth setting, secret or deployment was changed.
 - Next: expose cloud backup list/create/restore/delete in Settings with restore preview, cancellation and retry; then validate Android CI and APK artifact. After backup, continue canonical song sharing/deferred install and cloud-coordinated Listen Together. Username availability, mandatory email OTP, OAuth/session reliability, full profiles/settings and community/discovery remain on the agreed roadmap.
+
+
+## Android CI diagnosis and test-harness correction — 2026-11-13
+
+- Run 43442191324 passed workflow checks and Android Lint; resource merge completed and 1,228 JVM tests ran. One test failed: VinzPublicProfileTest.publicProjectionContainsOnlyPublicProfileFields. The failure was at the first non-null assertion because the plain JVM test used Android's stub org.json implementation (unitTests.isReturnDefaultValues=true), not because the profile projection exposed or rejected a real account row. The test now runs with Robolectric's Android-compatible JSON implementation.
+- The cloud-backup tests now use MockWebServer 5's immutable Builder API and RecordedRequest target property, matching the pinned OkHttp 5.5.1 dependency.
+- Run 43444397956 for the first cloud-backup client commit was still in progress when this follow-up was prepared; its final result remains unverified. The new commit will trigger another full PR-check run.

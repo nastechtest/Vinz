@@ -45,9 +45,7 @@ class VinzCloudBackupTest {
 
     @Test fun uploadUsesTheAuthenticatedWorkerAndExcludesCredentialsAndAudio() = runBlocking {
         val digest = sha256(archive.bytes)
-        server.enqueue(MockResponse().setResponseCode(201).setBody(
-            """{"backup":{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"""" + digest + """","format_version":2,"app_version":"1.8.4","created_at":"2026-11-13T10:00:00Z"}}"""
-        ))
+        server.enqueue(jsonResponse(201, uploadJson(digest)))
 
         val record = service().create()
         val request = server.takeRequest()
@@ -67,10 +65,8 @@ class VinzCloudBackupTest {
 
     @Test fun a401RefreshesTheSessionAndRetriesOnce() = runBlocking {
         val digest = sha256(archive.bytes)
-        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"unauthorized"}"""))
-        server.enqueue(MockResponse().setResponseCode(201).setBody(
-            """{"backup":{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"""" + digest + """","format_version":2,"app_version":"1.8.4","created_at":"2026-11-13T10:00:00Z"}}"""
-        ))
+        server.enqueue(jsonResponse(401, """{"error":"unauthorized"}"""))
+        server.enqueue(jsonResponse(201, uploadJson(digest)))
 
         service().create()
 
@@ -80,9 +76,9 @@ class VinzCloudBackupTest {
     }
 
     @Test fun backupsAreListedFromTheAuthenticatedWorker() = runBlocking {
-        server.enqueue(MockResponse().setBody(
-            """{"backups":[{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"""" + sha256(archive.bytes) + """","format_version":2,"app_version":"1.8.4","backup_scope":"full","created_at":"2026-11-13T10:00:00Z"}]}"""
-        ))
+        val digest = sha256(archive.bytes)
+        val body = """{"backups":[{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"$digest","format_version":2,"app_version":"1.8.4","backup_scope":"full","created_at":"2026-11-13T10:00:00Z"}]}"""
+        server.enqueue(jsonResponse(200, body))
 
         val records = service().list()
 
@@ -93,24 +89,13 @@ class VinzCloudBackupTest {
 
     @Test fun restoreVerifiesSha256BeforeApplyingTheArchive() = runBlocking {
         val digest = sha256(archive.bytes)
-        server.enqueue(
-            MockResponse().setBody(Buffer().write(archive.bytes))
-                .addHeader("content-type", "application/octet-stream")
-                .addHeader("x-vinz-sha256", digest)
-                .addHeader("x-vinz-format-version", "2")
-                .addHeader("x-vinz-app-version", "1.8.4")
-        )
+        server.enqueue(binaryResponse(archive.bytes, digest))
         service().restore(record(digest))
         assertTrue(archive.restored)
     }
 
     @Test fun checksumMismatchPreventsRestore() {
-        server.enqueue(
-            MockResponse().setBody(Buffer().write(archive.bytes))
-                .addHeader("x-vinz-sha256", "0".repeat(64))
-                .addHeader("x-vinz-format-version", "2")
-                .addHeader("x-vinz-app-version", "1.8.4")
-        )
+        server.enqueue(binaryResponse(archive.bytes, "0".repeat(64)))
         assertThrows(CloudBackupException::class.java) {
             runBlocking { service().restore(record(sha256(archive.bytes))) }
         }
@@ -130,11 +115,11 @@ class VinzCloudBackupTest {
 
     @Test fun deleteUsesTheBackupIdAndAuthenticatedSession() = runBlocking {
         val id = "11111111-1111-4111-8111-111111111111"
-        server.enqueue(MockResponse().setBody("""{"deleted":true,"id":"11111111-1111-4111-8111-111111111111"}"""))
+        server.enqueue(jsonResponse(200, """{"deleted":true,"id":"11111111-1111-4111-8111-111111111111"}"""))
         service().delete(id)
         val request = server.takeRequest()
         assertEquals("DELETE", request.method)
-        assertEquals("/v1/backups/" + id, request.path)
+        assertEquals("/v1/backups/" + id, request.target)
         assertEquals("Bearer old-access-token", request.getHeader("Authorization"))
     }
 
@@ -151,6 +136,21 @@ class VinzCloudBackupTest {
         scope = "full",
         createdAt = "2026-11-13T10:00:00Z",
     )
+
+    private fun uploadJson(digest: String): String =
+        """{"backup":{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"$digest","format_version":2,"app_version":"1.8.4","created_at":"2026-11-13T10:00:00Z"}}"""
+
+    private fun jsonResponse(code: Int, body: String): MockResponse =
+        MockResponse.Builder().code(code).body(body).build()
+
+    private fun binaryResponse(bytes: ByteArray, digest: String): MockResponse =
+        MockResponse.Builder()
+            .body(Buffer().write(bytes))
+            .setHeader("content-type", "application/octet-stream")
+            .setHeader("x-vinz-sha256", digest)
+            .setHeader("x-vinz-format-version", "2")
+            .setHeader("x-vinz-app-version", "1.8.4")
+            .build()
 
     private class FakeSessions : CloudBackupSessionProvider {
         var userId: String = "22222222-2222-4222-8222-222222222222"

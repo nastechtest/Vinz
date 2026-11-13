@@ -70,13 +70,13 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
     /** Writes a local backup to the listener's chosen document. */
     suspend fun export(uri: Uri, parts: Set<BackupPart>) = withContext(Dispatchers.IO) {
         val out = ctx.contentResolver.openOutputStream(uri, "wt") ?: error(tr(R.string.couldn_t_open_that_file))
-        writeBackup(out, parts)
+        out.use { writeBackup(it, parts) }
     }
 
     /** Writes the same existing backup format to a temporary file for authenticated cloud upload. */
     override suspend fun export(file: File, parts: Set<BackupPart>) = withContext(Dispatchers.IO) {
         file.parentFile?.mkdirs()
-        writeBackup(file.outputStream(), parts)
+        file.outputStream().use { writeBackup(it, parts) }
     }
 
     private suspend fun writeBackup(out: OutputStream, parts: Set<BackupPart>) {
@@ -170,8 +170,13 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
         BackupPreview(value.format, value.versionName, value.createdAt, value.partSet(), value.withDownloads)
     }
 
-    suspend fun partsOf(file: File): Set<BackupPart>? =
-        runCatching { inspect(file).parts }.getOrNull()
+    suspend fun partsOf(file: File): Set<BackupPart>? = try {
+        inspect(file).parts
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        null
+    }
 
     /**
      * Restores a listener-selected local backup. The source document is never deleted.
