@@ -160,7 +160,11 @@ class VinzCloudBackupTest {
         """{"backup":{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"$digest","format_version":2,"app_version":"1.8.4","created_at":"2026-11-13T10:00:00Z"}}"""
 
     private fun jsonResponse(code: Int, body: String): MockResponse =
-        MockResponse.Builder().code(code).body(body).build()
+        MockResponse.Builder()
+            .code(code)
+            .body(Buffer().writeUtf8(body))
+            .addHeader("content-type", "application/json; charset=utf-8")
+            .build()
 
     private fun binaryResponse(bytes: ByteArray, digest: String): MockResponse =
         MockResponse.Builder()
