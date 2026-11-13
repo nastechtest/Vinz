@@ -10,12 +10,8 @@ import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +47,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,8 +65,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.platform.testTag
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * Signs in through Google's own web sign-in page. Vinz never sees your
@@ -144,11 +140,15 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit, addAccount: Boolean = fa
         }
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF080711))) {
         TopAppBar(
             title = { Text(tr(R.string.connect_youtube_for_playback)) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(VinzIcons.ArrowBack, tr(R.string.back)) } },
             actions = { VinzTextButton(onClick = { pasteDialog = true }) { Text(tr(R.string.use_cookie)) } },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color(0xFF140D28), titleContentColor = Color.White,
+                navigationIconContentColor = Color(0xFFB5FF43), actionIconContentColor = Color.White,
+            ),
         )
         if (finishing) {
             Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -423,59 +423,76 @@ private val DISCORD_HOOK_JS = """
 
 @Composable
 fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Unit) {
-    val t = rememberInfiniteTransition(label = "welcome")
-    val a by t.animateFloat(0f, (Math.PI * 2).toFloat(), infiniteRepeatable(tween(16_000, easing = LinearEasing)), label = "a")
-    Box(Modifier.fillMaxSize().background(Color(0xFF07060C))) {
-        Canvas(Modifier.fillMaxSize()) {
-            val cols = listOf(Color(0xFF7C5CFF), Color(0xFFFF3B5C), Color(0xFF00B4D8), Color(0xFFFFB627))
-            cols.forEachIndexed { i, col ->
-                val ph = a + i * 1.6f
-                val p = Offset(size.width * (0.5f + 0.35f * cos(ph)), size.height * (0.35f + 0.22f * sin(ph * 1.3f)))
-                drawCircle(Brush.radialGradient(listOf(col.copy(alpha = 0.55f), Color.Transparent), p, size.width * 0.7f), size.width * 0.7f, p)
-            }
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF07060C)), startY = size.height * 0.35f))
-        }
-        // A phone's width in the middle on a tablet, rather than buttons stretched across the screen. It scrolls: with
-        // large text or display size the list pushed the buttons off the bottom and new listeners couldn't go on (1.7.9.3,
-        // owner's report). When it doesn't fit, it opens scrolled to the buttons; the rest is a swipe up.
-        val scroll = androidx.compose.foundation.rememberScrollState()
-        LaunchedEffect(scroll.maxValue) { if (scroll.maxValue > 0 && scroll.value == 0) scroll.scrollTo(scroll.maxValue) }
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.align(Alignment.TopCenter).widthIn(max = 480.dp).fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        Column(
-            Modifier.fillMaxWidth().verticalScroll(scroll).heightIn(min = maxHeight).padding(28.dp).testTag("welcome"),
-            verticalArrangement = Arrangement.Bottom,
-        ) {
-            Text(tr(R.string.app_name), color = Color.White, style = MaterialTheme.typography.displayLarge)
-            Text(tr(R.string.your_music_refracted), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(28.dp))
-            Feature(VinzIcons.Lyrics, tr(R.string.karaoke_lyrics_word_by_word_from))
-            Feature(VinzIcons.Mic, tr(R.string.sing_the_song_with_its_voice))
-            Feature(VinzIcons.StarFilled, tr(R.string.made_for_you_daily_mixes_release))
-            Feature(VinzIcons.Equalizer, tr(R.string.dj_mode_your_songs_mixed_in))
-            Feature(VinzIcons.Recognize, tr(R.string.name_the_song_playing_around_you))
-            Feature(VinzIcons.Replay, tr(R.string.rewind_your_year_in_music))
-            Spacer(Modifier.height(32.dp))
-            // Vinz is the primary identity. YouTube import is available inside Account → Connections; playback sessions remain optional.
-            VinzButton(onClick = onAccount, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.make_a_vinz_account), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-            Text(
-                tr(R.string.cloud_account_intro),
-                color = Color.White.copy(alpha = 0.62f), style = MaterialTheme.typography.bodySmall,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+    val artwork = rememberVinzOnboardingArtwork("vinz-welcome-collage.jpg.base64")
+    val motion = androidx.compose.animation.core.rememberInfiniteTransition(label = "vinz-welcome-art")
+    val zoom by motion.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.045f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(18_000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "vinz-welcome-zoom",
+    )
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    Box(Modifier.fillMaxSize().background(Color(0xFF05060A))) {
+        if (artwork != null) {
+            androidx.compose.foundation.Image(
+                bitmap = artwork,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = zoom, scaleY = zoom),
             )
-            com.vinz.music.ui.components.VinzOutlinedButton(onClick = onSignIn, Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.cloud_account_sign_in_cta), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-            VinzTextButton(onClick = onSkip, Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                Text(tr(R.string.skip_for_now), color = Color.White.copy(alpha = 0.8f))
-            }
-            WelcomeRestoreButton()
         }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
+            Color(0xFF05060A).copy(alpha = 0.04f),
+            Color(0xFF05060A).copy(alpha = 0.34f),
+            Color(0xFF05060A).copy(alpha = 0.90f),
+            Color(0xFF05060A),
+        ))))
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier.align(Alignment.TopCenter).widthIn(max = 480.dp).fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(scroll).heightIn(min = maxHeight)
+                    .padding(horizontal = 24.dp, vertical = 20.dp).testTag("welcome"),
+                verticalArrangement = Arrangement.Bottom,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Spacer(Modifier.weight(1f, fill = true))
+                Text(tr(R.string.app_name), color = Color.White, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Black)
+                Text(tr(R.string.your_music_refracted), color = Color(0xFFD7FFE9), style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(tr(R.string.cloud_account_intro), color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(20.dp))
+                Column(
+                    Modifier.fillMaxWidth().background(Color(0xB80A0D13), RoundedCornerShape(22.dp)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Feature(VinzIcons.Lyrics, tr(R.string.karaoke_lyrics_word_by_word_from))
+                    Feature(VinzIcons.Mic, tr(R.string.sing_the_song_with_its_voice))
+                    Feature(VinzIcons.Equalizer, tr(R.string.dj_mode_your_songs_mixed_in))
+                }
+                Spacer(Modifier.height(18.dp))
+                VinzButton(onClick = onAccount, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
+                    Text(tr(R.string.make_a_vinz_account), style = MaterialTheme.typography.titleMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+                com.vinz.music.ui.components.VinzOutlinedButton(
+                    onClick = onSignIn, Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Text(tr(R.string.cloud_account_sign_in_cta), color = Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+                VinzTextButton(onClick = onSkip, Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    Text(tr(R.string.skip_for_now), color = Color.White.copy(alpha = 0.9f))
+                }
+                WelcomeRestoreButton()
+            }
         }
     }
 }
-
 @Composable
 private fun Feature(icon: ImageVector, text: String) {
     Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

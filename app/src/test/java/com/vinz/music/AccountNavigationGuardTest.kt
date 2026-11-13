@@ -84,8 +84,8 @@ class AccountNavigationGuardTest {
         assertTrue(cloud.contains("R.string.cloud_account_password_sign_in_hint"))
         val unsigned = cloud.substringAfter("if (state.identity == null)")
             .substringBefore("VinzButton(onClick = { actions.submit() }")
-        assertTrue(unsigned.indexOf("cloud-account-email") < unsigned.indexOf("CloudProfileFields(state, actions)"))
-        assertTrue(unsigned.indexOf("cloud-account-password") < unsigned.indexOf("CloudProfileFields(state, actions)"))
+        assertTrue(unsigned.indexOf("cloud-account-email") < unsigned.indexOf("CloudProfileFields(state, actions"))
+        assertTrue(unsigned.indexOf("cloud-account-password") < unsigned.indexOf("CloudProfileFields(state, actions"))
     }
 
     @Test fun welcomeUsesVinzAccountAsPrimarySignIn() {

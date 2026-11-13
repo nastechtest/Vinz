@@ -26,7 +26,11 @@ import com.vinz.music.ui.components.VinzSwitch
 import com.vinz.music.ui.components.VinzTextField
 
 @Composable
-internal fun CloudProfileFields(state: CloudAccountState, actions: CloudAccountController) {
+internal fun CloudProfileFields(
+    state: CloudAccountState,
+    actions: CloudAccountController,
+    onSubmit: (() -> Unit)? = null,
+) {
     val focus = LocalFocusManager.current
     val registering = state.identity == null && state.mode == CloudAccountMode.SIGN_UP
     VinzTextField(
@@ -52,7 +56,7 @@ internal fun CloudProfileFields(state: CloudAccountState, actions: CloudAccountC
             onDone = {
                 if (registering && state.canSubmit) {
                     focus.clearFocus()
-                    actions.submit()
+                    if (onSubmit != null) onSubmit() else actions.submit()
                 }
             },
         ),

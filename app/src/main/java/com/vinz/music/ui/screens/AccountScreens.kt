@@ -95,9 +95,11 @@ fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
         state = state, actions = controller, onBack = onDone,
         onContinue = if (onboarding) onDone else null,
         bottomPadding = bottomPadding,
-    ) {
+        cinematicOnboarding = onboarding,
+        supplementalContent = {
         if (!onboarding) LocalMusicSummary()
-    }
+        },
+    )
 }
 
 /** Local library information is separate from account connections and requires no provider login. */

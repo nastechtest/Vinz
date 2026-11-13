@@ -48,6 +48,7 @@ class CloudAccountValidationTest {
             // These new strings are not translated everywhere yet; Android falls back to values/.
             val fallbackAllowed = setOf(
                 "cloud_account_brand_name", "cloud_account_brand_section", "cloud_account_brand_tagline",
+                "cloud_account_confirm_password", "cloud_account_passwords_do_not_match",
                 "cloud_account_sign_in_cta", "cloud_account_sign_up_failed",
                 "cloud_account_youtube_connect", "cloud_account_youtube_connected",
                 "cloud_account_youtube_description", "cloud_account_youtube_disconnect",
