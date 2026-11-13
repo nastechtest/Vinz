@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
