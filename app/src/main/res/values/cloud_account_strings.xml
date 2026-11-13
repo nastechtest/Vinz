@@ -32,4 +32,20 @@
     <string name="cloud_account_sign_out_failed">Sign-out could not be completed. Try again.</string>
     <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
     <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="cloud_account_tab_overview">Overview</string>
+    <string name="cloud_account_tab_profile">Profile</string>
+    <string name="cloud_account_tab_security">Security</string>
+    <string name="cloud_account_tab_connections">Connections</string>
+    <string name="cloud_account_overview_heading">ACCOUNT OVERVIEW</string>
+    <string name="cloud_account_profile_fallback">Your Vinz profile</string>
+    <string name="cloud_account_overview_description">Your Vinz identity is connected. Your music library on this phone remains available independently of sign-in.</string>
+    <string name="cloud_account_edit_profile">Edit profile</string>
+    <string name="cloud_account_profile_heading">YOUR MUSIC PROFILE</string>
+    <string name="cloud_account_security_heading">ACCOUNT SECURITY</string>
+    <string name="cloud_account_password_recovery_heading">Password and recovery</string>
+    <string name="cloud_account_password_recovery_description">Send a password reset email to %1$s. The reset link is handled by your verified Vinz email flow.</string>
+    <string name="cloud_account_send_password_reset">Send password reset email</string>
+    <string name="cloud_account_connections_heading">CONNECTED SERVICES</string>
+    <string name="cloud_account_connections_summary">Google sign-in and YouTube music import are separate permissions.</string>
+    <string name="cloud_account_connections_description">YouTube Music cookie sign-in remains a separate music-source feature. It does not sign you into Vinz. Native Google identity linking and YouTube Data API import require the Android OAuth callback and secure token-exchange flow; this screen does not pretend that those permissions are connected.</string>
 </resources>
