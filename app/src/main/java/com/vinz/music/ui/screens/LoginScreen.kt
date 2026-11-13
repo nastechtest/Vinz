@@ -459,6 +459,8 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
                 WelcomeFeature(VinzIcons.Mic, tr(R.string.sing), tr(R.string.sing_s_voice_separation))
                 Spacer(Modifier.height(10.dp))
                 WelcomeFeature(VinzIcons.Recognize, tr(R.string.recognize), tr(R.string.songs_found_by_listening))
+                Spacer(Modifier.height(12.dp))
+                Text(tr(R.string.cloud_account_intro), color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = onAccount,
@@ -472,7 +474,7 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
                     Text(tr(R.string.start), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 VinzTextButton(onClick = onSignIn, modifier = Modifier.padding(top = 6.dp)) {
-                    Text(tr(R.string.sign_in), color = Color.White.copy(alpha = 0.82f))
+                    Text(tr(R.string.cloud_account_sign_in_cta), color = Color.White.copy(alpha = 0.82f))
                 }
                 VinzTextButton(onClick = onSkip) {
                     Text(tr(R.string.a_guest), color = Color.White.copy(alpha = 0.82f))
