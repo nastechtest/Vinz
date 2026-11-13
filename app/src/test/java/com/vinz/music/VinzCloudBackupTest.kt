@@ -20,10 +20,13 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
 
+@RunWith(RobolectricTestRunner::class)
 class VinzCloudBackupTest {
     private lateinit var server: MockWebServer
     private lateinit var cache: File
