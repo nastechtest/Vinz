@@ -462,6 +462,8 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
                 Spacer(Modifier.weight(1f, fill = true))
                 Text(tr(R.string.app_name), color = Color.White, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Black)
                 Text(tr(R.string.your_music_refracted), color = Color(0xFFD7FFE9), style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(tr(R.string.cloud_account_intro), color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 Spacer(Modifier.height(20.dp))
                 Column(
                     Modifier.fillMaxWidth().background(Color(0xB80A0D13), RoundedCornerShape(22.dp)).padding(16.dp),
