@@ -70,8 +70,8 @@ class VinzCloudBackupTest {
 
         service().create()
 
-        assertEquals("Bearer old-access-token", server.takeRequest().getHeader("Authorization"))
-        assertEquals("Bearer rotated-access-token", server.takeRequest().getHeader("Authorization"))
+        assertEquals("Bearer old-access-token", server.takeRequest().headers["Authorization"])
+        assertEquals("Bearer rotated-access-token", server.takeRequest().headers["Authorization"])
         assertEquals(1, sessions.refreshCalls)
     }
 
