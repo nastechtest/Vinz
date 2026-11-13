@@ -94,7 +94,7 @@
     <string name="vinz_public_profile_username">@%1$s</string>
     <string name="vinz_public_profile_no_bio">No bio yet.</string>
     <string name="cloud_account_active_sessions">Active sessions</string>
-    <string name="cloud_account_active_sessions_description">You can sign out this Vinz Account on every device. This also signs out this device. Supabase will revoke the account's other refresh-token sessions.</string>
+    <string name="cloud_account_active_sessions_description">You can sign out this Vinz Account on every device. This also signs out this device. Supabase revokes the other refresh-token sessions for this account.</string>
     <string name="cloud_account_sign_out_everywhere">Sign out on all devices</string>
     <string name="cloud_account_sign_out_everywhere_title">Sign out everywhere?</string>
     <string name="cloud_account_sign_out_everywhere_confirmation">This will revoke every active Vinz Account session, including this device. You will need to sign in again on any device you use.</string>
