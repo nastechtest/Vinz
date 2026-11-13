@@ -30,7 +30,7 @@ class CloudAuthException(val failure: CloudAuthFailure) : IllegalStateException(
  * Cloud identity for Vinz. This is deliberately separate from YouTube Music's cookie-based login.
  * The Supabase publishable key is public client configuration; privileged keys never belong in this app.
  */
-class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
+class VinzCloudAccount(context: Context, private val http: OkHttpClient) : CloudBackupSessionProvider {
     data class Session(
         val accessToken: String,
         val refreshToken: String,
@@ -360,9 +360,18 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
     }
 
     /** Explicit refresh entry point; normal authenticated requests refresh automatically as needed. */
-    suspend fun refreshSession(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun refreshSession(): Boolean = withContext(Dispatchers.IO) {
         val saved = store.read()?.let(::decodeSession) ?: return@withContext false
         refreshStoredSession(saved, force = true) != null
+    }
+
+    /** Returns a proactively refreshed session and rejects account switches between cloud operations. */
+    override suspend fun requireFreshSession(expectedUserId: String?): Session = withContext(Dispatchers.IO) {
+        val current = sessionForRequest()
+        if (expectedUserId != null && current.userId != expectedUserId) {
+            error("The Vinz Account changed during this cloud operation.")
+        }
+        current
     }
 
     /** Uses a public boolean-only endpoint; no email, user ID or private profile data is returned. */
@@ -586,6 +595,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) {
         val s = session
         if (s != null) runCatching { request("/auth/v1/logout", "POST", null) }
         synchronized(refreshLock) { store.clear() }
+        mutableSessionChanges.value = mutableSessionChanges.value + 1L
     }
 
     /** Revokes every Supabase Auth session for this identity, then clears only that identity locally. */

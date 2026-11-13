@@ -275,6 +275,7 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze-glass:2.1.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.5.1")
     // NewPipe's own JavaScript engine (shipped with it already), for testing the stream solver's scripts.
     testImplementation("org.mozilla:rhino:1.9.2")
     // Draws composables on the PC (DesignGalleryTest: the redesign's components, light and dark), Apache-2.0, test-only;

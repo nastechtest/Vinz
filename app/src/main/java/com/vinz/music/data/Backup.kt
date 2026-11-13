@@ -10,11 +10,15 @@ import com.vinz.music.BuildConfig
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -52,7 +56,8 @@ private data class BackupManifest(
  * opened those files, then Vinz restarts. Nothing leaves the phone except to where the listener saves it.
  * Since 1.7.8 the listener picks the [BackupPart]s; a restore replaces only those and leaves the rest.
  */
-class Backup(private val c: AppContainer) {
+class Backup(private val c: AppContainer) : CloudBackupArchive {
+    override val formatVersion: Int get() = FORMAT
     private val ctx: Context get() = c.app
     private val data: File get() = ctx.filesDir.parentFile!!
 
@@ -62,8 +67,19 @@ class Backup(private val c: AppContainer) {
      */
     private fun fromVinz(m: BackupManifest) = m.app.isNotBlank()
 
-    /** Writes a backup of [parts] to [uri]. */
+    /** Writes a local backup to the listener's chosen document. */
     suspend fun export(uri: Uri, parts: Set<BackupPart>) = withContext(Dispatchers.IO) {
+        val out = ctx.contentResolver.openOutputStream(uri, "wt") ?: error(tr(R.string.couldn_t_open_that_file))
+        writeBackup(out, parts)
+    }
+
+    /** Writes the same existing backup format to a temporary file for authenticated cloud upload. */
+    override suspend fun export(file: File, parts: Set<BackupPart>) = withContext(Dispatchers.IO) {
+        file.parentFile?.mkdirs()
+        writeBackup(file.outputStream(), parts)
+    }
+
+    private suspend fun writeBackup(out: OutputStream, parts: Set<BackupPart>) {
         // Fold Room's write-ahead log into the main file so the copy is complete.
         runCatching { c.db.query(androidx.sqlite.db.SimpleSQLiteQuery("PRAGMA wal_checkpoint(FULL)")).close() }
         val withDownloads = BackupPart.DOWNLOADS in parts
@@ -74,7 +90,6 @@ class Backup(private val c: AppContainer) {
             parts = parts.map { it.name },
         )
         val settings = c.settings.forBackup(settings = BackupPart.SETTINGS in parts, accounts = BackupPart.ACCOUNTS in parts)
-        val out = ctx.contentResolver.openOutputStream(uri, "wt") ?: error(tr(R.string.couldn_t_open_that_file))
         ZipOutputStream(out.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST))
             zip.write(InnerTube.json.encodeToString(BackupManifest.serializer(), manifest).toByteArray())
@@ -85,9 +100,18 @@ class Backup(private val c: AppContainer) {
                 zip.write(InnerTube.json.encodeToString(SETTINGS_MAP, settings).toByteArray())
                 zip.closeEntry()
             }
-            filesToBackUp(parts).forEach { f ->
-                zip.putNextEntry(ZipEntry(f.relativeTo(data).invariantSeparatorsPath))
-                f.inputStream().use { it.copyTo(zip) }
+            for (file in filesToBackUp(parts)) {
+                currentCoroutineContext().ensureActive()
+                zip.putNextEntry(ZipEntry(file.relativeTo(data).invariantSeparatorsPath))
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        zip.write(buffer, 0, count)
+                    }
+                }
                 zip.closeEntry()
             }
         }
@@ -125,41 +149,85 @@ class Backup(private val c: AppContainer) {
         }.getOrNull()
     }
 
+    /** Inspects a cloud archive before it is offered for restore. */
+    override suspend fun inspect(file: File): BackupPreview = withContext(Dispatchers.IO) {
+        var manifest: BackupManifest? = null
+        ZipInputStream(file.inputStream().buffered()).use { zip ->
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val entry = zip.nextEntry ?: break
+                if (entry.name == MANIFEST) {
+                    manifest = runCatching {
+                        InnerTube.json.decodeFromString(BackupManifest.serializer(), zip.readBytes().decodeToString())
+                    }.getOrNull()
+                    break
+                }
+            }
+        }
+        val value = manifest ?: error(tr(R.string.that_file_isn_t_a_vinz_2))
+        if (!fromVinz(value) || value.bring) error(tr(R.string.that_file_isn_t_a_vinz_2))
+        if (value.format > FORMAT) error(tr(R.string.that_backup_is_from_a_newer))
+        BackupPreview(value.format, value.versionName, value.createdAt, value.partSet(), value.withDownloads)
+    }
+
+    suspend fun partsOf(file: File): Set<BackupPart>? =
+        runCatching { inspect(file).parts }.getOrNull()
+
     /**
-     * Checks the backup at [uri] and unpacks it to be put in place at the next launch, then
-     * restarts Vinz. Throws with a readable message if it isn't a Vinz backup.
+     * Restores a listener-selected local backup. The source document is never deleted.
      */
     suspend fun restore(uri: Uri) = withContext(Dispatchers.IO) {
+        val input = ctx.contentResolver.openInputStream(uri) ?: error(tr(R.string.couldn_t_open_that_file))
+        restoreFrom(input) {}
+    }
+
+    /** Restores a verified cloud archive and removes its temporary download before restarting. */
+    override suspend fun restore(file: File) = withContext(Dispatchers.IO) {
+        restoreFrom(file.inputStream()) { file.delete() }
+    }
+
+    private suspend fun restoreFrom(input: InputStream, afterStaging: () -> Unit) {
         val staging = File(ctx.filesDir, STAGING)
         staging.deleteRecursively()
         staging.mkdirs()
         var manifest: BackupManifest? = null
         try {
-            val input = ctx.contentResolver.openInputStream(uri) ?: error(tr(R.string.couldn_t_open_that_file))
             ZipInputStream(input.buffered()).use { zip ->
                 while (true) {
-                    val e = zip.nextEntry ?: break
-                    if (e.isDirectory) continue
-                    val name = e.name
+                    currentCoroutineContext().ensureActive()
+                    val entry = zip.nextEntry ?: break
+                    if (entry.isDirectory) continue
+                    val name = entry.name
                     if (name == MANIFEST) {
-                        manifest = runCatching { InnerTube.json.decodeFromString(BackupManifest.serializer(), zip.readBytes().decodeToString()) }.getOrNull()
+                        manifest = runCatching {
+                            InnerTube.json.decodeFromString(BackupManifest.serializer(), zip.readBytes().decodeToString())
+                        }.getOrNull()
                         continue
                     }
                     // Only Vinz's own folders, and nothing that climbs out of them.
                     if (name.contains("..") || name.startsWith("/") || (name != SETTINGS_ENTRY && ALLOWED.none { name.startsWith(it) })) continue
                     val target = File(staging, name)
                     target.parentFile?.mkdirs()
-                    target.outputStream().use { zip.copyTo(it) }
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(16 * 1024)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                    }
                 }
             }
-            val m = manifest ?: error(tr(R.string.that_file_isn_t_a_vinz_2))
-            if (!fromVinz(m) || m.bring) error(tr(R.string.that_file_isn_t_a_vinz_2))
-            if (m.format > FORMAT) error(tr(R.string.that_backup_is_from_a_newer))
-            File(staging, MANIFEST).writeText(InnerTube.json.encodeToString(BackupManifest.serializer(), m))
-        } catch (e: Throwable) {
+            val value = manifest ?: error(tr(R.string.that_file_isn_t_a_vinz_2))
+            if (!fromVinz(value) || value.bring) error(tr(R.string.that_file_isn_t_a_vinz_2))
+            if (value.format > FORMAT) error(tr(R.string.that_backup_is_from_a_newer))
+            File(staging, MANIFEST).writeText(InnerTube.json.encodeToString(BackupManifest.serializer(), value))
+        } catch (error: Throwable) {
             staging.deleteRecursively()
-            throw e
+            throw error
         }
+        afterStaging()
         restart()
     }
 

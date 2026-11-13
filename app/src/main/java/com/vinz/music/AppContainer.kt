@@ -481,6 +481,8 @@ class AppContainer(val app: Application) {
     val lyricsToFiles by lazy { com.vinz.music.data.local.LyricsToFiles(app, this) }
     val updates by lazy { com.vinz.music.data.UpdateChecker(app, http, scope) }
     val backup by lazy { com.vinz.music.data.Backup(this) }
+    /** Authenticated cloud backup; local backup and restore remain independent. */
+    val vinzCloudBackup by lazy { com.vinz.music.data.VinzCloudBackup(vinzCloudAccount, backup, http, app.cacheDir) }
     val player = PlayerConnection(app, this)
     @Volatile private var songStartedAt = 0L
     init { scope.launch { player.currentSong.collect { songStartedAt = android.os.SystemClock.elapsedRealtime() } } }
