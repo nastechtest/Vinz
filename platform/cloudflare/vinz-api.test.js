@@ -6,6 +6,10 @@ const SUPABASE_ENV = {
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "public-test-key",
 };
+const VERIFIED_USER = {
+  id: "11111111-1111-4111-8111-111111111111",
+  email_confirmed_at: "2026-11-01T00:00:00.000Z",
+};
 
 test("health endpoint reports configuration without exposing secrets", async () => {
   const response = await handleRequest(new Request("https://api.vinz.example/health"), {});
@@ -41,6 +45,24 @@ test("profile endpoint rejects missing bearer token", async () => {
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "unauthorized");
 });
+test("account API rejects unverified email before reading account data", async (t) => {
+  let upstreamCalls = 0;
+  t.mock.method(globalThis, "fetch", async (input) => {
+    upstreamCalls++;
+    assert.match(String(input), /\/auth\/v1\/user$/);
+    return new Response(JSON.stringify({
+      id: "11111111-1111-4111-8111-111111111111",
+      email_confirmed_at: null,
+      confirmed_at: null,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const response = await handleRequest(new Request("https://api.vinz.example/v1/me", {
+    headers: { authorization: "Bearer test-token" },
+  }), SUPABASE_ENV);
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "email_not_confirmed");
+  assert.equal(upstreamCalls, 1);
+});
 
 test("browser origins are denied unless explicitly allowlisted", async () => {
   const response = await handleRequest(
@@ -69,7 +91,7 @@ test("preflight advertises only implemented API methods", async () => {
 test("profile updates reject invalid usernames before touching the database", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     assert.match(String(input), /\/auth\/v1\/user$/);
-    return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+    return new Response(JSON.stringify(VERIFIED_USER), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
@@ -88,7 +110,7 @@ test("profile updates reject invalid usernames before touching the database", as
 
 test("settings updates reject unknown and non-boolean values", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -105,7 +127,7 @@ test("settings updates reject unknown and non-boolean values", async (t) => {
 
 test("backup upload reports missing R2 binding rather than accepting data", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -145,7 +167,7 @@ test("catalog search normalizes Apple results and omits preview audio URLs", asy
 
 test("catalog search validates the requested media type after authentication", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -162,7 +184,7 @@ test("catalog search returns normalized Apple metadata without media previews", 
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = String(input);
     if (url.endsWith("/auth/v1/user")) {
-      return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+      return new Response(JSON.stringify(VERIFIED_USER), {
         status: 200, headers: { "content-type": "application/json" },
       });
     }
@@ -193,7 +215,7 @@ test("catalog search returns normalized Apple metadata without media previews", 
 
 test("artist watch endpoint validates provider identifiers", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -210,7 +232,7 @@ test("artist watch endpoint validates provider identifiers", async (t) => {
 
 test("podcast subscriptions reject insecure and local feed URLs", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -232,7 +254,7 @@ test("podcast subscriptions reject insecure and local feed URLs", async (t) => {
 
 test("notification device registration rejects malformed push tokens", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -262,7 +284,7 @@ test("backup upload accepts existing non-full backup scopes", async (t) => {
   const sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   t.mock.method(globalThis, "fetch", async (input) => {
     if (String(input).endsWith("/auth/v1/user")) {
-      return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+      return new Response(JSON.stringify(VERIFIED_USER), {
         status: 200, headers: { "content-type": "application/json" },
       });
     }
@@ -290,7 +312,7 @@ test("backup upload accepts existing non-full backup scopes", async (t) => {
 
 test("share creation rejects arbitrary external redirect hosts", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -311,7 +333,7 @@ test("share creation rejects arbitrary external redirect hosts", async (t) => {
 
 test("lyrics lookup validates signatures before contacting LRCLIB", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -325,7 +347,7 @@ test("lyrics lookup validates signatures before contacting LRCLIB", async (t) =>
 test("lyrics search honours LRCLIB rate-limit responses", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     if (String(input).endsWith("/auth/v1/user")) {
-      return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+      return new Response(JSON.stringify(VERIFIED_USER), {
         status: 200, headers: { "content-type": "application/json" },
       });
     }
@@ -343,7 +365,7 @@ test("lyrics search honours LRCLIB rate-limit responses", async (t) => {
 
 test("lyrics search rejects empty queries", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -383,7 +405,7 @@ test("public share lookup uses the anonymous Supabase role", async (t) => {
 
 test("community search rejects unsafe or oversized search input", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -398,7 +420,7 @@ test("community search rejects unsafe or oversized search input", async (t) => {
 
 test("friend request creation validates usernames before profile lookup", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -415,7 +437,7 @@ test("friend request creation validates usernames before profile lookup", async 
 
 test("friend request response only accepts accepted or declined", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(
-    JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    JSON.stringify(VERIFIED_USER),
     { status: 200, headers: { "content-type": "application/json" } },
   ));
   const response = await handleRequest(
@@ -485,7 +507,7 @@ test("username availability fails closed when its rate-limit binding is absent",
 
 test("profile updates canonicalize username before the database write", async (t) => {
   t.mock.method(globalThis, "fetch", async (input, init) => {
-    if (String(input).endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), { status: 200 });
+    if (String(input).endsWith("/auth/v1/user")) return new Response(JSON.stringify(VERIFIED_USER), { status: 200 });
     assert.match(String(input), /\/rest\/v1\/vinz_profiles\?/);
     assert.equal(JSON.parse(init.body).username, "artist_name");
     return new Response(JSON.stringify([{ id: "11111111-1111-4111-8111-111111111111", username: "artist_name" }]), { status: 200 });

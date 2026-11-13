@@ -93,6 +93,11 @@ async function authenticate(request, config) {
   if (!response.ok) return { error: "identity_provider_unavailable", status: 502 };
   const user = await response.json();
   if (typeof user.id !== "string") return { error: "unauthorized", status: 401 };
+  // The client OTP flow is UX; verified email is enforced again at the API boundary.
+  const confirmedAt = user.email_confirmed_at || user.confirmed_at;
+  if (typeof confirmedAt !== "string" || !confirmedAt.trim()) {
+    return { error: "email_not_confirmed", status: 403 };
+  }
   return { user: { id: user.id }, authorization };
 }
 
