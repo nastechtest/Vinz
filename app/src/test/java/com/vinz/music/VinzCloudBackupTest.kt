@@ -162,7 +162,7 @@ class VinzCloudBackupTest {
     private fun jsonResponse(code: Int, body: String): MockResponse =
         MockResponse.Builder()
             .code(code)
-            .body(Buffer().writeUtf8(body))
+            .body(body)
             .addHeader("content-type", "application/json; charset=utf-8")
             .build()
 
