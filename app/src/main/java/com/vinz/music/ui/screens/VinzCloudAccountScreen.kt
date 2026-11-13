@@ -265,7 +265,7 @@ private fun CloudAccountFormBody(
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }, enabled = !state.busy) {
-                        Text(if (passwordVisible) "Hide" else "Show", style = MaterialTheme.typography.labelSmall)
+                        Text(tr(if (passwordVisible) R.string.cloud_account_hide_password else R.string.cloud_account_show_password), style = MaterialTheme.typography.labelSmall)
                     }
                 },
                 singleLine = true,
@@ -283,7 +283,7 @@ private fun CloudAccountFormBody(
                     visualTransformation = if (confirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = { confirmVisible = !confirmVisible }, enabled = !state.busy) {
-                            Text(if (confirmVisible) "Hide" else "Show", style = MaterialTheme.typography.labelSmall)
+                            Text(tr(if (confirmVisible) R.string.cloud_account_hide_password else R.string.cloud_account_show_password), style = MaterialTheme.typography.labelSmall)
                         }
                     },
                     singleLine = true,
