@@ -45,7 +45,7 @@
     <string name="cloud_account_youtube_import">YouTube Music 가져오기</string>
     <string name="cloud_account_youtube_refresh">연결 상태 새로고침</string>
     <string name="cloud_account_youtube_disconnect">YouTube 연결 해제</string>
-    <string name="cloud_account_youtube_imported">%2$d개 재생목록에서 동영상 %1$d개를 가져왔습니다.</string>
+    <string name="cloud_account_youtube_imported">%1$d개 재생목록에서 동영상 %2$d개를 가져왔습니다.</string>
     <string name="cloud_account_youtube_failed">YouTube Music을 연결하거나 가져올 수 없습니다. 연결을 확인하고 다시 시도하세요.</string>
     <string name="cloud_account_sign_in_cta">Vinz 계정에 로그인</string>
     <string name="youtube_playback_session">YouTube 재생 세션</string>
