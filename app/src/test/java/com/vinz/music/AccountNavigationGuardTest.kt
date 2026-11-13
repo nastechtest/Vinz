@@ -36,9 +36,9 @@ class AccountNavigationGuardTest {
         val account = read("ui/screens/AccountScreens.kt")
         val host = account.substringAfter("fun VinzAccountScreen(")
             .substringBefore("private fun LocalMusicSummary")
-        assertTrue(account.contains("fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit)"))
+        assertTrue(account.contains("fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, signIn: Boolean = false, onDone: () -> Unit)"))
         assertTrue(host.contains("CloudAccountController(ExistingCloudAccountGateway(cloud), scope)"))
-        assertTrue(host.contains("if (onboarding) it.mode(CloudAccountMode.SIGN_UP)"))
+        assertTrue(host.contains("if (onboarding && !signIn) it.mode(CloudAccountMode.SIGN_UP)"))
         assertTrue(host.contains("LaunchedEffect(controller) { controller.loadProfile() }"))
         assertTrue(host.contains("DisposableEffect(controller) { onDispose { controller.clearPassword() } }"))
         assertTrue(host.contains("BackHandler(enabled = state.busy)"))
@@ -97,7 +97,7 @@ class AccountNavigationGuardTest {
         assertFalse(welcome.contains("R.string.sign_in_to_youtube_music"))
 
         val activity = read("MainActivity.kt")
-        assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.ACCOUNT) }"))
+        assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.ACCOUNT + "?onboarding=true&signIn=true") }"))
     }
 
     @Test fun optionalYoutubePlaybackSessionRetainsItsWebViewCookieLifecycle() {
