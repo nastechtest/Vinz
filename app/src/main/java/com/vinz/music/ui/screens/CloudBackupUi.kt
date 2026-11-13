@@ -35,10 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import java.util.Locale
 
 private fun cloudBackupSize(bytes: Long): String =
-    String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
+    tr(R.string.cloud_backup_size_mb, bytes / (1024.0 * 1024.0))
 
 private fun cloudBackupDate(value: String): String =
     value.takeIf { it.isNotBlank() }?.take(16)?.replace('T', ' ') ?: tr(R.string.cloud_backup_unknown_date)
