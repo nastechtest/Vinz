@@ -131,4 +131,5 @@
     <string name="cloud_backup_restoring">Restoring cloud backup…</string>
     <string name="cloud_backup_deleting">Deleting cloud backup…</string>
     <string name="cloud_backup_progress">%1$d%% complete</string>
+    <string name="cloud_backup_size_mb">%1$.1f MB</string>
 </resources>
