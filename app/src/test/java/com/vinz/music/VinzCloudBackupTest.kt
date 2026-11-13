@@ -39,7 +39,7 @@ class VinzCloudBackupTest {
     }
 
     @After fun tearDown() {
-        server.shutdown()
+        server.close()
         cache.deleteRecursively()
     }
 
@@ -51,11 +51,11 @@ class VinzCloudBackupTest {
         val request = server.takeRequest()
 
         assertEquals("PUT", request.method)
-        assertEquals("Bearer old-access-token", request.getHeader("Authorization"))
-        assertEquals("full", request.getHeader("X-Vinz-Backup-Scope"))
-        assertEquals("2", request.getHeader("X-Vinz-Format-Version"))
-        assertEquals(digest, request.getHeader("X-Vinz-Sha256"))
-        assertEquals(archive.bytes.toList(), request.body.readByteArray().toList())
+        assertEquals("Bearer old-access-token", request.headers["Authorization"])
+        assertEquals("full", request.headers["X-Vinz-Backup-Scope"])
+        assertEquals("2", request.headers["X-Vinz-Format-Version"])
+        assertEquals(digest, request.headers["X-Vinz-Sha256"])
+        assertEquals(archive.bytes.toList(), request.body?.toByteArray()?.toList())
         assertEquals(setOf(BackupPart.SETTINGS, BackupPart.LIBRARY, BackupPart.HISTORY), archive.exportedParts)
         assertFalse(BackupPart.ACCOUNTS in archive.exportedParts)
         assertFalse(BackupPart.DOWNLOADS in archive.exportedParts)
@@ -87,6 +87,25 @@ class VinzCloudBackupTest {
         assertEquals("GET", server.takeRequest().method)
     }
 
+    @Test fun previewVerifiesAndInspectsTheArchiveWithoutRestoringIt() = runBlocking {
+        val digest = sha256(archive.bytes)
+        server.enqueue(binaryResponse(archive.bytes, digest))
+
+        val preview = service().preview(record(digest))
+
+        assertEquals(2, preview.formatVersion)
+        assertEquals(setOf(BackupPart.SETTINGS, BackupPart.LIBRARY, BackupPart.HISTORY), preview.parts)
+        assertFalse(archive.restored)
+        assertTrue(cache.listFiles().orEmpty().none { it.name.startsWith("vinz-cloud-restore-") })
+    }
+
+    @Test fun previewRejectsChecksumMismatchWithoutChangingLocalData() {
+        server.enqueue(binaryResponse(archive.bytes, "0".repeat(64)))
+        assertThrows(CloudBackupException::class.java) {
+            runBlocking { service().preview(record(sha256(archive.bytes))) }
+        }
+        assertFalse(archive.restored)
+    }
     @Test fun restoreVerifiesSha256BeforeApplyingTheArchive() = runBlocking {
         val digest = sha256(archive.bytes)
         server.enqueue(binaryResponse(archive.bytes, digest))
@@ -120,7 +139,7 @@ class VinzCloudBackupTest {
         val request = server.takeRequest()
         assertEquals("DELETE", request.method)
         assertEquals("/v1/backups/" + id, request.target)
-        assertEquals("Bearer old-access-token", request.getHeader("Authorization"))
+        assertEquals("Bearer old-access-token", request.headers["Authorization"])
     }
 
     private fun service(maxBytes: Long = VinzCloudBackup.MAX_BACKUP_BYTES) = VinzCloudBackup(

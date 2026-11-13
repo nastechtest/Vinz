@@ -163,6 +163,27 @@ class VinzCloudBackup(
         }
     }
 
+    /**
+     * Downloads, verifies and inspects a cloud archive without changing local data.
+     * Restore downloads and verifies it again, so a preview cannot authorize a stale or swapped object.
+     */
+    suspend fun preview(record: CloudBackupRecord): BackupPreview = operation.withLock {
+        requireValidId(record.id)
+        val userId = sessions.requireFreshSession().userId
+        val file = download(record, userId)
+        try {
+            mutableProgress.value = CloudBackupProgress(CloudBackupPhase.VALIDATING, file.length(), file.length())
+            val preview = archive.inspect(file)
+            validatePreview(preview)
+            if (preview.formatVersion != record.formatVersion) {
+                throw CloudBackupException("Cloud backup format metadata does not match its archive.")
+            }
+            preview
+        } finally {
+            file.delete()
+            mutableProgress.value = null
+        }
+    }
     suspend fun restore(record: CloudBackupRecord) = operation.withLock {
         requireValidId(record.id)
         val userId = sessions.requireFreshSession().userId

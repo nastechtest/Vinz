@@ -179,6 +179,8 @@ fun BackupGroup() {
     }
 }
 
+    CloudBackupGroup()
+
 /** On the welcome screen, for a fresh install coming from a backup. */
 @Composable
 fun WelcomeRestoreButton() {
