@@ -97,7 +97,7 @@ class AccountNavigationGuardTest {
         assertFalse(welcome.contains("R.string.sign_in_to_youtube_music"))
 
         val activity = read("MainActivity.kt")
-        assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.ACCOUNT) }"))
+        assertTrue(activity.contains("onSignIn = { navController.navigate(Routes.ACCOUNT + "?onboarding=true&signIn=true") }"))
     }
 
     @Test fun optionalYoutubePlaybackSessionRetainsItsWebViewCookieLifecycle() {
