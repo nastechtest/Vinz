@@ -122,6 +122,7 @@
     <string name="cloud_backup_deleted">Cloud backup deleted.</string>
     <string name="cloud_backup_load_failed">Cloud backups could not be loaded. Check your connection and try again.</string>
     <string name="cloud_backup_failed">The cloud backup operation could not be completed. Try again.</string>
+    <string name="cloud_backup_account_changed">Account changed. Sign in again before retrying.</string>
     <string name="cloud_backup_retry">Retry</string>
     <string name="cloud_backup_cancel">Cancel</string>
     <string name="cloud_backup_preparing">Preparing cloud backup…</string>

@@ -138,7 +138,7 @@ fun CloudBackupGroup() {
                         val expectedUserId = session.userId
                         val requestId = UUID.randomUUID().toString()
                         runOperation(retryable = true) {
-                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { "Account changed. Sign in again before retrying." }
+                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { tr(R.string.cloud_backup_account_changed) }
                             val created = container.vinzCloudBackup.create(requestId)
                             if (container.vinzCloudAccount.session?.userId == expectedUserId) {
                                 records = listOf(created) + records
@@ -223,7 +223,7 @@ fun CloudBackupGroup() {
                     onClick = {
                         val expectedUserId = session.userId
                         runOperation(retryable = true) {
-                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { "Account changed. Sign in again before retrying." }
+                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { tr(R.string.cloud_backup_account_changed) }
                             val preview = container.vinzCloudBackup.preview(record)
                             if (container.vinzCloudAccount.session?.userId == expectedUserId) {
                                 selectedPreview = record to preview
@@ -303,7 +303,7 @@ fun CloudBackupGroup() {
                         selectedDelete = null
                         val expectedUserId = session?.userId
                         runOperation(retryable = true) {
-                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { "Account changed. Sign in again before retrying." }
+                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { tr(R.string.cloud_backup_account_changed) }
                             container.vinzCloudBackup.delete(record.id)
                             records = records.filterNot { it.id == record.id }
                             status = tr(R.string.cloud_backup_deleted)
