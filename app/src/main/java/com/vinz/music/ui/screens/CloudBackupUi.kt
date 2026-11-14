@@ -92,7 +92,7 @@ fun CloudBackupGroup() {
         }
     }
 
-    fun runOperation(action: suspend () -> Unit, retryable: Boolean = false) {
+    fun runOperation(retryable: Boolean = false, action: suspend () -> Unit) {
         if (busy || loading || session == null) return
         retryAction = action.takeIf { retryable }
         busy = true
@@ -195,9 +195,9 @@ fun CloudBackupGroup() {
                 )
                 if (!loading && !busy) VinzTextButton(onClick = {
                     val retry = retryAction
-                    if (retry != null) runOperation(retry, retryable = true) else refreshGeneration++
+                    if (retry != null) runOperation(retryable = true, action = retry) else refreshGeneration++
                 }) {
-                    Text(tr(R.string.cloud_backup_retry))
+                    Text(tr(if (retryAction != null) R.string.cloud_backup_retry else R.string.cloud_backup_refresh))
                 }
             }
             status?.let {

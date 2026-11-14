@@ -346,7 +346,13 @@ async function uploadBackup(request, env, config, auth, requestId, ctx) {
     // A parallel request with this same id may have committed first. Return its row only
     // when every immutable field matches; otherwise keep the conflict opaque to the caller.
     const raced = await findBackupRecord(config, auth.authorization, backupId);
-    if (raced) return replayBackup(env, raced, expected, requestId);
+    if (raced) {
+      if (backupMatches(raced, expected)) return replayBackup(env, raced, expected, requestId);
+      // A concurrent request with different bytes won this UUID. Remove only our distinct
+      // hash-qualified object; never delete the winner's object path.
+      if (raced.object_path !== objectPath) await env.BACKUPS_BUCKET.delete(objectPath).catch(() => undefined);
+      return json({ error: "backup_request_conflict", request_id: requestId }, 409);
+    }
     await env.BACKUPS_BUCKET.delete(objectPath).catch(() => undefined);
     recordApiError(env, ctx, "/v1/backups", "backup_metadata_write_failed", 502);
     return json({ error: "backup_metadata_write_failed", request_id: requestId }, 502);
