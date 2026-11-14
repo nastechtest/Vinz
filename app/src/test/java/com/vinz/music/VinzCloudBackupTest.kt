@@ -48,12 +48,14 @@ class VinzCloudBackupTest {
 
     @Test fun uploadUsesTheAuthenticatedWorkerAndExcludesCredentialsAndAudio() = runBlocking {
         val digest = sha256(archive.bytes)
-        server.enqueue(jsonResponse(201, uploadJson(digest)))
+        val requestId = "33333333-3333-4333-8333-333333333333"
+        server.enqueue(jsonResponse(201, uploadJson(digest, requestId)))
 
-        val record = service().create()
+        val record = service().create(requestId)
         val request = server.takeRequest()
 
         assertEquals("PUT", request.method)
+        assertEquals(requestId, request.headers["X-Vinz-Request-Id"])
         assertEquals("Bearer old-access-token", request.headers["Authorization"])
         assertEquals("full", request.headers["X-Vinz-Backup-Scope"])
         assertEquals("2", request.headers["X-Vinz-Format-Version"])
@@ -68,14 +70,50 @@ class VinzCloudBackupTest {
 
     @Test fun a401RefreshesTheSessionAndRetriesOnce() = runBlocking {
         val digest = sha256(archive.bytes)
+        val requestId = "44444444-4444-4444-8444-444444444444"
         server.enqueue(jsonResponse(401, """{"error":"unauthorized"}"""))
-        server.enqueue(jsonResponse(201, uploadJson(digest)))
+        server.enqueue(jsonResponse(201, uploadJson(digest, requestId)))
 
-        service().create()
+        service().create(requestId)
 
-        assertEquals("Bearer old-access-token", server.takeRequest().headers["Authorization"])
-        assertEquals("Bearer rotated-access-token", server.takeRequest().headers["Authorization"])
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("Bearer old-access-token", first.headers["Authorization"])
+        assertEquals("Bearer rotated-access-token", second.headers["Authorization"])
+        assertEquals(requestId, first.headers["X-Vinz-Request-Id"])
+        assertEquals(requestId, second.headers["X-Vinz-Request-Id"])
         assertEquals(1, sessions.refreshCalls)
+    }
+
+    @Test fun failedUploadCanBeRetriedWithTheSameArchiveAndRequestId() = runBlocking {
+        val digest = sha256(archive.bytes)
+        val requestId = "55555555-5555-4555-8555-555555555555"
+        server.enqueue(jsonResponse(503, """{"error":"temporary_unavailable"}"""))
+        server.enqueue(jsonResponse(201, uploadJson(digest, requestId)))
+
+        val cloudBackup = service()
+        try {
+            cloudBackup.create(requestId)
+            throw AssertionError("The first upload should fail.")
+        } catch (expected: CloudBackupException) {
+            // The exact archive is retained privately for an idempotent retry.
+        }
+        cloudBackup.create(requestId)
+
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals(requestId, first.headers["X-Vinz-Request-Id"])
+        assertEquals(requestId, second.headers["X-Vinz-Request-Id"])
+        assertEquals(first.body?.toByteArray()?.toList(), second.body?.toByteArray()?.toList())
+        assertEquals(1, archive.exportCalls)
+        assertTrue(cache.listFiles().orEmpty().none { it.name.startsWith("vinz-cloud-backup-") })
+    }
+
+    @Test fun invalidUploadRequestIdIsRejectedBeforeNetworkAccess() {
+        assertThrows(CloudBackupException::class.java) {
+            runBlocking { service().create("not-a-uuid") }
+        }
+        assertEquals(0, server.requestCount)
     }
 
     @Test fun backupsAreListedFromTheAuthenticatedWorker() = runBlocking {
@@ -159,8 +197,11 @@ class VinzCloudBackupTest {
         createdAt = "2026-11-13T10:00:00Z",
     )
 
-    private fun uploadJson(digest: String): String =
-        """{"backup":{"id":"11111111-1111-4111-8111-111111111111","byte_size":3,"sha256":"$digest","format_version":2,"app_version":"1.8.4","created_at":"2026-11-13T10:00:00Z"}}"""
+    private fun uploadJson(
+        digest: String,
+        id: String = "11111111-1111-4111-8111-111111111111",
+    ): String =
+        """{"backup":{"id":"$id","byte_size":3,"sha256":"$digest","format_version":2,"app_version":"1.8.4","created_at":"2026-11-13T10:00:00Z"}}"""
 
     private fun jsonResponse(code: Int, body: String): MockResponse =
         MockResponse.Builder()
@@ -200,6 +241,7 @@ class VinzCloudBackupTest {
         override val formatVersion = 2
         var bytes = byteArrayOf(1, 2, 3)
         var exportedParts: Set<BackupPart> = emptySet()
+        var exportCalls = 0
         var preview = BackupPreview(
             formatVersion = 2,
             appVersion = "1.8.4",
@@ -210,6 +252,7 @@ class VinzCloudBackupTest {
         var restored = false
 
         override suspend fun export(file: File, parts: Set<BackupPart>) {
+            exportCalls++
             exportedParts = parts
             file.writeBytes(bytes)
         }

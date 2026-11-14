@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import java.util.UUID
 
 private fun cloudBackupSize(bytes: Long): String =
     tr(R.string.cloud_backup_size_mb, bytes / (1024.0 * 1024.0))
@@ -60,6 +61,7 @@ fun CloudBackupGroup() {
     var selectedPreview by remember { mutableStateOf<Pair<CloudBackupRecord, com.vinz.music.data.BackupPreview>?>(null) }
     var selectedDelete by remember { mutableStateOf<CloudBackupRecord?>(null) }
     var activeJob by remember { mutableStateOf<Job?>(null) }
+    var retryAction by remember { mutableStateOf<(suspend () -> Unit)?>(null) }
     var refreshGeneration by remember { mutableStateOf(0) }
 
     LaunchedEffect(session?.userId) {
@@ -67,6 +69,7 @@ fun CloudBackupGroup() {
         records = emptyList()
         selectedPreview = null
         selectedDelete = null
+        retryAction = null
         error = null
         status = null
     }
@@ -89,19 +92,23 @@ fun CloudBackupGroup() {
         }
     }
 
-    fun runOperation(action: suspend () -> Unit) {
+    fun runOperation(action: suspend () -> Unit, retryable: Boolean = false) {
         if (busy || loading || session == null) return
+        retryAction = action.takeIf { retryable }
         busy = true
         error = null
         status = null
         activeJob = scope.launch {
+            var succeeded = false
             try {
                 action()
+                succeeded = true
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
                 error = failure.message?.takeIf { it.isNotBlank() } ?: tr(R.string.cloud_backup_failed)
             } finally {
+                if (succeeded) retryAction = null
                 busy = false
                 activeJob = null
             }
@@ -129,8 +136,10 @@ fun CloudBackupGroup() {
                 VinzButton(
                     onClick = {
                         val expectedUserId = session.userId
-                        runOperation {
-                            val created = container.vinzCloudBackup.create()
+                        val requestId = UUID.randomUUID().toString()
+                        runOperation(retryable = true) {
+                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { "Account changed. Sign in again before retrying." }
+                            val created = container.vinzCloudBackup.create(requestId)
                             if (container.vinzCloudAccount.session?.userId == expectedUserId) {
                                 records = listOf(created) + records
                                 status = tr(R.string.cloud_backup_created)
@@ -141,7 +150,7 @@ fun CloudBackupGroup() {
                     enabled = !busy && !loading,
                 ) { Text(tr(R.string.cloud_backup_create)) }
                 VinzTextButton(
-                    onClick = { refreshGeneration++ },
+                    onClick = { retryAction = null; refreshGeneration++ },
                     enabled = !busy && !loading,
                 ) { Text(tr(R.string.cloud_backup_refresh)) }
             }
@@ -184,7 +193,10 @@ fun CloudBackupGroup() {
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                if (!loading && !busy) VinzTextButton(onClick = { refreshGeneration++ }) {
+                if (!loading && !busy) VinzTextButton(onClick = {
+                    val retry = retryAction
+                    if (retry != null) runOperation(retry, retryable = true) else refreshGeneration++
+                }) {
                     Text(tr(R.string.cloud_backup_retry))
                 }
             }
@@ -209,8 +221,9 @@ fun CloudBackupGroup() {
                     title = cloudBackupDate(record.createdAt),
                     subtitle = tr(R.string.cloud_backup_item_summary, cloudBackupSize(record.byteSize), record.appVersion),
                     onClick = {
-                        runOperation {
-                            val expectedUserId = session.userId
+                        val expectedUserId = session.userId
+                        runOperation(retryable = true) {
+                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { "Account changed. Sign in again before retrying." }
                             val preview = container.vinzCloudBackup.preview(record)
                             if (container.vinzCloudAccount.session?.userId == expectedUserId) {
                                 selectedPreview = record to preview
@@ -288,7 +301,9 @@ fun CloudBackupGroup() {
                 VinzButton(
                     onClick = {
                         selectedDelete = null
-                        runOperation {
+                        val expectedUserId = session?.userId
+                        runOperation(retryable = true) {
+                            check(container.vinzCloudAccount.session?.userId == expectedUserId) { "Account changed. Sign in again before retrying." }
                             container.vinzCloudBackup.delete(record.id)
                             records = records.filterNot { it.id == record.id }
                             status = tr(R.string.cloud_backup_deleted)

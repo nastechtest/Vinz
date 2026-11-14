@@ -40,8 +40,9 @@ This is the single agreed development roadmap for the Android repository `nastec
 
 ### Phase 4 — Cloud backup and restore
 - [x] Existing private `vinz-cloud-backups` bucket and `vinz_backups` metadata foundation are present; local backup/restore must remain unchanged.
-- [ ] Implement signed-in cloud backup/restore, below-50-MB lightweight rule, excluded-file disclosure, restore preview, checksum/version validation, progress/cancel/retry and conflict handling.
-- [ ] Verify round-trip, corruption, offline and storage-policy failures.
+- [x] Android cloud backup client/service and Settings UI: authenticated Worker upload/list/download/preview/restore/delete, 50 MiB limit, exclusion of provider credentials/downloaded audio, SHA-256 and format/app-version checks, restore preview, progress and cancellation. Existing local backup/restore remains unchanged.
+- [x] Safe upload retry: the Android client retains the exact app-private archive for up to 24 hours and reuses one UUID request key; the Worker uses that key as the owner-scoped metadata ID, verifies R2 object metadata on replay and rejects the same key with different archive content.
+- [ ] Complete real archive export/download/inspect/restore round-trip and isolated Supabase/R2 contract tests; corruption, offline and storage-policy failure cases must also pass.
 
 ### Phase 5 — Vinz direct song sharing and deferred install
 - [x] Existing share-link metadata table is present; this is not yet the finished Android share experience.
@@ -380,3 +381,16 @@ This is the single agreed development roadmap for the Android repository `nastec
 - The repository's verified-email Worker gate is present in source but not deployed. The repository-only Supabase verified-email/username/avatar/public-profile migrations remain unapplied; live migration history still ends at `20261108082934`. Production backup/profile rollout therefore remains blocked on explicit approval for migrations and Worker deployment/provider configuration.
 - No production database, Storage/R2 object, Cloudflare Worker, Auth setting, credential, deployment, release, main ref, merge or rebase was changed.
 - Next: validate this test-runner correction; then finish remaining profile/settings and account identity/session work, validate cloud-backup round-trip against an isolated test stack, and proceed to canonical song sharing/deferred install followed by cloud-coordinated Listen Together. Community/discovery remains last.
+
+
+## Latest implementation — 2026-11-14 — idempotent cloud-backup retry
+
+- Inspected the latest feature head `188668783aa6ac03efb643e232f0f820fe6bb001`, its Android CI run, existing backup client/Worker, Supabase migration history and security advisor before changing code.
+- Android cloud-backup create now accepts a UUID request key. It writes the archive to a temporary file and renames it after export completes, keeps the exact app-private ZIP after an ambiguous/network failure, and retries the same bytes with the same key. Pending upload files are removed after success or after 24 hours; malformed archives and size/version violations are deleted instead of retained.
+- CloudBackup Settings now retains a retry action for upload, preview and delete. Retrying an upload reuses its stable request ID and pending archive. Restore is deliberately not blindly retried because a failure during local apply may have partially changed user data; the safe action remains refresh/re-preview.
+- Cloudflare Worker upload now accepts `X-Vinz-Request-Id`, validates UUID syntax, scopes the key to the authenticated user, writes a deterministic hash/version-qualified R2 object path, inserts the same UUID into the existing metadata primary key, and returns the existing record for an exact replay. Reuse with different bytes/metadata returns 409. CORS advertises the new request header.
+- Added Android tests for stable request IDs, 401 retry, same-archive retry after a transient 503, and invalid request-key rejection. Added Worker tests for successful replay without duplicate R2/metadata writes and conflicting content under a reused key.
+- No new database schema is required: the existing `vinz_backups.id` UUID primary key and owner RLS are reused. No Supabase migration, Cloudflare deployment, R2 mutation, secret read/rotation, merge or release was performed.
+- Remaining Phase 4 validation: exercise the production `Backup` archive adapter (not only the fake test archive) through a real export/download/inspect/restore round-trip in an isolated test environment, and test offline/corrupt-object/storage-policy failure cases. The live Supabase verified-email policies and username-RPC hardening remain unapplied; the Security Advisor still flags the old authenticated SECURITY DEFINER username RPC and disabled leaked-password protection.
+- The previous feature head `188668783aa6ac03efb643e232f0f820fe6bb001` passed all four Android PR-check jobs in [run 43484770075](https://github.com/nastechtest/Vinz/actions/runs/43484770075). Its verified APK artifact was `Vinz-feature-695.apk` (artifact ID `14067622472`); it predates this retry increment. New Android and platform checks are required for the current increment.
+- PR #37 was merged/closed on 2026-11-07 and cannot be updated as an open draft. This implementation will be recorded in its existing conversation only. Existing PR #62 already points to the same branch; no PR #62 metadata will be edited and no additional PR will be created.

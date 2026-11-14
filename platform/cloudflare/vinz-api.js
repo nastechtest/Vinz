@@ -32,7 +32,7 @@ function corsHeaders(origin) {
   return origin ? {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "access-control-allow-headers": "authorization, content-type, apikey, x-vinz-format-version, x-vinz-app-version, x-vinz-sha256, x-vinz-backup-scope",
+    "access-control-allow-headers": "authorization, content-type, apikey, x-vinz-request-id, x-vinz-format-version, x-vinz-app-version, x-vinz-sha256, x-vinz-backup-scope",
     "access-control-max-age": "86400",
     vary: "Origin",
   } : {};
@@ -237,10 +237,63 @@ async function readBoundedBody(request, maxBytes) {
   }
   return bytes;
 }
+async function findBackupRecord(config, authorization, backupId) {
+  const query = new URLSearchParams({
+    select: "id,object_path,byte_size,sha256,format_version,app_version,backup_scope,created_at",
+    id: `eq.${backupId}`,
+    limit: "1",
+  });
+  const response = await restRequest(config, authorization, `vinz_backups?${query}`);
+  if (!response.ok) throw new Error("backup_lookup_failed");
+  const rows = await response.json();
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+function backupSummary(record) {
+  return {
+    id: record.id,
+    byte_size: record.byte_size,
+    sha256: record.sha256,
+    format_version: record.format_version,
+    app_version: record.app_version || "",
+    backup_scope: record.backup_scope || "full",
+    created_at: record.created_at || "",
+  };
+}
+
+function backupMatches(record, expected) {
+  return Boolean(record &&
+    record.id === expected.id &&
+    record.object_path === expected.objectPath &&
+    Number(record.byte_size) === expected.byteSize &&
+    String(record.sha256 || "").toLowerCase() === expected.sha256 &&
+    Number(record.format_version) === expected.formatVersion &&
+    String(record.app_version || "") === expected.appVersion &&
+    String(record.backup_scope || "full") === expected.scope);
+}
+
+async function replayBackup(env, record, expected, requestId) {
+  if (!backupMatches(record, expected)) {
+    return json({ error: "backup_request_conflict", request_id: requestId }, 409);
+  }
+  const object = await env.BACKUPS_BUCKET.head(record.object_path);
+  if (!object || Number(object.size) !== expected.byteSize ||
+      String(object.customMetadata?.sha256 || "").toLowerCase() !== expected.sha256 ||
+      String(object.customMetadata?.formatVersion || "") !== String(expected.formatVersion)) {
+    return json({ error: "backup_object_missing", request_id: requestId }, 410);
+  }
+  return json({ backup: backupSummary(record), idempotent_replay: true }, 200);
+}
+
 async function uploadBackup(request, env, config, auth, requestId, ctx) {
   if (!env.BACKUPS_BUCKET) return json({ error: "backup_storage_not_configured", request_id: requestId }, 503);
   const length = Number(request.headers.get("content-length") || 0);
   if (length > MAX_BACKUP_BYTES) return json({ error: "backup_too_large", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 413);
+  const suppliedBackupId = request.headers.get("x-vinz-request-id");
+  const backupId = (suppliedBackupId || crypto.randomUUID()).toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(backupId)) {
+    return json({ error: "invalid_backup_request_id", request_id: requestId }, 400);
+  }
   const formatVersion = Number(request.headers.get("x-vinz-format-version"));
   const appVersion = request.headers.get("x-vinz-app-version") || "";
   const scope = request.headers.get("x-vinz-backup-scope") || "full";
@@ -250,18 +303,32 @@ async function uploadBackup(request, env, config, auth, requestId, ctx) {
   }
   const bytes = await readBoundedBody(request, MAX_BACKUP_BYTES);
   if (bytes === null) return json({ error: "backup_too_large", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 413);
-  if (bytes.byteLength === 0) return json({ error: "empty_backup", max_bytes: MAX_BACKUP_BYTES, request_id: requestId }, 400);
+  if (bytes.byteLength === 0) return json({ error: "empty_backup", request_id: requestId }, 400);
   const actualHash = hex(await crypto.subtle.digest("SHA-256", bytes));
   if (actualHash !== expectedHash) return json({ error: "backup_checksum_mismatch", request_id: requestId }, 422);
 
-  const id = crypto.randomUUID();
-  const objectPath = `${auth.user.id}/${id}.backup`;
+  // The request UUID is stable across client retries. Including the content hash and format
+  // in the object key prevents a conflicting retry from overwriting an already accepted blob.
+  const objectPath = `${auth.user.id}/${backupId}-${actualHash}-${formatVersion}.backup`;
+  const expected = {
+    id: backupId,
+    objectPath,
+    byteSize: bytes.byteLength,
+    sha256: actualHash,
+    formatVersion,
+    appVersion,
+    scope,
+  };
+  const existing = await findBackupRecord(config, auth.authorization, backupId);
+  if (existing) return replayBackup(env, existing, expected, requestId);
+
   await env.BACKUPS_BUCKET.put(objectPath, bytes, {
     httpMetadata: { contentType: "application/octet-stream" },
     customMetadata: { sha256: actualHash, formatVersion: String(formatVersion) },
   });
 
   const metadata = {
+    id: backupId,
     user_id: auth.user.id,
     object_path: objectPath,
     byte_size: bytes.byteLength,
@@ -276,20 +343,20 @@ async function uploadBackup(request, env, config, auth, requestId, ctx) {
     body: JSON.stringify(metadata),
   });
   if (!response.ok) {
+    // A parallel request with this same id may have committed first. Return its row only
+    // when every immutable field matches; otherwise keep the conflict opaque to the caller.
+    const raced = await findBackupRecord(config, auth.authorization, backupId);
+    if (raced) return replayBackup(env, raced, expected, requestId);
     await env.BACKUPS_BUCKET.delete(objectPath).catch(() => undefined);
     recordApiError(env, ctx, "/v1/backups", "backup_metadata_write_failed", 502);
     return json({ error: "backup_metadata_write_failed", request_id: requestId }, 502);
   }
   const rows = await response.json();
   const record = Array.isArray(rows) ? rows[0] : null;
-  return json({ backup: record ? {
-    id: record.id,
-    byte_size: record.byte_size,
-    sha256: record.sha256,
-    format_version: record.format_version,
-    app_version: record.app_version,
-    created_at: record.created_at,
-  } : { id, byte_size: bytes.byteLength, sha256: actualHash, format_version: formatVersion } }, 201);
+  return json({
+    backup: backupSummary(record || { ...metadata, created_at: "" }),
+    idempotent_replay: false,
+  }, 201);
 }
 
 async function listBackups(config, auth) {
@@ -347,7 +414,8 @@ async function deleteBackup(env, config, auth, backupId, requestId) {
   if (!lookup.ok) return json({ error: "backup_lookup_failed", request_id: requestId }, 502);
   const rows = await lookup.json();
   const record = Array.isArray(rows) ? rows[0] : null;
-  if (!record || !record.object_path.startsWith(`${auth.user.id}/`)) return json({ error: "backup_not_found", request_id: requestId }, 404);
+  if (!record) return json({ deleted: true, id: backupId, already_deleted: true }, 200);
+  if (!record.object_path.startsWith(`${auth.user.id}/`)) return json({ error: "backup_not_found", request_id: requestId }, 404);
   const removeQuery = new URLSearchParams({ id: `eq.${backupId}` });
   const removed = await restRequest(config, auth.authorization, `vinz_backups?${removeQuery}`, { method: "DELETE" });
   if (!removed.ok) return json({ error: "backup_delete_failed", request_id: requestId }, 502);

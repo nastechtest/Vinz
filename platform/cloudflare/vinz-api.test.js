@@ -300,6 +300,7 @@ test("backup upload accepts existing non-full backup scopes", async (t) => {
         "x-vinz-format-version": "1",
         "x-vinz-app-version": "1.0",
         "x-vinz-sha256": sha256,
+        "x-vinz-request-id": "66666666-6666-4666-8666-666666666666",
         "x-vinz-backup-scope": "library",
       },
       body: bytes,
@@ -308,6 +309,134 @@ test("backup upload accepts existing non-full backup scopes", async (t) => {
   );
   assert.equal(response.status, 201);
   assert.equal((await response.json()).backup.format_version, 1);
+});
+
+test("backup upload is idempotent for the same owner, request ID and archive", async (t) => {
+  const bytes = new Uint8Array([4, 5, 6, 7]);
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const backupId = "77777777-7777-4777-8777-777777777777";
+  const userId = VERIFIED_USER.id;
+  let record = null;
+  let writes = 0;
+  let metadataInserts = 0;
+  const objects = new Map();
+  t.mock.method(globalThis, "fetch", async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return new Response(JSON.stringify(VERIFIED_USER), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.pathname.endsWith("/rest/v1/vinz_backups") && (init.method || "GET") === "GET") {
+      const requestedId = (url.searchParams.get("id") || "").replace(/^eq\./, "");
+      return new Response(JSON.stringify(record?.id === requestedId ? [record] : []), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.pathname.endsWith("/rest/v1/vinz_backups") && init.method === "POST") {
+      metadataInserts++;
+      const inputRecord = JSON.parse(init.body);
+      record = { ...inputRecord, created_at: "2026-11-14T14:00:00Z" };
+      return new Response(JSON.stringify([record]), {
+        status: 201, headers: { "content-type": "application/json" },
+      });
+    }
+    throw new Error("Unexpected upstream request: " + url.pathname);
+  });
+  const bucket = {
+    put: async (path, value, options) => {
+      writes++;
+      objects.set(path, {
+        size: value.byteLength,
+        customMetadata: options.customMetadata,
+      });
+    },
+    head: async (path) => objects.get(path) || null,
+    delete: async (path) => { objects.delete(path); },
+  };
+  const upload = () => handleRequest(new Request("https://api.vinz.example/v1/backups", {
+    method: "PUT",
+    headers: {
+      authorization: "Bearer test-token",
+      "x-vinz-request-id": backupId,
+      "x-vinz-format-version": "2",
+      "x-vinz-app-version": "1.8.4",
+      "x-vinz-backup-scope": "full",
+      "x-vinz-sha256": digest,
+    },
+    body: bytes,
+  }), { ...SUPABASE_ENV, BACKUPS_BUCKET: bucket });
+
+  const first = await upload();
+  const replay = await upload();
+  assert.equal(first.status, 201);
+  assert.equal(replay.status, 200);
+  assert.equal((await first.json()).backup.id, backupId);
+  const replayBody = await replay.json();
+  assert.equal(replayBody.backup.id, backupId);
+  assert.equal(replayBody.idempotent_replay, true);
+  assert.equal(writes, 1);
+  assert.equal(metadataInserts, 1);
+  assert.equal(record.user_id, userId);
+});
+
+test("backup upload rejects an idempotency key reused for different bytes", async (t) => {
+  const original = new Uint8Array([1, 2, 3]);
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", original))]
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const backupId = "88888888-8888-4888-8888-888888888888";
+  let record = null;
+  let writes = 0;
+  const objects = new Map();
+  t.mock.method(globalThis, "fetch", async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return new Response(JSON.stringify(VERIFIED_USER), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.pathname.endsWith("/rest/v1/vinz_backups") && (init.method || "GET") === "GET") {
+      return new Response(JSON.stringify(record ? [record] : []), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.pathname.endsWith("/rest/v1/vinz_backups") && init.method === "POST") {
+      record = { ...JSON.parse(init.body), created_at: "2026-11-14T14:00:00Z" };
+      return new Response(JSON.stringify([record]), { status: 201 });
+    }
+    throw new Error("Unexpected upstream request: " + url.pathname);
+  });
+  const bucket = {
+    put: async (path, value, options) => {
+      writes++;
+      objects.set(path, { size: value.byteLength, customMetadata: options.customMetadata });
+    },
+    head: async (path) => objects.get(path) || null,
+    delete: async (path) => { objects.delete(path); },
+  };
+  const upload = (body, hash) => handleRequest(new Request("https://api.vinz.example/v1/backups", {
+    method: "PUT",
+    headers: {
+      authorization: "Bearer test-token",
+      "x-vinz-request-id": backupId,
+      "x-vinz-format-version": "2",
+      "x-vinz-app-version": "1.8.4",
+      "x-vinz-backup-scope": "full",
+      "x-vinz-sha256": hash,
+    },
+    body,
+  }), { ...SUPABASE_ENV, BACKUPS_BUCKET: bucket });
+
+  const first = await upload(original, digest);
+  const changed = new Uint8Array([9, 9, 9]);
+  const changedHash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", changed))]
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const conflict = await upload(changed, changedHash);
+  assert.equal(first.status, 201);
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json()).error, "backup_request_conflict");
+  assert.equal(writes, 1);
 });
 
 test("share creation rejects arbitrary external redirect hosts", async (t) => {

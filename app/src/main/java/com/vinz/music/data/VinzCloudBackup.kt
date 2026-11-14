@@ -113,23 +113,53 @@ class VinzCloudBackup(
         }
     }
 
-    suspend fun create(): CloudBackupRecord = operation.withLock {
-        val userId = sessions.requireFreshSession().userId
+    suspend fun create(requestId: String = UUID.randomUUID().toString()): CloudBackupRecord = operation.withLock {
+        val normalizedRequestId = requireUuid(requestId, "request ID")
+        val userId = requireUuid(sessions.requireFreshSession().userId, "account ID")
         cacheDir.mkdirs()
-        val file = File(cacheDir, "vinz-cloud-backup-" + UUID.randomUUID() + ".zip")
+        cleanupStalePendingUploads()
+        // Keep the exact archive bytes for a retry. A fresh export can contain a new timestamp,
+        // which would otherwise turn the same idempotency key into a conflicting request.
+        val file = File(cacheDir, "vinz-cloud-backup-$userId-$normalizedRequestId.zip")
+        var accepted = false
         try {
-            mutableProgress.value = CloudBackupProgress(CloudBackupPhase.PREPARING)
-            archive.export(file, CLOUD_PARTS)
-            val size = file.length()
-            if (size <= 0) throw CloudBackupException("The cloud backup is empty.")
-            if (size > maxBytes) throw CloudBackupException("This backup is larger than 50 MB. Use a local backup or remove large items.")
+            if (!file.exists()) {
+                mutableProgress.value = CloudBackupProgress(CloudBackupPhase.PREPARING)
+                val temporary = File(cacheDir, file.name + ".tmp")
+                temporary.delete()
+                try {
+                    archive.export(temporary, CLOUD_PARTS)
+                    if (!temporary.isFile || temporary.length() <= 0L || !temporary.renameTo(file)) {
+                        throw CloudBackupException("The cloud backup archive could not be prepared.")
+                    }
+                } catch (failure: Throwable) {
+                    temporary.delete()
+                    throw failure
+                }
+            }
 
-            val preview = archive.inspect(file)
-            validatePreview(preview)
+            val size = file.length()
+            if (size <= 0L) {
+                file.delete()
+                throw CloudBackupException("The cloud backup is empty.")
+            }
+            if (size > maxBytes) {
+                file.delete()
+                throw CloudBackupException("This backup is larger than 50 MB. Use a local backup or remove large items.")
+            }
+
+            val preview = try {
+                archive.inspect(file).also(::validatePreview)
+            } catch (failure: Throwable) {
+                file.delete()
+                throw failure
+            }
             if (preview.parts != CLOUD_PARTS) {
+                file.delete()
                 throw CloudBackupException("The cloud backup did not contain the expected settings, library and history.")
             }
             if (preview.formatVersion != archive.formatVersion) {
+                file.delete()
                 throw CloudBackupException("The cloud backup format changed while it was being prepared. Try again.")
             }
             val digest = sha256(file)
@@ -142,6 +172,7 @@ class VinzCloudBackup(
                     .url(baseUrl + "/v1/backups")
                     .header("Authorization", "Bearer " + session.accessToken)
                     .header("Accept", "application/json")
+                    .header("X-Vinz-Request-Id", normalizedRequestId)
                     .header("X-Vinz-Format-Version", archive.formatVersion.toString())
                     .header("X-Vinz-App-Version", BuildConfig.VERSION_NAME)
                     .header("X-Vinz-Backup-Scope", "full")
@@ -156,9 +187,11 @@ class VinzCloudBackup(
             if (record.byteSize != size || record.sha256 != digest || record.formatVersion != archive.formatVersion) {
                 throw CloudBackupException("Cloud backup storage returned mismatched metadata. The backup was not accepted.")
             }
+            accepted = true
             record
         } finally {
-            file.delete()
+            // A failed/ambiguous network response keeps the archive for a safe retry with the same key.
+            if (accepted) file.delete()
             mutableProgress.value = null
         }
     }
@@ -391,6 +424,23 @@ class VinzCloudBackup(
 
     private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
+    private fun requireUuid(value: String, label: String): String {
+        val normalized = runCatching { UUID.fromString(value).toString() }.getOrNull()
+        if (normalized == null || !normalized.equals(value, ignoreCase = true)) {
+            throw CloudBackupException("Cloud backup $label is invalid.")
+        }
+        return normalized
+    }
+
+    private fun cleanupStalePendingUploads() {
+        val cutoff = System.currentTimeMillis() - PENDING_UPLOAD_TTL_MILLIS
+        cacheDir.listFiles()?.filter {
+            it.isFile && it.name.startsWith(PENDING_UPLOAD_PREFIX)
+        }?.forEach { candidate ->
+            if (candidate.lastModified() < cutoff) candidate.delete()
+        }
+    }
+
     private fun requireValidId(id: String) {
         if (!UUID_PATTERN.matches(id)) throw CloudBackupException("Cloud backup ID is invalid.")
     }
@@ -421,6 +471,8 @@ class VinzCloudBackup(
 
     companion object {
         const val MAX_BACKUP_BYTES = 50L * 1024L * 1024L
+        private const val PENDING_UPLOAD_PREFIX = "vinz-cloud-backup-"
+        private const val PENDING_UPLOAD_TTL_MILLIS = 24L * 60L * 60L * 1000L
         private val UUID_PATTERN = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
         private val SHA256_PATTERN = Regex("^[a-f0-9]{64}$")
         private val BACKUP_SCOPES = setOf("full", "library", "settings", "history")
