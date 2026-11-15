@@ -32,4 +32,33 @@ class BackupTest {
         assertNull(Fixture.container.backup.partsOf(zip(null)))
         assertNull(Fixture.container.backup.partsOf(zip("""{"format":2,"parts":["LIBRARY"]}""")))
     }
+
+    @Test fun cloudBackupArchiveRoundTripsThroughProductionAdapter() = runBlocking {
+        val staging = File(Fixture.context.filesDir, "restore_pending")
+        val archive = File(Fixture.context.cacheDir, "cloud-backup-round-trip-${System.nanoTime()}.zip")
+        var restartCount = 0
+        val backup = Backup(Fixture.container) { restartCount++ }
+        val parts = setOf(BackupPart.SETTINGS, BackupPart.LIBRARY, BackupPart.HISTORY)
+        staging.deleteRecursively()
+
+        try {
+            backup.export(archive, parts)
+
+            assertTrue("the production cloud archive should be created", archive.isFile && archive.length() > 0L)
+            val preview = backup.inspect(archive)
+            assertEquals(2, preview.formatVersion)
+            assertEquals(parts, preview.parts)
+            assertEquals(false, preview.withDownloads)
+
+            backup.restore(archive)
+
+            assertEquals("restore should reach the post-staging restart boundary", 1, restartCount)
+            assertTrue("the validated manifest must be staged before restart", File(staging, "vinz-backup.json").isFile)
+            assertFalse("the temporary cloud archive should be removed after staging", archive.exists())
+        } finally {
+            archive.delete()
+            staging.deleteRecursively()
+        }
+    }
+
 }

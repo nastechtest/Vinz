@@ -56,7 +56,10 @@ private data class BackupManifest(
  * opened those files, then Vinz restarts. Nothing leaves the phone except to where the listener saves it.
  * Since 1.7.8 the listener picks the [BackupPart]s; a restore replaces only those and leaves the rest.
  */
-class Backup(private val c: AppContainer) : CloudBackupArchive {
+class Backup(
+    private val c: AppContainer,
+    private val restartAfterRestore: (() -> Unit)? = null,
+) : CloudBackupArchive {
     override val formatVersion: Int get() = FORMAT
     private val ctx: Context get() = c.app
     private val data: File get() = ctx.filesDir.parentFile!!
@@ -249,6 +252,10 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
     }
 
     private fun restart() {
+        restartAfterRestore?.let { callback ->
+            callback()
+            return
+        }
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
         ctx.startActivity(Intent.makeRestartActivityTask(launch.component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         Runtime.getRuntime().exit(0)
