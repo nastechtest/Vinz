@@ -149,22 +149,19 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
         }.getOrNull()
     }
 
-    /** Inspects a cloud archive before it is offered for restore. */
+    /** Inspects the complete cloud ZIP before it is offered for restore. */
     override suspend fun inspect(file: File): BackupPreview = withContext(Dispatchers.IO) {
-        var manifest: BackupManifest? = null
-        ZipInputStream(file.inputStream().buffered()).use { zip ->
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val entry = zip.nextEntry ?: break
-                if (entry.name == MANIFEST) {
-                    manifest = runCatching {
-                        InnerTube.json.decodeFromString(BackupManifest.serializer(), zip.readBytes().decodeToString())
-                    }.getOrNull()
-                    break
-                }
-            }
+        val coroutineContext = currentCoroutineContext()
+        val manifestBytes = try {
+            CloudBackupZipSafety.readManifest(file, checkActive = { coroutineContext.ensureActive() })
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            error(tr(R.string.that_file_isn_t_a_vinz_2))
         }
-        val value = manifest ?: error(tr(R.string.that_file_isn_t_a_vinz_2))
+        val value = runCatching {
+            InnerTube.json.decodeFromString(BackupManifest.serializer(), manifestBytes.decodeToString())
+        }.getOrNull() ?: error(tr(R.string.that_file_isn_t_a_vinz_2))
         if (!fromVinz(value) || value.bring) error(tr(R.string.that_file_isn_t_a_vinz_2))
         if (value.format > FORMAT) error(tr(R.string.that_backup_is_from_a_newer))
         BackupPreview(value.format, value.versionName, value.createdAt, value.partSet(), value.withDownloads)
@@ -183,15 +180,27 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
      */
     suspend fun restore(uri: Uri) = withContext(Dispatchers.IO) {
         val input = ctx.contentResolver.openInputStream(uri) ?: error(tr(R.string.couldn_t_open_that_file))
-        restoreFrom(input) {}
+        restoreFrom(input, {})
     }
 
-    /** Restores a verified cloud archive and removes its temporary download before restarting. */
+    /** Restores a verified cloud archive with a second bounded ZIP validation before staging. */
     override suspend fun restore(file: File) = withContext(Dispatchers.IO) {
-        restoreFrom(file.inputStream()) { file.delete() }
+        val coroutineContext = currentCoroutineContext()
+        CloudBackupZipSafety.readManifest(file, checkActive = { coroutineContext.ensureActive() })
+        restoreFrom(file.inputStream(), { file.delete() }, CloudBackupZipSafety.MAX_UNCOMPRESSED_BYTES)
     }
 
-    private suspend fun restoreFrom(input: InputStream, afterStaging: () -> Unit) {
+    private suspend fun restoreFrom(
+        input: InputStream,
+        afterStaging: () -> Unit,
+        maxUncompressedBytes: Long? = null,
+    ) {
+        var uncompressedBytes = 0L
+        fun countUncompressed(bytes: Int) {
+            if (maxUncompressedBytes == null) return
+            uncompressedBytes += bytes.toLong()
+            if (uncompressedBytes > maxUncompressedBytes) error(tr(R.string.that_file_isn_t_a_vinz_2))
+        }
         val staging = File(ctx.filesDir, STAGING)
         staging.deleteRecursively()
         staging.mkdirs()
@@ -204,8 +213,10 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
                     if (entry.isDirectory) continue
                     val name = entry.name
                     if (name == MANIFEST) {
+                        val manifestBytes = zip.readBytes()
+                        countUncompressed(manifestBytes.size)
                         manifest = runCatching {
-                            InnerTube.json.decodeFromString(BackupManifest.serializer(), zip.readBytes().decodeToString())
+                            InnerTube.json.decodeFromString(BackupManifest.serializer(), manifestBytes.decodeToString())
                         }.getOrNull()
                         continue
                     }
@@ -219,6 +230,7 @@ class Backup(private val c: AppContainer) : CloudBackupArchive {
                             currentCoroutineContext().ensureActive()
                             val count = zip.read(buffer)
                             if (count < 0) break
+                            countUncompressed(count)
                             output.write(buffer, 0, count)
                         }
                     }
