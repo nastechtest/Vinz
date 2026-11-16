@@ -311,6 +311,45 @@ test("backup upload accepts existing non-full backup scopes", async (t) => {
   assert.equal((await response.json()).backup.format_version, 1);
 });
 
+test("backup upload rejects a declared archive above 50 MiB before touching R2", async (t) => {
+  let authCalls = 0;
+  let objectWrites = 0;
+  t.mock.method(globalThis, "fetch", async (input) => {
+    authCalls++;
+    assert.match(String(input), /\\/auth\\/v1\\/user$/);
+    return new Response(JSON.stringify(VERIFIED_USER), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups", {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-length": String(50 * 1024 * 1024 + 1),
+        "x-vinz-request-id": "99999999-9999-4999-8999-999999999999",
+        "x-vinz-format-version": "2",
+        "x-vinz-app-version": "1.8.4",
+        "x-vinz-backup-scope": "full",
+        "x-vinz-sha256": "a".repeat(64),
+      },
+      body: new Uint8Array([1, 2, 3]),
+    }),
+    {
+      ...SUPABASE_ENV,
+      BACKUPS_BUCKET: { put: async () => { objectWrites++; } },
+    },
+  );
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), {
+    error: "backup_too_large",
+    max_bytes: 50 * 1024 * 1024,
+    request_id: "99999999-9999-4999-8999-999999999999",
+  });
+  assert.equal(authCalls, 1);
+  assert.equal(objectWrites, 0);
+});
+
 test("backup upload is idempotent for the same owner, request ID and archive", async (t) => {
   const bytes = new Uint8Array([4, 5, 6, 7]);
   const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
