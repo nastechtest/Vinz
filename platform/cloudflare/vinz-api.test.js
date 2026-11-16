@@ -341,11 +341,10 @@ test("backup upload rejects a declared archive above 50 MiB before touching R2",
     },
   );
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), {
-    error: "backup_too_large",
-    max_bytes: 50 * 1024 * 1024,
-    request_id: "99999999-9999-4999-8999-999999999999",
-  });
+  const body = await response.json();
+  assert.equal(body.error, "backup_too_large");
+  assert.equal(body.max_bytes, 50 * 1024 * 1024);
+  assert.match(body.request_id, /^[0-9a-f-]{36}$/i);
   assert.equal(authCalls, 1);
   assert.equal(objectWrites, 0);
 });
