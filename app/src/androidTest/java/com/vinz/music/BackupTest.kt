@@ -1,5 +1,7 @@
 package com.vinz.music
 
+import com.vinz.music.data.Backup
+import com.vinz.music.data.BackupPart
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
