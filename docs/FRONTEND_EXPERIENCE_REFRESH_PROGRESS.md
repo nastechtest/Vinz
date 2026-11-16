@@ -467,3 +467,12 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Read-only Cloudflare inventory still shows Workers `api`, `backup`, `home`, `share`, `staging`, and `vinz`; no Durable Object namespaces were returned. No Worker, binding, R2 object, secret or deployment was changed.
 - PR #37 remains merged/closed. Existing PR #62 already points at this feature branch; no PR was created and no PR #62 metadata was changed. Only the required feature branch was advanced.
 - Next: validate the new KVM-enabled API 35 instrumentation run. Then finish isolated Worker/R2 backup integration and failure-path tests, followed by the remaining account/profile/settings work, canonical song sharing/deferred installation, and cloud-coordinated Listen Together. Community/discovery remains last.
+
+
+## CI follow-up — 2026-11-16 — apply KVM mode to the live device node
+
+- The first KVM-permission correction was exercised by [PR checks run 43929552212](https://github.com/nastechtest/Vinz/actions/runs/43929552212). Workflow/actionlint, wrapper validation, and the platform migration/Worker test jobs passed. The emulator setup step still failed before emulator launch: the KVM device existed, but the udev rule/reload alone did not make it readable and writable by the runner process.
+- Added an explicit `sudo chmod 0666 /dev/kvm` after the udev rule/reload, plus a `stat` diagnostic and read/write assertions. This applies permissions to the already-created device node for this isolated CI job; it does not alter repository or production resources. The emulator remains configured with `disable-linux-hw-accel: false`, so a runner without usable KVM will fail immediately instead of silently running the API 35 x86_64 guest in slow software emulation.
+- Workflow fix commit: `d625059723a656108b5b17fcc9b03015c0c4460f`. A fresh PR-check run must validate the KVM permission step and actual emulator round-trip; no instrumentation pass is claimed yet.
+- The unit/build and Lint jobs in run 43929552212 were still in progress when this follow-up was made. The earlier run `43901250569` remains the verified APK source for commit `069e48a572f45b74562bcb2d8a34612e29eb9d7a`; it must not be represented as containing the later workflow-only fixes.
+- Next: validate the explicit KVM mode change, confirm the production `Backup` adapter round-trip on API 35, and continue isolated backup Worker/R2 contract tests. No production Supabase/Cloudflare mutation, deployment, release, merge, credential rotation, or `main` push was performed.
