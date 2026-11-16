@@ -493,3 +493,11 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Corrected the test to assert HTTP 413, the exact 52,428,800-byte limit, a valid generated UUID trace ID, one authentication lookup, and zero R2 writes. No production Worker behavior or limits were changed.
 - Corrected test commit: `286ba9fc5da8ef95368e2625acfcab6ae2e813b6`. A new platform-check run is required to validate the corrected assertion; no Worker test pass is claimed yet.
 - The KVM mode follow-up commit `d625059723a656108b5b17fcc9b03015c0c4460f` remains queued for PR-check validation because the previous Android run was still holding the workflow concurrency group. The first KVM fix was insufficient; the explicit mode change has not yet been validated.
+
+
+## Worker backup size-boundary validation — 2026-11-16
+
+- Corrected Worker regression test passed in [platform checks run 43930119763](https://github.com/nastechtest/Vinz/actions/runs/43930119763) on commit `286ba9fc5da8ef95368e2625acfcab6ae2e813b6`: Cloudflare Worker syntax, Wrangler binding contracts, the full Node API test suite, Supabase migration integrity, and workflow/YAML hygiene all passed.
+- The new test confirms that a declared request larger than 50 MiB is rejected with HTTP 413 and the exact 52,428,800-byte limit before any R2 write; the API returns its generated request-trace UUID separately from the backup idempotency UUID. The first assertion failure was in the test's trace-ID expectation and was corrected without changing production behavior.
+- This validates the Worker size-boundary test only. It does not validate a live R2 upload/restore or production storage policy; those remain isolated integration work. No Cloudflare deployment, R2 object mutation, Supabase migration or production data change occurred.
+- Android API 35 instrumentation remains pending. The explicit KVM device-mode fix is in `d625059723a656108b5b17fcc9b03015c0c4460f`; [PR checks run 43929751824](https://github.com/nastechtest/Vinz/actions/runs/43929751824) was still queued behind the earlier Android run when this update was written. No successful emulator round-trip is claimed.
