@@ -316,7 +316,7 @@ test("backup upload rejects a declared archive above 50 MiB before touching R2",
   let objectWrites = 0;
   t.mock.method(globalThis, "fetch", async (input) => {
     authCalls++;
-    assert.match(String(input), /\\/auth\\/v1\\/user$/);
+    assert.match(String(input), /\/auth\/v1\/user$/);
     return new Response(JSON.stringify(VERIFIED_USER), {
       status: 200, headers: { "content-type": "application/json" },
     });
