@@ -554,3 +554,8 @@ Supabase manual identity linking is a hosted Auth setting and is currently not c
 ### Post-review hardening — identity-link increment
 
 Before validation completed, the new identity test was corrected to use JUnit assertions (not Kotlin's JVM-assertion-dependent `assert`), the unlink path now fails closed if Supabase returns no remaining identity, and the Connections explanation now accurately distinguishes Google identity linking from YouTube Music cookie login.
+
+
+### Identity-link callback result correction
+
+The OAuth callback now returns a distinct `IdentityLinked` result for manual linking instead of presenting the existing account as newly signed in. The account callback displays a dedicated success message, while email sign-in/OTP flows reject this impossible result explicitly.
