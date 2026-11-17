@@ -4690,7 +4690,7 @@
     <string name="cloud_account_send_password_reset">Send password reset email</string>
     <string name="cloud_account_connected_services">CONNECTED SERVICES</string>
     <string name="cloud_account_connections_subtitle">Google sign-in and YouTube music import are separate permissions.</string>
-    <string name="cloud_account_connections_description">YouTube Music cookie sign-in remains a separate music-source feature. It does not sign you into Vinz. Native Google identity linking and YouTube Data API import require the Android OAuth callback and secure token-exchange flow; this screen does not pretend that those permissions are connected.</string>
+    <string name="cloud_account_connections_description">Google sign-in can be linked to your Vinz Account here. YouTube Music cookie sign-in remains a separate music-source feature and does not sign you into Vinz.</string>
     <string name="cloud_account_username_checking">Checking availability with Vinz…</string>
     <string name="cloud_account_username_available">Username available</string>
     <string name="cloud_account_username_unavailable">Username unavailable or reserved</string>
