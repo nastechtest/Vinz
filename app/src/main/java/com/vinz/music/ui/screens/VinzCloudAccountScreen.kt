@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import com.vinz.music.R
 import com.vinz.music.data.CloudAvatarImage
 import com.vinz.music.data.VinzCloudAccount
+import com.vinz.music.data.VinzLinkedIdentity
 import com.vinz.music.tr
 import com.vinz.music.ui.components.VinzButton
 import com.vinz.music.ui.components.VinzTextButton
@@ -128,6 +129,7 @@ private fun CloudAccountFormBody(
 ) {
     val focus = LocalFocusManager.current
     var confirmGlobalSignOut by remember(state.identity?.userId) { mutableStateOf(false) }
+    var identityToDisconnect by remember(state.identity?.userId) { mutableStateOf<VinzLinkedIdentity?>(null) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -144,7 +146,8 @@ private fun CloudAccountFormBody(
         }
     }
     LaunchedEffect(section, state.identity?.userId) {
-        if (section == "settings" && state.identity != null && !state.settingsReady) actions.loadSettings()
+        if (section == "settings" && state.identity != null && !state.settingsReady && !state.settingsLoadFailed) actions.loadSettings()
+        if (section == "connections" && state.identity != null && !state.identitiesReady && !state.identitiesLoadFailed) actions.loadIdentities()
     }
     val submitFromKeyboard: () -> Unit = {
         if (state.canSubmit) { focus.clearFocus(); actions.submit() }
@@ -369,10 +372,51 @@ private fun CloudAccountFormBody(
         }
         "connections" -> {
             Text(tr(R.string.cloud_account_connected_services), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(tr(R.string.cloud_account_connections_subtitle),
-                style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.cloud_account_connections_subtitle), style = MaterialTheme.typography.titleMedium)
             Text(tr(R.string.cloud_account_connections_description),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (state.identitiesLoadFailed) {
+                VinzButton(onClick = { actions.loadIdentities(force = true) },
+                    modifier = Modifier.fillMaxWidth().testTag("cloud-account-identities-retry"), enabled = !state.busy) {
+                    Text(tr(R.string.try_again))
+                }
+            } else if (!state.identitiesReady) {
+                if (!state.busy) CircularProgressIndicator(Modifier.testTag("cloud-account-identities-loading"))
+            } else {
+                Text(tr(R.string.cloud_account_identity_linked), style = MaterialTheme.typography.titleMedium)
+                if (state.linkedIdentities.isEmpty()) Text(tr(R.string.cloud_account_identity_none), style = MaterialTheme.typography.bodyMedium)
+                state.linkedIdentities.forEach { identity ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text(identity.provider.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleSmall)
+                        if (identity.email.isNotBlank()) Text(tr(R.string.connected_as, identity.email),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (state.linkedIdentities.size > 1) VinzTextButton(
+                            onClick = { identityToDisconnect = identity },
+                            modifier = Modifier.testTag("cloud-account-identity-disconnect-" + identity.provider),
+                            enabled = !state.busy,
+                        ) { Text(tr(R.string.disconnect)) }
+                    }
+                }
+                if (state.linkedIdentities.none { it.provider == "google" }) VinzButton(
+                    onClick = { actions.beginGoogleIdentityLink() },
+                    modifier = Modifier.fillMaxWidth().testTag("cloud-account-link-google"),
+                    enabled = !state.busy,
+                ) { Text(tr(R.string.cloud_account_identity_connect_google)) }
+            }
+            identityToDisconnect?.let { selected ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { identityToDisconnect = null },
+                    title = { Text(tr(R.string.cloud_account_identity_disconnect_title, selected.provider)) },
+                    text = { Text(tr(R.string.cloud_account_identity_disconnect_confirmation, selected.provider)) },
+                    confirmButton = {
+                        VinzTextButton(onClick = {
+                            identityToDisconnect = null
+                            actions.unlinkIdentity(selected.id)
+                        }, enabled = !state.busy && state.linkedIdentities.size > 1) { Text(tr(R.string.disconnect)) }
+                    },
+                    dismissButton = { VinzTextButton(onClick = { identityToDisconnect = null }) { Text(tr(R.string.cancel)) } },
+                )
+            }
         }
 
         "settings" -> {

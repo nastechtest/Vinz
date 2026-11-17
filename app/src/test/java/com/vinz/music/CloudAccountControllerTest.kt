@@ -2,6 +2,7 @@ package com.vinz.music
 
 import com.vinz.music.R
 import com.vinz.music.data.VinzCloudAccount
+import com.vinz.music.data.VinzLinkedIdentity
 import com.vinz.music.ui.screens.account.CloudAccountController
 import com.vinz.music.ui.screens.account.CloudAccountGateway
 import com.vinz.music.ui.screens.account.CloudAccountIdentity
@@ -76,6 +77,52 @@ class CloudAccountControllerTest {
         assertFalse(controller.state.value.busy)
         assertNull(controller.state.value.error)
         assertEquals("", controller.state.value.password)
+    }
+
+    @Test fun `connections load the current account identity projection`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.linkedIdentities = listOf(
+            VinzLinkedIdentity("11111111-1111-4111-8111-111111111111", "email", "user@example.test"),
+            VinzLinkedIdentity("22222222-2222-4222-8222-222222222222", "google", "google@example.test"),
+        )
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadIdentities()!!.join()
+        assertTrue(controller.state.value.identitiesReady)
+        assertFalse(controller.state.value.identitiesLoadFailed)
+        assertEquals(gateway.linkedIdentities, controller.state.value.linkedIdentities)
+    }
+
+    @Test fun `Google identity link opens only for the signed in account`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.identityLinkUrl = "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.beginGoogleIdentityLink()!!.join()
+        assertEquals(1, gateway.identityLinkCalls)
+        assertEquals(gateway.identityLinkUrl, controller.state.value.oauthUrl)
+    }
+
+    @Test fun `unlink updates the connection list after server confirmation`() = runBlocking {
+        gateway.identityValue = identity()
+        val email = VinzLinkedIdentity("11111111-1111-4111-8111-111111111111", "email", "user@example.test")
+        val google = VinzLinkedIdentity("22222222-2222-4222-8222-222222222222", "google", "google@example.test")
+        gateway.linkedIdentities = listOf(email, google)
+        gateway.onIdentityUnlink = { id -> assertEquals(google.id, id); listOf(email) }
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadIdentities()!!.join()
+        controller.unlinkIdentity(google.id)!!.join()
+        assertEquals(listOf(email), controller.state.value.linkedIdentities)
+        assertEquals(R.string.cloud_account_identity_disconnected, controller.state.value.message)
+    }
+
+    @Test fun `last remaining sign in method cannot be unlinked from the controller`() = runBlocking {
+        gateway.identityValue = identity()
+        gateway.linkedIdentities = listOf(VinzLinkedIdentity(
+            "11111111-1111-4111-8111-111111111111", "email", "user@example.test",
+        ))
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.loadIdentities()!!.join()
+        assertNull(controller.unlinkIdentity(gateway.linkedIdentities.single().id))
+        assertEquals(0, gateway.identityUnlinkCalls)
     }
 
     @Test fun `load profile prefills all editable profile fields`() = runBlocking {
@@ -728,6 +775,12 @@ class CloudAccountControllerTest {
         var savedProfile: VinzCloudAccount.Profile? = null
         var recoverCalls = 0
         var globalSignOutCalls = 0
+        var linkedIdentities = emptyList<VinzLinkedIdentity>()
+        var identityLoadFailure: Exception? = null
+        var identityLinkUrl = "https://accounts.google.com/"
+        var identityLinkCalls = 0
+        var identityUnlinkCalls = 0
+        var onIdentityUnlink: suspend (String) -> List<VinzLinkedIdentity> = { id -> linkedIdentities.filterNot { it.id == id } }
         var saveCalls = 0
         var privateSaveCalls = 0
         var accountSettings = VinzCloudAccount.AccountSettings()
@@ -765,6 +818,16 @@ class CloudAccountControllerTest {
         var onRecover: suspend (String) -> Unit = { }
 
         override suspend fun loadProfile() = onLoad()
+        override suspend fun beginGoogleIdentityLink(): String { identityLinkCalls++; return identityLinkUrl }
+        override suspend fun loadLinkedIdentities(): List<VinzLinkedIdentity> {
+            identityLoadFailure?.let { throw it }
+            return linkedIdentities
+        }
+        override suspend fun unlinkIdentity(identityId: String): List<VinzLinkedIdentity> {
+            identityUnlinkCalls++
+            linkedIdentities = onIdentityUnlink(identityId)
+            return linkedIdentities
+        }
         override fun pendingVerificationEmail() = pendingEmail
         override fun otpResendSecondsRemaining() = cooldownRemaining
         override fun passwordRecoveryPending() = recoveryPending

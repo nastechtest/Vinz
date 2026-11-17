@@ -14,6 +14,9 @@ internal interface CloudAccountGateway {
     suspend fun loadProfile(): VinzCloudAccount.Profile?
     suspend fun checkUsernameAvailable(username: String): Boolean = true
     suspend fun beginGoogleOAuth(): String = throw UnsupportedOperationException()
+    suspend fun beginGoogleIdentityLink(): String = throw UnsupportedOperationException()
+    suspend fun loadLinkedIdentities(): List<com.vinz.music.data.VinzLinkedIdentity> = throw UnsupportedOperationException()
+    suspend fun unlinkIdentity(identityId: String): List<com.vinz.music.data.VinzLinkedIdentity> = throw UnsupportedOperationException()
     suspend fun signIn(email: String, password: String): VinzCloudAccount.AuthResult
     suspend fun signUp(email: String, password: String, username: String, displayName: String): VinzCloudAccount.AuthResult
     suspend fun verifyOtp(email: String, code: String): VinzCloudAccount.AuthResult = throw UnsupportedOperationException()
@@ -39,6 +42,9 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun loadProfile() = cloud.loadProfile()
     override suspend fun checkUsernameAvailable(username: String) = cloud.checkUsernameAvailable(username)
     override suspend fun beginGoogleOAuth() = cloud.beginGoogleOAuth()
+    override suspend fun beginGoogleIdentityLink() = cloud.beginGoogleIdentityLink()
+    override suspend fun loadLinkedIdentities() = cloud.loadLinkedIdentities()
+    override suspend fun unlinkIdentity(identityId: String) = cloud.unlinkIdentity(identityId)
     override suspend fun signIn(email: String, password: String) = cloud.signIn(email, password)
     override suspend fun signUp(email: String, password: String, username: String, displayName: String) =
         cloud.signUp(email, password, username, displayName)

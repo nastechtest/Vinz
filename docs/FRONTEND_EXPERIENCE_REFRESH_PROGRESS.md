@@ -515,3 +515,37 @@ This is the single agreed development roadmap for the Android repository `nastec
 - Read-only Cloudflare inventory confirms Workers `api`, `backup`, `home`, `share`, `staging`, and `vinz`, the `vinz-backups` R2 bucket, and no Durable Object namespaces. The live `vinz` Worker does not yet have the repository's `USERNAME_CHECK_LIMITER` binding. Secret values were not read. No Worker, binding, R2 object, secret or deployment was changed.
 - PR #37 was merged on 2026-11-07. The already-existing PR #62 remains attached to this same feature branch; no new PR was created and no PR metadata was edited. Only `feat/frontend-experience-refresh` is advanced.
 - Next: validate this Worker increment, then complete isolated backup failure/restore contract coverage. After backup validation, continue canonical HTTPS song sharing/deferred installation and the cloud-coordinated Listen Together control plane. Account-provider console configuration and production-only migrations remain approval/configuration blockers; community/discovery stays last.
+
+
+## 2026-11-17 — Supabase connected identity management
+
+Inspected the current feature-branch head, repository tree, account/auth source, migration set, existing PR and Actions workflows before this increment. The current branch head before this change was `cb79ceebc9bf725e7d6b5a07d1b5b6ebf46eab10`.
+
+### Delivered in this increment
+
+- Added an authenticated Supabase Auth identity inventory using the signed-in user's `GET /auth/v1/user` response.
+- Added an owner-scoped, minimal identity projection (identity UUID, provider, email only); provider tokens and raw `identity_data` never enter UI state.
+- Added Google manual identity-link initiation using Supabase's `/user/identities/authorize` endpoint, S256 PKCE, encrypted one-use verifier/state, and the app callback.
+- Link callbacks are bound to the original Supabase user ID. A callback cannot replace the active Vinz account with another user.
+- Added identity unlink with an explicit UI confirmation, a client-side minimum-two-identities guard, Supabase's own server-side guard, and a post-delete inventory verification.
+- Replaced the Connections tab's static explanation with actual linked-method inventory, Google linking and disconnect actions.
+- Added identity parser, PKCE endpoint and controller regression tests.
+
+### Provider configuration blocker
+
+Supabase manual identity linking is a hosted Auth setting and is currently not confirmed enabled. The app now handles the provider flow, but Google linking will remain unavailable until manual linking is enabled in the Supabase project settings. No production Auth setting was changed.
+
+### Validation
+
+- Latest verified Android baseline before this increment: run [43929751824](https://github.com/nastechtest/Vinz/actions/runs/43929751824); JVM tests, Android Lint, debug APK assembly/signature verification, and API 35 backup instrumentation all passed.
+- Latest platform checks before this increment: run [44103628724](https://github.com/nastechtest/Vinz/actions/runs/44103628724); Worker tests, migration integrity and workflow hygiene passed.
+- This increment changes Android source and triggers the existing `pr-checks.yml` feature-branch push workflow. Results remain pending until that run completes.
+
+### Remaining
+
+- Verify hosted Supabase manual identity linking and provider callback allowlist.
+- Implement per-device session inventory/revocation where the supported Auth API permits it; global sign-out is already present.
+- Finish account export/deletion pathways.
+- Finish isolated cloud backup/R2 round-trip, missing-object, corruption and retry integration.
+- Then implement canonical Vinz share links/deferred install, followed by Durable Object Listen Together.
+- No production database/Auth/Storage or Cloudflare changes were made. No PR was created, merged or rebased.

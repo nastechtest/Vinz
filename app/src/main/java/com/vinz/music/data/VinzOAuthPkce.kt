@@ -50,6 +50,20 @@ object VinzOAuthPkce {
         ).joinToString("&")
     }
 
+    /** Build the authenticated Supabase manual identity-link endpoint with S256 PKCE. */
+    fun identityLinkAuthorizationPath(redirectUri: String, pending: Pending): String {
+        val callback = URI(redirectUri)
+        require(callback.scheme == "vinz" && callback.host == "auth" && callback.path == "/callback")
+        val redirectWithState = redirectUri + "?state=" + encode(pending.state)
+        return "/auth/v1/user/identities/authorize?" + listOf(
+            "provider=google",
+            "redirect_to=" + encode(redirectWithState),
+            "code_challenge=" + encode(challenge(pending.verifier)),
+            "code_challenge_method=s256",
+            "skip_http_redirect=true",
+        ).joinToString("&")
+    }
+
     fun parseCallback(
         callback: String,
         pending: Pending,

@@ -1,6 +1,7 @@
 package com.vinz.music.ui.screens.account
 
 import androidx.annotation.StringRes
+import com.vinz.music.data.VinzLinkedIdentity
 
 /** Presentation-only identity: never retain access or refresh tokens in UI state. */
 internal data class CloudAccountIdentity(val userId: String, val email: String)
@@ -45,6 +46,9 @@ internal data class CloudAccountState(
     val settingsDraft: CloudAccountSettingsDraft = CloudAccountSettingsDraft(),
     val settingsReady: Boolean = false,
     val settingsLoadFailed: Boolean = false,
+    val linkedIdentities: List<VinzLinkedIdentity> = emptyList(),
+    val identitiesReady: Boolean = false,
+    val identitiesLoadFailed: Boolean = false,
     val oauthUrl: String? = null,
     @param:StringRes val message: Int? = null,
     @param:StringRes val error: Int? = null,

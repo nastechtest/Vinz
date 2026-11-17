@@ -133,4 +133,14 @@
     <string name="cloud_backup_deleting">Deleting cloud backup…</string>
     <string name="cloud_backup_progress">%1$d%% complete</string>
     <string name="cloud_backup_size_mb">%1$.1f MB</string>
+
+    <string name="cloud_account_identity_linked">Connected sign-in methods</string>
+    <string name="cloud_account_identity_none">No connected sign-in methods were returned by your account.</string>
+    <string name="cloud_account_identity_load_failed">Connected sign-in methods could not be loaded. Try again.</string>
+    <string name="cloud_account_identity_link_failed">Google could not be linked. Confirm manual identity linking is enabled in Supabase Auth, then try again.</string>
+    <string name="cloud_account_identity_unlink_failed">This sign-in method could not be disconnected. Keep another sign-in method connected and try again.</string>
+    <string name="cloud_account_identity_disconnect_title">Disconnect %1$s?</string>
+    <string name="cloud_account_identity_disconnect_confirmation">You will no longer be able to sign in with this %1$s identity. Keep another sign-in method connected.</string>
+    <string name="cloud_account_identity_connect_google">Connect Google</string>
+    <string name="cloud_account_identity_disconnected">Sign-in method disconnected.</string>
 </resources>

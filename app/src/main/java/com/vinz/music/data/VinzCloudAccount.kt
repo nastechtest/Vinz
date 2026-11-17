@@ -55,6 +55,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
         val notifyFriendActivity: Boolean = true,
         val notifyPodcastUpdates: Boolean = false,
     )
+    private data class PendingGoogleOAuth(val pkce: VinzOAuthPkce.Pending, val purpose: String, val userId: String)
     sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
         data class VerificationRequired(val email: String) : AuthResult
@@ -213,10 +214,14 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
         }.getOrNull()
     }
 
-    private fun pendingGoogleOAuth(): VinzOAuthPkce.Pending? = store.readPendingOAuth()?.let { raw ->
+    private fun pendingGoogleOAuth(): PendingGoogleOAuth? = store.readPendingOAuth()?.let { raw ->
         runCatching {
             val value = JSONObject(raw)
-            VinzOAuthPkce.Pending(value.getString("verifier"), value.getString("state"), value.getLong("created_at"))
+            PendingGoogleOAuth(
+                VinzOAuthPkce.Pending(value.getString("verifier"), value.getString("state"), value.getLong("created_at")),
+                value.optString("purpose", "sign_in"),
+                value.optString("user_id"),
+            )
         }.getOrNull()
     }
 
@@ -297,17 +302,46 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
         val pending = VinzOAuthPkce.create()
         store.writePendingOAuth(
             JSONObject().put("verifier", pending.verifier).put("state", pending.state)
-                .put("created_at", pending.createdAtEpochMillis).toString(),
+                .put("created_at", pending.createdAtEpochMillis).put("purpose", "sign_in").toString(),
         )
         VinzOAuthPkce.authorizationUrl(SUPABASE_URL, VINZ_OAUTH_REDIRECT_URI, pending)
     }
 
+    /** Starts Supabase manual Google identity linking without replacing the signed-in Vinz user. */
+    suspend fun beginGoogleIdentityLink(): String = withContext(Dispatchers.IO) {
+        val current = sessionForRequest()
+        val pending = VinzOAuthPkce.create()
+        store.writePendingOAuth(
+            JSONObject().put("verifier", pending.verifier).put("state", pending.state)
+                .put("created_at", pending.createdAtEpochMillis).put("purpose", "link")
+                .put("user_id", current.userId).toString(),
+        )
+        try {
+            val response = request(
+                VinzOAuthPkce.identityLinkAuthorizationPath(VINZ_OAUTH_REDIRECT_URI, pending),
+                "GET",
+                expectedUserId = current.userId,
+            )
+            if (session?.userId != current.userId) error("The Vinz Account changed before Google linking started.")
+            val url = response.optString("url").takeIf { it.isNotBlank() }
+                ?: error("Supabase did not return a Google authorization URL.")
+            val uri = runCatching { java.net.URI(url) }.getOrNull()
+            if (uri?.scheme != "https" || uri.host != "accounts.google.com" || uri.userInfo != null) {
+                error("Supabase returned an unexpected Google authorization URL.")
+            }
+            url
+        } catch (failure: Exception) {
+            store.clearPendingOAuth()
+            throw failure
+        }
+    }
+
     /** Validates the app callback, exchanges the one-use code, and persists only a verified Supabase identity. */
     suspend fun completeGoogleOAuth(callback: String): AuthResult = withContext(Dispatchers.IO) {
-        val pending = pendingGoogleOAuth() ?: error("No Google sign-in is waiting for a callback.")
+        val pendingOAuth = pendingGoogleOAuth() ?: error("No Google sign-in is waiting for a callback.")
+        val pending = pendingOAuth.pkce
         when (val result = VinzOAuthPkce.parseCallback(callback, pending)) {
-            VinzOAuthPkce.Callback.InvalidState ->
-                error("Google sign-in callback did not match the pending request.")
+            VinzOAuthPkce.Callback.InvalidState -> error("Google sign-in callback did not match the pending request.")
             VinzOAuthPkce.Callback.Expired -> {
                 store.clearPendingOAuth()
                 error("Google sign-in expired. Start again.")
@@ -321,6 +355,16 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
                 error("Google sign-in returned an invalid callback.")
             }
             is VinzOAuthPkce.Callback.Code -> {
+                if (pendingOAuth.purpose == "link") {
+                    val activeUserId = runCatching { sessionForRequest().userId }.getOrNull()
+                    if (pendingOAuth.userId.isBlank() || activeUserId != pendingOAuth.userId) {
+                        store.clearPendingOAuth()
+                        error("The Vinz Account changed before identity linking completed.")
+                    }
+                } else if (pendingOAuth.purpose != "sign_in") {
+                    store.clearPendingOAuth()
+                    error("The Google sign-in request is invalid.")
+                }
                 val response = try {
                     request(
                         "/auth/v1/token?grant_type=pkce",
@@ -329,7 +373,6 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
                         authenticated = false,
                     )
                 } catch (network: java.io.IOException) {
-                    // Keep the encrypted verifier for a retry if the exchange never reached the server.
                     throw network
                 } catch (failure: Exception) {
                     store.clearPendingOAuth()
@@ -350,6 +393,12 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
                 if (email.isBlank() || userId.isBlank() || access.isBlank() || refresh.isBlank()) {
                     store.clearPendingOAuth()
                     error("Google sign-in returned an incomplete account session.")
+                }
+                if (pendingOAuth.purpose == "link" &&
+                    (userId != pendingOAuth.userId || session?.userId != pendingOAuth.userId)
+                ) {
+                    store.clearPendingOAuth()
+                    error("Google identity linking returned a different Vinz Account.")
                 }
                 persistSession(sessionFromAuthResponse(response, user, email))
                 store.clearPendingOAuth()
@@ -415,6 +464,29 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
         request("/rest/v1/vinz_account_private?select=full_name&user_id=eq.$userId", "GET")
             .optJSONArray("data")?.optJSONObject(0)?.optString("full_name").orEmpty()
 
+
+    /** Loads only the authenticated user's Supabase Auth identity projection. */
+    suspend fun loadLinkedIdentities(): List<VinzLinkedIdentity> = withContext(Dispatchers.IO) {
+        val current = sessionForRequest()
+        val user = request("/auth/v1/user", "GET", expectedUserId = current.userId)
+        VinzLinkedIdentityParser.parse(user, current.userId)
+    }
+
+    /** Unlinks one owned identity; Supabase also enforces that at least one identity remains. */
+    suspend fun unlinkIdentity(identityId: String): List<VinzLinkedIdentity> = withContext(Dispatchers.IO) {
+        val normalizedId = runCatching { UUID.fromString(identityId).toString() }.getOrNull()
+            ?: error("The connected identity is invalid.")
+        val current = sessionForRequest()
+        val identities = loadLinkedIdentities()
+        if (identities.size < 2) error("Keep at least one sign-in method connected.")
+        val target = identities.firstOrNull { it.id == normalizedId }
+            ?: error("The connected identity is no longer available.")
+        request("/auth/v1/user/identities/" + Uri.encode(target.id), "DELETE", expectedUserId = current.userId)
+        if (session?.userId != current.userId) error("The Vinz Account changed during identity removal.")
+        val remaining = loadLinkedIdentities()
+        if (remaining.any { it.id == normalizedId }) error("Supabase did not confirm identity removal.")
+        remaining
+    }
 
     /** Loads only the signed-in user's existing private preference row. */
     suspend fun loadAccountSettings(): AccountSettings = withContext(Dispatchers.IO) {

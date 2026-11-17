@@ -45,6 +45,10 @@ internal class CloudAccountController(
                 mutable.value = mutable.value.copy(mode = CloudAccountMode.RESET_PASSWORD, password = "", confirmPassword = "", message = null, error = null)
             }
             if (identity != null && !mutable.value.profileReady) loadProfile()
+            if (identity != null && mutable.value.identitiesReady) {
+                mutable.value = mutable.value.copy(identitiesReady = false, linkedIdentities = emptyList())
+                loadIdentities(force = true)
+            }
             return
         }
         resendJob?.cancel()
@@ -61,6 +65,18 @@ internal class CloudAccountController(
         if (mutable.value.identity != null || mutable.value.mode != CloudAccountMode.SIGN_IN) return null
         return request(R.string.cloud_account_sign_in_failed) {
             mutable.value = mutable.value.copy(oauthUrl = gateway.beginGoogleOAuth())
+        }
+    }
+
+    fun beginGoogleIdentityLink(): Job? {
+        val expectedUserId = mutable.value.identity?.userId ?: return null
+        if (mutable.value.busy) return null
+        return request(R.string.cloud_account_identity_link_failed) {
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(oauthUrl = gateway.beginGoogleIdentityLink())
         }
     }
 
@@ -363,6 +379,42 @@ internal class CloudAccountController(
     }
 
 
+    fun loadIdentities(force: Boolean = false): Job? {
+        val identity = mutable.value.identity ?: return null
+        if (mutable.value.busy || (mutable.value.identitiesReady && !force)) return null
+        return request(R.string.cloud_account_identity_load_failed) {
+            val loaded = gateway.loadLinkedIdentities()
+            if (gateway.identity?.userId != identity.userId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(linkedIdentities = loaded, identitiesReady = true, identitiesLoadFailed = false)
+        }
+    }
+
+    fun unlinkIdentity(identityId: String): Job? {
+        val before = mutable.value
+        val expectedUserId = before.identity?.userId ?: return null
+        if (before.busy || !before.identitiesReady || before.linkedIdentities.size < 2 ||
+            before.linkedIdentities.none { it.id == identityId }
+        ) return null
+        return request(R.string.cloud_account_identity_unlink_failed) {
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            val remaining = gateway.unlinkIdentity(identityId)
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(
+                linkedIdentities = remaining, identitiesReady = true, identitiesLoadFailed = false,
+                message = R.string.cloud_account_identity_disconnected,
+            )
+        }
+    }
+
     fun loadSettings(): Job? {
         val identity = mutable.value.identity ?: return null
         if (mutable.value.settingsReady || mutable.value.busy) return null
@@ -492,10 +544,12 @@ internal class CloudAccountController(
                     identity = identity, email = identity?.email.orEmpty(), busy = true,
                     profileLoadFailed = identity != null,
                     settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed,
+                    identitiesLoadFailed = failure == R.string.cloud_account_identity_load_failed,
                     error = if (identity != null) R.string.cloud_account_load_failed else mapped,
                 ) else mutable.value.copy(
                     error = mapped,
                     settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed || mutable.value.settingsLoadFailed,
+                    identitiesLoadFailed = failure == R.string.cloud_account_identity_load_failed || mutable.value.identitiesLoadFailed,
                 )
             } catch (_: Exception) {
                 // Never render raw transport messages, response bodies, tokens or private backend details.
@@ -505,11 +559,13 @@ internal class CloudAccountController(
                     identity = identity, email = identity?.email.orEmpty(), busy = true,
                     profileLoadFailed = identity != null,
                     settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed,
+                    identitiesLoadFailed = failure == R.string.cloud_account_identity_load_failed,
                     error = if (identity != null) R.string.cloud_account_load_failed else failure,
                 ) else mutable.value.copy(
                     error = failure,
                     profileLoadFailed = failure == R.string.cloud_account_load_failed || mutable.value.profileLoadFailed,
                     settingsLoadFailed = failure == R.string.cloud_account_settings_load_failed || mutable.value.settingsLoadFailed,
+                    identitiesLoadFailed = failure == R.string.cloud_account_identity_load_failed || mutable.value.identitiesLoadFailed,
                 )
             } finally {
                 mutable.value = mutable.value.copy(busy = false, password = "", confirmPassword = "")
