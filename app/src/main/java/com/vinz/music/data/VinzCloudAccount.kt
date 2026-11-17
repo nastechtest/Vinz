@@ -58,6 +58,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
     private data class PendingGoogleOAuth(val pkce: VinzOAuthPkce.Pending, val purpose: String, val userId: String)
     sealed interface AuthResult {
         data class SignedIn(val profile: Profile?) : AuthResult
+        data object IdentityLinked : AuthResult
         data class VerificationRequired(val email: String) : AuthResult
         data object EmailConfirmationRequired : AuthResult
     }
@@ -403,7 +404,8 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
                 persistSession(sessionFromAuthResponse(response, user, email))
                 store.clearPendingOAuth()
                 mutableSessionChanges.value = mutableSessionChanges.value + 1L
-                AuthResult.SignedIn(runCatching { loadProfile() }.getOrNull())
+                val profile = runCatching { loadProfile() }.getOrNull()
+                if (pendingOAuth.purpose == "link") AuthResult.IdentityLinked else AuthResult.SignedIn(profile)
             }
         }
     }
