@@ -504,6 +504,21 @@ internal class CloudAccountController(
         }
     }
 
+    /** Revokes other refresh-token sessions without signing out this device. */
+    fun signOutOtherSessions(): Job? {
+        val expectedUserId = mutable.value.identity?.userId ?: return null
+        if (mutable.value.busy) return null
+        usernameCheckJob?.cancel()
+        return request(R.string.cloud_account_sign_out_other_devices_failed) {
+            gateway.signOutOtherSessions()
+            if (gateway.identity?.userId != expectedUserId) {
+                resetForCurrentIdentity()
+                return@request
+            }
+            mutable.value = mutable.value.copy(message = R.string.cloud_account_signed_out_other_devices)
+        }
+    }
+
     private fun resetSettingsForCurrentIdentity() {
         resetForCurrentIdentity()
         mutable.value = mutable.value.copy(
