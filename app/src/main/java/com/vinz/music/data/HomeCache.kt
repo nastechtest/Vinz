@@ -7,7 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import java.io.File
 
@@ -27,13 +29,17 @@ class HomeCache(dir: File) {
             .getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
-    suspend fun write(pages: List<JsonObject>) = withContext(Dispatchers.IO) {
-        if (pages.isEmpty()) return@withContext
+    suspend fun write(pages: List<JsonObject>) = withContext(Dispatchers.IO) { writeNow(pages) }
+
+    /** Writes on the calling thread; [write] runs this on the IO dispatcher. */
+    internal fun writeNow(pages: List<JsonObject>) {
+        if (pages.isEmpty()) return
         runCatching {
             file.parentFile?.mkdirs()
             // Written beside and moved over, so a start never reads half a file.
             val next = File(file.parentFile, "feed.json.new")
-            next.writeText(JsonArray(pages).toString())
+            // Avoid copying deeply nested Home pages into intermediate strings at each level.
+            next.bufferedWriter().use { it.appendJson(JsonArray(pages)) }
             if (!next.renameTo(file)) { file.delete(); next.renameTo(file) }
         }.onFailure { Log.w(TAG, "couldn't keep Home", it) }
     }
@@ -44,5 +50,28 @@ class HomeCache(dir: File) {
 
     private companion object {
         const val TAG = "VinzHome"
+    }
+}
+
+/** Writes the same JSON as [JsonElement.toString] without building strings for nested containers. */
+internal fun Appendable.appendJson(e: JsonElement) {
+    when (e) {
+        is JsonObject -> {
+            append('{')
+            var first = true
+            for ((k, v) in e) {
+                if (!first) append(',')
+                first = false
+                append(JsonPrimitive(k).toString()).append(':')
+                appendJson(v)
+            }
+            append('}')
+        }
+        is JsonArray -> {
+            append('[')
+            e.forEachIndexed { i, v -> if (i > 0) append(','); appendJson(v) }
+            append(']')
+        }
+        else -> append(e.toString())
     }
 }
