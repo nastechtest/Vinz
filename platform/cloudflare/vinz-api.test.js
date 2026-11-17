@@ -11,6 +11,29 @@ const VERIFIED_USER = {
   email_confirmed_at: "2026-11-01T00:00:00.000Z",
 };
 
+
+function mockBackupRecordFetch(t, record, options = {}) {
+  const deleteStatus = options.deleteStatus ?? 204;
+  t.mock.method(globalThis, "fetch", async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return new Response(JSON.stringify(VERIFIED_USER), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.pathname.endsWith("/rest/v1/vinz_backups")) {
+      if (init.method === "DELETE") {
+        options.onDelete?.();
+        return new Response(null, { status: deleteStatus });
+      }
+      return new Response(JSON.stringify(record ? [record] : []), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    throw new Error("Unexpected upstream request: " + url.pathname);
+  });
+}
+
 test("health endpoint reports configuration without exposing secrets", async () => {
   const response = await handleRequest(new Request("https://api.vinz.example/health"), {});
   assert.equal(response.status, 200);
@@ -475,6 +498,151 @@ test("backup upload rejects an idempotency key reused for different bytes", asyn
   assert.equal(conflict.status, 409);
   assert.equal((await conflict.json()).error, "backup_request_conflict");
   assert.equal(writes, 1);
+});
+
+
+test("backup download returns only a size- and checksum-verified owner archive", async (t) => {
+  const bytes = new Uint8Array([1, 3, 5, 7]);
+  const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const backupId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const objectPath = VERIFIED_USER.id + "/" + backupId + "-" + sha256 + "-2.backup";
+  mockBackupRecordFetch(t, {
+    id: backupId, object_path: objectPath, byte_size: bytes.byteLength, sha256,
+    format_version: 2, app_version: "1.8.4",
+  });
+  let reads = 0;
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { get: async (path) => {
+      assert.equal(path, objectPath);
+      return { size: bytes.byteLength, arrayBuffer: async () => { reads++; return bytes.buffer; } };
+    } } },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-length"), String(bytes.byteLength));
+  assert.equal(response.headers.get("x-vinz-sha256"), sha256);
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [...bytes]);
+  assert.equal(reads, 1);
+});
+
+test("backup download does not read an object outside the authenticated owner's prefix", async (t) => {
+  const backupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  mockBackupRecordFetch(t, {
+    id: backupId, object_path: "22222222-2222-4222-8222-222222222222/" + backupId + ".backup",
+    byte_size: 3, sha256: "a".repeat(64), format_version: 1, app_version: "1.8.4",
+  });
+  let reads = 0;
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { get: async () => { reads++; return null; } } },
+  );
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error, "backup_not_found");
+  assert.equal(reads, 0);
+});
+
+test("backup download rejects oversized metadata before reading the R2 object", async (t) => {
+  const backupId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const size = 50 * 1024 * 1024 + 1;
+  mockBackupRecordFetch(t, {
+    id: backupId, object_path: VERIFIED_USER.id + "/" + backupId + ".backup",
+    byte_size: size, sha256: "b".repeat(64), format_version: 1, app_version: "1.8.4",
+  });
+  let reads = 0;
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { get: async () => ({
+      size, arrayBuffer: async () => { reads++; throw new Error("must not read oversized object"); },
+    }) } },
+  );
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).error, "backup_integrity_check_failed");
+  assert.equal(reads, 0);
+});
+
+test("backup download rejects an R2 object whose size differs from metadata before reading", async (t) => {
+  const backupId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  mockBackupRecordFetch(t, {
+    id: backupId, object_path: VERIFIED_USER.id + "/" + backupId + ".backup",
+    byte_size: 3, sha256: "c".repeat(64), format_version: 1, app_version: "1.8.4",
+  });
+  let reads = 0;
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { get: async () => ({
+      size: 4, arrayBuffer: async () => { reads++; throw new Error("must not read mismatched object"); },
+    }) } },
+  );
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).error, "backup_integrity_check_failed");
+  assert.equal(reads, 0);
+});
+
+test("backup download rejects a checksum mismatch after size validation", async (t) => {
+  const bytes = new Uint8Array([2, 4, 6]);
+  const wrongHash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array([9, 9, 9])))]
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const backupId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  mockBackupRecordFetch(t, {
+    id: backupId, object_path: VERIFIED_USER.id + "/" + backupId + ".backup",
+    byte_size: bytes.byteLength, sha256: wrongHash, format_version: 1, app_version: "1.8.4",
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { get: async () => ({
+      size: bytes.byteLength, arrayBuffer: async () => bytes.buffer,
+    }) } },
+  );
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).error, "backup_integrity_check_failed");
+});
+
+test("backup delete removes metadata before cleaning the owner's R2 object", async (t) => {
+  const backupId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const objectPath = VERIFIED_USER.id + "/" + backupId + ".backup";
+  const events = [];
+  mockBackupRecordFetch(t, { id: backupId, object_path: objectPath }, {
+    onDelete: () => events.push("metadata"),
+  });
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      method: "DELETE", headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { delete: async (path) => {
+      assert.equal(path, objectPath);
+      events.push("object");
+    } } },
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).deleted, true);
+  assert.deepEqual(events, ["metadata", "object"]);
+});
+
+test("backup delete preserves the R2 object when metadata deletion fails", async (t) => {
+  const backupId = "99999999-9999-4999-8999-999999999999";
+  const objectPath = VERIFIED_USER.id + "/" + backupId + ".backup";
+  mockBackupRecordFetch(t, { id: backupId, object_path: objectPath }, { deleteStatus: 500 });
+  let deletes = 0;
+  const response = await handleRequest(
+    new Request("https://api.vinz.example/v1/backups/" + backupId, {
+      method: "DELETE", headers: { authorization: "Bearer test-token" },
+    }),
+    { ...SUPABASE_ENV, BACKUPS_BUCKET: { delete: async () => { deletes++; } } },
+  );
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error, "backup_delete_failed");
+  assert.equal(deletes, 0);
 });
 
 test("share creation rejects arbitrary external redirect hosts", async (t) => {

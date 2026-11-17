@@ -391,8 +391,19 @@ async function downloadBackup(env, config, auth, backupId, requestId) {
   if (!record || !record.object_path.startsWith(`${auth.user.id}/`)) return json({ error: "backup_not_found", request_id: requestId }, 404);
   const object = await env.BACKUPS_BUCKET.get(record.object_path);
   if (!object) return json({ error: "backup_object_missing", request_id: requestId }, 410);
+
+  // Validate both metadata and the R2 object's authoritative size before reading its body.
+  // This prevents a corrupted or manually-created oversized object from forcing an
+  // unbounded arrayBuffer allocation in the Worker.
+  const expectedSize = Number(record.byte_size);
+  const objectSize = Number(object.size);
+  if (!Number.isSafeInteger(expectedSize) || expectedSize < 1 || expectedSize > MAX_BACKUP_BYTES ||
+      !Number.isSafeInteger(objectSize) || objectSize !== expectedSize || objectSize > MAX_BACKUP_BYTES) {
+    return json({ error: "backup_integrity_check_failed", request_id: requestId }, 422);
+  }
+
   const bytes = await object.arrayBuffer();
-  if (bytes.byteLength !== Number(record.byte_size) ||
+  if (bytes.byteLength !== expectedSize ||
       hex(await crypto.subtle.digest("SHA-256", bytes)) !== String(record.sha256).toLowerCase()) {
     return json({ error: "backup_integrity_check_failed", request_id: requestId }, 422);
   }
