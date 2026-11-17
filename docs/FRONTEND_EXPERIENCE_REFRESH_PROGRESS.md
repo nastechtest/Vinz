@@ -567,3 +567,13 @@ The OAuth callback now returns a distinct `IdentityLinked` result for manual lin
 - Added a confirmation dialog, controller/gateway operation, success/failure messages and controller regression tests.
 - Updated Security copy to disclose the actual semantics: remote access-token JWTs may remain valid until expiry, and the public Auth client API does not provide a per-device inventory. The existing global sign-out remains available separately.
 - No privileged service-role key, custom admin endpoint, production migration or hosted Auth setting is required for this supported scope.
+
+
+### Final CI snapshot — 2026-11-17
+
+- Latest feature branch head: `88bc500684f94232dc2c6dedab5d6d2b15523357`.
+- Identity implementation baseline run [44144028211](https://github.com/nastechtest/Vinz/actions/runs/44144028211) completed successfully: CI scripts/workflows, Android Lint, JVM tests + debug build, Gradle wrapper validation, and API 35 backup instrumentation all passed. That run validated the initial connected-identity inventory/link/unlink implementation before the later callback-result and other-device-session follow-ups.
+- Final app-code validation [44145650321](https://github.com/nastechtest/Vinz/actions/runs/44145650321) is pending on commit `e88a52ebcda6209fda90ecca2880006830bb909c`, which includes the final Android code and tests. The latest branch head `88bc500684f94232dc2c6dedab5d6d2b15523357` adds the matching progress record.
+- No APK has been verified for the final callback/session-management revision; do not reuse an older artifact as if it contains these changes.
+- Existing PR #37 is merged/closed. The progress update was added as a comment to that historical PR; no PR was created or merged. PR #62 remains a pre-existing open PR on the same branch.
+- Next: finish validation; then continue cloud backup/restore failure and round-trip integration. Per-device inventory/selective revocation remains unavailable through the supported public Supabase Auth client API; “sign out other devices” revokes all other refresh-token sessions, while global sign-out remains separate.
