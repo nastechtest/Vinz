@@ -94,7 +94,7 @@
     <string name="vinz_public_profile_username">@%1$s</string>
     <string name="vinz_public_profile_no_bio">No bio yet.</string>
     <string name="cloud_account_active_sessions">Active sessions</string>
-    <string name="cloud_account_active_sessions_description">You can sign out this Vinz Account on every device. This also signs out this device. Supabase revokes the other refresh-token sessions for this account.</string>
+    <string name="cloud_account_active_sessions_description">You can revoke refresh-token sessions on other devices while keeping this device signed in. Supabase access tokens on those devices can remain valid until they expire; individual device inventory is not exposed by the public Auth client API.</string>
     <string name="cloud_account_sign_out_everywhere">Sign out on all devices</string>
     <string name="cloud_account_sign_out_everywhere_title">Sign out everywhere?</string>
     <string name="cloud_account_sign_out_everywhere_confirmation">This will revoke every active Vinz Account session, including this device. You will need to sign in again on any device you use.</string>
@@ -143,4 +143,9 @@
     <string name="cloud_account_identity_disconnect_confirmation">You will no longer be able to sign in with this %1$s identity. Keep another sign-in method connected.</string>
     <string name="cloud_account_identity_connect_google">Connect Google</string>
     <string name="cloud_account_identity_disconnected">Sign-in method disconnected.</string>
+    <string name="cloud_account_sign_out_other_devices">Sign out other devices</string>
+    <string name="cloud_account_sign_out_other_devices_title">Sign out other devices?</string>
+    <string name="cloud_account_sign_out_other_devices_confirmation">This revokes refresh-token sessions on every other device and keeps this device signed in. Existing access tokens on those devices can remain valid until expiry.</string>
+    <string name="cloud_account_signed_out_other_devices">Other device refresh-token sessions were revoked. This device remains signed in.</string>
+    <string name="cloud_account_sign_out_other_devices_failed">Could not revoke other device sessions. This device remains signed in.</string>
 </resources>
