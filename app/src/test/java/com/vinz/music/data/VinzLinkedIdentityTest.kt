@@ -5,6 +5,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -37,11 +38,11 @@ class VinzLinkedIdentityTest {
     @Test fun `manual link request uses S256 and never includes the verifier`() {
         val pending = VinzOAuthPkce.create(1_000L)
         val path = VinzOAuthPkce.identityLinkAuthorizationPath("vinz://auth/callback", pending)
-        assert(path.startsWith("/auth/v1/user/identities/authorize?"))
-        assert(path.contains("provider=google"))
-        assert(path.contains("code_challenge_method=s256"))
-        assert(path.contains("skip_http_redirect=true"))
-        assert(path.contains(VinzOAuthPkce.challenge(pending.verifier)))
+        assertTrue(path.startsWith("/auth/v1/user/identities/authorize?"))
+        assertTrue(path.contains("provider=google"))
+        assertTrue(path.contains("code_challenge_method=s256"))
+        assertTrue(path.contains("skip_http_redirect=true"))
+        assertTrue(path.contains(VinzOAuthPkce.challenge(pending.verifier)))
         assertFalse(path.contains(pending.verifier))
     }
 }
