@@ -484,6 +484,7 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
         request("/auth/v1/user/identities/" + Uri.encode(target.id), "DELETE", expectedUserId = current.userId)
         if (session?.userId != current.userId) error("The Vinz Account changed during identity removal.")
         val remaining = loadLinkedIdentities()
+        if (remaining.isEmpty()) error("Supabase did not return a remaining sign-in method.")
         if (remaining.any { it.id == normalizedId }) error("Supabase did not confirm identity removal.")
         remaining
     }
