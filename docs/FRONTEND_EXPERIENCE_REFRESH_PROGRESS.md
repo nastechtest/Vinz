@@ -549,3 +549,8 @@ Supabase manual identity linking is a hosted Auth setting and is currently not c
 - Finish isolated cloud backup/R2 round-trip, missing-object, corruption and retry integration.
 - Then implement canonical Vinz share links/deferred install, followed by Durable Object Listen Together.
 - No production database/Auth/Storage or Cloudflare changes were made. No PR was created, merged or rebased.
+
+
+### Post-review hardening — identity-link increment
+
+Before validation completed, the new identity test was corrected to use JUnit assertions (not Kotlin's JVM-assertion-dependent `assert`), the unlink path now fails closed if Supabase returns no remaining identity, and the Connections explanation now accurately distinguishes Google identity linking from YouTube Music cookie login.
