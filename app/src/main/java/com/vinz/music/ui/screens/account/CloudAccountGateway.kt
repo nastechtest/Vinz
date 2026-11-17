@@ -31,6 +31,7 @@ internal interface CloudAccountGateway {
     suspend fun removeAvatar(): VinzCloudAccount.Profile = throw UnsupportedOperationException()
     suspend fun signOut()
     suspend fun signOutEverywhere() { signOut() }
+    suspend fun signOutOtherSessions() { }
 }
 
 internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) : CloudAccountGateway {
@@ -62,4 +63,5 @@ internal class ExistingCloudAccountGateway(private val cloud: VinzCloudAccount) 
     override suspend fun removeAvatar() = cloud.removeAvatar()
     override suspend fun signOut() { cloud.signOut() }
     override suspend fun signOutEverywhere() { cloud.signOutEverywhere() }
+    override suspend fun signOutOtherSessions() { cloud.signOutOtherSessions() }
 }
