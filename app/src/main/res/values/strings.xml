@@ -4696,4 +4696,5 @@
     <string name="cloud_account_username_unavailable">Username unavailable or reserved</string>
     <string name="cloud_account_username_invalid">Enter 3–24 lowercase letters, numbers or underscores</string>
     <string name="cloud_account_username_error">Could not reach Vinz. Try again.</string>
+    <string name="cloud_account_identity_linked_success">Google sign-in is now connected to your Vinz Account.</string>
 </resources>
