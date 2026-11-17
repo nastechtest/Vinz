@@ -203,6 +203,8 @@ internal class CloudAccountController(
                             beginVerification(result.email)
                         VinzCloudAccount.AuthResult.EmailConfirmationRequired ->
                             beginVerification(email)
+                        VinzCloudAccount.AuthResult.IdentityLinked ->
+                            error("Unexpected identity-link result during email verification.")
                     }
                 }
                 CloudAccountMode.SIGN_UP, CloudAccountMode.SIGN_IN -> {
@@ -213,6 +215,8 @@ internal class CloudAccountController(
                         is VinzCloudAccount.AuthResult.VerificationRequired -> beginVerification(result.email)
                         VinzCloudAccount.AuthResult.EmailConfirmationRequired -> beginVerification(email)
                         is VinzCloudAccount.AuthResult.SignedIn -> acceptSignedIn(result, before, email, failure)
+                        VinzCloudAccount.AuthResult.IdentityLinked ->
+                            error("Unexpected identity-link result during email sign-in.")
                     }
                 }
             }
