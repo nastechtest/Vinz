@@ -1389,14 +1389,16 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
                 val outcome = runCatching { c.vinzCloudAccount.completeGoogleOAuth(uri.toString()) }
                 withContext(Dispatchers.Main) {
                     outcome.onSuccess { result ->
-                        if (result is com.vinz.music.data.VinzCloudAccount.AuthResult.SignedIn) {
-                            Toast.makeText(
-                                c.app,
-                                tr(R.string.cloud_account_signed_in, c.vinzCloudAccount.session?.email.orEmpty()),
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        } else {
-                            Toast.makeText(c.app, tr(R.string.cloud_account_sign_in_failed), Toast.LENGTH_LONG).show()
+                        when (result) {
+                            is com.vinz.music.data.VinzCloudAccount.AuthResult.SignedIn ->
+                                Toast.makeText(
+                                    c.app,
+                                    tr(R.string.cloud_account_signed_in, c.vinzCloudAccount.session?.email.orEmpty()),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            com.vinz.music.data.VinzCloudAccount.AuthResult.IdentityLinked ->
+                                Toast.makeText(c.app, tr(R.string.cloud_account_identity_linked_success), Toast.LENGTH_LONG).show()
+                            else -> Toast.makeText(c.app, tr(R.string.cloud_account_sign_in_failed), Toast.LENGTH_LONG).show()
                         }
                     }.onFailure {
                         Toast.makeText(c.app, tr(R.string.cloud_account_sign_in_failed), Toast.LENGTH_LONG).show()
