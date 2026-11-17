@@ -355,6 +355,20 @@ class CloudAccountControllerTest {
         assertEquals(R.string.cloud_account_signed_out_everywhere, controller.state.value.message)
     }
 
+    @Test fun `sign out other devices preserves the current account session`() = runBlocking {
+        gateway.identityValue = identity()
+        controller = CloudAccountController(gateway, scope, usernameDebounceMillis = 0)
+        controller.signOutOtherSessions()!!.join()
+        assertEquals(1, gateway.otherSessionSignOutCalls)
+        assertEquals(identity(), controller.state.value.identity)
+        assertEquals(R.string.cloud_account_signed_out_other_devices, controller.state.value.message)
+    }
+
+    @Test fun `sign out other devices is unavailable without an identity`() = runBlocking {
+        assertNull(controller.signOutOtherSessions())
+        assertEquals(0, gateway.otherSessionSignOutCalls)
+    }
+
     @Test fun `sign out everywhere is unavailable without a signed in identity`() = runBlocking {
         assertNull(controller.signOutEverywhere())
         assertEquals(0, gateway.globalSignOutCalls)
@@ -775,6 +789,7 @@ class CloudAccountControllerTest {
         var savedProfile: VinzCloudAccount.Profile? = null
         var recoverCalls = 0
         var globalSignOutCalls = 0
+        var otherSessionSignOutCalls = 0
         var linkedIdentities = emptyList<VinzLinkedIdentity>()
         var identityLoadFailure: Exception? = null
         var identityLinkUrl = "https://accounts.google.com/"
@@ -887,5 +902,6 @@ class CloudAccountControllerTest {
         }
         override suspend fun signOut() { identity = null }
         override suspend fun signOutEverywhere() { globalSignOutCalls++; identity = null }
+        override suspend fun signOutOtherSessions() { otherSessionSignOutCalls++ }
     }
 }
