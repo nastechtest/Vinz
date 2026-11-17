@@ -129,6 +129,7 @@ private fun CloudAccountFormBody(
 ) {
     val focus = LocalFocusManager.current
     var confirmGlobalSignOut by remember(state.identity?.userId) { mutableStateOf(false) }
+    var confirmOtherDeviceSignOut by remember(state.identity?.userId) { mutableStateOf(false) }
     var identityToDisconnect by remember(state.identity?.userId) { mutableStateOf<VinzLinkedIdentity?>(null) }
 
     val context = LocalContext.current
@@ -350,6 +351,25 @@ private fun CloudAccountFormBody(
             Text(tr(R.string.cloud_account_active_sessions), style = MaterialTheme.typography.titleMedium)
             Text(tr(R.string.cloud_account_active_sessions_description),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            VinzButton(
+                onClick = { confirmOtherDeviceSignOut = true },
+                modifier = Modifier.fillMaxWidth().testTag("cloud-account-sign-out-other-devices"),
+                enabled = !state.busy,
+            ) { Text(tr(R.string.cloud_account_sign_out_other_devices)) }
+            if (confirmOtherDeviceSignOut) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { confirmOtherDeviceSignOut = false },
+                title = { Text(tr(R.string.cloud_account_sign_out_other_devices_title)) },
+                text = { Text(tr(R.string.cloud_account_sign_out_other_devices_confirmation)) },
+                confirmButton = {
+                    VinzTextButton(onClick = {
+                        confirmOtherDeviceSignOut = false
+                        actions.signOutOtherSessions()
+                    }, enabled = !state.busy) { Text(tr(R.string.cloud_account_sign_out_other_devices)) }
+                },
+                dismissButton = {
+                    VinzTextButton(onClick = { confirmOtherDeviceSignOut = false }) { Text(tr(R.string.cancel)) }
+                },
+            )
             VinzButton(
                 onClick = { confirmGlobalSignOut = true },
                 modifier = Modifier.fillMaxWidth().testTag("cloud-account-sign-out-everywhere"),
