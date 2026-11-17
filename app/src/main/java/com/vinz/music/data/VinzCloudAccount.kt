@@ -692,6 +692,18 @@ class VinzCloudAccount(context: Context, private val http: OkHttpClient) : Cloud
         if (cleared) mutableSessionChanges.value = mutableSessionChanges.value + 1L
     }
 
+    /** Revokes other refresh-token sessions while preserving the current device session. */
+    suspend fun signOutOtherSessions() = withContext(Dispatchers.IO) {
+        val original = sessionForRequest()
+        request(
+            "/auth/v1/logout?scope=others",
+            "POST",
+            null,
+            expectedUserId = original.userId,
+        )
+        if (session?.userId != original.userId) error("The Vinz Account changed during remote session revocation.")
+    }
+
     private data class HttpResult(val code: Int, val body: String) {
         val successful: Boolean get() = code in 200..299
     }
