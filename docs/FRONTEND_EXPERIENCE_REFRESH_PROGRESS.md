@@ -559,3 +559,11 @@ Before validation completed, the new identity test was corrected to use JUnit as
 ### Identity-link callback result correction
 
 The OAuth callback now returns a distinct `IdentityLinked` result for manual linking instead of presenting the existing account as newly signed in. The account callback displays a dedicated success message, while email sign-in/OTP flows reject this impossible result explicitly.
+
+
+## 2026-11-17 — Revoke other device sessions
+
+- Added `POST /auth/v1/logout?scope=others`, verified against Supabase Auth's supported `scope=others` sign-out contract. It revokes other refresh-token sessions while preserving the current Vinz device session.
+- Added a confirmation dialog, controller/gateway operation, success/failure messages and controller regression tests.
+- Updated Security copy to disclose the actual semantics: remote access-token JWTs may remain valid until expiry, and the public Auth client API does not provide a per-device inventory. The existing global sign-out remains available separately.
+- No privileged service-role key, custom admin endpoint, production migration or hosted Auth setting is required for this supported scope.
