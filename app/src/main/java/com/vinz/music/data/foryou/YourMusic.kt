@@ -74,7 +74,7 @@ class YourMusic(private val c: AppContainer) {
      * Vinz's radio: up to [count] songs from your own music to follow [seedIds] (the newest last), none of [inQueue],
      * nothing played in the last two hours. [offlineOnly]: only songs that play without a connection.
      */
-    suspend fun radio(seedIds: List<String>, inQueue: Set<String>, count: Int, offlineOnly: Boolean): List<LocalRadio.Pick> {
+    suspend fun radio(seedIds: List<String>, inQueue: Set<String>, count: Int, offlineOnly: Boolean, allowed: (Song) -> Boolean = { true }): List<LocalRadio.Pick> {
         val s = snapshot()
         val seeds = seedIds.mapNotNull { id -> s.songs[id] ?: c.db.songs().get(id)?.toSong() }
         if (seeds.isEmpty()) return emptyList()
@@ -82,7 +82,7 @@ class YourMusic(private val c: AppContainer) {
         val recent = s.events.filter { now - it.timestamp < 2 * HOUR }.map { it.songId }.toSet()
         val pool = LocalRadio.Pool(
             // Not clips under a minute (an album's intro, a skit, a sound file on the phone): they'd break the run of songs.
-            songs = s.songs.values.filter { ok(it) && !it.isVideo && (it.durationSec == 0 || it.durationSec >= 60) && (!offlineOnly || c.availableOffline(it.id)) },
+            songs = s.songs.values.filter { ok(it) && !it.isVideo && (it.durationSec == 0 || it.durationSec >= 60) && (!offlineOnly || c.availableOffline(it.id)) && allowed(it) },
             coListen = s.coListen,
             affinity = { s.model.score(it) * rest(s, it.id) },
             genreOf = { s.genres[it] },
