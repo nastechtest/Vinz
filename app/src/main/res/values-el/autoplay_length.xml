@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Μεγαλύτερη διάρκεια τραγουδιού για την Αυτόματη αναπαραγωγή</string>
+    <string name="autoplay_no_length_limit">Χωρίς όριο</string>
+    <string name="longest_song_for_autoplay_info">Η Αυτόματη αναπαραγωγή παραλείπει τραγούδια μεγαλύτερα από αυτό, όπως μίξεις μίας ώρας. Τα τραγούδια που διαλέγεις ή βάζεις μόνος σου στην ουρά και τα ραδιόφωνα που ξεκινάς παίζουν όποια διάρκεια κι αν έχουν.</string>
+    <string name="longest_song_for_autoplay_keywords">μεγάλα τραγούδια μίξεις συλλογές διάρκεια μήκος όριο</string>
+</resources>

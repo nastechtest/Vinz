@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">طولانی‌ترین آهنگ برای پخش خودکار</string>
+    <string name="autoplay_no_length_limit">بدون محدودیت</string>
+    <string name="longest_song_for_autoplay_info">پخش خودکار آهنگ‌های طولانی‌تر از این را، مثل میکس‌های یک‌ساعته، کنار می‌گذارد. آهنگ‌هایی که خودتان انتخاب یا به صف اضافه می‌کنید و رادیوهایی که شروع می‌کنید، با هر طولی پخش می‌شوند.</string>
+    <string name="longest_song_for_autoplay_keywords">آهنگ‌های طولانی میکس‌ها مجموعه‌ها مدت طول محدودیت</string>
+</resources>
