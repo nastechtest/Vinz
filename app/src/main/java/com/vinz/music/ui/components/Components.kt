@@ -618,6 +618,7 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
     val videos by c.videoState.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     var pickPlaylist by remember { mutableStateOf(false) }
+    var tagging by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
     var credits by remember { mutableStateOf(false) }
     var versions by remember { mutableStateOf(false) }
@@ -635,6 +636,7 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
 
     // The playlist picker and the share sheet take over from the sheet.
     if (pickPlaylist) { PlaylistPicker(song) { pickPlaylist = false; onDismiss() }; return }
+    if (tagging) { SongTagPicker(song) { tagging = false; onDismiss() }; return }
     if (sharing) { ShareSheet(song.shareTarget()) { sharing = false; onDismiss() }; return }
     if (credits) { SongCreditsSheet(song) { credits = false; onDismiss() }; return }
     if (versions) { SongVersionsSheet(song) { versions = false; onDismiss() }; return }
@@ -665,6 +667,7 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
         if (song.isEpisode && song.id in playedEpisodes) ActionItem(VinzIcons.Refresh, tr(R.string.mark_as_unplayed)) { c.episodes.forget(song.id); c.episodes.unmarkPlayed(song.id) }
         else if (song.isEpisode) ActionItem(VinzIcons.DoneAll, tr(R.string.mark_as_played)) { c.episodes.markPlayed(song.id) } else null,
         ActionItem(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) { pickPlaylist = true },
+        if (song.isEpisode) null else ActionItem(VinzIcons.QueueMusic, tr(R.string.song_tags_add), keepOpen = true) { tagging = true },
         // A picked version's album and artists (#328): it plays as that recording.
         shown.album?.id?.let { id -> ActionItem(VinzIcons.Album, tr(R.string.go_to_album), value = shown.album?.title?.takeIf { it.length <= 22 }) { nav.go(Routes.album(id)) } },
     ) + goToArtists(shown) { route -> nav.go(route) } + listOfNotNull(
