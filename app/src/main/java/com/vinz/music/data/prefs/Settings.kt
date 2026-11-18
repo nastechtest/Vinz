@@ -318,6 +318,8 @@ data class BehaviorPrefs(
     val playCountOnAccount: Boolean = false,
     /** Explicit opt-in; Looks must never enable experimental navigation. */
     val experimentalSplitNavigation: Boolean = false,
+    /** Ask for a faster display mode at the current resolution. */
+    val smoothScrolling: Boolean = false,
 )
 
 /**
@@ -1580,6 +1582,7 @@ data class AppSettings(
         backdrops = backdrops.filterValues { it.substringBefore('|') == "PHOTO" },
         backdropMotion = false,
         reduceMotion = true,
+        behavior = behavior.copy(smoothScrolling = false),
         canvasEnabled = false,
         canvasFillsBackground = false,
         visualizer = VisualizerStyle.OFF,
@@ -1787,6 +1790,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
         val experimentalSplitNavigation = booleanPreferencesKey("experimental_split_navigation")
+        val smoothScrolling = booleanPreferencesKey("smooth_scrolling")
         val navTabs = stringPreferencesKey("nav_tabs")
         val tabNames = stringPreferencesKey("tab_names")
         val navBarSize = stringPreferencesKey("nav_bar_size")
@@ -2034,7 +2038,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             setOf(
                 // Accessibility is the listener's choice, never a shared Look's or Reset look's.
                 // Old codes carrying reduce_motion are ignored by LookCode.sanitized.
-                "reduce_motion", "experimental_split_navigation",
+                "reduce_motion", "experimental_split_navigation", "smooth_scrolling",
                 "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
@@ -2362,6 +2366,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 playCountSeconds = (p[K.playCountSeconds] ?: d.behavior.playCountSeconds).coerceIn(0, 600),
                 playCountOnAccount = p[K.playCountOnAccount] ?: d.behavior.playCountOnAccount,
                 experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.behavior.experimentalSplitNavigation,
+                smoothScrolling = p[K.smoothScrolling] ?: d.behavior.smoothScrolling,
             ),
             tv = TvPrefs(
                 ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
@@ -2839,6 +2844,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
     fun setExperimentalSplitNavigation(v: Boolean) = edit { it[K.experimentalSplitNavigation] = v }
+    fun setSmoothScrolling(v: Boolean) = edit { it[K.smoothScrolling] = v }
     fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name } }
     /** A tab's own name; blank gives it back its own. */
     fun setTabName(tab: NavTab, name: String) = edit {
