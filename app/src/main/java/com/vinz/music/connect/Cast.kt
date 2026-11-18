@@ -551,8 +551,6 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
     }
 
-    fun adjustVolume(delta: Int) = setVolume((volume ?: 50) + delta)
-
     private fun publish(s: Session, loading: Boolean? = null) {
         if (session !== s) return
         val cur = state.value as? CastState.Casting
