@@ -312,7 +312,9 @@ class Spotify(private val c: AppContainer) {
                 SpotifyFeature.PLAYLISTS ->
                     if (daily && (!scheduled || now - playlists.mirror().listedAt >= DAILY_MS)) playlists.refreshAll(store.userId.orEmpty(), now)
                     else playlists.reapply()
-                SpotifyFeature.LIKES -> if (daily && (!scheduled || now - likes.state().lastRun >= DAILY_MS)) likes.sync(now)
+                SpotifyFeature.LIKES ->
+                    if (daily && (!scheduled || now - likes.state().lastRun >= DAILY_MS)) likes.sync(now)
+                    else likes.placeMatched()
             }
             guard.succeeded()
             matchSoon()
@@ -326,6 +328,25 @@ class Spotify(private val c: AppContainer) {
             _connection.value = connectionNow()
         } catch (e: Exception) {
             guard.failed(e)
+        }
+    }
+
+    /** Apply completed matches to enabled mirrors and likes without making a Spotify request. */
+    suspend fun placeMatched() = withContext(Dispatchers.IO) {
+        if (!store.connected) return@withContext
+        for (feature in listOf(SpotifyFeature.PLAYLISTS, SpotifyFeature.LIKES)) {
+            running.getValue(feature).withLock {
+                // The user may have disconnected or turned a feature off while we waited for the lock.
+                if (!store.connected || !_options.value.on(feature)) return@withLock
+                try {
+                    when (feature) {
+                        SpotifyFeature.PLAYLISTS -> playlists.reapply()
+                        SpotifyFeature.LIKES -> likes.placeMatched()
+                        else -> Unit
+                    }
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { /* The next batch or Library opening can retry this feature. */ }
+            }
         }
     }
 
