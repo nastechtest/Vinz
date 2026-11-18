@@ -72,6 +72,7 @@ object SettingsIndex {
         SettingEntry(null, tr(R.string.account), tr(R.string.vinz_account), tr(R.string.profile_name_picture_photo_local_on)),
         SettingEntry(null, tr(R.string.performance), tr(R.string.performance_mode), tr(R.string.slow_lag_laggy_stutter_battery_old)),
         SettingEntry(null, tr(R.string.performance), tr(R.string.performance_mode_is_on), tr(R.string.paused_effects_turn_off)),
+        SettingEntry(null, tr(R.string.performance), tr(R.string.smooth_scrolling), tr(R.string.smooth_scrolling_keywords)),
         SettingEntry(DC, tr(R.string.discord), tr(R.string.show_what_you_re_playing), tr(R.string.discord_rich_presence_status_listening)),
         SettingEntry(DC, tr(R.string.discord), tr(R.string.sign_out_of_discord)),
         SettingEntry(DC, tr(R.string.discord), tr(R.string.about_this), tr(R.string.discord_terms_risk)),
