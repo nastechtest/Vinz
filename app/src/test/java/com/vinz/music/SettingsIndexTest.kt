@@ -47,6 +47,15 @@ class SettingsIndexTest {
     }
 
     @Test
+    fun autoplayLengthSearchExplainsWhenItIsHidden() {
+        val entry = SettingsIndex.entries.single { it.title == "Longest song for Autoplay" }
+        val needs = requireNotNull(entry.needs)
+        assertTrue(needs.on(com.vinz.music.data.prefs.AppSettings(autoplay = true)))
+        assertTrue(!needs.on(com.vinz.music.data.prefs.AppSettings(autoplay = false)))
+        assertTrue(SettingsIndex.search("compilations").any { it == entry })
+    }
+
+    @Test
     fun findsBySynonymAndTitle() {
         assertTrue(SettingsIndex.search("vibration").any { it.title == "Haptics" })
         assertTrue(SettingsIndex.search("crossfade").first().title.startsWith("Crossfade"))
