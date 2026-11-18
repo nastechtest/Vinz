@@ -148,6 +148,10 @@ class MigrationTest {
             db.execSQL(e.str("createSql").replace("\${TABLE_NAME}", table))
             e["indices"]?.jsonArray?.forEach { db.execSQL(it.jsonObject.str("createSql").replace("\${TABLE_NAME}", table)) }
         }
+        schema["views"]?.jsonArray?.forEach {
+            val view = it.jsonObject
+            db.execSQL(view.str("createSql").replace("\${VIEW_NAME}", view.str("viewName")))
+        }
         schema["setupQueries"]!!.jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
         db.version = schema["version"]!!.jsonPrimitive.int
         db.insert("songs", null, ContentValues().apply {
