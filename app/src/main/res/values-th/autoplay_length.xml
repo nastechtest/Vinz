@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">เพลงที่ยาวที่สุดสำหรับเล่นอัตโนมัติ</string>
+    <string name="autoplay_no_length_limit">ไม่จำกัด</string>
+    <string name="longest_song_for_autoplay_info">เล่นอัตโนมัติจะไม่รวมเพลงที่ยาวกว่านี้ เช่น มิกซ์ยาวเป็นชั่วโมง เพลงที่คุณเลือกหรือใส่คิวเอง และสถานีวิทยุที่คุณเริ่ม จะเล่นตามความยาวของมัน</string>
+    <string name="longest_song_for_autoplay_keywords">เพลงยาว มิกซ์ รวมเพลง ความยาว ระยะเวลา จำกัด</string>
+</resources>
