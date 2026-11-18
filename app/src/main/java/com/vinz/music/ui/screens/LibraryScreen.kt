@@ -267,6 +267,8 @@ fun LibraryScreen(bottomPadding: Dp) {
     }
     // Spotify playlists the listener follows or saved (1.8.1): named after the playlists, greyed, their songs not shared.
     val spotifyFollowed by c.spotify.followedShown.collectAsState()
+    // Include songs matched in the background when the listener returns to Library.
+    androidx.compose.runtime.LaunchedEffect(Unit) { c.spotify.placeMatched() }
     var followedOpen by remember { mutableStateOf<com.vinz.music.data.spotify.SpotifyPlaylist?>(null) }
     followedOpen?.let { p -> SpotifyFollowedSheet(p) { followedOpen = null } }
     var openingLink by remember { mutableStateOf(false) }
