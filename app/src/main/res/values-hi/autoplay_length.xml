@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">ऑटोप्ले के लिए सबसे लंबा गाना</string>
+    <string name="autoplay_no_length_limit">कोई सीमा नहीं</string>
+    <string name="longest_song_for_autoplay_info">ऑटोप्ले इससे लंबे गाने छोड़ देता है, जैसे घंटे भर के मिक्स। जो गाने आप ख़ुद चुनते या कतार में जोड़ते हैं, और जो रेडियो आप शुरू करते हैं, वे अपनी लंबाई के साथ चलते हैं।</string>
+    <string name="longest_song_for_autoplay_keywords">लंबे गाने मिक्स संकलन अवधि लंबाई सीमा</string>
+</resources>

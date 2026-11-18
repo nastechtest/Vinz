@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Titre le plus long pour la lecture automatique</string>
+    <string name="autoplay_no_length_limit">Sans limite</string>
+    <string name="longest_song_for_autoplay_info">La lecture automatique écarte les titres plus longs que cela, comme les mix d’une heure. Les titres que vous choisissez ou ajoutez vous-même à la file d’attente, et les radios que vous lancez, sont lus quelle que soit leur durée.</string>
+    <string name="longest_song_for_autoplay_keywords">titres longs mix compilations durée longueur limite</string>
+</resources>
