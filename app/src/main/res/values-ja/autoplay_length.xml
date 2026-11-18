@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">自動再生の最長の曲</string>
+    <string name="autoplay_no_length_limit">制限なし</string>
+    <string name="longest_song_for_autoplay_info">自動再生では、これより長い曲（1 時間のミックスなど）は除外されます。自分で選んだ曲やキューに追加した曲、開始したラジオは、長さに関係なく再生されます。</string>
+    <string name="longest_song_for_autoplay_keywords">長い曲 ミックス コンピレーション 時間 長さ 制限</string>
+</resources>

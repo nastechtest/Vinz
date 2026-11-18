@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">자동재생 최대 곡 길이</string>
+    <string name="autoplay_no_length_limit">제한 없음</string>
+    <string name="longest_song_for_autoplay_info">자동재생은 한 시간짜리 믹스처럼 이보다 긴 곡을 건너뛰어요. 직접 고르거나 대기열에 넣은 곡, 직접 시작한 라디오는 길이와 관계없이 재생돼요.</string>
+    <string name="longest_song_for_autoplay_keywords">긴 곡 믹스 모음 길이 시간 제한</string>
+</resources>
