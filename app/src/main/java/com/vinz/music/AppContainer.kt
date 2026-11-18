@@ -290,6 +290,7 @@ class AppContainer(val app: Application) {
         onPairs = { queue.counterparts.putAll(it) },
     )
     val db = VinzDatabase.build(app)
+    val tags = com.vinz.music.data.TagStore(db)
     /** Versions of songs the listener picked to hear instead (1.7.9, "Play a different version"). */
     val versions = com.vinz.music.data.SongVersions(app.getSharedPreferences("song_versions", android.content.Context.MODE_PRIVATE))
     val streams by lazy { StreamResolver(app, http, settings, innerTube).apply { versionOf = versions::of } }
