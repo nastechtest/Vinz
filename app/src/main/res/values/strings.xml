@@ -1355,6 +1355,9 @@
     <string name="profile_name_picture_photo_local_on">profile name picture photo local on this phone copy library youtube playlists</string>
     <string name="performance">Performance</string>
     <string name="performance_mode">Performance mode</string>
+    <string name="smooth_scrolling">Smoother scrolling</string>
+    <string name="smooth_scrolling_info">Asks the screen for its fastest refresh rate at its current resolution. This can use more battery. Paused in Performance mode and battery saver; your choice is kept.</string>
+    <string name="smooth_scrolling_keywords">refresh rate screen 90 120 Hz faster smooth</string>
     <string name="slow_lag_laggy_stutter_battery_old">slow lag laggy stutter battery old phone fast faster lighter simple plain 1.6 effects blur animations smooth</string>
     <string name="performance_mode_is_on">Performance mode is on</string>
     <string name="paused_effects_turn_off">paused effects turn off</string>
