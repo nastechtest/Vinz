@@ -318,6 +318,8 @@ data class BehaviorPrefs(
     val playCountOnAccount: Boolean = false,
     /** Explicit opt-in; Looks must never enable experimental navigation. */
     val experimentalSplitNavigation: Boolean = false,
+    /** Maximum length of an Autoplay suggestion in minutes; zero means no limit. */
+    val autoplayMaxMinutes: Int = 0,
 )
 
 /**
@@ -1264,8 +1266,6 @@ data class AppSettings(
     /** Ask for songs as the signed-in account so Music Premium's 256 kbps streams come (StreamResolver.premiumFormats). */
     val premiumStream: Boolean = false,
     val autoplay: Boolean = true,
-    /** Maximum length of an Autoplay suggestion in minutes; zero means no limit. */
-    val autoplayMaxMinutes: Int = 0,
     /** Where Autoplay's songs come from: your own music, YouTube Music's radio, or both (offline it's always yours). */
     val autoplaySource: AutoplaySource = AutoplaySource.MIXED,
     /** Home's Replay card look ([com.vinz.music.ui.screens.ReplayCardStyle] name). */
@@ -1541,6 +1541,7 @@ data class AppSettings(
 
     /** Nested with behavior settings to leave room under the JVM constructor limit. */
     val experimentalSplitNavigation: Boolean get() = behavior.experimentalSplitNavigation
+    val autoplayMaxMinutes: Int get() = behavior.autoplayMaxMinutes
 
     // The lyrics' look, read as before (1.7.7 moved them into [lyricsLook]; see [LyricsLookPrefs]).
     val lyricsStyle: LyricsStyle get() = lyricsLook.style
@@ -2222,7 +2223,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             cellularQuality = p.enum(K.cellularQuality, d.cellularQuality),
             premiumStream = p[K.premiumStream] ?: d.premiumStream,
             autoplay = p[K.autoplay] ?: d.autoplay,
-            autoplayMaxMinutes = (p[K.autoplayMaxMinutes] ?: d.autoplayMaxMinutes).coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES),
             autoplaySource = p[K.autoplaySource]?.let { n -> AutoplaySource.entries.firstOrNull { it.name == n } } ?: d.autoplaySource,
             replayCard = p[K.replayCard] ?: d.replayCard,
             radioSongsOnly = p[K.radioSongsOnly] ?: d.radioSongsOnly,
@@ -2366,6 +2366,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 playCountSeconds = (p[K.playCountSeconds] ?: d.behavior.playCountSeconds).coerceIn(0, 600),
                 playCountOnAccount = p[K.playCountOnAccount] ?: d.behavior.playCountOnAccount,
                 experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.behavior.experimentalSplitNavigation,
+                autoplayMaxMinutes = (p[K.autoplayMaxMinutes] ?: d.autoplayMaxMinutes).coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES),
             ),
             tv = TvPrefs(
                 ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
