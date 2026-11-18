@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="song_tags_title">Tags</string>
+    <string name="song_tags_add">Add a tag</string>
+    <string name="song_tags_new">New tag</string>
+    <string name="song_tags_empty">Add tags from a song’s menu to find them here.</string>
+    <string name="song_tags_local">Tags stay on this device.</string>
+    <string name="song_tags_rename">Rename tag</string>
+    <string name="song_tags_delete">Delete tag</string>
+    <string name="song_tags_delete_confirm">Delete this tag from all songs?</string>
+    <string name="song_tags_error">Couldn’t update tags. Please try again.</string>
+    <string name="song_tags_count">%1$d songs</string>
+</resources>
