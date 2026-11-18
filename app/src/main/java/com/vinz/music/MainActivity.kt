@@ -484,6 +484,7 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 if (settings.behavior.lockPortrait && !tablet) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+        com.vinz.music.ui.SmoothScrollingEffect(settings.behavior.smoothScrolling)
         val navController = rememberNavController()
         var playerOpen by rememberSaveable { mutableStateOf(false) }
         val navigator = remember(navController) {
