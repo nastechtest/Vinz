@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Música mais longa na reprodução automática</string>
+    <string name="autoplay_no_length_limit">Sem limite</string>
+    <string name="longest_song_for_autoplay_info">A reprodução automática deixa de fora músicas mais longas que isto, como mixes de uma hora. Músicas que você escolhe ou coloca na fila, e rádios que você inicia, tocam com qualquer duração.</string>
+    <string name="longest_song_for_autoplay_keywords">músicas longas mixes compilações duração tamanho limite</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Langste nummer voor automatisch afspelen</string>
+    <string name="autoplay_no_length_limit">Geen limiet</string>
+    <string name="longest_song_for_autoplay_info">Automatisch afspelen laat nummers weg die langer zijn dan dit, zoals mixen van een uur. Nummers die je zelf kiest of in de wachtrij zet, en radio\'s die je start, spelen af ongeacht hun lengte.</string>
+    <string name="longest_song_for_autoplay_keywords">lange nummers mixen compilaties duur lengte limiet</string>
+</resources>

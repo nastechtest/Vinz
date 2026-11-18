@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Najdłuższy utwór dla autoodtwarzania</string>
+    <string name="autoplay_no_length_limit">Bez limitu</string>
+    <string name="longest_song_for_autoplay_info">Autoodtwarzanie pomija utwory dłuższe niż ten limit, jak godzinne miksy. Utwory wybrane lub dodane do kolejki przez ciebie i radia, które uruchamiasz, grają bez względu na długość.</string>
+    <string name="longest_song_for_autoplay_keywords">długie utwory miksy składanki czas trwania długość limit</string>
+</resources>
