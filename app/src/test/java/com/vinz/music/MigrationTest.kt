@@ -34,8 +34,11 @@ class MigrationTest {
 
     @Test
     fun everyVersionUpgradesKeepingHistory() {
-        val latest = versions.last()
-        for (from in versions.dropLast(1)) {
+        // A missing exported schema must not silently skip the most recent upgrade.
+        // Keep this in sync with VinzDatabase's @Database version.
+        val latest = 10
+        assertTrue("exported schema for v$latest is required", latest in versions)
+        for (from in versions.filter { it < latest }) {
             val context = RuntimeEnvironment.getApplication()
             val name = "migrate-from-$from.db"
             context.deleteDatabase(name)
