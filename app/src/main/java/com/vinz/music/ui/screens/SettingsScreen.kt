@@ -427,12 +427,17 @@ internal val PERFORMANCE_PAUSES =
 private fun PerformanceGroup() {
     val c = LocalContainer.current
     val s = LocalAppSettings.current
+    val fastScreen = com.vinz.music.ui.rememberFastScreen()
     Group(tr(R.string.performance)) {
         Toggle(
             tr(R.string.performance_mode), if (s.performanceMode) tr(R.string.on_vinz_is_drawn_lightly) else tr(R.string.for_slower_phones_lighter_fewer_effects),
             s.performanceMode, icon = VinzIcons.Speed,
             info = tr(R.string.pauses_every_feature_still_works_and, PERFORMANCE_PAUSES.lowercase()),
         ) { c.settings.setPerformanceMode(it) }
+        if (fastScreen || s.behavior.smoothScrolling) {
+            Toggle(tr(R.string.smooth_scrolling), null, s.behavior.smoothScrolling,
+                info = tr(R.string.smooth_scrolling_info)) { c.settings.setSmoothScrolling(it) }
+        }
     }
 }
 
