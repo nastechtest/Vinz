@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">অটোপ্লের জন্য সবচেয়ে লম্বা গান</string>
+    <string name="autoplay_no_length_limit">কোনো সীমা নেই</string>
+    <string name="longest_song_for_autoplay_info">অটোপ্লে এর চেয়ে লম্বা গান বাদ দেয়, যেমন ঘণ্টাখানেকের মিক্স। আপনার নিজে বাছা বা সারিতে দেওয়া গান আর আপনার শুরু করা রেডিও যত লম্বাই হোক চলে।</string>
+    <string name="longest_song_for_autoplay_keywords">লম্বা গান মিক্স সংকলন সময়কাল দৈর্ঘ্য সীমা</string>
+</resources>
