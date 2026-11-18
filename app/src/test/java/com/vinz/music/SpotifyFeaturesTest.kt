@@ -236,6 +236,31 @@ class SpotifyFeaturesTest {
         assertFalse(File(dir, "playlists.json").exists())
     }
 
+    @Test fun backgroundMatchesReapplyToPlaylistsWithoutSpotifyRequests() = runBlocking {
+        net.routes["https://api.spotify.com/v1/me/playlists"] = {
+            200 to SpotifyFixtures.page(listOf(SpotifyFixtures.playlist("p1", "Road trip", "samr", 2)))
+        }
+        net.routes["https://api.spotify.com/v1/playlists/p1/items"] = {
+            200 to SpotifyFixtures.page(listOf(SpotifyFixtures.playlistItem(blinding), SpotifyFixtures.playlistItem(creep)))
+        }
+        val hands = FakeHands()
+        val playlists = SpotifyPlaylists(api, db, importer, dir, hands, matchOf(), pause = {})
+        playlists.refreshAll("samr", now = 1)
+        val vinzId = playlists.mirror().lists.single().vinzId!!
+        val first = ytSong("fHI8X4OXluQ", "Blinding Lights", "The Weeknd", 201)
+        val second = ytSong("ytCreep0001", "Creep", "Radiohead", 239)
+        for ((key, song) in listOf(
+            ImportKeys.songKey("Creep", "Radiohead") to second,
+            ImportKeys.songKey("Blinding Lights", "The Weeknd") to first,
+        )) importer.applyMatch(db.imports().match(key)!!, MatchResult(MatchStatus.SURE, song, listOf(song)))
+        val asked = net.requests.size
+        playlists.reapply()
+        assertEquals(listOf(first.id, second.id), hands.songIds(vinzId))
+        playlists.reapply()
+        assertEquals(listOf(first.id, second.id), hands.songIds(vinzId))
+        assertEquals(asked, net.requests.size)
+    }
+
     @Test fun removingAnImportKeepsTheMatchesTheConnectionNeeds() = runBlocking {
         net.routes["https://api.spotify.com/v1/me/playlists"] = { 200 to SpotifyFixtures.page(listOf(SpotifyFixtures.playlist("p1", "Road trip", "samr", 2))) }
         net.routes["https://api.spotify.com/v1/playlists/p1/items"] = {
@@ -371,6 +396,62 @@ class SpotifyFeaturesTest {
         val p = listOf(VinzLike("y2", "Creep", "Radiohead", 239, 100), VinzLike("y3", "Starboy", "The Weeknd", 230, 101))
         val state = LikesPlan.after(LikesState(), emptyList(), p, emptyList(), emptyList(), unprocessed = setOf("y3"), now = 1)
         assertEquals(listOf("y3"), LikesPlan.plan(emptyList(), p, state, emptySet()).toLikeOnSpotify.map { it.id })
+    }
+
+    @Test fun backgroundMatchesArePlacedWithoutSpotifyRequestsOrEchoingLikes() = runBlocking {
+        net.routes["https://api.spotify.com/v1/me/tracks"] = {
+            200 to SpotifyFixtures.page(listOf(
+                SpotifyFixtures.saved(blinding, "2025-01-01T00:00:00Z"),
+                SpotifyFixtures.saved(antiHero, "2025-01-02T00:00:00Z"),
+            ))
+        }
+        val likedHere = mutableListOf<Song>()
+        val likes = SpotifyLikes(api, db, importer, dir, { songs ->
+            likedHere += songs
+            songs.forEach { db.songs().upsert(it.toEntity(db.songs().get(it.id)).copy(liked = true, likedAt = 500)) }
+        }, { emptySet() }, matchOf(), pause = {})
+        val initial = likes.sync(now = 1)
+        assertEquals(2, initial.waitingHere.size)
+        val key = ImportKeys.songKey("Blinding Lights", "The Weeknd")
+        val song = ytSong("fHI8X4OXluQ", "Blinding Lights", "The Weeknd", 200)
+        importer.applyMatch(db.imports().match(key)!!, MatchResult(MatchStatus.SURE, song, listOf(song)))
+        val asked = net.requests.size
+        assertEquals(1, likes.placeMatched())
+        assertEquals(asked, net.requests.size)
+        assertEquals(listOf(song.id), likedHere.map { it.id })
+        assertEquals(1, likes.state().waitingHere.size)
+        assertEquals(LikesPlan.OURS, likes.state().seenVinz[song.id])
+        assertEquals("spotify:track:0VjIjW4GlUZAMYd2vXMi3b", likes.state().links[song.id])
+        assertEquals(0, likes.placeMatched())
+        assertEquals(1, likedHere.size)
+        assertEquals(asked, net.requests.size)
+        // A later normal sync must not write this imported like back to Spotify.
+        likes.sync(now = 2)
+        assertEquals(0, net.count("https://api.spotify.com/v1/me/library"))
+    }
+
+    @Test fun placementClearsSkippedAndAlreadyLikedWithoutReliking() = runBlocking {
+        net.routes["https://api.spotify.com/v1/me/tracks"] = {
+            200 to SpotifyFixtures.page(listOf(
+                SpotifyFixtures.saved(blinding, "2025-01-01T00:00:00Z"),
+                SpotifyFixtures.saved(antiHero, "2025-01-02T00:00:00Z"),
+            ))
+        }
+        val likedHere = mutableListOf<Song>()
+        val likes = SpotifyLikes(api, db, importer, dir, { likedHere += it }, { emptySet() }, matchOf(), pause = {})
+        likes.sync(now = 1)
+        val firstKey = ImportKeys.songKey("Blinding Lights", "The Weeknd")
+        val secondKey = ImportKeys.songKey("Anti-Hero", "Taylor Swift")
+        val song = ytSong("fHI8X4OXluQ", "Blinding Lights", "The Weeknd", 200)
+        importer.applyMatch(db.imports().match(firstKey)!!, MatchResult(MatchStatus.SURE, song, listOf(song)))
+        db.songs().upsert(db.songs().get(song.id)!!.copy(liked = true, likedAt = 500))
+        importer.fix(db.imports().match(secondKey)!!, null)
+        val asked = net.requests.size
+        assertEquals(0, likes.placeMatched())
+        assertTrue(likedHere.isEmpty())
+        assertTrue(likes.state().waitingHere.isEmpty())
+        assertEquals("spotify:track:0VjIjW4GlUZAMYd2vXMi3b", likes.state().links[song.id])
+        assertEquals(asked, net.requests.size)
     }
 
     @Test fun bothWaysOverTheDatabase() = runBlocking {

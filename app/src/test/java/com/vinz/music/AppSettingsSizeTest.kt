@@ -1,6 +1,7 @@
 package com.vinz.music
 
 import com.vinz.music.data.prefs.AppSettings
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,5 +19,15 @@ class AppSettingsSizeTest {
         assertTrue("AppSettings' constructor takes $slots of the JVM's 255 slots: put new settings in a nested class", slots <= 245)
         // And it loads and copies.
         assertTrue(AppSettings().copy() == AppSettings())
+    }
+
+    @Test
+    fun autoplayLimitLivesInBehaviorAndSurvivesCopies() {
+        val defaults = AppSettings()
+        assertEquals(0, defaults.autoplayMaxMinutes)
+        val limited = defaults.copy(behavior = defaults.behavior.copy(autoplayMaxMinutes = 12))
+        assertEquals(12, limited.autoplayMaxMinutes)
+        assertEquals(12, limited.copy().autoplayMaxMinutes)
+        assertEquals(0, defaults.autoplayMaxMinutes)
     }
 }

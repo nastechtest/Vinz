@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Cea mai lungă melodie pentru Redarea automată</string>
+    <string name="autoplay_no_length_limit">Fără limită</string>
+    <string name="longest_song_for_autoplay_info">Redarea automată omite melodiile mai lungi decât atât, precum mixurile de o oră. Melodiile alese sau puse în coadă de tine și radiourile pornite de tine se redau indiferent de durată.</string>
+    <string name="longest_song_for_autoplay_keywords">melodii lungi mixuri compilații durată lungime limită</string>
+</resources>

@@ -34,8 +34,11 @@ class MigrationTest {
 
     @Test
     fun everyVersionUpgradesKeepingHistory() {
-        val latest = versions.last()
-        for (from in versions.dropLast(1)) {
+        // A missing exported schema must not silently skip the most recent upgrade.
+        // Keep this in sync with VinzDatabase's @Database version.
+        val latest = 10
+        assertTrue("exported schema for v$latest is required", latest in versions)
+        for (from in versions.filter { it < latest }) {
             val context = RuntimeEnvironment.getApplication()
             val name = "migrate-from-$from.db"
             context.deleteDatabase(name)
@@ -144,6 +147,10 @@ class MigrationTest {
             val table = e.str("tableName")
             db.execSQL(e.str("createSql").replace("\${TABLE_NAME}", table))
             e["indices"]?.jsonArray?.forEach { db.execSQL(it.jsonObject.str("createSql").replace("\${TABLE_NAME}", table)) }
+        }
+        schema["views"]?.jsonArray?.forEach {
+            val view = it.jsonObject
+            db.execSQL(view.str("createSql").replace("\${VIEW_NAME}", view.str("viewName")))
         }
         schema["setupQueries"]!!.jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
         db.version = schema["version"]!!.jsonPrimitive.int

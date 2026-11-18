@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">השיר הארוך ביותר להשמעה אוטומטית</string>
+    <string name="autoplay_no_length_limit">ללא הגבלה</string>
+    <string name="longest_song_for_autoplay_info">ההשמעה האוטומטית משמיטה שירים ארוכים מזה, כמו מיקסים של שעה. שירים שבחרת או הוספת לתור בעצמך, ורדיו שהפעלת, מתנגנים בכל אורך.</string>
+    <string name="longest_song_for_autoplay_keywords">שירים ארוכים מיקסים אוספים משך אורך הגבלה</string>
+</resources>

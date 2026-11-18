@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Leghosszabb dal az automatikus lejátszáshoz</string>
+    <string name="autoplay_no_length_limit">Nincs korlát</string>
+    <string name="longest_song_for_autoplay_info">Az automatikus lejátszás kihagyja az ennél hosszabb dalokat, például az órás mixeket. A magad választotta vagy sorba állított dalok és az általad indított rádiók hossztól függetlenül szólnak.</string>
+    <string name="longest_song_for_autoplay_keywords">hosszú dalok mixek válogatások hossz időtartam korlát</string>
+</resources>

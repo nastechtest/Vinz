@@ -30,13 +30,25 @@ class ImportMatchWorker(context: Context, params: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         val c = applicationContext.container
         val until = System.currentTimeMillis() + RUN_MS
-        val finished = runCatching {
+        val finished = try {
             c.imports.matchSome(until, { isStopped }) { done, total ->
                 setProgress(workDataOf(DONE to done, TOTAL to total))
                 notify(done, total)
             }
-        }.getOrDefault(false)
-        cancelNotice()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        } finally {
+            cancelNotice()
+        }
+        // Place matches locally once this batch is done, without creating Spotify when disconnected.
+        val auth = applicationContext.getSharedPreferences(com.vinz.music.data.spotify.SpotifyStore.AUTH_PREFS, Context.MODE_PRIVATE)
+        if (com.vinz.music.data.spotify.SpotifyStore.connectedIn(auth)) {
+            try { c.spotify.placeMatched() }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { /* A later run or Library opening can try again. */ }
+        }
         // More to do (the time ran out, or the network went): WorkManager runs it again shortly.
         return if (finished) Result.success() else Result.retry()
     }

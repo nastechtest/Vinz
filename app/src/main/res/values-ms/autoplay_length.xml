@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Lagu terpanjang untuk Automain</string>
+    <string name="autoplay_no_length_limit">Tiada had</string>
+    <string name="longest_song_for_autoplay_info">Automain mengetepikan lagu yang lebih panjang daripada ini, seperti campuran sepanjang sejam. Lagu yang anda pilih atau letak dalam baris gilir sendiri, dan radio yang anda mulakan, dimainkan walau apa pun tempohnya.</string>
+    <string name="longest_song_for_autoplay_keywords">lagu panjang campuran kompilasi tempoh panjang had</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Längster Song für Autoplay</string>
+    <string name="autoplay_no_length_limit">Kein Limit</string>
+    <string name="longest_song_for_autoplay_info">Autoplay lässt Songs weg, die länger sind, etwa einstündige Mixe. Songs, die du selbst auswählst oder einreihst, und Radios, die du startest, laufen in jeder Länge.</string>
+    <string name="longest_song_for_autoplay_keywords">lange songs mixe zusammenstellungen dauer länge limit</string>
+</resources>

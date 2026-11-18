@@ -318,6 +318,10 @@ data class BehaviorPrefs(
     val playCountOnAccount: Boolean = false,
     /** Explicit opt-in; Looks must never enable experimental navigation. */
     val experimentalSplitNavigation: Boolean = false,
+    /** Maximum length of an Autoplay suggestion in minutes; zero means no limit. */
+    val autoplayMaxMinutes: Int = 0,
+    /** Ask for a faster display mode at the current resolution. */
+    val smoothScrolling: Boolean = false,
 )
 
 /**
@@ -1539,6 +1543,7 @@ data class AppSettings(
 
     /** Nested with behavior settings to leave room under the JVM constructor limit. */
     val experimentalSplitNavigation: Boolean get() = behavior.experimentalSplitNavigation
+    val autoplayMaxMinutes: Int get() = behavior.autoplayMaxMinutes
 
     // The lyrics' look, read as before (1.7.7 moved them into [lyricsLook]; see [LyricsLookPrefs]).
     val lyricsStyle: LyricsStyle get() = lyricsLook.style
@@ -1580,6 +1585,7 @@ data class AppSettings(
         backdrops = backdrops.filterValues { it.substringBefore('|') == "PHOTO" },
         backdropMotion = false,
         reduceMotion = true,
+        behavior = behavior.copy(smoothScrolling = false),
         canvasEnabled = false,
         canvasFillsBackground = false,
         visualizer = VisualizerStyle.OFF,
@@ -1707,6 +1713,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val cellularQuality = stringPreferencesKey("cellular_quality")
         val premiumStream = booleanPreferencesKey("premium_stream")
         val autoplay = booleanPreferencesKey("autoplay")
+        val autoplayMaxMinutes = intPreferencesKey("autoplay_max_minutes")
         val autoplaySource = stringPreferencesKey("autoplay_source")
         val replayCard = stringPreferencesKey("replay_card")
         val radioSongsOnly = booleanPreferencesKey("radio_songs_only")
@@ -1787,6 +1794,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
         val experimentalSplitNavigation = booleanPreferencesKey("experimental_split_navigation")
+        val smoothScrolling = booleanPreferencesKey("smooth_scrolling")
         val navTabs = stringPreferencesKey("nav_tabs")
         val tabNames = stringPreferencesKey("tab_names")
         val navBarSize = stringPreferencesKey("nav_bar_size")
@@ -2034,7 +2042,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             setOf(
                 // Accessibility is the listener's choice, never a shared Look's or Reset look's.
                 // Old codes carrying reduce_motion are ignored by LookCode.sanitized.
-                "reduce_motion", "experimental_split_navigation",
+                "reduce_motion", "experimental_split_navigation", "smooth_scrolling",
                 "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
@@ -2047,7 +2055,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 "car_lyrics", "car_lyrics_style", "car_lyrics_on_phone", "car_lyrics_keep_title", "auto_grid", "nerd_stats",
                 "show_quality", "square_video_covers", "lyrics_on_mobile_data", "best_part_button", "show_video_switch",
                 "hold_seek_seconds", "canvas_with_downloads", "canvas_with_downloads_cellular", "audio_quality", "cellular_quality",
-                "premium_stream", "autoplay", "autoplay_source", "radio_songs_only", "songs_everywhere", "show_track_length",
+                "premium_stream", "autoplay", "autoplay_source", "autoplay_max_minutes", "radio_songs_only", "songs_everywhere", "show_track_length",
                 "audio_diagnostics", "search_keyboard", "double_tap_seek_seconds", "stop_on_swipe_away", "data_saver",
                 "video_continues", "lossless", "lossless_local", "normalize", "skip_silence", "mix", "mix_seconds", "mix_auto",
                 "mix_beat_match", "mix_tempo_cellular", "content_country", "video_max_height", "cache_size_mb", "download_wifi_only",
@@ -2362,6 +2370,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 playCountSeconds = (p[K.playCountSeconds] ?: d.behavior.playCountSeconds).coerceIn(0, 600),
                 playCountOnAccount = p[K.playCountOnAccount] ?: d.behavior.playCountOnAccount,
                 experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.behavior.experimentalSplitNavigation,
+                autoplayMaxMinutes = (p[K.autoplayMaxMinutes] ?: d.autoplayMaxMinutes).coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES),
+                smoothScrolling = p[K.smoothScrolling] ?: d.behavior.smoothScrolling,
             ),
             tv = TvPrefs(
                 ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
@@ -2749,6 +2759,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setCellularQuality(v: AudioQuality) = edit { it[K.cellularQuality] = v.name }
     fun setPremiumStream(v: Boolean) = edit { it[K.premiumStream] = v }
     fun setAutoplay(v: Boolean) = edit { it[K.autoplay] = v }
+    fun setAutoplayMaxMinutes(v: Int) = edit { it[K.autoplayMaxMinutes] = v.coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES) }
     fun setAutoplaySource(v: AutoplaySource) = edit { it[K.autoplaySource] = v.name }
     fun setReplayCard(name: String) = edit { it[K.replayCard] = name }
     fun setRadioSongsOnly(v: Boolean) = edit { it[K.radioSongsOnly] = v }
@@ -2839,6 +2850,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
     fun setExperimentalSplitNavigation(v: Boolean) = edit { it[K.experimentalSplitNavigation] = v }
+    fun setSmoothScrolling(v: Boolean) = edit { it[K.smoothScrolling] = v }
     fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name } }
     /** A tab's own name; blank gives it back its own. */
     fun setTabName(tab: NavTab, name: String) = edit {

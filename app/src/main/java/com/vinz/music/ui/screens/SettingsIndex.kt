@@ -72,6 +72,7 @@ object SettingsIndex {
         SettingEntry(null, tr(R.string.account), tr(R.string.vinz_account), tr(R.string.profile_name_picture_photo_local_on)),
         SettingEntry(null, tr(R.string.performance), tr(R.string.performance_mode), tr(R.string.slow_lag_laggy_stutter_battery_old)),
         SettingEntry(null, tr(R.string.performance), tr(R.string.performance_mode_is_on), tr(R.string.paused_effects_turn_off)),
+        SettingEntry(null, tr(R.string.performance), tr(R.string.smooth_scrolling), tr(R.string.smooth_scrolling_keywords)),
         SettingEntry(DC, tr(R.string.discord), tr(R.string.show_what_you_re_playing), tr(R.string.discord_rich_presence_status_listening)),
         SettingEntry(DC, tr(R.string.discord), tr(R.string.sign_out_of_discord)),
         SettingEntry(DC, tr(R.string.discord), tr(R.string.about_this), tr(R.string.discord_terms_risk)),
@@ -267,6 +268,7 @@ object SettingsIndex {
         // 1.8.0 (#210): merged choices; the old titles stay as search words.
         SettingEntry(S, tr(R.string.what_plays_next), tr(R.string.what_plays_next)),
         SettingEntry(S, tr(R.string.what_plays_next), tr(R.string.when_the_queue_ends), tr(R.string.radio_continue_similar) + " " + tr(R.string.autoplay) + " " + tr(R.string.autoplay_from) + " " + tr(R.string.radio_your_music_vinz_radio_youtube)),
+        SettingEntry(S, tr(R.string.what_plays_next), tr(R.string.longest_song_for_autoplay), tr(R.string.longest_song_for_autoplay_keywords), needs = turnOn(tr(R.string.autoplay)) { it.autoplay }),
         SettingEntry(S, tr(R.string.what_plays_next), tr(R.string.music_videos_label), tr(R.string.music_videos_audio) + " " + tr(R.string.songs_not_videos) + " " + tr(R.string.songs_not_videos_everywhere)),
         SettingEntry(S, tr(R.string.what_plays_next), tr(R.string.keep_playing_videos), tr(R.string.music_video_2)),
         SettingEntry(S, tr(R.string.what_plays_next), tr(R.string.explicit_songs), tr(R.string.explicit_songs_keywords)),

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Самая длинная песня для автовоспроизведения</string>
+    <string name="autoplay_no_length_limit">Без ограничения</string>
+    <string name="longest_song_for_autoplay_info">Автовоспроизведение пропускает песни длиннее этой, например часовые миксы. Песни, которые ты выбрал или добавил в очередь сам, и радио, которое ты запустил, играют любой длины.</string>
+    <string name="longest_song_for_autoplay_keywords">длинные песни миксы сборники длительность длина ограничение</string>
+</resources>

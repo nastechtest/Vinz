@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">自動播放的最長歌曲</string>
+    <string name="autoplay_no_length_limit">不限制</string>
+    <string name="longest_song_for_autoplay_info">自動播放會排除比這更長的歌曲，例如長達一小時的混音。你自己選擇或加入待播清單的歌曲，以及你啟動的電台，不論多長都會播放。</string>
+    <string name="longest_song_for_autoplay_keywords">長歌曲 混音 合輯 長度 時間 限制</string>
+</resources>

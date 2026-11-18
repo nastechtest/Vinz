@@ -427,12 +427,17 @@ internal val PERFORMANCE_PAUSES =
 private fun PerformanceGroup() {
     val c = LocalContainer.current
     val s = LocalAppSettings.current
+    val fastScreen = com.vinz.music.ui.rememberFastScreen()
     Group(tr(R.string.performance)) {
         Toggle(
             tr(R.string.performance_mode), if (s.performanceMode) tr(R.string.on_vinz_is_drawn_lightly) else tr(R.string.for_slower_phones_lighter_fewer_effects),
             s.performanceMode, icon = VinzIcons.Speed,
             info = tr(R.string.pauses_every_feature_still_works_and, PERFORMANCE_PAUSES.lowercase()),
         ) { c.settings.setPerformanceMode(it) }
+        if (fastScreen || s.behavior.smoothScrolling) {
+            Toggle(tr(R.string.smooth_scrolling), null, s.behavior.smoothScrolling,
+                info = tr(R.string.smooth_scrolling_info)) { c.settings.setSmoothScrolling(it) }
+        }
     }
 }
 
@@ -1824,6 +1829,12 @@ private fun SoundPage() {
         Group(tr(R.string.what_plays_next)) {
             Label(tr(R.string.when_the_queue_ends), info = tr(R.string.when_the_queue_ends_info))
             Chips(QueueEnd.entries, SoundChoices.queueEnd(s), { it.label }) { SoundChoices.setQueueEnd(prefs, it) }
+            if (s.autoplay) SliderSetting(
+                tr(R.string.longest_song_for_autoplay), s.autoplayMaxMinutes.toFloat(), 0f..com.vinz.music.data.AutoplayLength.MAX_MINUTES.toFloat(),
+                { if (it.roundToInt() == 0) tr(R.string.autoplay_no_length_limit) else tr(R.string.min, it.roundToInt()) },
+                steps = com.vinz.music.data.AutoplayLength.MAX_MINUTES / com.vinz.music.data.AutoplayLength.STEP_MINUTES - 1,
+                info = tr(R.string.longest_song_for_autoplay_info),
+            ) { prefs.setAutoplayMaxMinutes(it.roundToInt()) }
             Label(tr(R.string.music_videos_label), info = tr(R.string.music_videos_label_info))
             Chips(VideoPolicy.entries, SoundChoices.videoPolicy(s), { it.label }) { SoundChoices.setVideoPolicy(prefs, it) }
             Toggle(tr(R.string.keep_playing_videos), tr(R.string.after_a_video_the_next_song), s.videoContinues) { prefs.setVideoContinues(it) }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Bài hát dài nhất cho Tự động phát</string>
+    <string name="autoplay_no_length_limit">Không giới hạn</string>
+    <string name="longest_song_for_autoplay_info">Tự động phát bỏ qua các bài dài hơn mức này, như các bản mix dài cả giờ. Bài bạn tự chọn hoặc thêm vào danh sách chờ, và đài bạn bắt đầu, phát với độ dài bất kỳ.</string>
+    <string name="longest_song_for_autoplay_keywords">bài dài mix tuyển tập thời lượng độ dài giới hạn</string>
+</resources>

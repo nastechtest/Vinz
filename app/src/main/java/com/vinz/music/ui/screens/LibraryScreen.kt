@@ -141,6 +141,8 @@ fun LibraryScreen(bottomPadding: Dp) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val settings = LocalAppSettings.current
+    var showingTags by remember { mutableStateOf(false) }
+    if (showingTags) com.vinz.music.ui.components.SongTagsBrowser { showingTags = false }
     val playlists by c.library.playlists.collectAsState()
     val remoteAlbums by c.library.albums.collectAsState()
     val remoteArtists by c.library.artists.collectAsState()
@@ -267,6 +269,8 @@ fun LibraryScreen(bottomPadding: Dp) {
     }
     // Spotify playlists the listener follows or saved (1.8.1): named after the playlists, greyed, their songs not shared.
     val spotifyFollowed by c.spotify.followedShown.collectAsState()
+    // Include songs matched in the background when the listener returns to Library.
+    androidx.compose.runtime.LaunchedEffect(Unit) { c.spotify.placeMatched() }
     var followedOpen by remember { mutableStateOf<com.vinz.music.data.spotify.SpotifyPlaylist?>(null) }
     followedOpen?.let { p -> SpotifyFollowedSheet(p) { followedOpen = null } }
     var openingLink by remember { mutableStateOf(false) }
@@ -299,6 +303,7 @@ fun LibraryScreen(bottomPadding: Dp) {
 
     Column(Modifier.fillMaxSize()) {
         com.vinz.music.ui.components.ScreenHeader(tr(R.string.library)) {
+            com.vinz.music.ui.components.RoundAction(VinzIcons.QueueMusic, tr(R.string.song_tags_title)) { showingTags = true }
             if (settings.isLoggedIn) {
                 if (sync == SyncState.SYNCING) Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) { com.vinz.music.ui.components.VinzSpinner(Modifier.size(22.dp), stroke = 2.dp) }
                 else com.vinz.music.ui.components.RoundAction(VinzIcons.Sync, tr(R.string.sync_with_youtube_music)) { scope.launch { c.library.sync() } }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Lagu terpanjang untuk Putar otomatis</string>
+    <string name="autoplay_no_length_limit">Tanpa batas</string>
+    <string name="longest_song_for_autoplay_info">Putar otomatis melewati lagu yang lebih panjang dari ini, seperti mix sepanjang satu jam. Lagu yang kamu pilih atau masukkan ke antrean sendiri, dan radio yang kamu mulai, diputar berapa pun durasinya.</string>
+    <string name="longest_song_for_autoplay_keywords">lagu panjang mix kompilasi durasi panjang batas</string>
+</resources>

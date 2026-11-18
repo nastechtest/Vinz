@@ -163,8 +163,6 @@ import kotlin.math.abs
  * The app's screen. Declared in the manifest as [VinzActivity], so that ".MainActivity" can be the classic app-icon
  * alias (#20) and home-screen icons made before stay valid.
  */
-/** A volume key press on a cast speaker or TV, out of 100. */
-private const val VOLUME_KEY_STEP = 4
 /** How .vinzlook files are sent (a zip: the Look's code and any photos or font it carries). */
 private const val LOOK_MIME = "application/zip"
 
@@ -291,11 +289,19 @@ open class MainActivity : ComponentActivity() {
         linkIn(intent)?.let { deepLink.value = it }
     }
 
+    private var castVolumeKeyAt = 0L
+
     /** While casting, the volume keys turn the speaker or TV up and down (with Vinz open; elsewhere, the media session does). */
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
         val cast = container.cast
         if (cast.casting && (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)) {
-            cast.adjustVolume(if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) VOLUME_KEY_STEP else -VOLUME_KEY_STEP)
+            // One step per press; a held key takes at most one step per gap.
+            val now = android.os.SystemClock.uptimeMillis()
+            if (com.vinz.music.playback.RemoteVolume.takesKey(event.repeatCount, now, castVolumeKeyAt)) {
+                castVolumeKeyAt = now
+                val up = keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
+                cast.setVolume(com.vinz.music.playback.RemoteVolume.stepped(cast.volume ?: 50, if (up) 1 else -1))
+            }
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -484,6 +490,7 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 if (settings.behavior.lockPortrait && !tablet) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+        com.vinz.music.ui.SmoothScrollingEffect(settings.behavior.smoothScrolling)
         val navController = rememberNavController()
         var playerOpen by rememberSaveable { mutableStateOf(false) }
         val navigator = remember(navController) {

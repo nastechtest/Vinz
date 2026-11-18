@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Längsta låt för autouppspelning</string>
+    <string name="autoplay_no_length_limit">Ingen gräns</string>
+    <string name="longest_song_for_autoplay_info">Autouppspelning utelämnar låtar som är längre än så här, som timslånga mixar. Låtar du väljer eller köar själv, och radioflöden du startar, spelas oavsett längd.</string>
+    <string name="longest_song_for_autoplay_keywords">långa låtar mixar samlingar längd gräns</string>
+</resources>

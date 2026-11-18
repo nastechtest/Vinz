@@ -57,7 +57,11 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val pending = mutableListOf<(ExoPlayer) -> Unit>()
 
-    val player: ExoPlayer? get() = service?.player
+    val player: ExoPlayer? get() = service?.player ?: testPlayer
+
+    /** Tests only: a player to drive when the playback service isn't running. */
+    @androidx.annotation.VisibleForTesting
+    internal var testPlayer: ExoPlayer? = null
 
     private val _current = MutableStateFlow<Song?>(null)
     val currentSong: StateFlow<Song?> = _current
@@ -457,6 +461,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         return kept
     }
 
+    /** Start a single song with its radio, or keep all selected songs in their original order. */
+    private fun startWith(songs: List<Song>, source: QueueSource?) {
+        if (source == null && songs.size == 1) playSingle(songs.first())
+        else playQueue(songs, 0, source ?: QueueSource(QueueKind.OTHER, ""))
+    }
+
     /** Songs (one, or a whole album or playlist) straight after the current song, or played, with nothing on. */
     fun playNext(songs: List<Song>, source: QueueSource?) {
         if (songs.isEmpty()) return
@@ -464,7 +474,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (allowed.size < songs.size) return playNext(allowed, source)
         withPlayer { p ->
             if (p.mediaItemCount == 0) {
-                if (source == null) playSingle(songs.first()) else playQueue(songs, 0, source)
+                startWith(songs, source)
             } else insertQueued(p, p.currentMediaItemIndex + 1, songs)
         }
     }
@@ -479,7 +489,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (allowed.size < songs.size) return addToQueue(allowed, source)
         withPlayer { p ->
             if (p.mediaItemCount == 0) {
-                if (source == null) playSingle(songs.first()) else playQueue(songs, 0, source)
+                startWith(songs, source)
             } else {
                 val auto = c.queue.autoplayStart.value
                 val cur = p.currentMediaItemIndex

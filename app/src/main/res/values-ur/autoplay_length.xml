@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">آٹو پلے کے لیے سب سے لمبا گانا</string>
+    <string name="autoplay_no_length_limit">کوئی حد نہیں</string>
+    <string name="longest_song_for_autoplay_info">آٹو پلے اس سے لمبے گانے چھوڑ دیتا ہے، جیسے گھنٹہ بھر کے مکس۔ جو گانے آپ خود چنیں یا قطار میں لگائیں، اور جو ریڈیو آپ شروع کریں، وہ جتنے بھی لمبے ہوں چلتے ہیں۔</string>
+    <string name="longest_song_for_autoplay_keywords">لمبے گانے مکس مجموعے دورانیہ لمبائی حد</string>
+</resources>

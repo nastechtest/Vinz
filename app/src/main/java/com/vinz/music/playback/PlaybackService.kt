@@ -379,7 +379,6 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         sessionPlayer.remote = object : LyricsOverlayPlayer.Remote {
             override val volume: Int? get() = if (c.cast.casting) c.cast.volume else null
             override fun setVolume(v: Int) = c.cast.setVolume(v)
-            override fun adjust(delta: Int) = c.cast.adjustVolume(delta)
         }
         c.cast.attach(player, object : com.vinz.music.connect.Cast.Hooks {
             override fun beforeCasting() {
@@ -1271,11 +1270,17 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val useYours = offline || seedLocal || (!radio && mode != com.vinz.music.data.prefs.AutoplaySource.YOUTUBE)
         val useYouTube = !offline && !seedLocal && (radio || mode != com.vinz.music.data.prefs.AutoplaySource.YOURS)
         val seeds = (maxOf(0, player.mediaItemCount - 3) until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.filter { it.isNotBlank() }
+        // Restrict the local pool before its 15-pick cap, so long tracks can't displace eligible songs.
+        val initialLimit = c.settings.current.autoplayMaxMinutes
         c.queue.autoplayLoading = true
         scope.launch {
             val existing = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             val mine = if (!useYours) emptyList() else runCatching {
-                withContext(Dispatchers.IO) { c.yourMusic.radio(seeds, existing, 15, offlineOnly = offline) }
+                withContext(Dispatchers.IO) {
+                    c.yourMusic.radio(seeds, existing, 15, offlineOnly = offline) {
+                        com.vinz.music.data.AutoplayLength.fitsSuggestion(it, initialLimit, radio)
+                    }
+                }
             }.onFailure { android.util.Log.w("VinzRadio", "Vinz radio failed", it) }.getOrNull().orEmpty()
                 .let { com.vinz.music.data.foryou.LocalRadio.besideYouTube(it, onlyYours = !useYouTube || mode == com.vinz.music.data.prefs.AutoplaySource.YOURS) }
                 .map { it.song }
@@ -1293,17 +1298,23 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val heardLately = withContext(Dispatchers.IO) {
                 runCatching { c.db.plays().eventsSince(System.currentTimeMillis() - RADIO_REST_MS).map { it.songId }.toSet() }.getOrDefault(emptySet())
             }
+            if (c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
             val fb = c.recFeedback
-            val theirs = r?.songs.orEmpty().filter { it.id !in heardLately && !fb.turnedDown(it.id, known = false) }
+            // Filter both sources before arranging, so long tracks do not crowd out eligible ones.
+            // Read the current limit after the network call, in case it changed while loading.
+            val maxMinutes = c.settings.current.autoplayMaxMinutes
+            fun allowed(song: Song) = com.vinz.music.data.AutoplayLength.fitsSuggestion(song, maxMinutes, radio)
+            val eligibleMine = mine.filter(::allowed)
+            val theirs = r?.songs.orEmpty().filter { it.id !in heardLately && !fb.turnedDown(it.id, known = false) && allowed(it) }
             val freshShare = when {
-                radio || mine.isEmpty() -> 1.0
+                radio || eligibleMine.isEmpty() -> 1.0
                 theirs.isEmpty() -> 0.0
                 // Both: YouTube's radio leads, your own songs that belong with it in between (about two in five).
                 else -> 0.6
             }
             // An artist a few times a batch at most, never twice running.
-            val songs = com.vinz.music.data.foryou.Variety.arrange(mine, theirs, 25, freshShare, perArtist = 3) { it.primaryArtist.lowercase() }
-            android.util.Log.i("VinzRadio", "autoplay after $seed: ${mine.size} of yours, ${theirs.size} from YouTube ($mode${if (offline) ", offline" else ""})")
+            val songs = com.vinz.music.data.foryou.Variety.arrange(eligibleMine, theirs, 25, freshShare, perArtist = 3) { it.primaryArtist.lowercase() }
+            android.util.Log.i("VinzRadio", "autoplay after $seed: ${eligibleMine.size} of yours, ${theirs.size} from YouTube ($mode${if (offline) ", offline" else ""})")
             val explicit = c.settings.current.behavior.explicitContent
             val add = songs.distinctBy { it.id }.filter {
                 it.id !in existing && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.vinz.music.data.ExplicitFilter.plays(explicit, it)

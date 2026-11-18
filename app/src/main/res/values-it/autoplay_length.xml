@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Brano più lungo per la riproduzione automatica</string>
+    <string name="autoplay_no_length_limit">Nessun limite</string>
+    <string name="longest_song_for_autoplay_info">La riproduzione automatica esclude i brani più lunghi di questo valore, come i mix di un\'ora. I brani che scegli o metti in coda tu, e le radio che avvii, si riproducono qualunque sia la loro durata.</string>
+    <string name="longest_song_for_autoplay_keywords">brani lunghi mix raccolte durata lunghezza limite</string>
+</resources>
