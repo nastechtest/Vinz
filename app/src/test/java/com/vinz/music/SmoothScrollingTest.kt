@@ -28,7 +28,7 @@ class SmoothScrollingTest {
     private var repository: SettingsRepository? = null
     private fun repo() = repository ?: SettingsRepository(RuntimeEnvironment.getApplication(), scope).also { repository = it }
 
-    @After fun clean() = runBlocking {
+    @After fun clean() = runBlocking<Unit> {
         try {
             repository?.let { r ->
                 r.setPerformanceMode(false)
@@ -70,7 +70,7 @@ class SmoothScrollingTest {
         assertTrue(light.copy(performanceMode = false).effective().behavior.smoothScrolling)
     }
 
-    @Test fun preferenceIsStoredAndExcludedFromLooks() = runBlocking {
+    @Test fun preferenceIsStoredAndExcludedFromLooks() = runBlocking<Unit> {
         val r = repo()
         assertTrue("smooth_scrolling" in r.allKeyNames)
         assertTrue("smooth_scrolling" in r.notLookNames)
