@@ -611,12 +611,13 @@ interface RomanizedDao {
 @Database(
     entities = [SongEntity::class, PlayEventEntity::class, LyricsEntity::class, GenreEntity::class, MotionArtEntity::class, HeatmapEntity::class,
         RomanizedEntity::class, ReleaseEntity::class, MixEntity::class, BlendEntity::class, RecognitionEntity::class,
-        ImportedPlayEntity::class, ImportMatchEntity::class],
+        ImportedPlayEntity::class, ImportMatchEntity::class, SongTagEntity::class],
     views = [CountedPlay::class],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class VinzDatabase : RoomDatabase() {
+    abstract fun tags(): TagDao
     abstract fun songs(): SongDao
     abstract fun plays(): PlayEventDao
     abstract fun lyrics(): LyricsDao
@@ -702,6 +703,12 @@ abstract class VinzDatabase : RoomDatabase() {
                     db.execSQL("CREATE TABLE IF NOT EXISTS `import_matches` (`songKey` TEXT NOT NULL, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, `album` TEXT, `durationMs` INTEGER NOT NULL, `atLeastMs` INTEGER NOT NULL, `sourceId` TEXT, `isrc` TEXT, `youtubeId` TEXT, `status` TEXT NOT NULL, `matchedId` TEXT, `candidates` TEXT, `checkedAt` INTEGER NOT NULL, `tries` INTEGER NOT NULL, PRIMARY KEY(`songKey`))")
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_matches_status` ON `import_matches` (`status`)")
                     db.execSQL("CREATE VIEW `counted_plays` AS $COUNTED_PLAYS_SQL")
+                }
+            },
+            object : Migration(9, 10) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS `song_tags` (`tag` TEXT NOT NULL, `songId` TEXT NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`tag`, `songId`))")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_song_tags_songId` ON `song_tags` (`songId`)")
                 }
             },
         )
