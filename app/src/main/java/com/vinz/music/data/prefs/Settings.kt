@@ -1264,6 +1264,8 @@ data class AppSettings(
     /** Ask for songs as the signed-in account so Music Premium's 256 kbps streams come (StreamResolver.premiumFormats). */
     val premiumStream: Boolean = false,
     val autoplay: Boolean = true,
+    /** Maximum length of an Autoplay suggestion in minutes; zero means no limit. */
+    val autoplayMaxMinutes: Int = 0,
     /** Where Autoplay's songs come from: your own music, YouTube Music's radio, or both (offline it's always yours). */
     val autoplaySource: AutoplaySource = AutoplaySource.MIXED,
     /** Home's Replay card look ([com.vinz.music.ui.screens.ReplayCardStyle] name). */
@@ -1707,6 +1709,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val cellularQuality = stringPreferencesKey("cellular_quality")
         val premiumStream = booleanPreferencesKey("premium_stream")
         val autoplay = booleanPreferencesKey("autoplay")
+        val autoplayMaxMinutes = intPreferencesKey("autoplay_max_minutes")
         val autoplaySource = stringPreferencesKey("autoplay_source")
         val replayCard = stringPreferencesKey("replay_card")
         val radioSongsOnly = booleanPreferencesKey("radio_songs_only")
@@ -2047,7 +2050,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 "car_lyrics", "car_lyrics_style", "car_lyrics_on_phone", "car_lyrics_keep_title", "auto_grid", "nerd_stats",
                 "show_quality", "square_video_covers", "lyrics_on_mobile_data", "best_part_button", "show_video_switch",
                 "hold_seek_seconds", "canvas_with_downloads", "canvas_with_downloads_cellular", "audio_quality", "cellular_quality",
-                "premium_stream", "autoplay", "autoplay_source", "radio_songs_only", "songs_everywhere", "show_track_length",
+                "premium_stream", "autoplay", "autoplay_source", "autoplay_max_minutes", "radio_songs_only", "songs_everywhere", "show_track_length",
                 "audio_diagnostics", "search_keyboard", "double_tap_seek_seconds", "stop_on_swipe_away", "data_saver",
                 "video_continues", "lossless", "lossless_local", "normalize", "skip_silence", "mix", "mix_seconds", "mix_auto",
                 "mix_beat_match", "mix_tempo_cellular", "content_country", "video_max_height", "cache_size_mb", "download_wifi_only",
@@ -2219,6 +2222,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             cellularQuality = p.enum(K.cellularQuality, d.cellularQuality),
             premiumStream = p[K.premiumStream] ?: d.premiumStream,
             autoplay = p[K.autoplay] ?: d.autoplay,
+            autoplayMaxMinutes = (p[K.autoplayMaxMinutes] ?: d.autoplayMaxMinutes).coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES),
             autoplaySource = p[K.autoplaySource]?.let { n -> AutoplaySource.entries.firstOrNull { it.name == n } } ?: d.autoplaySource,
             replayCard = p[K.replayCard] ?: d.replayCard,
             radioSongsOnly = p[K.radioSongsOnly] ?: d.radioSongsOnly,
@@ -2749,6 +2753,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setCellularQuality(v: AudioQuality) = edit { it[K.cellularQuality] = v.name }
     fun setPremiumStream(v: Boolean) = edit { it[K.premiumStream] = v }
     fun setAutoplay(v: Boolean) = edit { it[K.autoplay] = v }
+    fun setAutoplayMaxMinutes(v: Int) = edit { it[K.autoplayMaxMinutes] = v.coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES) }
     fun setAutoplaySource(v: AutoplaySource) = edit { it[K.autoplaySource] = v.name }
     fun setReplayCard(name: String) = edit { it[K.replayCard] = name }
     fun setRadioSongsOnly(v: Boolean) = edit { it[K.radioSongsOnly] = v }
