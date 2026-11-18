@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="longest_song_for_autoplay">Найдовша пісня для автовідтворення</string>
+    <string name="autoplay_no_length_limit">Без обмеження</string>
+    <string name="longest_song_for_autoplay_info">Автовідтворення пропускає пісні довші за цю, як-от годинні мікси. Пісні, які ти обрав або додав до черги сам, і радіо, яке ти запустив, грають будь-якої тривалості.</string>
+    <string name="longest_song_for_autoplay_keywords">довгі пісні мікси збірки тривалість довжина обмеження</string>
+</resources>
