@@ -2,6 +2,11 @@ package com.vinz.music
 
 import com.vinz.music.data.VinzLibrary
 import com.vinz.music.data.SavedAlbum
+import com.vinz.music.data.SmartField
+import com.vinz.music.data.SmartMatch
+import com.vinz.music.data.SmartRule
+import com.vinz.music.data.SmartRules
+import com.vinz.music.data.SmartSort
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import org.junit.Assert.assertEquals
@@ -54,6 +59,35 @@ class VinzLibraryTest {
         lib.unsaveAlbum("MPREb_1")
         assertFalse(VinzLibrary(dir).isSaved("MPREb_1"))
         assertTrue(VinzLibrary(dir).isSaved("MPREb_2"))
+        dir.deleteRecursively()
+    }
+
+    /**
+     * A smart playlist's rules are kept in vinz.json (so a Library backup carries them); songs can't be added by hand,
+     * and what it found is kept without moving it up the list.
+     */
+    @Test
+    fun smartPlaylistsKeepTheirRules() {
+        val dir = Files.createTempDirectory("vinzlib").toFile()
+        val lib = VinzLibrary(dir)
+        val rules = SmartRules(
+            listOf(SmartRule(SmartField.BPM, min = 120.0, max = 140.0), SmartRule(SmartField.TAG, not = true, text = "gym")),
+            SmartMatch.ANY, SmartSort.ENERGY, null,
+        )
+        val id = lib.createSmart("Fast", rules)
+        val plain = lib.create("Plain")
+        assertEquals("nothing added by hand", 0, lib.add(id, listOf(song("a"))))
+        lib.keepFound(id, listOf(song("b"), song("c")))
+        assertEquals("finding songs doesn't move it up", plain, lib.lists.value.first().id)
+
+        val again = VinzLibrary(dir).list(id)!!
+        assertEquals(rules, again.smart)
+        assertEquals(listOf("b", "c"), again.songs.map { it.id })
+        assertNull("a plain playlist has no rules", VinzLibrary(dir).list(plain)!!.smart)
+
+        lib.setSmart(id, "Faster", rules.copy(limit = 25))
+        assertEquals(25, VinzLibrary(dir).list(id)!!.smart!!.limit)
+        assertEquals("Faster", VinzLibrary(dir).list(id)!!.title)
         dir.deleteRecursively()
     }
 
