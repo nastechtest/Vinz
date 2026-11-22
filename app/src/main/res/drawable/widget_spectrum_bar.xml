@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The split light, red to violet, stretched across whatever it fills (the widgets' progress line). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="100dp"
+    android:height="4dp"
+    android:viewportWidth="100"
+    android:viewportHeight="4">
+    <path android:pathData="M0,0h100v4h-100z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="100" android:endY="0">
+                <item android:offset="0.00" android:color="#FFFF4D5E" />
+                <item android:offset="0.20" android:color="#FFFF9F43" />
+                <item android:offset="0.38" android:color="#FFFFD84D" />
+                <item android:offset="0.56" android:color="#FF3DDC97" />
+                <item android:offset="0.76" android:color="#FF36B8FF" />
+                <item android:offset="1.00" android:color="#FF7C5CFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

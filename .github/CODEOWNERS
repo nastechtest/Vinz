@@ -1,0 +1,12 @@
+# Reviewers requested automatically. Owners must have write access to the repository, otherwise GitHub
+# silently ignores the rule.
+#
+# The release machinery and the version file are owned explicitly: a change there can publish a build to
+# every user, so it should not merge without the maintainer's review.
+*                                   @nastechtest
+
+/.github/workflows/                 @nastechtest
+/.github/CODEOWNERS                 @nastechtest
+/scripts/ci/                        @nastechtest
+/version.properties                 @nastechtest
+/docs/RELEASING.md                  @nastechtest

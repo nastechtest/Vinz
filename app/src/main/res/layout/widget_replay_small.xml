@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Replay (2×2, 1.8.5): this week's top song, its cover above its title. Nothing played yet: Vinz's mark and a line. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_panel"
+    android:backgroundTint="#FF1B1B22"
+    android:clipToOutline="true">
+
+    <FrameLayout
+        android:id="@+id/rp_open"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/widget_replay_open"
+        android:padding="14dp">
+
+        <LinearLayout
+            android:id="@+id/rp_content"
+            android:visibility="gone"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/rp_song_art"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/widget_art_frame"
+                android:importantForAccessibility="no"
+                android:padding="14dp"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_notification" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:minHeight="8dp" />
+
+            <TextView
+                android:id="@+id/rp_song_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.08"
+                android:maxLines="2"
+                android:text="@string/widget_replay_song_label"
+                android:textAlignment="viewStart"
+                android:textColor="#B3FFFFFF"
+                android:textSize="10sp" />
+
+            <ImageView
+                android:id="@+id/rp_dash"
+                android:layout_width="20dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
+                android:importantForAccessibility="no"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_spectrum_bar" />
+
+            <TextView
+                android:id="@+id/rp_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:textAlignment="viewStart"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/rp_artist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAlignment="viewStart"
+                android:textColor="#BFFFFFFF"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/rp_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/rp_mark"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_notification" />
+
+            <TextView
+                android:id="@+id/rp_empty_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="3"
+                android:text="@string/widget_replay_empty"
+                android:textColor="#E6FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

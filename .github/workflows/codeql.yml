@@ -1,0 +1,71 @@
+# Static security analysis. Runs on pull requests, on main, on stable, and weekly, because a new query pack
+# can find issues in code that has not changed.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, stable]
+  pull_request:
+    branches: [main, stable]
+  schedule:
+    - cron: '37 23 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      # Uploads the results to code scanning; the rest stay read-only.
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Vinz is Kotlin only, but a manual build is required so CodeQL sees the generated sources.
+          - language: java-kotlin
+            build-mode: manual
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+
+      - name: Build Android sources for extraction
+        run: ./gradlew :app:assembleDebug :baselineprofile:assemble --no-daemon
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:${{ matrix.language }}"

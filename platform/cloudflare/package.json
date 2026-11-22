@@ -1,0 +1,11 @@
+{
+  "name": "vinz-cloudflare-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test vinz-api.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,94 @@
+name: Vinz production readiness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "app/**"
+      - "platform/cloudflare/**"
+      - "supabase/**"
+      - ".github/workflows/**"
+      - "scripts/ci/**"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "app/**"
+      - "platform/cloudflare/**"
+      - "supabase/**"
+      - ".github/workflows/**"
+      - "scripts/ci/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinz-production-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-tests:
+    name: Readiness audit unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "22"
+      - name: Test URL, duplicate and privacy classifiers
+        run: node --test scripts/ci/vinz-production-readiness.test.mjs
+      - name: Syntax-check provider audit scripts
+        run: node --check scripts/ci/vinz-cloudflare-audit.mjs && node --check scripts/ci/vinz-supabase-auth-audit.mjs
+
+  live-connectivity-and-config:
+    name: Live server connectivity and production configuration
+    needs: audit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "22"
+      - name: Verify live Vinz, Cloudflare and Supabase endpoints
+        env:
+          VINZ_HOME_URL: ${{ vars.VINZ_HOME_URL || 'https://home.vinzmusic.workers.dev' }}
+          VINZ_API_URL: ${{ vars.VINZ_API_URL || 'https://api.vinzmusic.workers.dev' }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://iszghebmetrbkfhnnoqq.supabase.co' }}
+          GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
+        run: node scripts/ci/vinz-production-readiness.mjs
+      - name: Audit live Cloudflare account, Workers, routes, bindings and secrets
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '6ac32c2af3e1d65a98b3733b29bee4ea' }}
+        run: node scripts/ci/vinz-cloudflare-audit.mjs
+      - name: Audit live Supabase Auth, Google OAuth, SMTP and security settings
+        if: always()
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || 'iszghebmetrbkfhnnoqq' }}
+        run: node scripts/ci/vinz-supabase-auth-audit.mjs
+      - name: Upload machine-readable readiness report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: vinz-readiness-${{ github.run_id }}
+          path: |
+            artifacts/vinz-readiness.json
+            artifacts/vinz-cloudflare-audit.json
+            artifacts/vinz-supabase-auth-audit.json
+          if-no-files-found: error
+          retention-days: 30

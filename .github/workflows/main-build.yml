@@ -1,0 +1,209 @@
+# Development builds from main: every merged PR produces a uniquely numbered, installable APK, and a single
+# rolling "Main — Latest" prerelease always points at the most recent one.
+#
+# Build number = number of commits on main. Derived from git history rather than a counter file, so it is
+# monotonic, race-free (two runners cannot disagree about a commit's position) and reproducible: the same
+# commit always yields the same number, and adding a commit always yields a new one.
+name: Main build
+
+on:
+  push:
+    branches: [main]
+  # Recovery only: rebuild the current main tip without touching history.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel: a build that has been queued must still publish its own commit correctly.
+concurrency:
+  group: main-build
+  cancel-in-progress: false
+
+env:
+  APP_PACKAGE: com.vinz.music
+  JAVA_VERSION: "17"
+  VINZ_GIT_SHA: ${{ github.sha }}
+  VINZ_BUILD_CHANNEL: main
+
+jobs:
+  build:
+    name: Build development APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      label: ${{ steps.build-id.outputs.label }}
+      version-name: ${{ steps.build-id.outputs.version-name }}
+      apk-name: ${{ steps.build-id.outputs.apk-name }}
+      commit-sha: ${{ steps.build-id.outputs.commit-sha }}
+    steps:
+      # fetch-depth 0: the build number is the commit count on main, which a shallow clone cannot report.
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Compute the development build identifier
+        id: build-id
+        run: |
+          set -euo pipefail
+          label=$(./scripts/ci/version.sh main)
+          base=$(./scripts/ci/version.sh development-name)
+          version_code=$(./scripts/ci/version.sh bump-code)
+          build_number=${label##*.}
+          short_sha=$(git rev-parse --short=7 HEAD)
+          stamped="$base"
+          build_sha=$(git rev-parse HEAD)
+          echo "VINZ_GIT_SHA=$build_sha" >> "$GITHUB_ENV"
+          {
+            echo "label=$label"
+            echo "number=$build_number"
+            echo "version-name=$stamped"
+            echo "version-code=$version_code"
+            echo "commit-sha=$build_sha"
+            echo "short-sha=$short_sha"
+            echo "apk-name=Vinz-main-${base}-build-${build_number}.apk"
+          } >> "$GITHUB_OUTPUT"
+          echo "Development build: $label ($short_sha)"
+
+      - name: Run deterministic unit tests
+        run: ./scripts/ci/run-unit-tests.sh
+
+      - name: Run Android Lint
+        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
+
+      - name: Assemble debug APK and baseline profile module
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug :baselineprofile:assemble \
+            -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
+            --no-daemon --stacktrace
+
+      - name: Verify the APK
+        env:
+          ALLOW_DEBUG_SIGNATURE: "true"
+          EXPECTED_VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+        run: ./scripts/ci/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk "$APP_PACKAGE"
+
+      - name: Stage the development build
+        env:
+          APK_NAME: ${{ steps.build-id.outputs.apk-name }}
+          LABEL: ${{ steps.build-id.outputs.label }}
+          VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          BUILD_SHA: ${{ steps.build-id.outputs.commit-sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/${APK_NAME}"
+          sha256sum "dist/${APK_NAME}" | awk '{print $1}' > "dist/${APK_NAME}.sha256"
+          {
+            echo "DEVELOPMENT BUILD - NOT A STABLE RELEASE"
+            echo
+            echo "build:       ${LABEL}"
+            echo "versionName: ${VERSION_NAME}"
+            echo "commit:      ${BUILD_SHA}"
+            echo "ref:         ${GITHUB_REF_NAME}"
+            echo "package:     ${APP_PACKAGE}"
+            echo "sha256:      $(cat "dist/${APK_NAME}.sha256")"
+            echo "built:       $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "Install: adb install -r ${APK_NAME}"
+          } > dist/BUILD-INFO.txt
+          cat dist/BUILD-INFO.txt
+
+      - name: Upload the development APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.build-id.outputs.apk-name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: ${{ vars.ARTIFACT_RETENTION_DAYS || 14 }}
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: main-reports-${{ github.sha }}
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Write the job summary
+        env:
+          LABEL: ${{ steps.build-id.outputs.label }}
+          VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          APK_NAME: ${{ steps.build-id.outputs.apk-name }}
+          SHORT_SHA: ${{ steps.build-id.outputs.short-sha }}
+          BUILD_SHA: ${{ steps.build-id.outputs.commit-sha }}
+          STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          case "$STATUS" in
+            success) verdict="PASSED" ;;
+            *) verdict="FAILED ($STATUS)" ;;
+          esac
+          {
+            echo "## DEVELOPMENT BUILD - NOT A STABLE RELEASE"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Result | **${verdict}** |"
+            echo "| Build | \`${LABEL}\` |"
+            echo "| versionName stamped | \`${VERSION_NAME}\` |"
+            echo "| Commit | \`${SHORT_SHA}\` (${BUILD_SHA}) |"
+            echo "| APK | \`${APK_NAME}\` |"
+            echo
+            echo "A successful build refreshes the rolling prerelease **Main — Latest**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish Main — Latest
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Write access is confined to this job; the build above runs with contents: read only.
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the verified publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit-sha }}
+          persist-credentials: false
+
+      - name: Download the development APK
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.build.outputs.apk-name }}
+          path: dist
+
+      - name: Move the rolling tag and refresh the prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # This must be the SHA checked out and built by the build job, not merely the workflow trigger SHA.
+          TARGET_SHA: ${{ needs.build.outputs.commit-sha }}
+          APK_NAME: ${{ needs.build.outputs.apk-name }}
+          LABEL: ${{ needs.build.outputs.label }}
+          VERSION_NAME: ${{ needs.build.outputs.version-name }}
+        run: bash ./scripts/ci/publish-main.sh
