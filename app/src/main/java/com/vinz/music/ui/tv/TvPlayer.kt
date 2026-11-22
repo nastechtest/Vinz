@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -37,6 +39,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,21 +76,36 @@ fun TvNowPlayingScreen(
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
     accent: Color? = null,
+    /** Seeks by this many ms: the progress line takes focus and ← → move along it (1.8.3, D29). Null: only a line. */
+    onSeek: ((Long) -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     Box(modifier.fillMaxSize().testTag(TAG_PLAYER)) {
         TvMeshBackdrop(now.art)
+        // Reddit (1.8.1): a two-line title with every row could run past a TV's foot, with large text or a TV that draws
+        // bigger than most. The cover keeps to the room there is; the column's gaps give way, then the column itself.
         Row(Modifier.fillMaxSize().padding(TvSafe), verticalAlignment = Alignment.CenterVertically) {
-            Artwork(now.art, Modifier.size(340.dp), shape = RoundedCornerShape(18.dp), size = 1080)
+            Artwork(now.art, Modifier.sizeIn(maxWidth = 340.dp, maxHeight = 340.dp).aspectRatio(1f), shape = RoundedCornerShape(18.dp), size = 1080)
             Spacer(Modifier.width(52.dp))
-            Column(Modifier.weight(1f)) {
+            TvFitColumn(Modifier.weight(1f).fillMaxHeight()) {
                 Text(now.title, style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.SemiBold), color = scheme.onBackground, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(6.dp))
+                TvFitGap(6.dp)
                 Text(now.artist, style = MaterialTheme.typography.headlineSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (now.album != null) Text(now.album, style = MaterialTheme.typography.titleMedium, color = scheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(32.dp))
-                TvProgress(now.fraction, now.played, now.total)
-                Spacer(Modifier.height(20.dp))
+                TvFitGap(32.dp)
+                // Up from the controls lands on it; ← → seek, OK pauses; Down goes back to the controls. A live
+                // stream has nothing to seek in: a plain line.
+                if (onSeek != null && now.total.isNotEmpty()) TvSeekLine(
+                    now, onSeek, onPlayPause,
+                    // The line's ring needs room around it: drawn that much wider, so the bar lines up with the title.
+                    Modifier.testTag("$TAG_PLAYER/progress").layout { m, c ->
+                        val extra = 12.dp.roundToPx()
+                        val w = c.maxWidth + 2 * extra
+                        val p = m.measure(c.copy(minWidth = w, maxWidth = w))
+                        layout(c.maxWidth, p.height) { p.place(-extra, 0) }
+                    },
+                ) else TvProgress(now.fraction, now.played, now.total, Modifier.testTag("$TAG_PLAYER/progress"))
+                TvFitGap(20.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
                     TvIconButton(VinzIcons.Shuffle, tr(R.string.shuffle), onShuffle, Modifier.tvItem("$TAG_PLAYER/shuffle"), on = now.shuffle)
                     TvIconButton(VinzIcons.Previous, tr(R.string.previous_song), onPrevious, Modifier.tvItem("$TAG_PLAYER/previous"))
@@ -100,10 +119,10 @@ fun TvNowPlayingScreen(
                         onRepeat, Modifier.tvItem("$TAG_PLAYER/repeat"), on = now.repeat != 0,
                     )
                 }
-                Spacer(Modifier.height(20.dp))
+                TvFitGap(20.dp)
                 // Down from the controls lands on this row's first button, every time (as the design's path).
                 val rowStart = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
-                Row(Modifier.focusProperties { onEnter = { if (byDpad()) rowStart.requestFocus() } }.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.layoutId(TV_FIT_WIDE).focusProperties { onEnter = { if (byDpad()) rowStart.requestFocus() } }.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (now.hasLyrics) TvButton(tr(R.string.lyrics), onLyrics, Modifier.focusRequester(rowStart).tvItem("$TAG_PLAYER/lyrics"), icon = VinzIcons.Lyrics)
                     TvButton(tr(R.string.queue), onQueue, (if (now.hasLyrics) Modifier else Modifier.focusRequester(rowStart)).tvItem("$TAG_PLAYER/queue"), icon = VinzIcons.Queue)
                     if (now.hasVideo) TvButton(tr(R.string.video), onVideo, Modifier.tvItem("$TAG_PLAYER/video"), icon = VinzIcons.Video)
@@ -111,12 +130,70 @@ fun TvNowPlayingScreen(
                     TvIconButton(VinzIcons.More, tr(R.string.more), onMore, Modifier.tvItem("$TAG_PLAYER/more"))
                 }
                 if (now.next != null) {
-                    Spacer(Modifier.height(28.dp))
-                    Text(tr(R.string.tv_up_next_line, now.next), style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TvFitGap(28.dp)
+                    Text(tr(R.string.tv_up_next_line, now.next), Modifier.testTag("$TAG_PLAYER/upnext"), style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
     }
+}
+
+/** A gap in a [TvFitColumn]: this high when there's room, less when there isn't. */
+@Composable
+private fun TvFitGap(height: androidx.compose.ui.unit.Dp) = Spacer(Modifier.height(height).layoutId(TV_FIT_GAP))
+
+private const val TV_FIT_GAP = "gap"
+
+/** A row of buttons in a [TvFitColumn]: it keeps its whole width, and the column is drawn smaller for it if it must be. */
+private const val TV_FIT_WIDE = "wide"
+
+/** How far a [TvFitColumn]'s gaps may close (a share of their height), before the column itself is drawn smaller. */
+private const val TV_FIT_MIN_GAP = 0.35f
+
+/**
+ * A column centered in the height it's given, its parts at their own heights. Short of room, its gaps ([TvFitGap]) close
+ * first; if that's not enough, the whole column is drawn smaller to fit (and for a row of buttons too wide for it,
+ * [TV_FIT_WIDE], whose last ones would be squeezed off). So nothing runs off the screen or into the next part, at any TV
+ * size or text size, and with room to spare it's a plain column.
+ */
+@Composable
+private fun TvFitColumn(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(content, modifier) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val widest = measurables.filter { it.layoutId == TV_FIT_WIDE }.maxOfOrNull { it.maxIntrinsicWidth(androidx.compose.ui.unit.Constraints.Infinity) } ?: 0
+        val narrowed = if (widest > width) width.toFloat() / widest else 1f
+        val room = constraints.maxHeight
+        val inner = (width / narrowed).toInt()
+        val parts = measurables.map { m -> (m.layoutId == TV_FIT_GAP) to m.measure(androidx.compose.ui.unit.Constraints(maxWidth = inner)) }
+        val solid = parts.filterNot { it.first }.sumOf { it.second.height }
+        val gaps = parts.filter { it.first }.sumOf { it.second.height }
+        val fit = tvFit(solid, gaps, (room / narrowed).toInt())
+        val scale = fit.scale * narrowed
+        layout(width, room) {
+            var y = (room - (solid + gaps * fit.gaps) * scale) / 2f
+            for ((gap, p) in parts) {
+                if (gap) { y += p.height * fit.gaps * scale; continue }
+                if (scale >= 1f) p.placeRelative(0, y.toInt())
+                else p.placeRelativeWithLayer(0, y.toInt()) {
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                }
+                y += p.height * scale
+            }
+        }
+    }
+}
+
+/** How a [TvFitColumn] fits: its gaps at this share of their height, and the whole at this scale. */
+internal data class TvFit(val gaps: Float, val scale: Float)
+
+/** [solid] parts and [gaps] (px) into [room]: gaps close down to [TV_FIT_MIN_GAP] first, then the whole shrinks. */
+internal fun tvFit(solid: Int, gaps: Int, room: Int): TvFit {
+    if (solid + gaps <= room) return TvFit(1f, 1f)
+    val share = if (gaps > 0) ((room - solid).toFloat() / gaps).coerceAtLeast(TV_FIT_MIN_GAP) else 1f
+    if (share >= 1f || solid + gaps * share <= room) return TvFit(share.coerceAtMost(1f), 1f)
+    return TvFit(share, room / (solid + gaps * share))
 }
 
 /**
@@ -128,7 +205,7 @@ fun BoxScope.TvQueuePanel(source: String?, songs: List<TvSong>, current: Int, on
     val scheme = MaterialTheme.colorScheme
     Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Color.Transparent, scheme.background.copy(alpha = 0.85f)))))
     Column(
-        modifier.align(Alignment.CenterEnd).fillMaxHeight().width(460.dp).tvGlass(TvShapes.panelStart, TvPanelFill).padding(vertical = 27.dp, horizontal = 24.dp).testTag(TAG_QUEUE),
+        modifier.align(Alignment.CenterEnd).fillMaxHeight().width(460.dp).tvGlass(TvShapes.panelStart, TvPanelOverPage).padding(vertical = 27.dp, horizontal = 24.dp).testTag(TAG_QUEUE),
     ) {
         Text(tr(R.string.up_next), style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
         if (source != null) Text(tr(R.string.tv_playing_from, source), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -187,7 +264,7 @@ fun BoxScope.TvActionPanel(title: String, actions: List<TvAction>, modifier: Mod
     val scheme = MaterialTheme.colorScheme
     Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Color.Transparent, scheme.background.copy(alpha = 0.85f)))))
     Column(
-        modifier.align(Alignment.CenterEnd).fillMaxHeight().width(400.dp).tvGlass(TvShapes.panelStart, TvPanelFill).padding(vertical = 27.dp, horizontal = 24.dp).testTag(TAG_ACTIONS),
+        modifier.align(Alignment.CenterEnd).fillMaxHeight().width(400.dp).tvGlass(TvShapes.panelStart, TvPanelOverPage).padding(vertical = 27.dp, horizontal = 24.dp).testTag(TAG_ACTIONS),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(title, style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)

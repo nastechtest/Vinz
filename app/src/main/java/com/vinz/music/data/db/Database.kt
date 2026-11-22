@@ -129,6 +129,47 @@ data class HeatmapEntity(
     val fetchedAt: Long,
 )
 
+/**
+ * A song's Canvas loop cut from its music video (1.8.6, [com.vinz.music.data.canvas.VideoClip]), and the listener's
+ * own choices for the song. One row a song that was looked at: [videoId] null means no loop, [why] says which rule said
+ * so (shown in diagnostics); a row is asked again once it is old ([checkedAt]) unless the listener chose something.
+ */
+@Entity(tableName = "canvas_clips")
+data class CanvasClipEntity(
+    @PrimaryKey val songId: String,
+    val videoId: String?,
+    /** "" when there is a loop, else the reason there is none ([com.vinz.music.data.canvas.NoClip]'s name). */
+    val why: String,
+    /** YouTube Music's own word for the video ("OMV"…), kept for diagnostics. */
+    val videoType: String?,
+    /** The stream the loop is cut from: its height in pixels and its itag (0 until fetched). */
+    val height: Int,
+    val itag: Int,
+    /** The loop, in the video's time. [startMs] is on a key frame once [refined]. */
+    val startMs: Long,
+    val endMs: Long,
+    /** Where the upright crop sits across the picture inside the bars: 0 = left edge, 0.5 = centre, 1 = right edge. */
+    val cropX: Float,
+    /** Black bars baked into the video, as shares of its width and height. */
+    val barLeft: Float,
+    val barTop: Float,
+    val barRight: Float,
+    val barBottom: Float,
+    /** The other good parts' starts (ms, comma-separated), best first: "Pick another part". */
+    val windows: String,
+    /** False while the loop is the storyboard's guess; true once its cuts and crop were set on the real frames. */
+    val refined: Boolean,
+    /** The listener picked this part: never replaced by a new guess. */
+    val picked: Boolean,
+    /** Videos the listener said "Not this video" to (ids, comma-separated): never offered for this song again. */
+    val rejectedVideos: String,
+    /** The listener's "Use:" for this song: "cover", "video", or null for the setting's order. */
+    val prefer: String?,
+    val checkedAt: Long,
+    /** Where the crop sits scene by scene, once the loop was looked at on its real frames ("ms:x,ms:x", the video's time); empty: [cropX] throughout. */
+    val crops: String = "",
+)
+
 /** A song's lyrics in Latin letters ([com.vinz.music.data.lyrics.Romanizer]), keyed by song, lyrics and engine. */
 @Entity(tableName = "romanized")
 data class RomanizedEntity(
@@ -247,6 +288,10 @@ fun List<SongPlays>.mergeUploads(): List<SongPlays> {
 data class ArtistPlays(val artistName: String, val plays: Int, val ms: Long, val thumbnail: String?, val artistId: String?)
 @kotlinx.serialization.Serializable
 data class MonthTotal(val month: String, val ms: Long)
+/** Listening in one hour of one weekday (the listening clock, 1.8.5): [weekday] 0 = Monday … 6 = Sunday, [hour] 0..23, local. */
+data class HourTotal(val weekday: Int, val hour: Int, val ms: Long, val plays: Int)
+/** Listening on one day (the listening calendar, 1.8.5): [day] is the local date, "yyyy-MM-dd". */
+data class DayTotal(val day: String, val ms: Long, val plays: Int)
 /** An album's listening (by its title and the songs' main artist); [songs] is how many of its songs were played. */
 @kotlinx.serialization.Serializable
 data class AlbumPlays(val albumTitle: String, val artistName: String, val plays: Int, val ms: Long, val songs: Int, val thumbnail: String?)
@@ -301,14 +346,33 @@ interface SongDao {
 
     @Query("SELECT * FROM songs WHERE smartDownload = 1")
     suspend fun smartDownloads(): List<SongEntity>
+
+    /**
+     * Liked or played songs that may be by the artist with this id (their id in the row, or among its credited artists'):
+     * the caller reads the row's artists to be sure. For an artist's page without a network (1.8.2).
+     */
+    @Query("SELECT * FROM songs WHERE (liked = 1 OR lastPlayed > 0) AND (artistId = :id OR artistsJson LIKE '%' || :id || '%') ORDER BY liked DESC, lastPlayed DESC LIMIT :limit")
+    suspend fun mineWithArtistId(id: String, limit: Int = 1000): List<SongEntity>
+
+    /** The same by the artist's name, which can sit anywhere in the row's artist text: the caller checks here too. */
+    @Query("SELECT * FROM songs WHERE (liked = 1 OR lastPlayed > 0) AND artistName LIKE '%' || :name || '%' ORDER BY liked DESC, lastPlayed DESC LIMIT :limit")
+    suspend fun mineWithArtistName(name: String, limit: Int = 1000): List<SongEntity>
+
+    /** Liked or played songs of one album. */
+    @Query("SELECT * FROM songs WHERE (liked = 1 OR lastPlayed > 0) AND albumId = :id ORDER BY liked DESC, lastPlayed DESC")
+    suspend fun mineOnAlbum(id: String): List<SongEntity>
 }
 
-/** One play in Library → History (#118): when, for how long, and the song. */
+/** One play in Library → History (#118): when, for how long, and the song; [eventId] is the play's own row (#469: removing it). */
 data class HistoryRow(
     val playedAt: Long,
     val playedFor: Long,
     @androidx.room.Embedded val song: SongEntity,
+    val eventId: Long,
 )
+
+/** A played song's names, all History's search (#469) reads of it. */
+data class PlayedSongNames(val id: String, val title: String, val artistName: String, val albumTitle: String?)
 
 @Dao
 interface PlayEventDao {
@@ -317,10 +381,40 @@ interface PlayEventDao {
 
     /** The latest [limit] plays on this phone of at least [minMs], newest first, each with its song (Library → History, #118). */
     @Query(
-        """SELECT e.timestamp AS playedAt, e.playedMs AS playedFor, s.* FROM play_events e JOIN songs s ON s.id = e.songId
+        """SELECT e.id AS eventId, e.timestamp AS playedAt, e.playedMs AS playedFor, s.* FROM play_events e JOIN songs s ON s.id = e.songId
            WHERE e.playedMs >= :minMs ORDER BY e.timestamp DESC LIMIT :limit"""
     )
     fun historyFlow(limit: Int, minMs: Long): Flow<List<HistoryRow>>
+
+    /** Every song played on this phone once, by its names (History's search, #469): matched in Kotlin, without accents. */
+    @Query("SELECT id, title, artistName, albumTitle FROM songs WHERE id IN (SELECT DISTINCT songId FROM play_events WHERE playedMs >= :minMs)")
+    suspend fun playedSongNames(minMs: Long): List<PlayedSongNames>
+
+    /** The latest [limit] plays of [songIds], newest first (History's search, #469; at most 500 ids a call). */
+    @Query(
+        """SELECT e.id AS eventId, e.timestamp AS playedAt, e.playedMs AS playedFor, s.* FROM play_events e JOIN songs s ON s.id = e.songId
+           WHERE e.playedMs >= :minMs AND e.songId IN (:songIds) ORDER BY e.timestamp DESC LIMIT :limit"""
+    )
+    suspend fun historyOf(songIds: List<String>, limit: Int, minMs: Long): List<HistoryRow>
+
+    /** Plays by their own ids, as stored (History's "Remove from history" keeps them for Undo, #469). */
+    @Query("SELECT * FROM play_events WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<Long>): List<PlayEventEntity>
+
+    /** Takes one play out of the history (not the song's other plays). */
+    @Query("DELETE FROM play_events WHERE id = :id")
+    suspend fun deleteById(id: Long): Int
+
+    @Query("DELETE FROM play_events WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>): Int
+
+    /** Puts removed plays back exactly as they were (same id, time, length, source, excluded): History's Undo. */
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    suspend fun reinsert(events: List<PlayEventEntity>)
+
+    /** The song's latest play left, if any. */
+    @Query("SELECT MAX(timestamp) FROM play_events WHERE songId = :songId")
+    suspend fun lastPlayOf(songId: String): Long?
 
     @Query("SELECT * FROM play_events WHERE timestamp > :since")
     suspend fun eventsSince(since: Long): List<PlayEventEntity>
@@ -360,6 +454,18 @@ interface PlayEventDao {
     )
     suspend fun monthly(from: Long, to: Long): List<MonthTotal>
 
+    /** The listening clock (1.8.5): SQL from [com.vinz.music.data.imports.LocalClock.hours], which says why it's built there. */
+    @androidx.room.RawQuery
+    suspend fun clockHours(q: androidx.sqlite.db.SupportSQLiteQuery): List<HourTotal>
+
+    /** The listening calendar (1.8.5): SQL from [com.vinz.music.data.imports.LocalClock.days]. */
+    @androidx.room.RawQuery
+    suspend fun clockDays(q: androidx.sqlite.db.SupportSQLiteQuery): List<DayTotal>
+
+    /** One hour's top songs (1.8.5): SQL from [com.vinz.music.data.imports.LocalClock.songs]. */
+    @androidx.room.RawQuery
+    suspend fun clockSongs(q: androidx.sqlite.db.SupportSQLiteQuery): List<SongPlays>
+
     @Query("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime')) FROM play_events WHERE timestamp BETWEEN :from AND :to")
     suspend fun activeDays(from: Long, to: Long): Int
 
@@ -371,6 +477,10 @@ interface PlayEventDao {
 
     @Query("SELECT COUNT(DISTINCT songId) FROM play_events WHERE timestamp BETWEEN :from AND :to")
     suspend fun songCount(from: Long, to: Long): Int
+
+    /** How many times [songId] was played up to [to] (the milestones' cheap check after a play). */
+    @Query("SELECT COUNT(*) FROM play_events WHERE songId = :songId AND timestamp <= :to")
+    suspend fun playsOf(songId: String, to: Long): Int
 
     @Query("SELECT COUNT(DISTINCT s.primaryArtist) FROM play_events e JOIN songs s ON s.id = e.songId WHERE e.timestamp BETWEEN :from AND :to AND s.primaryArtist != ''")
     suspend fun artistCount(from: Long, to: Long): Int
@@ -542,6 +652,29 @@ interface MixDao {
     suspend fun deleteOthers(pattern: String, keep: List<String>)
 }
 
+/** A song's id and name, to tell what the listener has heard (1.8.2). */
+data class HeardSong(val id: String, val title: String, val primaryArtist: String, val artistName: String)
+
+/** An imported play's song by its name, and what it was matched to. */
+data class ImportedSong(val title: String, val artist: String, val matchedId: String?)
+
+/**
+ * Everything ever heard, for New to you and Deep cuts: all of it, however old, excluded from taste or not, and imported
+ * histories whether Replay counts them or not. Its own DAO so test fakes of the others stay small.
+ */
+@Dao
+interface DiscoverDao {
+    @Query("SELECT DISTINCT songId FROM play_events")
+    suspend fun playedIds(): List<String>
+
+    /** Songs played, started (a song skipped at once never reaches [PlayEventEntity]) or liked. */
+    @Query("SELECT id, title, primaryArtist, artistName FROM songs WHERE lastPlayed > 0 OR liked = 1 OR id IN (SELECT songId FROM play_events)")
+    suspend fun heardSongs(): List<HeardSong>
+
+    @Query("SELECT DISTINCT title, artist, matchedId FROM imported_plays")
+    suspend fun importedSongs(): List<ImportedSong>
+}
+
 @Dao
 interface LyricsDao {
     @Query("SELECT * FROM lyrics WHERE songId = :songId AND source = :source")
@@ -600,6 +733,25 @@ interface HeatmapDao {
 }
 
 @Dao
+interface CanvasClipDao {
+    @Query("SELECT * FROM canvas_clips WHERE songId = :songId")
+    suspend fun get(songId: String): CanvasClipEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(e: CanvasClipEntity)
+
+    @Query("DELETE FROM canvas_clips WHERE songId = :songId")
+    suspend fun delete(songId: String)
+
+    /** Guesses only: what the listener chose (a part, a source, a rejected video) stays. */
+    @Query("DELETE FROM canvas_clips WHERE picked = 0 AND prefer IS NULL AND rejectedVideos = ''")
+    suspend fun clearGuesses()
+
+    @Query("SELECT COUNT(*) FROM canvas_clips WHERE videoId IS NOT NULL")
+    suspend fun count(): Int
+}
+
+@Dao
 interface RomanizedDao {
     @Query("SELECT * FROM romanized WHERE `key` = :key")
     suspend fun get(key: String): RomanizedEntity?
@@ -611,9 +763,9 @@ interface RomanizedDao {
 @Database(
     entities = [SongEntity::class, PlayEventEntity::class, LyricsEntity::class, GenreEntity::class, MotionArtEntity::class, HeatmapEntity::class,
         RomanizedEntity::class, ReleaseEntity::class, MixEntity::class, BlendEntity::class, RecognitionEntity::class,
-        ImportedPlayEntity::class, ImportMatchEntity::class],
+        ImportedPlayEntity::class, ImportMatchEntity::class, SongTraitsEntity::class, SongTagEntity::class, CanvasClipEntity::class],
     views = [CountedPlay::class],
-    version = 9,
+    version = 12,
     exportSchema = true,
 )
 abstract class PrismDatabase : RoomDatabase() {
@@ -626,6 +778,7 @@ abstract class PrismDatabase : RoomDatabase() {
     abstract fun romanized(): RomanizedDao
     abstract fun releases(): ReleaseDao
     abstract fun mixes(): MixDao
+    abstract fun discover(): DiscoverDao
     abstract fun blends(): BlendDao
     abstract fun recognitions(): RecognitionDao
     /** Histories brought in from Spotify, Google Takeout and Last.fm (1.8.1). */
@@ -634,6 +787,12 @@ abstract class PrismDatabase : RoomDatabase() {
     abstract fun counted(): CountedPlayDao
     /** The Spotify connection's questions of the imported plays (1.8.1; no table of its own). */
     abstract fun spotify(): com.vinz.music.data.spotify.SpotifyDao
+    /** What's been measured of songs: tempo, key, loudness, energy (1.8.3). */
+    abstract fun traits(): TraitsDao
+    /** The listener's own labels on songs (1.8.3). */
+    abstract fun tags(): TagDao
+    /** Canvas loops cut from music videos, and the listener's choices for them (1.8.6). */
+    abstract fun canvasClips(): CanvasClipDao
 
     companion object {
         /**
@@ -702,6 +861,28 @@ abstract class PrismDatabase : RoomDatabase() {
                     db.execSQL("CREATE TABLE IF NOT EXISTS `import_matches` (`songKey` TEXT NOT NULL, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, `album` TEXT, `durationMs` INTEGER NOT NULL, `atLeastMs` INTEGER NOT NULL, `sourceId` TEXT, `isrc` TEXT, `youtubeId` TEXT, `status` TEXT NOT NULL, `matchedId` TEXT, `candidates` TEXT, `checkedAt` INTEGER NOT NULL, `tries` INTEGER NOT NULL, PRIMARY KEY(`songKey`))")
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_matches_status` ON `import_matches` (`status`)")
                     db.execSQL("CREATE VIEW `counted_plays` AS $COUNTED_PLAYS_SQL")
+                }
+            },
+            // 1.8.3: what's measured of songs, in one table (smart playlists filter on it). Filled from the scans' prefs
+            // in the background after start (AppContainer), not here.
+            object : Migration(9, 10) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS `song_traits` (`songId` TEXT NOT NULL, `bpm` REAL, `bpmSure` INTEGER NOT NULL, `key` TEXT, `camelot` TEXT, `lufs` REAL, `energy` REAL, `whole` INTEGER NOT NULL, `measuredAt` INTEGER NOT NULL, PRIMARY KEY(`songId`))")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_song_traits_bpm` ON `song_traits` (`bpm`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_song_traits_energy` ON `song_traits` (`energy`)")
+                }
+            },
+            // 1.8.3: the listener's own tags on songs.
+            object : Migration(10, 11) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS `song_tags` (`tag` TEXT NOT NULL, `songId` TEXT NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`tag`, `songId`))")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_song_tags_songId` ON `song_tags` (`songId`)")
+                }
+            },
+            // 1.8.6: Canvas loops from music videos, a row a song.
+            object : Migration(11, 12) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS `canvas_clips` (`songId` TEXT NOT NULL, `videoId` TEXT, `why` TEXT NOT NULL, `videoType` TEXT, `height` INTEGER NOT NULL, `itag` INTEGER NOT NULL, `startMs` INTEGER NOT NULL, `endMs` INTEGER NOT NULL, `cropX` REAL NOT NULL, `barLeft` REAL NOT NULL, `barTop` REAL NOT NULL, `barRight` REAL NOT NULL, `barBottom` REAL NOT NULL, `windows` TEXT NOT NULL, `refined` INTEGER NOT NULL, `picked` INTEGER NOT NULL, `rejectedVideos` TEXT NOT NULL, `prefer` TEXT, `checkedAt` INTEGER NOT NULL, `crops` TEXT NOT NULL, PRIMARY KEY(`songId`))")
                 }
             },
         )

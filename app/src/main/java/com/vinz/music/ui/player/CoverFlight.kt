@@ -62,6 +62,29 @@ object CoverFlight {
         }
     }
 
+    /** #223: flying back to the mini player, which keeps its own cover unseen until it lands. */
+    var returning by mutableStateOf(false)
+        private set
+
+    /** #223: whether closing the player flies the cover back. As the way in, it's never with Reduce motion (or Performance mode). */
+    fun returnsWith(flight: Boolean, back: Boolean, reduceMotion: Boolean): Boolean = flight && back && !reduceMotion
+
+    /** Both ends are known: the player's cover is the one showing (not a banner, a record or a video), and the mini player has been laid out. */
+    fun canReturn(): Boolean = player != null && mini != null
+
+    /** The player is closing: the cover goes back from wherever it is, and the player's own place stays known until then. */
+    suspend fun flyBack() {
+        if (!canReturn()) return
+        flying = true
+        returning = true
+        try {
+            progress.animateTo(0f, tween(FLIGHT_MS, easing = FastOutSlowInEasing))
+        } finally {
+            flying = false
+            returning = false
+        }
+    }
+
     const val FLIGHT_MS = 420
 }
 
@@ -79,6 +102,8 @@ fun CoverFlightLayer(thumbnail: String?) {
             // Placed and sized every frame (a layout step only): the cover between the two places, square as it is.
             .layout { m, c ->
                 val f = CoverFlight.progress.value
+                // Going back, the mini player is on its way in as well: wherever it's got to.
+                @Suppress("NAME_SHADOWING") val from = if (CoverFlight.returning) CoverFlight.mini ?: from else from
                 val w = (from.width + (to.width - from.width) * f).roundToInt().coerceAtLeast(1)
                 val h = (from.height + (to.height - from.height) * f).roundToInt().coerceAtLeast(1)
                 val p = m.measure(Constraints.fixed(w, h))

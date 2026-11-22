@@ -1,6 +1,6 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.ui.screens
 
+import kotlinx.coroutines.flow.runningFold
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.trp
@@ -10,8 +10,8 @@ import androidx.compose.foundation.border
 import com.vinz.music.ui.components.VinzTextButton
 import com.vinz.music.ui.theme.VinzIcons
 import com.vinz.music.data.friendlyMessage
+import com.vinz.music.data.albumFromPhone
 import android.widget.Toast
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -127,6 +127,8 @@ import com.vinz.music.ui.components.ShareTarget
 import com.vinz.music.ui.components.SheetItem
 import com.vinz.music.ui.components.SongRow
 import com.vinz.music.ui.components.dissolveBottom
+import com.vinz.music.ui.components.locatePulse
+import com.vinz.music.ui.components.LocatePlayingRow
 import com.vinz.music.ui.components.frostFill
 import com.vinz.music.ui.components.rememberArtPalette
 import com.vinz.music.ui.components.rememberFrost
@@ -139,7 +141,23 @@ import com.vinz.music.ui.theme.LocalUi
 import kotlinx.coroutines.launch
 
 /** [VINZ]: a playlist made in Vinz and kept on the phone ([com.vinz.music.data.VinzLibrary]). */
-enum class CollectionType { ALBUM, PLAYLIST, LIKED, DOWNLOADS, MIX, VINZ }
+enum class CollectionType {
+    ALBUM, PLAYLIST, LIKED, DOWNLOADS, MIX, VINZ,
+    /** One of the listener's tags (1.8.3): its songs, newest tagged first; renamed or deleted from its ⋯. */
+    TAG,
+}
+
+/**
+ * Whether a page's picture goes across the whole width, like an artist's (D55, 1.8.4): playlists and Vinz's other
+ * lists whenever full-width pictures aren't off, albums only when they're asked for too. Never beside the songs (a
+ * tablet on its side keeps the cover and its details in a column of their own).
+ */
+internal fun heroCover(type: CollectionType, pictures: com.vinz.music.data.prefs.FullWidthPictures, sideBySide: Boolean): Boolean =
+    !sideBySide && when (pictures) {
+        com.vinz.music.data.prefs.FullWidthPictures.OFF -> false
+        com.vinz.music.data.prefs.FullWidthPictures.PLAYLISTS -> type != CollectionType.ALBUM
+        com.vinz.music.data.prefs.FullWidthPictures.ALBUMS_AND_PLAYLISTS -> true
+    }
 
 /** Names of artists YouTube Music lists as similar ("Fans might also like"), for classifying obscure artists. */
 private suspend fun relatedArtists(c: com.vinz.music.AppContainer, s: Song): List<String> {
@@ -207,7 +225,28 @@ fun CollectionScreen(type: CollectionType, id: String, initialGenre: String?, bo
     val page: Load<LiveCollection> = when (type) {
         CollectionType.VINZ -> {
             val list = vinzLists.firstOrNull { it.id == id }
+            val rules = list?.smart
+            // A smart playlist (1.8.3): what its rules find, again whenever the library's songs, plays, tags or
+            // measurements change; the last of them shows meanwhile.
+            // Counted, not the changed tables' names: two changes to the same table in a row are equal sets, and the
+            // state would skip the second.
+            val changes by remember(rules != null) {
+                if (rules != null) c.db.invalidationTracker.createFlow("songs", "song_traits", "song_tags", "play_events")
+                    .runningFold(0) { n, _ -> n + 1 } else kotlinx.coroutines.flow.flowOf(0)
+            }.collectAsState(0)
+            val downloadsNow = if (rules != null) downloads.size else 0
+            val found by androidx.compose.runtime.produceState<com.vinz.music.data.SmartResult?>(null, rules, changes, downloadsNow) {
+                if (rules != null) value = runCatching { c.smart.run(rules) }.onFailure { android.util.Log.w("VinzSmart", "smart playlist didn't run", it) }.getOrNull() ?: value
+            }
+            LaunchedEffect(found) { found?.let { c.vinzLibrary.keepFound(id, it.songs) } }
             if (list == null) Load.Err(tr(R.string.this_playlist_isn_t_on_this))
+            else if (rules != null) Load.Ok(remember(list.title, found) {
+                LiveCollection(
+                    CollectionPage(list.id, CollectionKind.PLAYLIST, list.title, tr(R.string.smart_playlist_updates_itself),
+                        thumbnail = (found?.songs ?: list.songs).firstOrNull()?.thumbnail, songs = found?.songs ?: list.songs),
+                    c.scope, null, unmeasured = found?.unmeasured ?: 0,
+                )
+            })
             else Load.Ok(remember(list) {
                 LiveCollection(
                     CollectionPage(list.id, CollectionKind.PLAYLIST, list.title, tr(R.string.vinz_playlist_on_this_phone), description = list.description.ifBlank { null },
@@ -225,6 +264,15 @@ fun CollectionScreen(type: CollectionType, id: String, initialGenre: String?, bo
                 LiveCollection(CollectionPage("downloads", CollectionKind.PLAYLIST, tr(R.string.downloads), tr(R.string.available_offline), thumbnail = null, songs = songs), c.scope, null)
             })
         }
+        CollectionType.TAG -> {
+            val tagged by remember(id) { c.tags.songs(id) }.collectAsState(null)
+            when (val songs = tagged) {
+                null -> Load.Loading
+                else -> Load.Ok(remember(songs) {
+                    LiveCollection(CollectionPage(TAG_PAGE + id, CollectionKind.PLAYLIST, id, tr(R.string.your_tag), thumbnail = songs.firstOrNull()?.thumbnail, songs = songs), c.scope, null)
+                })
+            }
+        }
         else -> remote!!.state
     }
 
@@ -240,7 +288,9 @@ fun CollectionScreen(type: CollectionType, id: String, initialGenre: String?, bo
  * the kept copy stands in only if that fails.
  */
 private suspend fun orSaved(c: com.vinz.music.AppContainer, id: String, load: suspend () -> LiveCollection): LiveCollection {
-    fun saved() = c.offline.page(id)?.let { LiveCollection(it, c.scope, null, offline = true) }
+    // No copy of an album: its songs on the phone (1.8.2; an artist's page and Downloads list such albums).
+    suspend fun saved() = c.offline.page(id)?.let { LiveCollection(it, c.scope, null, offline = true) }
+        ?: c.albumFromPhone(id)?.let { LiveCollection(it, c.scope, null, offline = true, fromPhone = true) }
     if (!c.network.isOnline()) saved()?.let { return it }
     return try { load() } catch (e: Exception) { saved() ?: throw e }
 }
@@ -252,6 +302,10 @@ class LiveCollection(
     loadMore: (suspend (String) -> YouTubeMusic.PlaylistChunk)?,
     /** The copy kept on the phone, shown without a network. */
     val offline: Boolean = false,
+    /** Not a kept copy: made from the album's songs on the phone. */
+    val fromPhone: Boolean = false,
+    /** A smart playlist's songs its Sound rules can't see yet (1.8.3). */
+    val unmeasured: Int = 0,
 ) {
     val songs = kotlinx.coroutines.flow.MutableStateFlow(page.songs.distinctBy { it.id })
     /** Each song's slot in an owned playlist, for taking it out again. */
@@ -275,7 +329,7 @@ class LiveCollection(
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun CollectionContent(type: CollectionType, live: LiveCollection, initialGenre: String?, bottomPadding: Dp, reload: () -> Unit) {
+internal fun CollectionContent(type: CollectionType, live: LiveCollection, initialGenre: String?, bottomPadding: Dp, reload: () -> Unit) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val context = LocalContext.current
@@ -299,7 +353,7 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
     val sortList = when (type) {
         CollectionType.LIKED -> "liked"
         CollectionType.DOWNLOADS -> "downloads"
-        CollectionType.PLAYLIST, CollectionType.VINZ -> "playlist:${page.id}"
+        CollectionType.PLAYLIST, CollectionType.VINZ, CollectionType.TAG -> "playlist:${page.id}"
         else -> null
     }
     var sort by remember(page.id) {
@@ -400,6 +454,14 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
     }
     val dim: (Song) -> Modifier = { s -> if (ready != null && s.id !in ready) Modifier.alpha(0.4f) else Modifier }
     val listState = rememberLazyListState()
+    // "Go to the playing song" (D54): its place among the songs shown (-1 once a search, filter or Hide explicit leaves
+    // it out), and where the songs' rows are in the list.
+    val locate = remember { com.vinz.music.ui.components.LocateState() }
+    // A music video row played as its song (Songs in radios) is the playing row too: the queue knows the pair.
+    val playingVideo = current?.id?.let { c.queue.counterparts[it] }
+    val playingAt = remember(visible, current?.id, playingVideo) { com.vinz.music.ui.components.LocatePlaying.indexIn(visible, current?.id, playingVideo) }
+    val playingRowId = com.vinz.music.ui.components.LocatePlaying.rowId(visible, playingAt, current?.id)
+    val songRows = remember { com.vinz.music.ui.components.SongRowPlaces() }
     // A video row downloaded as its song counts as downloaded (#315).
     val standIns by c.downloadStandIns.collectAsState()
     val downloadedCount = page.songs.count { downloads.forRow(it.id, standIns)?.state == Download.STATE_COMPLETED }
@@ -489,27 +551,56 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
             }
         }
     }
-    val allDownloaded = downloadedCount == page.songs.size && page.songs.isNotEmpty()
+    // Songs marked to skip don't stand between a list and counting as downloaded (#221).
+    val skipped by c.downloadSkips.ids.collectAsState()
+    val skippedCount = page.songs.count { com.vinz.music.download.PlaylistDownloads.isSkipped(it.id, skipped, standIns) }
+    val allDownloaded = com.vinz.music.download.PlaylistDownloads.allDownloaded(page.songs, skipped, standIns) { downloads.forRow(it, standIns)?.state == Download.STATE_COMPLETED }
+    // Kept downloaded (#298): whatever the open page has loaded comes down as it loads.
+    val keepable = type == CollectionType.VINZ || (type == CollectionType.PLAYLIST && com.vinz.music.download.PlaylistDownloads.canKeep(page.id))
+    val keptNow = keepable && com.vinz.music.download.PlaylistDownloads.keepKey(page.id) in settings.behavior.keptPlaylists
+    LaunchedEffect(page.id, page.songs.size, keptNow) { if (keptNow) c.keptPlaylists.fromPage(page.id, page.songs) }
     // "Delete downloads": what's about to go, and Delete to go ahead.
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     val toggleDownloads: () -> Unit = {
         if (allDownloaded) {
             // The same button downloads and removes, so removing asks first (#212: a whole playlist's downloads went
             // with one tap).
-            val n = page.songs.size
+            val n = downloadedCount
             confirm = tr(R.string.delete_the_of_from_this_phone, com.vinz.music.data.model.songCount(n), page.title) to {
+                // Asked to take them off the phone, it shouldn't fetch them again.
+                if (keptNow) c.keptPlaylists.set(page.id, false)
                 c.downloads.removeMany(page.songs.map { it.id })
                 Toast.makeText(context, trp(R.plurals.removed_n_downloads, n), Toast.LENGTH_SHORT).show()
             }
+        } else if (skippedCount == page.songs.size) {
+            Toast.makeText(context, tr(R.string.every_song_here_is_skipped), Toast.LENGTH_SHORT).show()
         } else {
             c.downloads.downloadAll(page.songs)
-            Toast.makeText(context, tr(R.string.downloading, com.vinz.music.data.model.songCount(page.songs.size - downloadedCount)), Toast.LENGTH_SHORT).show()
+            val left = com.vinz.music.download.PlaylistDownloads.wanted(page.songs, skipped, standIns).count { downloads.forRow(it.id, standIns)?.state != Download.STATE_COMPLETED }
+            Toast.makeText(context, tr(R.string.downloading, com.vinz.music.data.model.songCount(left)), Toast.LENGTH_SHORT).show()
         }
     }
+    /** A playlist's or album's song can be left out when all of it downloads (#221). */
+    fun skipAction(s: Song): List<SheetItem> {
+        if (s.isLocal || s.isRss || (type != CollectionType.PLAYLIST && type != CollectionType.VINZ && type != CollectionType.ALBUM)) return emptyList()
+        val out = com.vinz.music.download.PlaylistDownloads.isSkipped(s.id, skipped, standIns)
+        return listOf(SheetItem(if (out) VinzIcons.Download else VinzIcons.Block, if (out) tr(R.string.include_in_downloads) else tr(R.string.skip_in_downloads)) {
+            // Taken back from the id it was marked by, the row's or its song's.
+            if (out) { c.downloads.setSkipped(s.id, false); standIns[s.id]?.let { c.downloads.setSkipped(it, false) } }
+            else c.downloads.setSkipped(s.id, true)
+        })
+    }
 
+    // A smart playlist (1.8.3): its songs are what its rules find, so none is taken out or moved by hand.
+    val smartRules = if (type == CollectionType.VINZ) c.vinzLibrary.lists.collectAsState().value.firstOrNull { it.id == page.id }?.smart else null
+    val measuring = if (smartRules?.usesSound == true) c.smartMeasure.progress.collectAsState().value else null
     // Owned playlists: a song can be taken out of it.
     val slots by live.setVideoIds.collectAsState()
     fun removeAction(s: Song): List<SheetItem> {
+        if (smartRules != null) return emptyList()
+        if (type == CollectionType.TAG) return listOf(SheetItem(VinzIcons.PlaylistRemove, tr(R.string.remove_this_tag)) {
+            scope.launch { c.tags.remove(page.title, listOf(s.id)) }
+        })
         if (type == CollectionType.VINZ) return listOf(SheetItem(VinzIcons.PlaylistRemove, tr(R.string.remove_from_this_playlist)) {
             c.vinzLibrary.remove(page.id, s.id)
             Toast.makeText(context, tr(R.string.removed_from, page.title), Toast.LENGTH_SHORT).show()
@@ -528,6 +619,40 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                     }
             }
         })
+    }
+
+    // Select many (1.8.3): picked songs out of an own playlist at once; a YouTube one is asked first (the bar does).
+    val selectRemover = when {
+        smartRules != null -> null
+        type == CollectionType.TAG -> com.vinz.music.ui.components.SelectionRemover(page.title, asks = false, label = tr(R.string.remove_this_tag)) { picked ->
+            scope.launch { c.tags.remove(page.title, picked.map { it.id }) }
+        }
+        type == CollectionType.VINZ -> com.vinz.music.ui.components.SelectionRemover(page.title, asks = false) { picked ->
+            picked.forEach { c.vinzLibrary.remove(page.id, it.id) }
+            Toast.makeText(context, tr(R.string.removed_from, page.title), Toast.LENGTH_SHORT).show()
+        }
+        type == CollectionType.PLAYLIST && live.page.owned -> com.vinz.music.ui.components.SelectionRemover(page.title, asks = true) { picked ->
+            val gone = picked.filter { slots[it.id] != null }
+            val before = live.songs.value
+            live.songs.value = before.filterNot { s -> gone.any { it.id == s.id } }
+            scope.launch {
+                // One after another, as the song's own menu does it; any that fail come back.
+                var error: Throwable? = null
+                val failed = gone.filter { s ->
+                    runCatching { c.ytm.removeFromPlaylist(page.id, s.id, slots[s.id]!!) }.onFailure { if (error == null) error = it }.isFailure
+                }
+                // Picked songs without the playlist's id for removing them (not loaded: offline, or a kept copy) weren't
+                // removed either: said, not "Removed".
+                val skipped = gone.size < picked.size
+                if (failed.isEmpty() && !skipped) Toast.makeText(context, tr(R.string.removed_from, page.title), Toast.LENGTH_SHORT).show()
+                else {
+                    live.songs.value = before.filter { s -> gone.none { it.id == s.id } || failed.any { it.id == s.id } }
+                    val why = error?.friendlyMessage() ?: tr(R.string.try_again_in_a_moment)
+                    Toast.makeText(context, tr(R.string.couldn_t_remove_it, why), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        else -> null
     }
 
     confirm?.let { (text, action) ->
@@ -552,7 +677,8 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
     // Rearranging an owned playlist's songs (#140): each drop goes to YouTube Music at once (one move each, in order) or
     // straight into a Vinz playlist; the page shows it moved, and puts it back if YouTube refuses.
     var rearranging by remember(page.id) { mutableStateOf(false) }
-    val canRearrange = (type == CollectionType.PLAYLIST && live.page.owned || type == CollectionType.VINZ) && songs.size > 1
+    val selection = com.vinz.music.ui.components.LocalSongSelection.current
+    val canRearrange = (type == CollectionType.PLAYLIST && live.page.owned || type == CollectionType.VINZ && smartRules == null) && songs.size > 1
     val moves = remember(page.id) { kotlinx.coroutines.sync.Mutex() }
     val reorder = rememberLazyReorder(listState, songs)
     fun startRearranging() {
@@ -565,6 +691,7 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                 if (sort != SortMode.DEFAULT) pickSort(SortMode.DEFAULT)
                 if (groupByGenre) toggleGenreGroups()
                 genreFilter = null; query = ""
+                selection?.clear()
                 rearranging = true
             }
         }
@@ -601,7 +728,11 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
     var sharing by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    // Duplicates found (1.8.3), shown in a sheet to take the extra copies out.
+    var dupes by remember { mutableStateOf<List<com.vinz.music.data.Duplicates.Group>?>(null) }
     var title by remember(page.id) { mutableStateOf(page.title) }
+    // A smart playlist renamed in its rules' editor.
+    LaunchedEffect(live.page.title) { title = live.page.title }
     var description by remember(page.id) { mutableStateOf(page.description) }
     var pageMenu by remember { mutableStateOf(false) }
     fun shareTarget(): ShareTarget = when (type) {
@@ -613,14 +744,14 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
         CollectionType.LIKED -> ShareTarget(tr(R.string.liked_songs), com.vinz.music.data.model.songCount(songs.size), tr(R.string.playlist), art, null, songs = songs)
         CollectionType.DOWNLOADS -> ShareTarget(tr(R.string.downloads), com.vinz.music.data.model.songCount(songs.size), tr(R.string.playlist), art, null, songs = songs)
         CollectionType.MIX -> ShareTarget(title, page.subtitle, tr(R.string.mix_2), art, null, songs = songs)
-        CollectionType.VINZ -> ShareTarget(title, com.vinz.music.data.model.songCount(songs.size), tr(R.string.playlist), art, null, songs = songs)
+        CollectionType.VINZ, CollectionType.TAG -> ShareTarget(title, com.vinz.music.data.model.songCount(songs.size), tr(R.string.playlist), art, null, songs = songs)
     }
 
     // A wide landscape window (a tablet on its side) keeps the cover and its details beside the songs, as Apple Music
     // does on an iPad, instead of a header the width of the screen above them.
     val window = com.vinz.music.ui.theme.LocalWindowLayout.current
     val sideBySide = window.width == com.vinz.music.ui.theme.WidthClass.EXPANDED && window.landscape
-    val hero = type != CollectionType.ALBUM && settings.playlistHeroCover && !sideBySide
+    val hero = heroCover(type, settings.fullWidthPictures, sideBySide)
     val config = LocalConfiguration.current
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     var pageWidth by remember { mutableStateOf(config.screenWidthDp.dp) }
@@ -668,6 +799,11 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                     onShuffle = { c.player.playQueue(playable, 0, source, shuffle = true) },
                 )
             }
+            // Under Play and Shuffle: above them, a long description pushed Play behind the mini player. The same with an
+            // album's picture across the page (D55): the picture, its details, Play and Shuffle, then the description.
+            val about: @Composable () -> Unit = {
+                shown.description?.takeIf { it.isNotBlank() }?.let { AboutBox(it, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).testTag("collectionAbout")) }
+            }
             val sideWidth = (pageWidth * 0.4f).coerceIn(320.dp, 460.dp)
             if (sideBySide) Column(
                 Modifier.width(sideWidth).fillMaxHeight().verticalScroll(rememberScrollState())
@@ -675,13 +811,16 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
             ) {
                 header()
                 playRow()
+                about()
             }
+            com.vinz.music.ui.components.SelectableSongs(visible, selectRemover) {
             LazyColumn(
                 state = listState,
                 modifier = (if (sideBySide) Modifier.padding(start = sideWidth) else Modifier)
                     .then(if (likedRefresh) Modifier.pullToRefresh(likesSyncing, pull, onRefresh = { c.library.syncInBackground() }) else Modifier),
                 contentPadding = PaddingValues(top = if (sideBySide) statusTop + 60.dp else 0.dp, bottom = bottomPadding + 24.dp),
-            ) {
+            ) { with(com.vinz.music.ui.components.CountingLazyListScope(this)) {
+                // Counted as it's built (D54): what's above the songs differs by page, and a song's row is found by its place.
                 if (!sideBySide) item("header") { header() }
                 if (type == CollectionType.DOWNLOADS) item { DownloadsInfo(page.songs) { text, action -> confirm = text to action } }
                 if (type == CollectionType.DOWNLOADS) item("downloaded-collections") {
@@ -690,17 +829,22 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                 if (ready != null && type != CollectionType.DOWNLOADS) item("offline") {
                     Text(
                         trp(R.plurals.offline_n_of_songs, songs.size, ready.size, songs.size) +
-                            if (live.offline) tr(R.string.as_it_was_when_you_last) else "",
+                            if (live.offline && !live.fromPhone) tr(R.string.as_it_was_when_you_last) else "",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
                     )
                 }
                 if (!sideBySide) item("play") { playRow() }
+                // Songs a smart playlist's Sound rules can't see yet, and Measure now (1.8.3).
+                if (smartRules != null && (live.unmeasured > 0 || measuring != null)) item("measure") {
+                    SmartMeasureRow(smartRules, live.unmeasured, measuring)
+                }
                 // Rearranging (#140): the songs in the playlist's own order, to hold and move; nothing else in the way.
                 if (rearranging) {
                     rearrangeSongs(reorder, onDone = { rearranging = false }, onReorder = ::reorderTo)
                     return@LazyColumn
                 }
+                if (!sideBySide) item("about") { about() }
                 if (showSearch || sortable) item(key = "search") {
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (showSearch) com.vinz.music.ui.components.SearchField(
@@ -743,11 +887,15 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                     else EmptyState(when (type) { CollectionType.LIKED -> VinzIcons.HeartFilled; CollectionType.DOWNLOADS -> VinzIcons.DownloadDone; else -> VinzIcons.Song }, genreFilter?.let { tr(R.string.no_songs, com.vinz.music.data.meta.Genres.shown(it)) } ?: tr(R.string.nothing_here_yet),
                         when (type) {
                             CollectionType.LIKED -> tr(R.string.like_songs_from_the_player_and)
-                            CollectionType.VINZ -> tr(R.string.add_songs_from_any_song_s)
+                            CollectionType.VINZ -> if (smartRules != null) tr(R.string.no_song_meets_these_rules) else tr(R.string.add_songs_from_any_song_s)
+                            CollectionType.TAG -> tr(R.string.tag_songs_from_any_song_s)
                             else -> tr(R.string.songs_you_add_will_show_up)
                         })
                 }
                 if (groupByGenre && showGenres) {
+                    // Each song's first row, for "Go to the playing song".
+                    val firstRows = HashMap<String, Int>()
+                    songRows.grouped = firstRows
                     // A song with a second genre shows under both.
                     visible.flatMap { s -> genresOf(s.id).ifEmpty { listOf(tr(R.string.sorting)) }.map { it to s } }
                         .groupBy({ it.first }, { it.second }).toList().sortedByDescending { it.second.size }.forEach { (g, songs) ->
@@ -755,29 +903,34 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                                 Text(com.vinz.music.data.meta.Genres.shown(g), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 4.dp))
                             }
+                            val from = added
+                            songs.forEachIndexed { i, s -> if (s.id !in firstRows) firstRows[s.id] = from + i }
                             itemsIndexed(songs, key = { i, s -> "g:$g:${s.id}:$i" }) { _, s ->
-                                com.vinz.music.ui.components.SwipeToQueue(s) {
-                                    SongRow(s, dim(s), playing = current?.id == s.id, trailingInfo = null, extraActions = removeAction(s), showAlbum = showAlbums) {
+                                com.vinz.music.ui.components.SwipeToQueue(s, Modifier.locatePulse(locate, s.id)) {
+                                    SongRow(s, dim(s), playing = playingRowId == s.id, trailingInfo = null, extraActions = removeAction(s) + skipAction(s), showAlbum = showAlbums) {
                                         playFrom(songs, s, source.copy(title = "$title · $g"))
                                     }
                                 }
                             }
                         }
                 } else {
+                    songRows.grouped = null
+                    songRows.start = added
                     itemsIndexed(visible, key = { i, s -> "${s.id}:$i" }) { i, s ->
                         // Swipe right: play next; left: add to the queue.
-                        com.vinz.music.ui.components.SwipeToQueue(s) {
+                        com.vinz.music.ui.components.SwipeToQueue(s, Modifier.locatePulse(locate, s.id)) {
                             SongRow(
                                 s,
                                 dim(s),
                                 index = if (type == CollectionType.ALBUM) i + 1 else null,
                                 starred = s.id in popular,
-                                playing = current?.id == s.id,
+                                playing = playingRowId == s.id,
                                 // #314: a song playing from one of your own files says so ("MP3 · 320 kbps, from your file").
-                                trailingInfo = if (type == CollectionType.ALBUM) formatDuration(s.durationSec)
+                                trailingInfo = if (skippedCount > 0 && type != CollectionType.DOWNLOADS && com.vinz.music.download.PlaylistDownloads.isSkipped(s.id, skipped, standIns)) tr(R.string.skipped_in_downloads)
+                                else if (type == CollectionType.ALBUM) formatDuration(s.durationSec)
                                 else if (type == CollectionType.DOWNLOADS && downloads[s.id]?.ownFile != null) tr(R.string.x_from_your_file, downloads[s.id]?.ownFile)
                                 else genreVersion.let { genres[s.id] }?.takeIf { sort == SortMode.GENRE || genreFilter == null && showGenres }?.let { g -> listOfNotNull(s.album?.title?.takeIf { showAlbums }, com.vinz.music.data.meta.Genres.shown(g)).joinToString(" • ") },
-                                extraActions = removeAction(s),
+                                extraActions = removeAction(s) + skipAction(s),
                                 showAlbum = showAlbums,
                             ) { playFrom(visible, s, source) }
                         }
@@ -789,6 +942,7 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                             page.year?.toString(),
                             trp(R.plurals.n_songs, visible.size) + (if (totalSec > 0) ", ${durationText(totalSec)}" else ""),
                             if (downloadedCount > 0) tr(R.string.downloaded_2, downloadedCount) else null,
+                            if (skippedCount > 0 && type != CollectionType.DOWNLOADS) tr(R.string.n_skipped, skippedCount) else null,
                         ).joinToString(" · ") + if (loadingMore) tr(R.string.loading_more) else "",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
@@ -801,6 +955,7 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                     }
                     live.page.artists.firstOrNull { it.id != null }?.let { a -> item("moreby") { MoreBy(a.name, a.id!!, page.id) } }
                 }
+            } }
             }
 
             if (likedRefresh) androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
@@ -812,6 +967,13 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                 listState, Modifier.align(Alignment.CenterEnd).padding(top = statusTop + 60.dp, bottom = bottomPadding),
                 description = tr(R.string.scroll_through_the_songs),
             ) { f -> visible.takeIf { it.isNotEmpty() }?.let { v -> (f * (v.size - 1)).toInt().coerceIn(0, v.size - 1) + 1 }?.toString() }
+
+            // D54: the ⋯ menu's "Go to the playing song" while that song is one of the rows shown, and (Settings) a small
+            // button above the mini player while its row is out of sight.
+            LocatePlayingRow(
+                locate, listState, inList = playingAt >= 0 && !rearranging, songId = playingRowId,
+                bottomPadding = bottomPadding, topInset = statusTop + 60.dp,
+            ) { songRows.of(playingRowId, playingAt) }
 
             // Content melts away under the bar into the page's own frost.
             ScrollEdge({ solid }, statusTop + 60.dp + 34.dp, pageHeight) { m ->
@@ -837,6 +999,8 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
             val excludedLists by c.exclusions.playlists.collectAsState()
             val downloadsItems = if (type == CollectionType.DOWNLOADS) downloadsSheetItems { text, action -> confirm = text to action } else emptyList()
             val items = buildList {
+                // D54: always here while the playing song is one of the songs shown.
+                locate.go?.let { go -> add(SheetItem(VinzIcons.Song, tr(R.string.go_to_the_playing_song)) { go() }) }
                 if (radioId != null) add(SheetItem(VinzIcons.Radio, tr(R.string.start_radio)) { startRadio() })
                 if (savableId != null && saved != null) add(
                     SheetItem(if (saved == true) VinzIcons.LibraryAdded else VinzIcons.LibraryAdd, if (saved == true) tr(R.string.remove_from_library) else tr(R.string.add_to_library)) { toggleSaved() },
@@ -847,6 +1011,12 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                 if (type != CollectionType.DOWNLOADS) add(
                     SheetItem(if (allDownloaded) VinzIcons.Delete else VinzIcons.Download, if (allDownloaded) tr(R.string.remove_downloads) else tr(R.string.download_all)) { toggleDownloads() },
                 )
+                if (keepable) add(
+                    SheetItem(if (keptNow) VinzIcons.SyncOff else VinzIcons.Sync, if (keptNow) tr(R.string.stop_keeping_downloaded) else tr(R.string.keep_downloaded)) {
+                        c.keptPlaylists.set(page.id, !keptNow)
+                        Toast.makeText(context, if (keptNow) tr(R.string.new_songs_here_won_t_download) else tr(R.string.new_songs_here_will_download), Toast.LENGTH_SHORT).show()
+                    },
+                )
                 live.page.artists.firstOrNull { it.id != null }?.let { a -> add(SheetItem(VinzIcons.Person, tr(R.string.go_to, a.name)) { nav.go(Routes.artist(a.id!!)) }) }
                 if (type == CollectionType.LIKED) add(
                     SheetItem(VinzIcons.PlaylistAdd, if (likedPlaylistId != null) tr(R.string.playlist_kept_up_to_date) else tr(R.string.make_it_a_playlist)) { likedPlaylistSheet = true },
@@ -856,7 +1026,14 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                 if (type == CollectionType.ALBUM) add(SheetItem(VinzIcons.Photo, tr(R.string.change_cover)) { albumCover = true })
                 // A holiday mix: pinned to Home on its own, or kept as a Vinz playlist (1.8.0).
                 if (type == CollectionType.MIX) com.vinz.music.data.seasonal.HolidayMixes.byId(page.id)?.let { addAll(holidayActions(c, context, it)) }
-                if ((type == CollectionType.PLAYLIST && live.page.owned) || type == CollectionType.VINZ) add(SheetItem(VinzIcons.Edit, tr(R.string.edit_details)) { editing = true })
+                if (smartRules != null) {
+                    add(SheetItem(VinzIcons.Edit, tr(R.string.edit_rules)) { editing = true })
+                    add(SheetItem(VinzIcons.PlaylistAdd, tr(R.string.save_a_copy_as_a_playlist)) {
+                        val copy = c.vinzLibrary.create(title, songs)
+                        Toast.makeText(context, tr(R.string.saved_as_a_playlist, title), Toast.LENGTH_SHORT).show()
+                        nav.go(com.vinz.music.ui.Routes.playlist(copy))
+                    })
+                } else if ((type == CollectionType.PLAYLIST && live.page.owned) || type == CollectionType.VINZ) add(SheetItem(VinzIcons.Edit, tr(R.string.edit_details)) { editing = true })
                 if (canRearrange) add(SheetItem(VinzIcons.SwapVertical, tr(R.string.rearrange_songs)) { startRearranging() })
                 // A sleep or kids' playlist: plays as usual, but doesn't shape recommendations.
                 if (type == CollectionType.PLAYLIST) {
@@ -868,6 +1045,15 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
                     })
                 }
                 addAll(downloadsItems)
+                if (type == CollectionType.TAG) {
+                    add(SheetItem(VinzIcons.Edit, tr(R.string.rename_tag)) { editing = true })
+                    add(SheetItem(VinzIcons.Delete, tr(R.string.delete_tag), danger = true) { deleting = true })
+                }
+                // 1.8.3: the same song twice (a video and its song, two uploads), from a list one can take songs out of.
+                if (selectRemover != null && type != CollectionType.TAG) add(SheetItem(VinzIcons.Copy, tr(R.string.find_duplicates)) {
+                    val found = com.vinz.music.data.Duplicates.find(songs)
+                    if (found.isEmpty()) Toast.makeText(context, tr(R.string.no_song_is_here_twice), Toast.LENGTH_SHORT).show() else dupes = found
+                })
                 if ((type == CollectionType.PLAYLIST && live.page.owned) || type == CollectionType.VINZ) add(SheetItem(VinzIcons.Delete, tr(R.string.delete_playlist_2), danger = true) { deleting = true })
             }
             // The songs as the page shows them (filtered, sorted; offline only those on the phone).
@@ -882,7 +1068,22 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
             ) { pageMenu = false }
         }
 
-        if (editing && type == CollectionType.VINZ) EditPlaylistDialog(title, description.orEmpty(), null, onDismiss = { editing = false }) { t, d, _ ->
+        dupes?.let { groups ->
+            DuplicatesSheet(groups, youTube = type == CollectionType.PLAYLIST, onDismiss = { dupes = null }) { extras ->
+                selectRemover?.remove?.invoke(extras)
+                dupes = null
+            }
+        }
+
+        if (editing && type == CollectionType.TAG) RenameTagDialog(page.title, onDismiss = { editing = false }) { to ->
+            editing = false
+            scope.launch {
+                val name = c.tags.rename(page.title, to) ?: return@launch
+                // The page is the tag's by name: the renamed one opens in its place.
+                if (name != page.title) { nav.back(); nav.go(com.vinz.music.ui.Routes.tag(name)) }
+            }
+        } else if (editing && smartRules != null) com.vinz.music.ui.components.SmartEditorSheet(page.id) { editing = false }
+        else if (editing && type == CollectionType.VINZ) EditPlaylistDialog(title, description.orEmpty(), null, onDismiss = { editing = false }) { t, d, _ ->
             editing = false
             c.vinzLibrary.rename(page.id, t, d)
             title = t; description = d.ifBlank { null }
@@ -904,13 +1105,26 @@ private fun CollectionContent(type: CollectionType, live: LiveCollection, initia
             }
         }
     }
-    if (deleting) AlertDialog(
+    if (deleting && type == CollectionType.TAG) AlertDialog(
+        onDismissRequest = { deleting = false },
+        title = { Text(tr(R.string.delete_tag)) },
+        text = { Text(tr(R.string.delete_the_tag_its_songs_stay, page.title)) },
+        confirmButton = {
+            VinzTextButton(onClick = {
+                deleting = false
+                scope.launch { c.tags.delete(page.title) }
+                nav.back()
+            }) { Text(tr(R.string.delete), color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { VinzTextButton(onClick = { deleting = false }) { Text(tr(R.string.cancel)) } },
+    ) else if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
         title = { Text(tr(R.string.delete_playlist)) },
         text = { Text(if (type == CollectionType.VINZ) tr(R.string.will_be_deleted_from_this_phone, title) else tr(R.string.will_be_deleted_from_your_youtube, title)) },
         confirmButton = {
             VinzTextButton(onClick = {
                 deleting = false
+                if (keptNow) c.keptPlaylists.set(page.id, false)
                 if (type == CollectionType.VINZ) { c.vinzLibrary.delete(page.id); nav.back(); return@VinzTextButton }
                 scope.launch {
                     c.library.deletePlaylist(PlaylistItem(page.id, title, "", page.thumbnail))
@@ -967,7 +1181,7 @@ private fun rememberTellApart(items: List<com.vinz.music.data.model.BrowseItem>)
 @Composable
 private fun PlayShufflePills(enabled: Boolean, onPlay: () -> Unit, onShuffle: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Pill(VinzIcons.Play, tr(R.string.widget_play), primary = true, enabled = enabled, modifier = Modifier.weight(1f), onClick = onPlay)
+        Pill(VinzIcons.Play, tr(R.string.widget_play), primary = true, enabled = enabled, modifier = Modifier.weight(1f).testTag("collectionPlay"), onClick = onPlay)
         Pill(VinzIcons.Shuffle, tr(R.string.shuffle), primary = false, enabled = enabled, modifier = Modifier.weight(1f), onClick = onShuffle)
     }
 }
@@ -1132,25 +1346,17 @@ private fun HeaderDetails(page: CollectionPage, centred: Boolean, privacy: Strin
                 Text(if (saved) tr(R.string.in_your_library) else tr(R.string.add_to_library), style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
             }
         }
-        page.description?.takeIf { it.isNotBlank() }?.let {
-            var expanded by remember { mutableStateOf(false) }
-            Text(
-                it, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 3,
-                overflow = TextOverflow.Ellipsis, textAlign = align,
-                modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clickable { expanded = !expanded }.animateContentSize(),
-            )
-        }
     }
 }
 
 /**
  * A playlist's picture edge to edge, like an artist page: it drifts behind the scroll and frosts
- * over into the page, with the title over its foot.
+ * over into the page, with the title over its foot. An album's too, when asked for ([heroCover]).
  */
 @Composable
 private fun HeroHeader(type: CollectionType, page: CollectionPage, art: String?, scroll: () -> Int, height: Dp) {
     val scheme = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxWidth().height(height)) {
+    Box(Modifier.fillMaxWidth().height(height).testTag("collectionHero")) {
         Box(Modifier.matchParentSize().clipToBounds().dissolveBottom(0.5f)) {
             if (art != null) AsyncImage(
                 hiRes(art, 1440), null, contentScale = ContentScale.Crop,
@@ -1168,7 +1374,7 @@ private fun HeroHeader(type: CollectionType, page: CollectionPage, art: String?,
                         .border(1.5.dp, com.vinz.music.ui.theme.VinzTokens.spectrum, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(when (type) { CollectionType.DOWNLOADS -> VinzIcons.DownloadDone; CollectionType.LIKED -> VinzIcons.HeartFilled; else -> VinzIcons.QueueMusic }, null, Modifier.size(64.dp), tint = scheme.onSurface)
+                    Icon(when (type) { CollectionType.DOWNLOADS -> VinzIcons.DownloadDone; CollectionType.LIKED -> VinzIcons.HeartFilled; CollectionType.ALBUM -> VinzIcons.Album; else -> VinzIcons.QueueMusic }, null, Modifier.size(64.dp), tint = scheme.onSurface)
                 }
             }
         }
@@ -1202,16 +1408,19 @@ private fun DownloadedCollections(visible: List<Song>, sort: SortMode, query: St
     val all by c.downloadState.collectAsState()
     // Only a finished download changes this (not every progress tick), so the rows aren't worked out again for those.
     val done = remember(all) { all.filterValues { it.state == Download.STATE_COMPLETED }.keys }
+    val skipped by c.downloadSkips.ids.collectAsState()
+    val standIns by c.downloadStandIns.collectAsState()
     val kept by produceState<List<Pair<String, CollectionPage>>?>(null) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { c.offline.pages() }
     }
-    val (albums, playlists) = remember(kept, done, visible, sort, query, filtered) {
+    val (albums, playlists) = remember(kept, done, visible, sort, query, filtered, skipped, standIns) {
         val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
         fun matches(p: CollectionPage) = words.isEmpty() ||
             "${p.title} ${p.artists.joinToString(" ") { it.name }}".lowercase().let { hay -> words.all { it in hay } }
         // A single's page is one song: that's already in the list below.
         val (keptAlbums, keptPlaylists) = kept.orEmpty()
-            .filter { (_, p) -> p.songs.size >= 2 && p.songs.all { it.id in done } && matches(p) }
+            // Songs marked to skip don't keep a list out of here (#221).
+            .filter { (_, p) -> p.songs.size >= 2 && com.vinz.music.download.PlaylistDownloads.allDownloaded(p.songs, skipped, standIns) { it in done || standIns[it] in done } && matches(p) }
             .distinctBy { it.second.id }
             .partition { it.second.kind == CollectionKind.ALBUM }
         // One card per album name and artist: YouTube lists some albums twice (two editions, two ids), and the songs
@@ -1508,7 +1717,59 @@ private fun androidx.compose.foundation.lazy.LazyListScope.rearrangeSongs(r: Laz
     }
 }
 /** Lists whose own order is the order songs came in, so the other way round means something (#141). */
-private val REVERSIBLE = setOf(CollectionType.DOWNLOADS, CollectionType.LIKED, CollectionType.PLAYLIST, CollectionType.VINZ)
+private val REVERSIBLE = setOf(CollectionType.DOWNLOADS, CollectionType.LIKED, CollectionType.PLAYLIST, CollectionType.VINZ, CollectionType.TAG)
+
+/** A tag's page id is this and the tag; a playlist item with such an id opens the tag (a search result). */
+const val TAG_PAGE = "tag:"
+
+/** A tag as a playlist item (Search's library results), opening its page. */
+fun tagItem(t: com.prism.music.data.db.TagSummary) =
+    PlaylistItem(TAG_PAGE + t.tag, t.tag, tr(R.string.tag_n_songs, com.vinz.music.data.model.songCount(t.songs)), t.thumbnail)
+
+/**
+ * A smart playlist's songs its Sound rules can't see yet (1.8.3): how many, and Measure now (the scan Normalize and DJ
+ * mode use, one song after another; songs not on the phone only on Wi-Fi); while it runs, how far it is.
+ */
+@Composable
+private fun SmartMeasureRow(rules: com.vinz.music.data.SmartRules, unmeasured: Int, progress: Pair<Int, Int>?) {
+    val c = LocalContainer.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (progress != null) tr(R.string.measuring_n_of_n, progress.first, progress.second) else trp(R.plurals.n_songs_aren_t_measured_yet, unmeasured, unmeasured),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
+        )
+        if (progress != null) VinzTextButton(onClick = { c.smartMeasure.stop() }) { Text(tr(R.string.stop)) }
+        else VinzTextButton(onClick = {
+            scope.launch {
+                val ids = c.smart.unmeasuredIds(rules, com.vinz.music.data.SmartMeasure.AT_ONCE)
+                val streams = c.smartMeasure.start(ids)
+                if (!streams) Toast.makeText(context, tr(R.string.on_wi_fi_songs_not_on_the_phone_are_measured_too), Toast.LENGTH_LONG).show()
+            }
+        }, modifier = Modifier.testTag("measureNow")) { Text(tr(R.string.measure_now)) }
+    }
+}
+
+/** A tag's new name; the same name or an empty one does nothing. */
+@Composable
+private fun RenameTagDialog(tag: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+    var name by remember { mutableStateOf(tag) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr(R.string.rename_tag)) },
+        text = {
+            com.vinz.music.ui.components.VinzTextField(
+                name, { name = it.take(com.vinz.music.data.TagStore.MAX_LENGTH) }, Modifier.fillMaxWidth().testTag("tagName"),
+                label = { Text(tr(R.string.name)) }, singleLine = true,
+            )
+        },
+        confirmButton = {
+            VinzTextButton(onClick = { onRename(name) }, enabled = com.vinz.music.data.TagStore.clean(name).let { it != null && it != tag }) { Text(tr(R.string.rename)) }
+        },
+        dismissButton = { VinzTextButton(onClick = onDismiss) { Text(tr(R.string.cancel)) } },
+    )
+}
 
 /**
  * [SortMode.OLDEST] is the list's own order reversed. Downloads and Liked songs start with the newest, so that's
@@ -1652,6 +1913,8 @@ fun FailedDownloadsSheet(onDismiss: () -> Unit) {
                         )
                     }
                     IconButton(onClick = { c.downloads.retryFailed(setOf(id)) }) { Icon(VinzIcons.Refresh, tr(R.string.try_again)) }
+                    // #221: gone from here, and left out the next time a list it's on downloads.
+                    IconButton(onClick = { c.downloads.setSkipped(id, true) }) { Icon(VinzIcons.Block, tr(R.string.skip_in_downloads)) }
                     IconButton(onClick = { c.downloads.removeMany(setOf(id)) }) { Icon(VinzIcons.Delete, tr(R.string.remove)) }
                 }
             }
@@ -1688,7 +1951,10 @@ private fun downloadsSheetItems(ask: (String, () -> Unit) -> Unit): List<SheetIt
         below = if (!settings.premiumStream || !settings.isLoggedIn) emptyList()
         else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { c.downloads.belowPremium() }
     }
+    val nav = LocalNavigator.current
     return buildList {
+        // What's on the phone without having been downloaded (#159).
+        add(SheetItem(VinzIcons.DownloadDone, tr(R.string.saved_while_playing)) { nav.go(Routes.SAVED) })
         add(SheetItem(VinzIcons.Lyrics, tr(R.string.get_missing_lyrics)) { c.downloads.backfillLyrics(force = true) })
         if (below.isNotEmpty()) add(SheetItem(VinzIcons.Download, tr(R.string.download_again_in_premium_quality, below.size)) {
             ask(

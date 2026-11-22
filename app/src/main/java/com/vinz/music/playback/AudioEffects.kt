@@ -10,7 +10,6 @@ import android.media.audiofx.BassBoost
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
-import android.media.audiofx.Virtualizer
 import android.os.Build
 import com.vinz.music.data.prefs.EqSettings
 import java.util.concurrent.ExecutorService
@@ -116,13 +115,22 @@ internal class EffectQueue(private val executor: ExecutorService) {
 /**
  * Owns the audio effect chain attached to the player's audio session:
  * a 10-band EQ (DynamicsProcessing on API 28+, platform Equalizer otherwise),
- * bass boost, virtualizer, loudness enhancer and loudness normalization.
+ * bass boost, loudness enhancer and loudness normalization.
  * It also announces the session so system / OEM engines such as Dolby Atmos
  * can attach their own processing.
  *
  * Callers (the playback service, on the main thread) only hand work over: every effect is created, changed and
  * released on [EffectQueue]'s own thread, in the order asked, and the effect objects and session are only touched
  * there. What callers set ([wanted], [wantedNormalizationDb]) is read by that thread when it gets to it.
+ *
+ * #519 ("the equalizer, bass boost, loudness and preamp change nothing"): the effects are made only once the session has
+ * a track on it ([trackReady]) and only when something is asked of them (the equalizer on, or a normalization gain).
+ * They used to be made as the service started, on a session with nothing playing yet. Android keeps such effects in a
+ * register of its own (the audio policy's, 512 KB for every app on the phone), and when the app's process ends before
+ * anything plays (Android closing a backgrounded Vinz, an update, a swipe), bass boost, virtualizer and loudness
+ * enhancer stay in that register for good, until the phone restarts (seen on the A16, Android 16: 32 of them left over
+ * 15 days filled it). From then on every effect anyone asks for is refused ("memory limit exceeded"), Vinz's included,
+ * silently: the sliders moved and nothing changed. Made after a track, they're let go of with the process (measured).
  */
 class AudioEffects(
     private val context: Context,
@@ -134,11 +142,29 @@ class AudioEffects(
 
     // Touched only on the effects thread.
     private var sessionId = 0
+    /** A track has been made on [sessionId]: effects can be made on it now (see the class note). */
+    private var live = false
+    /** A track was made before the session was known: the session that comes next is the one it plays on. */
+    private var trackBeforeSession = false
+    /** Other effect engines were told about [sessionId] (and so are told when it closes). */
+    private var announced = false
+    /** Android refused an effect on [sessionId] (logged once for it). */
+    private var refusedLogged = false
     private var dynamics: DynamicsProcessing? = null
     private var equalizer: Equalizer? = null
     private var bass: BassBoost? = null
-    private var virtualizer: Virtualizer? = null
     private var loudness: LoudnessEnhancer? = null
+
+    /** Tests only: told of each effect asked of Android, and of each announcement ("make bass 42", "open 42"). */
+    @Volatile internal var trace: ((String) -> Unit)? = null
+    /** Tests only: the effect kinds ("dynamics", "equalizer", "bass", "loudness") Android is to refuse, as a full register does. */
+    @Volatile internal var refuseForTest: ((String) -> Boolean)? = null
+
+    /** Android refused the effects the settings ask for (shown in stats for nerds). */
+    @Volatile private var unavailable = false
+    private val _refused = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** Android refuses the effects the settings ask for, now (the Equalizer screen says so). */
+    val refused: kotlinx.coroutines.flow.StateFlow<Boolean> = _refused
 
     // Set by callers, read by the effects thread: the newest settings always win.
     @Volatile private var wanted = EqSettings()
@@ -151,8 +177,9 @@ class AudioEffects(
             val s = wanted
             val norm = wantedNormalizationDb
             return buildList {
-                if (s.enabled) add(if (tenBand) "EQ 10-band" else "EQ")
-                if (s.enabled && s.bassBoost > 0) add("Bass")
+                if (s.enabled && unavailable) add("EQ refused by Android")
+                else if (s.enabled) add(if (tenBand) "EQ 10-band" else "EQ")
+                if (s.enabled && s.bassBoost > 0 && !unavailable) add("Bass")
                 if (norm != 0f) add("Normalize %.1f dB".format(norm))
             }.joinToString(" · ").ifEmpty { "None" }
         }
@@ -161,6 +188,14 @@ class AudioEffects(
     fun attach(newSession: Int) {
         if (newSession == 0) return
         queue.run { attachNow(newSession) }
+    }
+
+    /**
+     * The player made its audio track (Media3's onAudioTrackInitialized): the session now plays on an output, and the
+     * effects are made on it if the settings ask for them.
+     */
+    fun trackReady() {
+        queue.run { trackReadyNow() }
     }
 
     fun setNormalization(gainDb: Float) {
@@ -185,30 +220,74 @@ class AudioEffects(
 
     private fun attachNow(newSession: Int) {
         if (newSession == sessionId) return
+        // A track reported before the first session was known plays on this one (Media3 hands the session over late).
+        val carried = sessionId == 0 && trackBeforeSession
         releaseNow(broadcast = true)
         sessionId = newSession
-        if (announce) context.sendBroadcast(Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
-            putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
-            putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
-            putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
-        })
+        live = false
+        trackBeforeSession = false
+        refusedLogged = false
+        setUnavailable(false)
+        if (carried) trackReadyNow()
+    }
+
+    private fun trackReadyNow() {
+        if (sessionId == 0) { trackBeforeSession = true; return }
+        if (live) return
+        live = true
+        if (announce) {
+            trace?.invoke("open $sessionId")
+            context.sendBroadcast(Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
+                putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
+                putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
+                putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+            })
+            announced = true
+        }
         applyNow()
+    }
+
+    /** [make]s an effect on the session; null, and noted once for the session, when Android refuses it. */
+    private fun <T : AudioEffect> make(kind: String, make: (Int) -> T): T? {
+        trace?.invoke("make $kind $sessionId")
+        return runCatching {
+            if (refuseForTest?.invoke(kind) == true) throw RuntimeException("Cannot initialize effect engine (test)")
+            make(sessionId)
+        }.onFailure { e ->
+            if (!refusedLogged) {
+                refusedLogged = true
+                android.util.Log.w("VinzEffects", "Android refused the $kind effect on session $sessionId", e)
+                AudioDiagnostics.log(
+                    "effects",
+                    "Android refused the $kind effect on session $sessionId (${e.message}). When every effect is refused, " +
+                        "Android's room for effects is full (left over by apps that ended before playing); restarting the phone frees it.",
+                )
+            }
+        }.getOrNull()
     }
 
     private fun applyNow() {
         val s = wanted
         val normalizationDb = wantedNormalizationDb
-        if (sessionId == 0) return
+        // Nothing is made on a session without a track (see the class note), and each effect only when the settings ask
+        // something of it: Android's register is shared by every app on the phone, so Vinz holds as little of it as it
+        // can. One already made stays for the session and is switched off when it's no longer asked for.
+        if (sessionId == 0 || !live) return
+        val asks = Asks.of(s, normalizationDb)
         val preGain = normalizationDb + if (s.enabled) s.preampDb else 0f
-        if (Build.VERSION.SDK_INT >= 28) {
-            runCatching {
-                val dp = dynamics ?: DynamicsProcessing(
-                    0, sessionId,
+        if (!asks.equalizer && dynamics == null && equalizer == null) {
+            tenBand = false
+        } else if (Build.VERSION.SDK_INT >= 28) {
+            val dp = dynamics ?: make("dynamics") { session ->
+                DynamicsProcessing(
+                    0, session,
                     DynamicsProcessing.Config.Builder(
                         DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2,
                         true, 10, false, 0, false, 0, true,
                     ).build()
-                ).also { dynamics = it }
+                )
+            }?.also { dynamics = it }
+            val set = dp != null && runCatching {
                 val eq = DynamicsProcessing.Eq(true, true, 10)
                 for (i in 0 until 10) {
                     eq.setBand(i, DynamicsProcessing.EqBand(true, EqPresets.frequencies[i], if (s.enabled) s.bands.getOrElse(i) { 0f } else 0f))
@@ -216,31 +295,73 @@ class AudioEffects(
                 dp.setPreEqAllChannelsTo(eq)
                 dp.setInputGainAllChannelsTo(preGain)
                 dp.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, true, 1, 1f, 60f, 10f, -1f, 0f))
-                dp.enabled = s.enabled || preGain != 0f
-            }.onFailure { dynamics = null; applyLegacyEq(s, normalizationDb) }
-        } else applyLegacyEq(s, normalizationDb)
+                dp.enabled = asks.equalizer
+            }.isSuccess
+            if (!set) {
+                // Let go of it now rather than whenever it's collected, and fall back on the platform equalizer.
+                runCatching { dynamics?.release() }
+                dynamics = null
+                applyLegacyEq(s, normalizationDb, asks.equalizer)
+            }
+        } else applyLegacyEq(s, normalizationDb, asks.equalizer)
         tenBand = dynamics != null
 
+        val b = bass ?: if (asks.bass) make("bass") { BassBoost(0, it) }?.also { bass = it } else null
         runCatching {
-            val b = bass ?: BassBoost(0, sessionId).also { bass = it }
-            if (b.strengthSupported) b.setStrength(s.bassBoost.coerceIn(0, 1000).toShort())
-            b.enabled = s.enabled && s.bassBoost > 0
+            if (b != null) {
+                if (b.strengthSupported) b.setStrength(s.bassBoost.coerceIn(0, 1000).toShort())
+                b.enabled = asks.bass
+            }
         }
+        // No platform virtualizer: Vinz Spatial (software) took its place, and it was only ever made to be switched off.
+        val l = loudness ?: if (asks.loudness) make("loudness") { LoudnessEnhancer(it) }?.also { loudness = it } else null
         runCatching {
-            val v = virtualizer ?: Virtualizer(0, sessionId).also { virtualizer = it }
-            // Superseded by Vinz Spatial (software); the platform virtualizer is a no-op on most new phones.
-            v.enabled = false
+            if (l != null) {
+                l.setTargetGain(s.loudnessGainMb.coerceAtLeast(0))
+                l.enabled = asks.loudness
+            }
         }
-        runCatching {
-            val l = loudness ?: LoudnessEnhancer(sessionId).also { loudness = it }
-            l.setTargetGain(s.loudnessGainMb.coerceAtLeast(0))
-            l.enabled = s.enabled && s.loudnessGainMb > 0
+        // Refused: something was asked and Android made none of it (as when its register is full). An effect this phone
+        // doesn't have at all isn't a refusal.
+        val asked = listOf(
+            asks.equalizer to (dynamics ?: equalizer),
+            (asks.bass && hasType(AudioEffect.EFFECT_TYPE_BASS_BOOST)) to bass,
+            (asks.loudness && hasType(AudioEffect.EFFECT_TYPE_LOUDNESS_ENHANCER)) to loudness,
+        ).filter { it.first }
+        setUnavailable(asked.isNotEmpty() && asked.all { it.second == null })
+    }
+
+    /** Effect types this phone has (null: unknown, so every type counts as present). */
+    private val types: Set<java.util.UUID>? by lazy {
+        runCatching { AudioEffect.queryEffects()?.mapNotNull { it?.type }?.toSet() }.getOrNull()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun hasType(type: java.util.UUID?): Boolean = type == null || types?.contains(type) != false
+
+    private fun setUnavailable(now: Boolean) {
+        unavailable = now
+        _refused.value = now
+    }
+
+    /** What the settings ask of the platform effects. */
+    internal data class Asks(val equalizer: Boolean, val bass: Boolean, val loudness: Boolean) {
+        companion object {
+            /**
+             * The equalizer (DynamicsProcessing or Equalizer) when it's on with a band or the preamp away from 0, or for a
+             * normalization gain; bass boost and loudness only when on and above 0. The equalizer on but flat asks for
+             * nothing: no platform effect made just to pass the sound through.
+             */
+            fun of(s: EqSettings, normalizationDb: Float) = Asks(
+                equalizer = normalizationDb != 0f || (s.enabled && (s.preampDb != 0f || s.bands.any { it != 0f })),
+                bass = s.enabled && s.bassBoost > 0,
+                loudness = s.enabled && s.loudnessGainMb > 0,
+            )
         }
     }
 
-    private fun applyLegacyEq(s: EqSettings, normalizationDb: Float) {
+    private fun applyLegacyEq(s: EqSettings, normalizationDb: Float, on: Boolean) {
+        val eq = equalizer ?: make("equalizer") { Equalizer(0, it) }?.also { equalizer = it } ?: return
         runCatching {
-            val eq = equalizer ?: Equalizer(0, sessionId).also { equalizer = it }
             val range = eq.bandLevelRange
             for (band in 0 until eq.numberOfBands) {
                 val centerHz = eq.getCenterFreq(band.toShort()) / 1000f
@@ -249,19 +370,21 @@ class AudioEffects(
                     .coerceIn(range[0].toInt(), range[1].toInt())
                 eq.setBandLevel(band.toShort(), mb.toShort())
             }
-            eq.enabled = s.enabled || normalizationDb != 0f
+            eq.enabled = on
         }
     }
 
     private fun releaseNow(broadcast: Boolean) {
-        if (sessionId != 0 && broadcast && announce) {
+        if (sessionId != 0 && broadcast && announced) {
+            trace?.invoke("close $sessionId")
             context.sendBroadcast(Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION).apply {
                 putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
                 putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
             })
+            announced = false
         }
-        listOf(dynamics, equalizer, bass, virtualizer, loudness).forEach { runCatching { it?.release() } }
-        dynamics = null; equalizer = null; bass = null; virtualizer = null; loudness = null
+        listOf(dynamics, equalizer, bass, loudness).forEach { runCatching { it?.release() } }
+        dynamics = null; equalizer = null; bass = null; loudness = null
         tenBand = false
     }
 

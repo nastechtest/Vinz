@@ -77,6 +77,8 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         if (inputAudioFormat.channelCount != 2 || (enc != C.ENCODING_PCM_16BIT && enc != C.ENCODING_PCM_FLOAT)) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
+        // The same format again (the player's next song, gapless): the room and crossfeed run on as they are (plan item 10).
+        if (inputAudioFormat == this.inputAudioFormat) return inputAudioFormat
         rate = inputAudioFormat.sampleRate
         float = enc == C.ENCODING_PCM_FLOAT
         xfLen = (rate * 0.00027f).roundToInt().coerceAtLeast(1)
@@ -231,12 +233,25 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         return if (x < 0) -y else y
     }
 
+    /** The sound before the next flush was played out to its end ([onQueueEndOfStream]): what follows goes on from it. */
+    private val playedOut = PlayedOut()
+    private val drained get() = playedOut.goesOn()
+
+    override fun onQueueEndOfStream() {
+        playedOut.mark()
+    }
+
     override fun onFlush() {
-        clearState()
+        // A seek starts the room afresh. Across a gapless move to the next song (the chain played out to the last song's
+        // end, then flushed for the next) the sound goes on, and so does the room: clearing it there cut the reverb and
+        // the crossfeed off mid-sound, a click at every change of song (plan item 10).
+        if (!drained) clearState()
+        playedOut.clear()
     }
 
     override fun onReset() {
         clearState()
         wet = 0f
+        playedOut.clear()
     }
 }

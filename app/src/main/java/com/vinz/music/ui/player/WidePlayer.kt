@@ -187,7 +187,7 @@ internal fun WidePlayerContent(
             val short = maxHeight < 520.dp
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxWidth().height(if (short) 18.dp else 28.dp).then(dismissGesture)) {
-                    if (com.vinz.music.ui.theme.LocalAppSettings.current.playerHandle) Box(
+                    if (com.vinz.music.ui.theme.LocalAppSettings.current.player.handle) Box(
                         Modifier.align(Alignment.Center).size(38.dp, 5.dp).clip(RoundedCornerShape(3.dp))
                             .background(Color.White.copy(alpha = 0.6f)),
                     )
@@ -254,7 +254,7 @@ private fun WideCover(
     LaunchedEffect(seekFlash?.at) { if (seekFlash != null) { delay(750); seekFlash = null } }
     var canvasCover by remember(canvas) { mutableFloatStateOf(0f) }
     val seekStep = settings.doubleTapSeekSeconds
-    val shape = RoundedCornerShape(settings.playerArtCorners.dp)
+    val shape = RoundedCornerShape(settings.player.artCorners.dp)
     val sized = if (maxSide != Dp.Unspecified) Modifier.size(maxSide) else Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true)
     Box(
         sized
@@ -333,7 +333,7 @@ internal fun PlayerCredits(song: Song, onMore: () -> Unit, onCollapse: () -> Uni
     val nav = LocalNavigator.current
     val liked by c.library.likedIds.collectAsState()
     val settings by c.settings.flow.collectAsState()
-    val heart = (com.vinz.music.data.prefs.PlayerButton.LIKE !in settings.playerButtons || !settings.shows(PlayerPart.BUTTONS)) && settings.shows(PlayerPart.LIKE)
+    val heart = (com.vinz.music.data.prefs.PlayerButton.LIKE !in settings.player.buttons || !settings.shows(PlayerPart.BUTTONS)) && settings.shows(PlayerPart.LIKE)
     // With the ⋯ button hidden (1.8.0), a long press on the title or the artist opens the menu.
     val menuHeld: (() -> Unit)? = if (settings.shows(PlayerPart.MENU)) null else onMore
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

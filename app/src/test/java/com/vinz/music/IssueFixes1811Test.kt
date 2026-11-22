@@ -2,6 +2,7 @@ package com.vinz.music
 
 import androidx.compose.ui.unit.dp
 import com.vinz.music.data.prefs.AppSettings
+import com.vinz.music.data.prefs.PlayerPrefs
 import com.vinz.music.data.prefs.BehaviorPrefs
 import com.vinz.music.data.prefs.DeckPart
 import com.vinz.music.data.prefs.MenuAction
@@ -33,7 +34,7 @@ class IssueFixes1811Test {
     // ------------------------------------------------------------------ #345 "Show lyrics" in the ⋯ menu
 
     /** The Lyrics button off the player's row: the menu has "Show lyrics" (as in 1.8.0). */
-    private val noLyricsButton = AppSettings(playerButtons = PlayerButton.DEFAULT.filter { it != PlayerButton.LYRICS })
+    private val noLyricsButton = AppSettings(player = PlayerPrefs(buttons = PlayerButton.DEFAULT.filter { it != PlayerButton.LYRICS }))
 
     @Test fun showLyricsFoldsAwayWhenTheLyricsOpenAnotherWay() {
         val d = noLyricsButton
@@ -51,17 +52,17 @@ class IssueFixes1811Test {
     }
 
     @Test fun showLyricsStaysWhileItsTheOnlyWayToTheLyrics() {
-        val noStrip = noLyricsButton.copy(lyricsOnPlayer = false)
+        val noStrip = noLyricsButton.copy(lyrics = noLyricsButton.lyrics.copy(onPlayer = false))
         assertTrue("nothing else opens the lyrics", noStrip.menuFolds().isEmpty())
         val hidden = PlayerParts(menuHidden = setOf(MenuAction.OPEN_LYRICS, MenuAction.STATS))
         val l = hidden.menuLayout(listOf(MenuAction.OPEN_LYRICS, MenuAction.STATS), noStrip.menuFolds())
         assertEquals("only what may fold is under More", listOf(MenuAction.STATS), l.more)
         assertEquals(MenuAction.OPEN_LYRICS, l.groups.single().second.single())
         // A cover gesture that opens them, or a swipe up on the controls, is another way too.
-        assertEquals(setOf(MenuAction.OPEN_LYRICS), noStrip.copy(coverLongPress = PlayerGesture.LYRICS).menuFolds())
+        assertEquals(setOf(MenuAction.OPEN_LYRICS), noStrip.copy(gestures = noStrip.gestures.copy(coverLongPress = PlayerGesture.LYRICS)).menuFolds())
         assertEquals(setOf(MenuAction.OPEN_LYRICS), noStrip.copy(behavior = BehaviorPrefs(panelSwipes = true)).menuFolds())
         // …but not a gesture on a cover that isn't there.
-        val noCover = noStrip.copy(coverLongPress = PlayerGesture.LYRICS, view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.COVER))))
+        val noCover = noStrip.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.COVER))), gestures = noStrip.gestures.copy(coverLongPress = PlayerGesture.LYRICS))
         assertTrue(noCover.menuFolds().isEmpty())
         // The other actions the player brings never fold.
         assertFalse(MenuAction.OPEN_QUEUE.foldable || MenuAction.PREVIOUS.foldable)

@@ -22,17 +22,20 @@ object QuickScan {
         if (durationMs < WHOLE_BELOW_MS) listOf(0L to durationMs.coerceAtLeast(1))
         else listOf(0.25, 0.5, 0.75).map { f -> ((durationMs * f).toLong() - WINDOW_MS / 2).coerceAtLeast(0) to WINDOW_MS }
 
-    class Result(val key: MusicKey?, val tempo: Tempo?, val lufs: Float?)
+    /** [brightness]: [Energy.brightness] over the stretches (1.8.3), from the same band features as the tempo. */
+    class Result(val key: MusicKey?, val tempo: Tempo?, val lufs: Float?, val brightness: Double? = null)
 
     /** The key from all the stretches together, the tempo from the one with the clearest beat, the loudness over all. */
     fun analyse(pieces: List<FloatArray>, rate: Int): Result {
         val all = FloatArray(pieces.sumOf { it.size }).also { out -> var at = 0; pieces.forEach { p -> p.copyInto(out, at); at += p.size } }
         val key = runCatching { KeyDetector.detect(all, rate) }.getOrNull()
         val frameMs = (rate / 100) * 1000.0 / rate
-        val tempo = pieces.mapNotNull { p -> runCatching { Tempo.analyze(VideoSync.bandFeatures(p, rate), frameMs) }.getOrNull() }
+        val bands = pieces.map { p -> runCatching { VideoSync.bandFeatures(p, rate) }.getOrNull() }
+        val tempo = bands.mapNotNull { b -> b?.let { runCatching { Tempo.analyze(it, frameMs) }.getOrNull() } }
             .maxByOrNull { it.confidence }
+        val brightness = bands.mapNotNull { b -> b?.let(Energy::brightness) }.takeIf { it.isNotEmpty() }?.average()
         val lufs = MixTempo.integratedLoudness(all, rate)?.let { it + MONO_TO_STEREO_DB }
-        return Result(key, tempo, lufs)
+        return Result(key, tempo, lufs, brightness)
     }
 
     /**
@@ -50,6 +53,7 @@ object QuickScan {
             var isFloat = false
             var factor = max(1, rate / 11025)
             val pieces = ArrayList<FloatArray>()
+            val mono = Downmix()
             val info = MediaCodec.BufferInfo()
             for ((startMs, lengthMs) in windows) {
                 val from = startMs * 1000
@@ -58,8 +62,7 @@ object QuickScan {
                 dec.flush()
                 var out = FloatArray(((lengthMs / 1000.0 + 1) * rate / factor).toInt().coerceAtLeast(1024))
                 var count = 0
-                var acc = 0f
-                var n = 0
+                mono.restart()
                 var inputDone = false
                 var idle = 0
                 while (true) {
@@ -90,15 +93,9 @@ object QuickScan {
                             buf.position(info.offset)
                             buf.limit(info.offset + info.size)
                             val frames = info.size / (channels * (if (isFloat) 4 else 2))
-                            for (f in 0 until frames) {
-                                var m = 0f
-                                for (c in 0 until channels) m += if (isFloat) buf.float else buf.short / 32768f
-                                acc += m / channels
-                                if (++n == factor) {
-                                    if (count == out.size) out = out.copyOf(out.size * 2)
-                                    out[count++] = acc / factor
-                                    acc = 0f; n = 0
-                                }
+                            mono.add(buf, frames, channels, isFloat, factor) { v ->
+                                if (count == out.size) out = out.copyOf(out.size * 2)
+                                out[count++] = v
                             }
                         }
                         dec.releaseOutputBuffer(o, false)
@@ -135,6 +132,9 @@ class RangedSource(private val http: OkHttpClient, private val url: String, priv
     /** Bytes downloaded so far. */
     var fetched = 0L
         private set
+    /** A read that failed, if one did. */
+    @Volatile var failure: IOException? = null
+        private set
 
     override fun getSize(): Long = length
 
@@ -152,9 +152,14 @@ class RangedSource(private val http: OkHttpClient, private val url: String, priv
     private fun fetch(index: Long): ByteArray {
         val from = index * BLOCK
         val to = minOf(length, from + BLOCK) - 1
-        http.newCall(Request.Builder().url(url).header("Range", "bytes=$from-$to").build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException("audio returned HTTP ${r.code}")
-            return r.body.bytes().also { fetched += it.size }
+        try {
+            http.newCall(Request.Builder().url(url).header("Range", "bytes=$from-$to").build()).execute().use { r ->
+                if (!r.isSuccessful) throw IOException("audio returned HTTP ${r.code}")
+                return r.body.bytes().also { fetched += it.size }
+            }
+        } catch (e: IOException) {
+            failure = e
+            throw e
         }
     }
 

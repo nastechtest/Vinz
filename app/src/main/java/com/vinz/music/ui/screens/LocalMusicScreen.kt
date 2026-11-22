@@ -59,6 +59,10 @@ import com.vinz.music.playback.QueueSource
 import com.vinz.music.ui.LocalNavigator
 import com.vinz.music.ui.components.Artwork
 import com.vinz.music.ui.components.EmptyState
+import com.vinz.music.ui.components.LocatePlaying
+import com.vinz.music.ui.components.LocatePlayingRow
+import com.vinz.music.ui.components.LocateState
+import com.vinz.music.ui.components.locatePulse
 import com.vinz.music.ui.components.PagerChips
 import com.vinz.music.ui.components.VinzChip
 import com.vinz.music.ui.components.RoundAction
@@ -97,7 +101,7 @@ private data class Order<K>(val key: K, val reversed: Boolean = false)
  * #35 it held the songs' order alone ("TITLE", "ADDED", "ARTIST", "ALBUM"), which still reads.
  */
 private data class LocalOrders(val songs: Order<SongKey>, val albums: Order<AlbumKey>, val artists: Order<ArtistKey>) {
-    fun encode() = tr(R.string.songs_albums, songs.key, if (songs.reversed) 1 else 0, albums.key, if (albums.reversed) 1 else 0) +
+    fun encode() = "songs:${songs.key}:${if (songs.reversed) 1 else 0}|albums:${albums.key}:${if (albums.reversed) 1 else 0}|" +
         "artists:${artists.key}:${if (artists.reversed) 1 else 0}"
 
     companion object {
@@ -142,7 +146,8 @@ private fun sorted(tracks: List<LocalMusic.Track>, o: Order<SongKey>): List<Loca
 
 private fun sortedAlbums(albums: List<LocalAlbum>, o: Order<AlbumKey>): List<LocalAlbum> {
     val r = o.reversed
-    val unknownLast = compareBy<LocalAlbum> { it.title == "Unknown album" }
+    val unknownAlbum = tr(R.string.unknown_album)
+    val unknownLast = compareBy<LocalAlbum> { it.title == unknownAlbum }
     val byTitle = compareBy<LocalAlbum> { it.title.lowercase() }
     return albums.sortedWith(
         when (o.key) {
@@ -183,7 +188,10 @@ private fun inTrackOrder(tracks: List<LocalMusic.Track>) =
 private fun albumsOf(tracks: List<LocalMusic.Track>): List<LocalAlbum> = tracks.groupBy { it.albumId }.map { (id, t) ->
     val artist = t.groupingBy { it.song.primaryArtist }.eachCount().maxByOrNull { it.value }?.key.orEmpty()
     LocalAlbum(id, t.firstNotNullOfOrNull { it.song.album?.title?.takeIf(String::isNotBlank) } ?: tr(R.string.unknown_album), artist, t.maxOf { it.year }, inTrackOrder(t))
-}.sortedWith(compareBy<LocalAlbum> { it.title == "Unknown album" }.thenBy { it.title.lowercase() })
+}.let { albums ->
+    val unknown = tr(R.string.unknown_album)
+    albums.sortedWith(compareBy<LocalAlbum> { it.title == unknown }.thenBy { it.title.lowercase() })
+}
 
 /**
  * Library → Local files: the phone's own music files ([LocalMusic]), playing from the files, by song, artist or album.
@@ -226,6 +234,7 @@ fun LocalMusicScreen(bottomPadding: Dp) {
     var openAlbum by rememberSaveable { mutableStateOf<Long?>(null) }
     var openRecent by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var choosingFolders by remember { mutableStateOf(false) }
     BackHandler(openArtist != null || openAlbum != null || openRecent) {
         // An album opened from an artist goes back to the artist.
         when {
@@ -266,6 +275,8 @@ fun LocalMusicScreen(bottomPadding: Dp) {
         else sorted(tracks, sort).map { it.song }.filter { s -> "${s.title} ${s.artistText} ${s.album?.title.orEmpty()}".lowercase().let { hay -> words.all { it in hay } } }
     }
     val section = sections.getOrNull(pager.currentPage)
+    // "Go to the playing song" (D54) for whichever list of songs is showing.
+    val locate = remember { LocateState() }
     fun playable(): Pair<List<Song>, String> = when {
         query.isNotBlank() && album == null && artist == null && !openRecent -> found to tr(R.string.local_files)
         album != null -> album.tracks.map { it.song } to album.title
@@ -312,6 +323,11 @@ fun LocalMusicScreen(bottomPadding: Dp) {
                     RoundAction(VinzIcons.History, tr(R.string.recently_played)) { openRecent = true }
                     Spacer(Modifier.width(8.dp))
                 }
+                // D54: the page has no ⋯ menu, so it's a button here, only while the playing song is in the list shown.
+                locate.go?.let { go ->
+                    RoundAction(VinzIcons.Song, tr(R.string.go_to_the_playing_song)) { go() }
+                    Spacer(Modifier.width(8.dp))
+                }
                 RoundAction(VinzIcons.Shuffle, tr(R.string.shuffle)) {
                     val (list, title) = playable()
                     if (list.isNotEmpty()) c.player.playQueue(list, 0, source(title), shuffle = true)
@@ -344,11 +360,15 @@ fun LocalMusicScreen(bottomPadding: Dp) {
             tracks.isEmpty() -> Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (scanned) EmptyState(VinzIcons.Phone, tr(R.string.no_music_files_found), tr(R.string.songs_you_copy_onto_your_phone))
                 else com.vinz.music.ui.components.VinzSpinner(Modifier.padding(32.dp).size(30.dp))
+                // Every folder left out: the way back can't be behind the chips, which aren't shown now.
+                if (scanned && settings.behavior.localSkipFolders.isNotEmpty()) {
+                    VinzButton(onClick = { choosingFolders = true }) { Text(tr(R.string.choose_folders)) }
+                }
             }
-            album != null -> TrackList(album.tracks.map { it.song }, album.title, bottomPadding, numbered = true)
+            album != null -> TrackList(album.tracks.map { it.song }, album.title, bottomPadding, locate, numbered = true)
             artist != null -> ArtistPage(artist, bottomPadding) { openAlbum = it.id }
             openRecent -> if (recent.isEmpty()) EmptyState(VinzIcons.History, tr(R.string.nothing_played_yet), tr(R.string.songs_from_your_phone_that_you))
-                else TrackList(recent, tr(R.string.recently_played), bottomPadding)
+                else TrackList(recent, tr(R.string.recently_played), bottomPadding, locate)
             else -> {
                 com.vinz.music.ui.components.SearchField(
                     query, tr(R.string.search_in_local_files), { query = it },
@@ -356,21 +376,21 @@ fun LocalMusicScreen(bottomPadding: Dp) {
                 )
                 if (query.isNotBlank()) {
                     if (found.isEmpty()) EmptyState(VinzIcons.Search, tr(R.string.no_matches), tr(R.string.nothing_in_matches, tr(R.string.local_files), query.trim()) + ".")
-                    else TrackList(found, tr(R.string.local_files), bottomPadding)
+                    else TrackList(found, tr(R.string.local_files), bottomPadding, locate)
                 } else {
                     SectionChips(sections, pager) { editing = true }
                     // Sideways swipes on a song queue it (SwipeToQueue), so the sections change from the chips.
                     HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = false) { page ->
                         when (sections.getOrNull(page)) {
-                            LocalSection.SONGS -> SongsPage(songsSorted, sort, { saveOrders(orders.copy(songs = it)) }, tr(R.string.local_files), bottomPadding)
+                            LocalSection.SONGS -> SongsPage(songsSorted, sort, { saveOrders(orders.copy(songs = it)) }, tr(R.string.local_files), bottomPadding, locate)
                             LocalSection.FAVOURITES -> if (favourites.isEmpty()) EmptyState(VinzIcons.Heart, tr(R.string.no_favorites_yet), tr(R.string.like_songs_from_your_phone_on))
-                                else SongsPage(favourites, sort, { saveOrders(orders.copy(songs = it)) }, tr(R.string.favorites), bottomPadding)
+                                else SongsPage(favourites, sort, { saveOrders(orders.copy(songs = it)) }, tr(R.string.favorites), bottomPadding, locate)
                             LocalSection.ARTISTS -> ArtistsPage(sortedArtists(artists, orders.artists), bottomPadding, orders.artists, { saveOrders(orders.copy(artists = it)) }) { openArtist = it.key }
                             LocalSection.ALBUMS -> AlbumsPage(sortedAlbums(albums, orders.albums), bottomPadding, orders.albums, { saveOrders(orders.copy(albums = it)) }) { openAlbum = it.id }
-                            LocalSection.ADDED_SONGS -> TrackList(addedSongs, tr(R.string.recently_added), bottomPadding)
+                            LocalSection.ADDED_SONGS -> TrackList(addedSongs, tr(R.string.recently_added), bottomPadding, locate)
                             LocalSection.ADDED_ALBUMS -> AlbumsPage(addedAlbums, bottomPadding) { openAlbum = it.id }
                             LocalSection.DOWNLOADS -> if (downloads.isEmpty()) EmptyState(VinzIcons.DownloadDone, tr(R.string.no_downloads_yet), tr(R.string.songs_you_download_in_vinz_show))
-                                else TrackList(downloads, tr(R.string.downloads), bottomPadding)
+                                else TrackList(downloads, tr(R.string.downloads), bottomPadding, locate)
                             null -> {}
                         }
                     }
@@ -378,7 +398,49 @@ fun LocalMusicScreen(bottomPadding: Dp) {
             }
         }
     }
-    if (editing) SectionsEditor(sections) { editing = false }
+    if (editing) SectionsEditor(sections, onFolders = { choosingFolders = true }) { editing = false }
+    if (choosingFolders) LocalFoldersSheet { choosingFolders = false }
+}
+
+/**
+ * Which folders Local files lists (#207, #249): ticked ones show, and unticking a folder leaves it and everything below
+ * it out. Only the list changes: the files stay where they are, and nothing else on the phone is touched.
+ */
+@Composable
+fun LocalFoldersSheet(onDismiss: () -> Unit) {
+    val c = LocalContainer.current
+    val skips = com.vinz.music.ui.theme.LocalAppSettings.current.behavior.localSkipFolders
+    val counts by c.localMusic.folders.collectAsState()
+    val rows = remember(counts, skips) { LocalMusic.folderRows(counts, skips) }
+    com.vinz.music.ui.components.VinzSheet(onDismiss = onDismiss) {
+        Text(tr(R.string.folders_in_local_files), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 20.dp))
+        Text(
+            tr(R.string.untick_a_folder_to_leave_it_out), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
+        )
+        if (rows.isEmpty()) {
+            Text(tr(R.string.no_music_files_found), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(20.dp))
+        }
+        LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            itemsIndexed(rows, key = { _, r -> r.path }) { _, r ->
+                Row(Modifier.fillMaxWidth().padding(start = 8.dp + 16.dp * r.depth.coerceAtMost(4), end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    VinzCheck(!r.skipped, enabled = !r.parentSkipped, label = r.name) { show ->
+                        c.settings.setLocalSkipFolders(
+                            // A folder given back brings back those below it that were only out because of it, not ones left out by name.
+                            if (show) skips.filterNot { it.equals(r.path, ignoreCase = true) }.toSet() else skips + r.path,
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            r.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if (r.skipped) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(songCount(r.songs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** The section chips, then an Edit chip that opens [SectionsEditor]. */
@@ -398,34 +460,35 @@ private fun SectionChips(sections: List<LocalSection>, pager: androidx.compose.f
 
 /** Which sections Local files shows, and in what order (#29). At least one stays. */
 @Composable
-private fun SectionsEditor(sections: List<LocalSection>, onDismiss: () -> Unit) {
+internal fun SectionsEditor(sections: List<LocalSection>, onFolders: () -> Unit, onDismiss: () -> Unit) {
     val prefs = LocalContainer.current.settings
-    com.vinz.music.ui.components.VinzSheet(onDismiss = onDismiss) {
+    com.vinz.music.ui.components.VinzSheet(onDismiss = onDismiss) { close ->
         Text(tr(R.string.sections), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 20.dp))
         Text(
             tr(R.string.tick_the_sections_you_want_hold), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
         )
         @Composable
-        fun SectionRow(s: LocalSection, i: Int, modifier: Modifier, grip: Modifier?, held: Boolean) {
+        // The grip moves a shown section (drag, TalkBack's moves, D-pad / keyboard; 1.8.4: the up / down arrows went).
+        fun SectionRow(s: LocalSection, modifier: Modifier, grip: Modifier?) {
             val on = s in sections
             Row(modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 VinzCheck(on, enabled = !on || sections.size > 1, label = s.label) { v -> prefs.setLocalSections(if (v) sections + s else sections - s) }
                 Text(s.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium,
                     color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                if (on && !held) {
-                    androidx.compose.material3.IconButton(onClick = { prefs.setLocalSections(sections.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = i > 0) {
-                        androidx.compose.material3.Icon(VinzIcons.ChevronUp, tr(R.string.move_up_2, s.label))
-                    }
-                    androidx.compose.material3.IconButton(onClick = { prefs.setLocalSections(sections.toMutableList().apply { add(i + 1, removeAt(i)) }) }, enabled = i < sections.lastIndex) {
-                        androidx.compose.material3.Icon(VinzIcons.ChevronDown, tr(R.string.move_down_2, s.label))
-                    }
-                }
                 if (grip != null) com.vinz.music.ui.components.DragGrip(grip.padding(start = 4.dp), tr(R.string.drag, s.label))
             }
         }
-        com.vinz.music.ui.components.ReorderList(sections, { it }, { prefs.setLocalSections(it) }) { s, i, held, mod -> SectionRow(s, i, mod, Modifier.dragHandle(), held) }
-        LocalSection.entries.filter { it !in sections }.forEach { s -> SectionRow(s, -1, Modifier, null, false) }
+        com.vinz.music.ui.components.ReorderList(sections, { it }, { prefs.setLocalSections(it) }) { s, _, _, mod -> SectionRow(s, mod, Modifier.dragHandle()) }
+        LocalSection.entries.filter { it !in sections }.forEach { s -> SectionRow(s, Modifier, null) }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp).clickable { close(onFolders) }.padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.Icon(VinzIcons.Folder, null)
+            Spacer(Modifier.width(16.dp))
+            Text(tr(R.string.choose_folders), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        }
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -434,32 +497,44 @@ private fun source(title: String) = QueueSource(QueueKind.LIBRARY, title)
 
 /** Songs that play as a list from the one tapped; swipe one to queue it. Play and Shuffle are at the top of the page. */
 @Composable
-private fun TrackList(songs: List<Song>, title: String, bottomPadding: Dp, numbered: Boolean = false) {
+private fun TrackList(songs: List<Song>, title: String, bottomPadding: Dp, locate: LocateState, numbered: Boolean = false) {
     val c = LocalContainer.current
     val current by c.player.currentSong.collectAsState()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
-        itemsIndexed(songs, key = { i, s -> "t" + s.id + ":" + i }) { i, s ->
-            SwipeToQueue(s) {
-                SongRow(s, index = if (numbered) i + 1 else null, playing = current?.id == s.id) { c.player.playQueue(songs, i, source(title)) }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    val playingAt = remember(songs, current?.id) { LocatePlaying.indexIn(songs, current?.id) }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
+            itemsIndexed(songs, key = { i, s -> "t" + s.id + ":" + i }) { i, s ->
+                SwipeToQueue(s, Modifier.locatePulse(locate, s.id)) {
+                    SongRow(s, index = if (numbered) i + 1 else null, playing = current?.id == s.id) { c.player.playQueue(songs, i, source(title)) }
+                }
             }
         }
+        // D54: the rows are all the list holds, so the playing song's row is its place among the songs.
+        LocatePlayingRow(locate, list, inList = playingAt >= 0, songId = current?.id, bottomPadding = bottomPadding) { playingAt }
     }
 }
 
 /** Songs (or Favourites) in the chosen order; the sort is kept (Title unless changed). */
 @Composable
-private fun SongsPage(songs: List<Song>, sort: Order<SongKey>, onSort: (Order<SongKey>) -> Unit, title: String, bottomPadding: Dp) {
+private fun SongsPage(songs: List<Song>, sort: Order<SongKey>, onSort: (Order<SongKey>) -> Unit, title: String, bottomPadding: Dp, locate: LocateState) {
     val c = LocalContainer.current
     val current by c.player.currentSong.collectAsState()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 0.dp, bottom = bottomPadding + 16.dp)) {
-        item {
-            SortRow(songCount(songs.size), tr(R.string.sort_songs), SongKey.entries, sort, { it.label }, { it.dirs }, onSort)
-        }
-        itemsIndexed(songs, key = { _, s -> "l" + s.id }) { i, s ->
-            SwipeToQueue(s) {
-                SongRow(s, playing = current?.id == s.id) { c.player.playQueue(songs, i, source(title)) }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    val playingAt = remember(songs, current?.id) { LocatePlaying.indexIn(songs, current?.id) }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(top = 0.dp, bottom = bottomPadding + 16.dp)) {
+            item {
+                SortRow(songCount(songs.size), tr(R.string.sort_songs), SongKey.entries, sort, { it.label }, { it.dirs }, onSort)
+            }
+            itemsIndexed(songs, key = { _, s -> "l" + s.id }) { i, s ->
+                SwipeToQueue(s, Modifier.locatePulse(locate, s.id)) {
+                    SongRow(s, playing = current?.id == s.id) { c.player.playQueue(songs, i, source(title)) }
+                }
             }
         }
+        // D54: one row (the sort) is above the songs.
+        LocatePlayingRow(locate, list, inList = playingAt >= 0, songId = current?.id, bottomPadding = bottomPadding) { playingAt + 1 }
     }
 }
 

@@ -1,6 +1,10 @@
 package com.vinz.music.playback
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import java.util.concurrent.ConcurrentHashMap
 
 enum class QueueKind { SINGLE, ALBUM, PLAYLIST, RADIO, LIBRARY, REPLAY, OTHER }
@@ -39,7 +43,14 @@ class QueueState {
         private companion object { const val RETRY_MS = 60 * 60_000L }
     }
     @Volatile var autoplayContinuation: String? = null
+    /** The other song's radio this queue moved on to when its own ran dry (No repeats this session), and for which queue. */
+    @Volatile private var reseeded: Pair<QueueSource, String>? = null
+    fun reseed(source: QueueSource, seed: String) { reseeded = source to seed }
+    /** The radio [source] moved on to, if it did. A new queue is a new source, so it starts from its own again. */
+    fun reseededFor(source: QueueSource): String? = reseeded?.takeIf { it.first === source }?.second
     @Volatile var autoplayLoading = false
+    /** A long list's later pages are still on their way into the queue (#356): autoplay's suggestions wait for them. */
+    @Volatile var filling = false
     /** Index in the queue where autoplay suggestions begin (-1 when none). */
     val autoplayStart = MutableStateFlow(-1)
     /** Songs the listener added themselves (Play next, Add to queue) and hasn't reached yet: "Next in queue". */
@@ -50,6 +61,13 @@ class QueueState {
     val smartShuffle = MutableStateFlow(false)
     /** The songs Smart Shuffle added (marked ✦ in the queue, counted as "smart" plays). */
     val smartPicks = MutableStateFlow<Set<String>>(emptySet())
+    /**
+     * Counts the queues that started in Smart Shuffle. A list taking Smart Shuffle over from the queue before it (#416)
+     * turns [smartShuffle] off and on again inside one call, which its collectors never see (same value as before).
+     */
+    val smartStarted = MutableStateFlow(0)
+    /** What the playback service follows: true when Smart Shuffle's picks should go in (turned on, or a new queue in it), false when they leave. */
+    val smartOn: Flow<Boolean> = merge(smartShuffle.drop(1), smartStarted.drop(1).map { true })
 
     /** Queues Smart Shuffle can add to: the listener's own lists, not radios (already all recommendations). */
     fun smartAllowed(): Boolean = !followingHost && source.value.kind in setOf(QueueKind.PLAYLIST, QueueKind.ALBUM, QueueKind.LIBRARY)

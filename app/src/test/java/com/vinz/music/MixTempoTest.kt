@@ -124,6 +124,50 @@ class MixTempoTest {
         assertTrue("quiet intro ${t.quietIntroMs} ms", t.quietIntroMs < 1_000)
     }
 
+    /** Up to a few seconds of collections: whether [ref]'s array has been let go. */
+    private fun collected(ref: java.lang.ref.WeakReference<FloatArray>): Boolean {
+        repeat(40) {
+            if (ref.get() == null) return true
+            System.gc()
+            @Suppress("UNUSED_VARIABLE") val pressure = ByteArray(4 shl 20)
+            Thread.sleep(25)
+        }
+        return ref.get() == null
+    }
+
+    /**
+     * A16 heap dump (1.8.7.5): a song's decoded samples (`MixTempo$Decoded.pcm`, 11 MB) were still there after the steps
+     * that read them. The scan lets go of them once loudness, the bands and the key are read: the steps after it (a wait
+     * of its turn, the brightness, the tempo) and its result hold none of them. And the scan's figures are the same as
+     * reading the samples directly.
+     */
+    @Test
+    fun theScanLetsGoOfTheSamplesOnceTheyAreRead() {
+        var ref: java.lang.ref.WeakReference<FloatArray>? = null
+        var steps = 0
+        var freedForTheLastSteps = false
+        val scan = com.vinz.music.playback.MixTempo.analyse(
+            decode = {
+                val pcm = song(120.0, 60, 2.0, 3.0, seed = 11)
+                ref = java.lang.ref.WeakReference(pcm)
+                com.vinz.music.playback.MixTempo.Decoded(pcm, pcm.size, sr, 0.9f)
+            },
+            step = { steps++; if (steps == 3) freedForTheLastSteps = collected(ref!!) },
+        )
+        assertEquals("the scan waits its turn three times", 3, steps)
+        assertTrue("the samples are let go before the steps that don't read them", freedForTheLastSteps)
+        assertTrue("the result holds none of the samples", collected(ref!!))
+
+        // The same figures as before the change: read straight from the same samples.
+        val pcm = song(120.0, 60, 2.0, 3.0, seed = 11)
+        val bands = VideoSync.bandFeatures(pcm, sr, pcm.size)
+        assertEquals(Tempo.analyze(bands, (sr / 100) * 1000.0 / sr, VideoSync.WINDOW / 2 * 1000.0 / sr), scan.tempo)
+        assertEquals(com.vinz.music.playback.MixTempo.integratedLoudness(pcm, sr, pcm.size)!! + 3.0f, scan.lufs!!, 0f)
+        assertEquals(com.vinz.music.playback.KeyDetector.detect(pcm, sr, pcm.size), scan.key)
+        assertEquals((20 * kotlin.math.log10(0.9f.toDouble())).toFloat(), scan.peakDb!!, 0f)
+        assertEquals(com.vinz.music.playback.Energy.brightness(bands), scan.brightness)
+    }
+
     @Test
     fun autoCrossfadeLength() {
         fun edges(fade: Long, intro: Long) = Tempo(120.0, 5.0, 0, 200_000, 0, 199_500, fade, intro)

@@ -230,13 +230,13 @@ fun TvHomeEditorPage(nav: TvNav) {
     }
     val titles = TvHomeTitles(tr(R.string.quick_picks), tr(R.string.section_speed_dial), tr(R.string.recently_played))
     // Every row the TV can have (empty ones too, so they can be turned on before they have anything in them).
-    val natural = remember(shelves, owner, settings.homeLayout) { tvHomeAvailable(shelves, owner, settings.homeLayout, titles) }
+    val natural = remember(shelves, owner, settings.home.layout) { tvHomeAvailable(shelves, owner, settings.home.layout, titles) }
     // The editor's own copies while it's open (the TV's layout: order and the hero; the phone's: which rows show), so
     // quick presses never act on a layout still being written.
     var localTv by remember { mutableStateOf<List<HomeSectionConfig>?>(null) }
     var localPhone by remember { mutableStateOf<List<HomeSectionConfig>?>(null) }
     val tvLayout = localTv ?: settings.tv.homeLayout
-    val phoneLayout = localPhone ?: settings.homeLayout
+    val phoneLayout = localPhone ?: settings.home.layout
     val layout = TvHomeLayout.editable(tvLayout, natural, phoneLayout, settings.autoAddSections)
     val movingState = remember { mutableStateOf<String?>(null) }
     var moving by movingState
@@ -250,7 +250,7 @@ fun TvHomeEditorPage(nav: TvNav) {
         moving,
         onToggle = { key ->
             // As it is now, not as last drawn (see onStep).
-            val phoneNow = localPhone ?: settings.homeLayout
+            val phoneNow = localPhone ?: settings.home.layout
             val now = TvHomeLayout.editable(localTv ?: settings.tv.homeLayout, natural, phoneNow, settings.autoAddSections)
             val row = now.first { it.key == key }
             // The hero is the TV's own; the other rows are shown or hidden in the phone's Home layout too.
@@ -267,7 +267,7 @@ fun TvHomeEditorPage(nav: TvNav) {
         // (what Home showed last, plus rows turned on here; before Home has shown, every row turned on counts).
         onStep = { key, by ->
             // The layout as it is now (the last press may not be drawn yet on a slow TV), not as it was last drawn.
-            val now = TvHomeLayout.editable(localTv ?: settings.tv.homeLayout, natural, localPhone ?: settings.homeLayout, settings.autoAddSections)
+            val now = TvHomeLayout.editable(localTv ?: settings.tv.homeLayout, natural, localPhone ?: settings.home.layout, settings.autoAddSections)
             val home = TvHomeOnHome.keys
             val visible = now.filter { it.visible }.map { it.key }.toSet()
             val next = TvHomeLayout.movedPast(now, key, by) { k -> k in visible && (home.isEmpty() || k in home || k in turnedOn) }

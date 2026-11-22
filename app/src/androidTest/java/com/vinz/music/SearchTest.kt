@@ -31,8 +31,7 @@ class SearchTest {
     }
 
     @Test fun aSearchFindsTheSongAndPlaysIt() {
-        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Search") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasText("Search") and hasClickAction()).onFirst().performClick()
+        compose.tapTab("Search")
         compose.waitUntil(10_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasSetTextAction()).performTextInput("get lucky daft punk")
         // Enter puts the keyboard away: the results instead of suggestions.

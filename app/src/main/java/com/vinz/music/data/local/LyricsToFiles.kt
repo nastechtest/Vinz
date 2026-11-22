@@ -55,7 +55,7 @@ class LyricsToFiles(private val context: Context, private val c: AppContainer) {
         val online = c.network.isOnline()
         val s = c.settings.current
         // Settings → Lyrics & Sing → Your music files (1.7.9.2, Reddit): word timings and the translation, when asked for.
-        val to = s.lyricsTranslateTo.ifBlank { com.vinz.music.ui.player.defaultTranslateTarget() }
+        val to = s.lyrics.translateTo.ifBlank { com.vinz.music.ui.player.defaultTranslateTarget() }
         val gate = Semaphore(4)
         targets.map { t ->
             async(Dispatchers.IO) {
@@ -63,10 +63,10 @@ class LyricsToFiles(private val context: Context, private val c: AppContainer) {
                     val l = runCatching { c.lyrics.best(t.song, fetch = online) }.getOrNull()
                         ?.takeIf { it.lines.any { line -> !line.isGap && line.text.isNotBlank() } } ?: return@withPermit null
                     // Kept translations come back without the network (1.7.8); a song already in that language gets none.
-                    val translations = if (!s.lyricsFileTranslation) null else runCatching {
+                    val translations = if (!s.lyrics.fileTranslation) null else runCatching {
                         c.translator.translate(l.lines.map { if (it.isGap) "" else it.text }, to).takeUnless { it.sameLanguage }?.translations
                     }.getOrNull()
-                    Item(t, LyricsTags.text(l, words = s.lyricsFileWords, translations = translations))
+                    Item(t, LyricsTags.text(l, words = s.lyrics.fileWords, translations = translations))
                 }
             }
         }.awaitAll().filterNotNull()

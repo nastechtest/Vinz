@@ -493,11 +493,11 @@ fun VinzTheme(settings: AppSettings, artworkColor: Color?, content: @Composable 
     val ui = remember(settings.corners, settings.shapes, settings.uiDensity, settings.cardSize, settings.titleSize, settings.reduceMotion) { VinzUi.from(settings) }
     val typography = remember(settings.fontChoice, settings.fontStamp, settings.type) { appTypography(settings) }
     // Settings → Appearance → Text → "Lyrics font" (#12): null keeps each lyric style's own face.
-    val lyricsFont = remember(settings.lyricsFont, settings.fontStamp) {
-        when (settings.lyricsFont) {
+    val lyricsFont = remember(settings.lyrics.font, settings.fontStamp) {
+        when (settings.lyrics.font) {
             "" -> null
             com.vinz.music.data.prefs.FontChoice.CUSTOM.name -> AppFonts.custom(AppFonts.FontSlot.LYRICS)
-            else -> com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == settings.lyricsFont }?.let(AppFonts::family)
+            else -> com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == settings.lyrics.font }?.let(AppFonts::family)
         }
     }
     val density = LocalDensity.current

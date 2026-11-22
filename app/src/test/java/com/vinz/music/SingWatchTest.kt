@@ -1,6 +1,7 @@
 package com.vinz.music
 
 import androidx.media3.common.Player
+import com.vinz.music.data.stream.CachedFormat
 import com.vinz.music.playback.sing.PcmDecoder
 import com.vinz.music.playback.sing.SingWatch
 import org.junit.Assert.assertEquals
@@ -71,13 +72,14 @@ class SingWatchTest {
     }
 
     @Test fun theSongCacheNeverJoinsTwoFormats() {
+        val opus = CachedFormat(251, 4_000_000)
         // Nothing cached yet: any format.
-        assertTrue(AppContainer.mayAddFormat(before = 0, itag = 251, cached = false))
-        assertTrue(AppContainer.mayAddFormat(before = 140, itag = 251, cached = false))
-        // The same format as what's there: added to.
-        assertTrue(AppContainer.mayAddFormat(before = 251, itag = 251, cached = true))
+        assertTrue(AppContainer.mayAddFormat(before = null, now = opus, cached = false))
+        assertTrue(AppContainer.mayAddFormat(before = CachedFormat(140, 5_000_000), now = opus, cached = false))
+        // The same format (and file) as what's there: added to.
+        assertTrue(AppContainer.mayAddFormat(before = CachedFormat(251, 4_000_000), now = opus, cached = true))
         // Another format, or one never recorded: left alone.
-        assertFalse(AppContainer.mayAddFormat(before = 140, itag = 251, cached = true))
-        assertFalse(AppContainer.mayAddFormat(before = 0, itag = 251, cached = true))
+        assertFalse(AppContainer.mayAddFormat(before = CachedFormat(140, 5_000_000), now = opus, cached = true))
+        assertFalse(AppContainer.mayAddFormat(before = null, now = opus, cached = true))
     }
 }

@@ -55,6 +55,26 @@ class BackupPartsTest {
         assertFalse(File(files, "restore_pending").exists())
     }
 
+    /**
+     * 1.8.3's library: smart playlists live in the library file, the Songs view's playlists ("Songs from") in
+     * library_order: both come back with Library. Traits (tempo, key, energy) and romanized titles are in the database:
+     * they stay with History.
+     */
+    @Test fun the183LibraryComesBackWithLibrary() {
+        phone()
+        write("shared_prefs/library_order.xml", "old songs-from")
+        stage(
+            """{"format":2,"app":"${app.packageName}","parts":["LIBRARY"]}""",
+            "files/library/vinz.json" to """{"playlists":[{"id":"smart-1","smart":{"rules":[]}}]}""",
+            "shared_prefs/library_order.xml" to "new songs-from",
+        )
+        Backup.applyPending(app)
+        assertTrue("smart playlists", read("files/library/vinz.json")!!.contains("smart-1"))
+        assertEquals("the Songs view's playlists", "new songs-from", read("shared_prefs/library_order.xml"))
+        assertEquals("traits stay with the history", "old history", read("databases/vinz.db"))
+        assertEquals("old settings", read("shared_prefs/icon_style.xml"))
+    }
+
     @Test fun anOldBackupReplacesEverythingButDownloads() {
         phone()
         write("datastore/vinz_settings.preferences_pb", "old store")
@@ -98,12 +118,108 @@ class BackupPartsTest {
         assertEquals("s:SID=mine", now["cookie"])
     }
 
+    /**
+     * Tags (1.8.3) are the library's but live in the database: restoring the history alone keeps this phone's tags
+     * (read from its database before the backup's replaces it, and read back in at the start); with the library they're
+     * the backup's.
+     */
+    @Test fun historyAloneKeepsThisPhonesTags() {
+        fun phoneWithTags() {
+            app.deleteDatabase("vinz.db")
+            val db = androidx.room.Room.databaseBuilder(app, com.prism.music.data.db.PrismDatabase::class.java, "vinz.db").allowMainThreadQueries().build()
+            kotlinx.coroutines.runBlocking {
+                com.vinz.music.data.TagStore(db, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default), File(files, "library"))
+                    .add("gym", listOf(com.vinz.music.data.model.Song("a", "Alpha")))
+            }
+            db.close()
+            File(files, "library/tags.json").delete()
+        }
+        phoneWithTags()
+        stage("""{"format":2,"app":"${app.packageName}","parts":["HISTORY"]}""", "databases/vinz.db" to "new history")
+        Backup.applyPending(app)
+        assertEquals("new history", read("databases/vinz.db"))
+        val kept = read("files/library/tags.json")!!
+        assertTrue(kept, kept.contains("gym") && kept.contains("Alpha"))
+
+        phoneWithTags()
+        stage("""{"format":2,"app":"${app.packageName}","parts":["HISTORY","LIBRARY"]}""", "databases/vinz.db" to "new history", "files/library/tags.json" to """{"tags":[]}""")
+        Backup.applyPending(app)
+        assertEquals("the backup's tags", """{"tags":[]}""", read("files/library/tags.json"))
+        app.deleteDatabase("vinz.db")
+    }
+
+    /**
+     * #498 (1.8.7): a backup with only "Settings" ticked carried the YouTube Music sign-in, because the settings store's
+     * own file (files/datastore) counted as a setting. No choice of parts takes that file, and without "Accounts" no
+     * file in the backup holds the sign-in. Its values travel apart ([settingsTravelWithoutTheSignIn]).
+     */
+    @Test fun noBackupTakesTheSettingsStoresOwnFile() {
+        phone()
+        write("files/datastore/vinz_settings.preferences_pb", "cookie SID=abc; SAPISID=secret; __Secure-1PSID=x")
+        write("files/diagnostics/audio.log", "Account: signed in")
+        write("files/crashes/last.txt", "a crash")
+        write("files/canvas_clips/a.mp4", "video")
+        write("shared_prefs/premium_quality.xml", "seen_for")
+        write("shared_prefs/widget_state.xml", "last song")
+        write("files/account/profile.json", "the account's own folder")
+        val all = BackupPart.entries
+        for (mask in 0 until (1 shl all.size)) {
+            val parts = all.filterIndexed { i, _ -> mask and (1 shl i) != 0 }.toSet()
+            val taken = Backup.filesToBackUp(data, files, parts)
+            val names = taken.map { it.relativeTo(data).invariantSeparatorsPath }
+            assertFalse("$parts takes the settings store: $names", names.any { it.startsWith("files/datastore/") })
+            assertFalse("$parts takes this phone's own state: $names", names.any {
+                it.startsWith("files/diagnostics/") || it.startsWith("files/crashes/") || it.startsWith("files/canvas_clips/") ||
+                    it == "shared_prefs/premium_quality.xml" || it == "shared_prefs/widget_state.xml"
+            })
+            taken.forEach { f -> assertFalse("$parts: ${f.name} holds the sign-in", f.readText().contains("SAPISID")) }
+            if (BackupPart.ACCOUNTS !in parts) assertFalse("$parts takes the account's folder", names.any { it.startsWith("files/account/") })
+        }
+        // What "Settings" is for still goes.
+        val settingsOnly = Backup.filesToBackUp(data, files, setOf(BackupPart.SETTINGS)).map { it.relativeTo(data).invariantSeparatorsPath }
+        assertTrue(settingsOnly.toString(), "shared_prefs/icon_style.xml" in settingsOnly && "files/looks/my-a.json" in settingsOnly)
+    }
+
+    /** A backup made by 1.7.8 to 1.8.6 with "Settings" holds that file: restored, this phone keeps its own sign-in. */
+    @Test fun anOlderSettingsBackupsStoreFileIsNotRestored() {
+        phone()
+        write("files/datastore/vinz_settings.preferences_pb", "mine")
+        stage(
+            """{"format":2,"app":"${app.packageName}","parts":["SETTINGS"]}""",
+            "shared_prefs/icon_style.xml" to "new settings",
+            "files/datastore/vinz_settings.preferences_pb" to "theirs, signed in",
+            "settings.json" to """{"theme_mode":"s:DARK"}""",
+        )
+        Backup.applyPending(app)
+        assertEquals("mine", read("files/datastore/vinz_settings.preferences_pb"))
+        assertEquals("new settings", read("shared_prefs/icon_style.xml"))
+        // With "Accounts" too it still comes as values, never as the file.
+        stage(
+            """{"format":2,"app":"${app.packageName}","parts":["SETTINGS","ACCOUNTS"]}""",
+            "files/datastore/vinz_settings.preferences_pb" to "theirs, signed in",
+            "settings.json" to """{"cookie":"s:SID=theirs"}""",
+        )
+        Backup.applyPending(app)
+        assertEquals("mine", read("files/datastore/vinz_settings.preferences_pb"))
+        assertTrue(read("files/restore_settings.json")!!.contains("SID=theirs"))
+    }
+
     @Test fun everyPrefsFileHasAPart() {
+        assertEquals(null, Backup.filePart("datastore"))
+        assertEquals(null, Backup.filePart("diagnostics"))
+        assertEquals(null, Backup.prefsPart("premium_quality"))
+        assertEquals(BackupPart.HISTORY, Backup.prefsPart("milestones"))
         assertEquals(BackupPart.HISTORY, Backup.prefsPart("search"))
         assertEquals(BackupPart.LIBRARY, Backup.prefsPart("artist_prefs"))
         assertEquals(BackupPart.SETTINGS, Backup.prefsPart("icon_style"))
         assertEquals(null, Backup.prefsPart("discord"))
+        // Last session's songs, by id and name: not a setting, and over in six hours anyway.
+        assertEquals(null, Backup.prefsPart("session_heard"))
         assertEquals(BackupPart.ACCOUNTS, Backup.filePart("account"))
         assertEquals(null, Backup.filePart("models"))
+        // 1.8.7 §3.2: PlaysAs' learned pairings are YouTube's answers, learned again; its other sources keep their parts.
+        assertEquals(null, Backup.filePart(com.vinz.music.data.meta.PlaysAs.DIR))
+        assertEquals(BackupPart.LIBRARY, Backup.prefsPart("song_versions"))
+        assertEquals(BackupPart.DOWNLOADS, Backup.prefsPart("download_standins"))
     }
 }

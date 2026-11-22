@@ -303,6 +303,8 @@ class MixTempo(
     private val playing: () -> Boolean = { false },
     /** Where each scanned song's outline goes, for the waveform progress bar (1.7.4). */
     private val waves: com.vinz.music.data.SongWaves? = null,
+    /** Where what's measured goes too, in one table that can be filtered (1.8.3: `song_traits`). */
+    private val traits: com.vinz.music.data.TraitsSink? = null,
 ) {
     private val prefs = context.getSharedPreferences("mix_tempo", Context.MODE_PRIVATE)
     /** Song id -> integrated loudness (LUFS; NaN when it couldn't be measured). Also marks a song as scanned. */
@@ -318,9 +320,31 @@ class MixTempo(
     /** Forgets what was measured of [id] (another version of it plays now), so it's measured again. */
     fun forget(id: String) {
         for (p in listOf(prefs, loudPrefs, peakPrefs, keyPrefs, quickPrefs)) p.edit().remove(id).apply()
+        traits?.forget(id)
+    }
+
+    /** Every song measured so far, whole or by a quick scan (what [measuredCount] counts). */
+    fun measuredIds(): Set<String> = loudPrefs.all.keys + quickPrefs.all.keys
+
+    /**
+     * What the prefs hold of [id], as a `song_traits` row (1.8.3's one-time copy). Its energy goes without brightness,
+     * which wasn't kept before 1.8.3 ([Energy.of]).
+     */
+    fun traitsFromPrefs(id: String): com.vinz.music.data.SongTraits? {
+        if (scanned(id)) {
+            val tempo = cached(id)
+            val lufs = loudness(id)
+            return com.vinz.music.data.SongTraits(id, tempo, key(id), lufs, Energy.of(lufs, tempo?.confidence, null), whole = true)
+        }
+        val (bpm, confidence, lufs) = quick(id) ?: return null
+        val tempo = if (bpm > 0) Tempo(bpm, confidence, 0, 0, 0, 0) else null
+        return com.vinz.music.data.SongTraits(id, tempo, key(id), lufs, Energy.of(lufs, tempo?.confidence, null), whole = false)
     }
 
     fun cached(id: String): Tempo? = prefs.getString(id, null)?.let(Tempo::decode)
+
+    /** How many songs have been measured so far, whole or by a quick scan: what a calm ↔ energetic radio has to go by. */
+    fun measuredCount(): Int = (loudPrefs.all.keys + quickPrefs.all.keys).size
 
     /** The song's measured loudness (integrated LUFS), once it's been scanned. */
     fun loudness(id: String): Float? = loudPrefs.getFloat(id, Float.NaN).takeIf { !it.isNaN() }
@@ -342,7 +366,7 @@ class MixTempo(
     /** Scanned before the song's fade-out and intro were measured (for Mix's Auto length): scanned again once. */
     private fun old(id: String) = prefs.getString(id, null)?.let(Tempo::isOld) == true
 
-    private class Scan(val tempo: Tempo?, val lufs: Float?, val key: MusicKey?, val peakDb: Float?)
+    internal class Scan(val tempo: Tempo?, val lufs: Float?, val key: MusicKey?, val peakDb: Float?, val brightness: Double?)
 
     // ---------------------------------------------------------------- DJ mode's quick scan
 
@@ -368,18 +392,24 @@ class MixTempo(
      * DJ mode's look at a song: its key, tempo and loudness from three stretches of it ([QuickScan]), fetched by range
      * when it isn't on the phone ([network] allowing). A song already scanned for its key is [QuickResult.KEYED] at once.
      */
-    suspend fun quickScan(id: String, network: Boolean, priority: Int = android.os.Process.THREAD_PRIORITY_BACKGROUND): QuickResult {
+    suspend fun quickScan(
+        id: String, network: Boolean, priority: Int = android.os.Process.THREAD_PRIORITY_BACKGROUND,
+        /** A job Android scheduled (charging, screen off), which has limits of its own rather than [BackgroundBudget]'s. */
+        scheduled: Boolean = false,
+    ): QuickResult {
         if (keyed(id)) return QuickResult.KEYED
         if (id in failed) return QuickResult.FAILED
         // While music plays, one at a time (Reddit 1.7: "DJ mode is so laggy": three decodes beside playback were too
         // much for mid-range phones); while paused, a few at once.
-        return quickGate.withPermit { if (playing()) playingGate.withLock { quickScanNow(id, network, priority) } else quickScanNow(id, network, priority) }
+        // A scheduled job does one at a time, with music off, and doesn't wait behind scans held while the listener's away.
+        if (scheduled) return quickScanNow(id, network, priority, scheduled = true)
+        return quickGate.withPermit { if (playing()) playingGate.withLock { quickScanNow(id, network, priority, scheduled) } else quickScanNow(id, network, priority, scheduled) }
     }
 
     /** One quick scan at a time while music plays ([quickScan]). */
     private val playingGate = kotlinx.coroutines.sync.Mutex()
 
-    private suspend fun quickScanNow(id: String, network: Boolean, priority: Int): QuickResult {
+    private suspend fun quickScanNow(id: String, network: Boolean, priority: Int, scheduled: Boolean): QuickResult {
         if (keyed(id)) return QuickResult.KEYED
         return run {
             withContext(Dispatchers.IO) {
@@ -389,9 +419,10 @@ class MixTempo(
                 runCatching { yieldToPlaying() }
                 AudioDiagnostics.log("background", "DJ quick scan of $id started")
                 try {
-                    val (r, bytes) = quickRead(id, network) ?: return@withContext QuickResult.NEEDS_NETWORK
+                    val (r, bytes) = BackgroundBudget.asJob(scheduled) { quickRead(id, network) } ?: return@withContext QuickResult.NEEDS_NETWORK
                     keyPrefs.edit().putString(id, r.key?.encode() ?: "none:${MusicKey.VERSION}").apply()
                     quickPrefs.edit().putString(id, "${r.tempo?.bpm ?: 0.0}|${r.tempo?.confidence ?: 0.0}|${r.lufs ?: Float.NaN}").apply()
+                    traits?.record(com.vinz.music.data.SongTraits(id, r.tempo, r.key, r.lufs, Energy.of(r.lufs, r.tempo?.confidence, r.brightness), whole = false))
                     Log.i(
                         TAG, "quick-scanned $id in ${(System.nanoTime() - started) / 1_000_000} ms (${bytes / 1024} KB): key " +
                             (r.key?.let { "${it.name} (${it.camelot})" } ?: "unclear") + ", " +
@@ -434,6 +465,9 @@ class MixTempo(
             if (fmt.containsKey(MediaFormat.KEY_DURATION)) durationMs = fmt.getLong(MediaFormat.KEY_DURATION) / 1000
             if (durationMs <= 0) throw java.io.IOException("the song's length is unknown")
             val (pieces, sr) = QuickScan.decode(ex, track, QuickScan.windows(durationMs)) ?: throw java.io.IOException("couldn't decode its audio")
+            // The extractor takes a failed read for the end of the song. A key from part of one isn't kept (a link that
+            // ran out while the scan waited for the listener to come back, say); it's asked again another time.
+            ranged?.failure?.let { throw it }
             return QuickScan.analyse(pieces, sr) to (ranged?.fetched ?: 0L)
         } finally {
             ex.release()
@@ -479,6 +513,7 @@ class MixTempo(
                         loudPrefs.edit().putFloat(id, s.lufs ?: Float.NaN).apply()
                         peakPrefs.edit().putFloat(id, s.peakDb ?: Float.NaN).apply()
                         keyPrefs.edit().putString(id, s.key?.encode() ?: "none:${MusicKey.VERSION}").apply()
+                        traits?.record(com.vinz.music.data.SongTraits(id, s.tempo, s.key, s.lufs, Energy.of(s.lufs, s.tempo?.confidence, s.brightness), whole = true))
                         val ms = (System.nanoTime() - started) / 1_000_000
                         val t = s.tempo
                         Log.i(TAG, "scanned $id in $ms ms: loudness ${s.lufs?.let { "%.1f LUFS".format(it) } ?: "unknown"}, " +
@@ -508,34 +543,31 @@ class MixTempo(
                 }
                 android.net.Uri.fromFile(file)
             }
-            val (pcm, rate, peak) = decodeAll(uri) ?: throw java.io.IOException("couldn't decode its audio")
-            val lufs = integratedLoudness(pcm, rate)?.let { it + MONO_TO_STEREO_DB }
-            // The waveform progress bar's outline, from the same audio (1.7.4).
-            waves?.let { w -> runCatching { w.put(id, com.vinz.music.data.SongWaves.outline(pcm)) } }
-            // Debug builds keep the decoded audio when asked (adb shell touch …/files/mix_dump), for tuning [Tempo.analyze].
-            if (com.vinz.music.BuildConfig.DEBUG) context.getExternalFilesDir(null)?.let { dir ->
-                if (File(dir, "mix_dump").exists()) runCatching {
-                    val bb = java.nio.ByteBuffer.allocate(pcm.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-                    for (x in pcm) bb.putFloat(x)
-                    File(dir, "mix_${id}_$rate.f32").writeBytes(bb.array())
+            return analyse({ decodeAll(uri) ?: throw java.io.IOException("couldn't decode its audio") }, onSamples = { pcm, count, rate ->
+                // The waveform progress bar's outline, from the same audio (1.7.4).
+                waves?.let { w -> runCatching { w.put(id, com.vinz.music.data.SongWaves.outline(pcm, count)) } }
+                // Debug builds keep the decoded audio when asked (adb shell touch …/files/mix_dump), for tuning [Tempo.analyze].
+                if (com.vinz.music.BuildConfig.DEBUG) context.getExternalFilesDir(null)?.let { dir ->
+                    if (File(dir, "mix_dump").exists()) runCatching {
+                        val bb = java.nio.ByteBuffer.allocate(count * 4).order(ByteOrder.LITTLE_ENDIAN)
+                        for (i in 0 until count) bb.putFloat(pcm[i])
+                        File(dir, "mix_${id}_$rate.f32").writeBytes(bb.array())
+                    }
                 }
-            }
-            // The analysis steps are seconds of work each on a slow phone: each waits its turn too ([ease]).
-            ease()
-            val bands = VideoSync.bandFeatures(pcm, rate)
-            val frameMs = (rate / 100) * 1000.0 / rate
-            ease()
-            val key = runCatching { KeyDetector.detect(pcm, rate) }.getOrNull()
-            ease()
-            val peakDb = peak.takeIf { it > 0f }?.let { (20 * kotlin.math.log10(it.toDouble())).toFloat() }
-            return Scan(Tempo.analyze(bands, frameMs, offsetMs = VideoSync.WINDOW / 2 * 1000.0 / rate), lufs, key, peakDb)
+            })
         } finally {
             file.delete()
         }
     }
 
-    /** The whole file as mono PCM, decimated to roughly 11 kHz, its rate, and its loudest sample before (0 … 1). */
-    private fun decodeAll(uri: android.net.Uri): Triple<FloatArray, Int, Float>? {
+    /** A song as mono PCM: the first [count] samples of [pcm], at [rate], and its loudest sample before (0 … 1). */
+    internal class Decoded(val pcm: FloatArray, val count: Int, val rate: Int, val peak: Float)
+
+    /**
+     * The whole file as mono PCM, decimated to roughly 11 kHz. One array, sized from the song's length (it used to grow
+     * by doubling, 4 + 8 + 16 MB for a song of 12, and be copied once more at the end).
+     */
+    private fun decodeAll(uri: android.net.Uri): Decoded? {
         val ex = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -551,11 +583,9 @@ class MixTempo(
             var channels = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var isFloat = false
             var factor = max(1, rate / 11025)
-            var out = FloatArray(1 shl 20)
+            var out = FloatArray(decodedSize(if (fmt.containsKey(MediaFormat.KEY_DURATION)) fmt.getLong(MediaFormat.KEY_DURATION) / 1000 else 0, rate / factor))
             var count = 0
-            var acc = 0f
-            var n = 0
-            var peak = 0f
+            val mono = Downmix()
             val info = MediaCodec.BufferInfo()
             var inputDone = false
             while (true) {
@@ -585,19 +615,9 @@ class MixTempo(
                     buf.position(info.offset)
                     buf.limit(info.offset + info.size)
                     val frames = info.size / (channels * (if (isFloat) 4 else 2))
-                    for (f in 0 until frames) {
-                        var m = 0f
-                        for (c in 0 until channels) {
-                            val v = if (isFloat) buf.float else buf.short / 32768f
-                            if (v > peak) peak = v else if (-v > peak) peak = -v
-                            m += v
-                        }
-                        acc += m / channels
-                        if (++n == factor) {
-                            if (count == out.size) out = out.copyOf(out.size * 2)
-                            out[count++] = acc / factor
-                            acc = 0f; n = 0
-                        }
+                    mono.add(buf, frames, channels, isFloat, factor) { v ->
+                        if (count == out.size) out = out.copyOf(out.size + out.size / 2)
+                        out[count++] = v
                     }
                     dec.releaseOutputBuffer(o, false)
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
@@ -608,7 +628,7 @@ class MixTempo(
             }
             val sr = rate / factor
             if (count < sr * 20) return null
-            return Triple(out.copyOf(count), sr, peak)
+            return Decoded(out, count, sr, mono.peak)
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
@@ -620,6 +640,49 @@ class MixTempo(
         private const val TAG = "VinzMix"
         /** DJ mode's quick scans running at once. */
         private const val QUICK_AT_ONCE = 3
+
+        /** Room for a song of [lengthMs] at [rate], with a little over; a song whose length isn't known starts at 3 minutes. */
+        internal fun decodedSize(lengthMs: Long, rate: Int): Int {
+            val seconds = (if (lengthMs > 0) lengthMs / 1000 else 180L).coerceAtMost(MAX_SECONDS.toLong()) + 2
+            return (seconds * rate).toInt().coerceAtLeast(1024)
+        }
+
+        /**
+         * A song's scan from its decoded samples ([decode]; [onSamples] sees them too: the waveform's outline). The
+         * samples (a song's are about 11 MB) are read in [hear] and let go when it returns: the steps after it (a wait of
+         * its turn, Energy's brightness, the tempo) and the result hold only what was read from them (A16 heap dump,
+         * 1.8.7.5). [step] is each analysis step waiting its turn ([ease]).
+         */
+        internal fun analyse(
+            decode: () -> Decoded,
+            onSamples: (pcm: FloatArray, count: Int, rate: Int) -> Unit = { _, _, _ -> },
+            step: () -> Unit = ::ease,
+        ): Scan {
+            val heard = hear(decode, onSamples, step)
+            step()
+            // Energy's brightness from the same bands as the tempo (1.8.3; no extra pass).
+            val brightness = runCatching { Energy.brightness(heard.bands) }.getOrNull()
+            return Scan(Tempo.analyze(heard.bands, heard.frameMs, offsetMs = heard.offsetMs), heard.lufs, heard.key, heard.peakDb, brightness)
+        }
+
+        /** What a scan reads straight from the samples, and none of the samples themselves. */
+        private class Heard(val lufs: Float?, val bands: Array<FloatArray>, val frameMs: Double, val offsetMs: Double, val key: MusicKey?, val peakDb: Float?)
+
+        /** The only frame that holds the decoded samples: they go when it returns. */
+        private fun hear(decode: () -> Decoded, onSamples: (pcm: FloatArray, count: Int, rate: Int) -> Unit, step: () -> Unit): Heard {
+            val decoded = decode()
+            val pcm = decoded.pcm; val rate = decoded.rate; val count = decoded.count
+            val lufs = integratedLoudness(pcm, rate, count)?.let { it + MONO_TO_STEREO_DB }
+            onSamples(pcm, count, rate)
+            // The analysis steps are seconds of work each on a slow phone: each waits its turn too ([ease]).
+            step()
+            val bands = VideoSync.bandFeatures(pcm, rate, count)
+            val frameMs = (rate / 100) * 1000.0 / rate
+            step()
+            val key = runCatching { KeyDetector.detect(pcm, rate, count) }.getOrNull()
+            val peakDb = decoded.peak.takeIf { it > 0f }?.let { (20 * kotlin.math.log10(it.toDouble())).toFloat() }
+            return Heard(lufs, bands, frameMs, VideoSync.WINDOW / 2 * 1000.0 / rate, key, peakDb)
+        }
 
         /** When the sound last ran dry (SystemClock.elapsedRealtime; set by the playback service). */
         @Volatile var lastUnderrunAt = 0L
@@ -640,6 +703,21 @@ class MixTempo(
             while (waited < MAX_TOUCH_WAIT_MS && stepsAside(slowPhone, touchDown, android.os.SystemClock.uptimeMillis() - touchedAt, urgentScans.get())) {
                 Thread.sleep(100); waited += 100
             }
+            // And within what the processor can spare out of sight (#373: Android closed Vinz for it). A song's end waiting
+            // for a scan doesn't wait for that.
+            BackgroundBudget.pace { urgentScans.get() == 0 }
+        }
+
+        /**
+         * Which of the songs up next get their whole-song scan: on screen, the playing one and those coming ([ahead]); out
+         * of sight, only the very next song, whose volume is what's about to be heard (the rest wait until it's their
+         * turn, and may never come: A16, 1.8.2: four songs scanned at once took a core and a half for a minute). The
+         * playing song itself is only worth scanning out of sight for what reads it as it plays ([readsPlaying]: Crossfade
+         * its ending, the waveform bar its outline).
+         */
+        internal fun worthScanning(comingUp: List<String>, playing: String?, onScreen: Boolean, readsPlaying: Boolean, ahead: Int): List<String> {
+            val coming = comingUp.filter { it != playing }.take(if (onScreen) ahead else 1)
+            return if (playing != null && (onScreen || readsPlaying)) listOf(playing) + coming else coming
         }
 
         /** Whether this phone's scans make way for the listener's touches: few cores, little memory or Performance mode. */
@@ -695,16 +773,21 @@ class MixTempo(
          * 100 ms, and averaged over the blocks above -70 LUFS and no more than 10 LU below their mean (so silence and
          * quiet passages don't drag it down). For one channel; null for silence or under half a second.
          */
-        fun integratedLoudness(pcm: FloatArray, rate: Int): Float? {
+        fun integratedLoudness(pcm: FloatArray, rate: Int, count: Int = pcm.size): Float? {
             val block = (0.4 * rate).toInt()
             val hop = (0.1 * rate).toInt().coerceAtLeast(1)
-            if (rate <= 0 || pcm.size < block + hop) return null
+            if (rate <= 0 || count < block + hop) return null
             // K-weighting: two biquads, worked out for this sample rate.
             val shelf = biquadHighShelf(rate, 1681.974450955533, 3.999843853973347, 0.7071752369554196)
             val pass = biquadHighPass(rate, 38.13547087602444, 0.5003270373238773)
-            val sq = DoubleArray(pcm.size + 1)
+            // The running sum over the last block only (a whole song's of it was 21 MB, once per scan; #373's log).
+            val sums = DoubleArray(block + 1)
+            val powers = DoubleArray((count - block) / hop + 1)
+            var blocks = 0
+            var nextEnd = block
+            var sum = 0.0
             var s1 = 0.0; var s2 = 0.0; var p1 = 0.0; var p2 = 0.0
-            for (i in pcm.indices) {
+            for (i in 0 until count) {
                 // Direct form II transposed, one stage into the next.
                 val x = pcm[i].toDouble()
                 val y1 = shelf[0] * x + s1
@@ -713,20 +796,22 @@ class MixTempo(
                 val y2 = pass[0] * y1 + p1
                 p1 = pass[1] * y1 - pass[3] * y2 + p2
                 p2 = pass[2] * y1 - pass[4] * y2
-                sq[i + 1] = sq[i] + y2 * y2
-            }
-            val powers = ArrayList<Double>()
-            var start = 0
-            while (start + block <= pcm.size) {
-                powers += (sq[start + block] - sq[start]) / block
-                start += hop
+                sum += y2 * y2
+                val done = i + 1
+                sums[done % (block + 1)] = sum
+                if (done == nextEnd) {
+                    powers[blocks++] = (sum - sums[(done - block) % (block + 1)]) / block
+                    nextEnd += hop
+                }
             }
             fun lufs(power: Double) = -0.691 + 10 * kotlin.math.log10(power)
-            val loud = powers.filter { it > 0 && lufs(it) > -70 }
-            if (loud.isEmpty()) return null
-            val relative = lufs(loud.average()) - 10
-            val gated = loud.filter { lufs(it) > relative }
-            return lufs(gated.ifEmpty { loud }.average()).toFloat()
+            var loudSum = 0.0; var loudCount = 0
+            for (b in 0 until blocks) if (powers[b] > 0 && lufs(powers[b]) > -70) { loudSum += powers[b]; loudCount++ }
+            if (loudCount == 0) return null
+            val relative = lufs(loudSum / loudCount) - 10
+            var gatedSum = 0.0; var gatedCount = 0
+            for (b in 0 until blocks) if (powers[b] > 0 && lufs(powers[b]) > -70 && lufs(powers[b]) > relative) { gatedSum += powers[b]; gatedCount++ }
+            return lufs(if (gatedCount > 0) gatedSum / gatedCount else loudSum / loudCount).toFloat()
         }
 
         /** [b0, b1, b2, a1, a2] (a0 = 1) for a high shelf (RBJ's cookbook, as BS.1770's stage 1 at any sample rate). */

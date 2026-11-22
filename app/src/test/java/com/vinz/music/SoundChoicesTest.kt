@@ -90,20 +90,20 @@ class SoundChoicesTest {
     }
 
     @Test fun crossfadeFollowsMixAndAutomaticLength() {
-        assertEquals(Crossfade.OFF, SoundChoices.crossfade(base.copy(mix = false, mixAuto = true)))
-        assertEquals(Crossfade.OFF, SoundChoices.crossfade(base.copy(mix = false, mixAuto = false)))
-        assertEquals(Crossfade.AUTO, SoundChoices.crossfade(base.copy(mix = true, mixAuto = true)))
-        assertEquals(Crossfade.FIXED, SoundChoices.crossfade(base.copy(mix = true, mixAuto = false)))
+        assertEquals(Crossfade.OFF, SoundChoices.crossfade(base.copy(mix = base.mix.copy(on = false, auto = true))))
+        assertEquals(Crossfade.OFF, SoundChoices.crossfade(base.copy(mix = base.mix.copy(on = false, auto = false))))
+        assertEquals(Crossfade.AUTO, SoundChoices.crossfade(base.copy(mix = base.mix.copy(on = true, auto = true))))
+        assertEquals(Crossfade.FIXED, SoundChoices.crossfade(base.copy(mix = base.mix.copy(on = true, auto = false))))
         for (x in Crossfade.entries) {
             val (on, auto) = SoundChoices.crossfadeValues(x)
-            assertEquals(x, SoundChoices.crossfade(base.copy(mix = on, mixAuto = auto ?: base.mixAuto)))
+            assertEquals(x, SoundChoices.crossfade(base.copy(mix = base.mix.copy(on = on, auto = auto ?: base.mix.auto))))
         }
         // Off keeps automatic/fixed, so turning crossfade back on gives the old way.
         assertEquals(null, SoundChoices.crossfadeValues(Crossfade.OFF).second)
     }
 
     @Test fun homeTopButtonsFollowBothSwitches() {
-        fun s(p: Boolean, cz: Boolean) = base.copy(homePodcastsButton = p, homeCustomizeTopButton = cz)
+        fun s(p: Boolean, cz: Boolean) = base.copy(home = base.home.copy(podcastsButton = p, customizeTopButton = cz))
         assertEquals(com.vinz.music.ui.screens.TopButtons.BOTH, com.vinz.music.ui.screens.HomeChoices.topButtons(s(true, true)))
         assertEquals(com.vinz.music.ui.screens.TopButtons.PODCASTS, com.vinz.music.ui.screens.HomeChoices.topButtons(s(true, false)))
         assertEquals(com.vinz.music.ui.screens.TopButtons.CUSTOMIZE, com.vinz.music.ui.screens.HomeChoices.topButtons(s(false, true)))
@@ -145,11 +145,53 @@ class SoundChoicesTest {
         assertEquals(TrimSilence.OFF, SoundChoices.trimSilence(s(false, false)))
         assertEquals(TrimSilence.PODCASTS, SoundChoices.trimSilence(s(false, true)))
         assertEquals(TrimSilence.ALL, SoundChoices.trimSilence(s(true, true)))
-        // Songs on with podcasts off (possible before 1.8.0) reads as both: what songs got stays the same.
-        assertEquals(TrimSilence.ALL, SoundChoices.trimSilence(s(true, false)))
+        // #325: songs on with podcasts off is what it says.
+        assertEquals(TrimSilence.SONGS, SoundChoices.trimSilence(s(true, false)))
         for (t in TrimSilence.entries) {
             val (songs, episodes) = SoundChoices.trimSilenceValues(t)
             assertEquals(t, SoundChoices.trimSilence(s(songs, episodes)))
         }
+    }
+
+    /** #325: "Songs only" leaves an episode's pauses alone; "Podcasts only" and "Songs and podcasts" shorten them, and never a song's. */
+    @Test fun onlyPodcastsPicksShortenAnEpisodesPauses() {
+        val pauses = com.vinz.music.playback.EdgeSilenceProcessor
+        for (t in TrimSilence.entries) {
+            val (_, episodes) = SoundChoices.trimSilenceValues(t)
+            assertEquals(t.name, t == TrimSilence.PODCASTS || t == TrimSilence.ALL, pauses.pausesSkipped(isEpisode = true, episodesOn = episodes))
+            assertEquals(t.name, false, pauses.pausesSkipped(isEpisode = false, episodesOn = episodes))
+        }
+    }
+
+    /** #325: the choice nobody changed is still Off, and "Songs only" is stored as songs on, podcasts off. */
+    @Test fun songsOnlyIsStoredAsItReads() {
+        assertEquals(TrimSilence.OFF, SoundChoices.trimSilence(base))
+        val repo = com.vinz.music.data.prefs.SettingsRepository(
+            org.robolectric.RuntimeEnvironment.getApplication(),
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
+        )
+        SoundChoices.setTrimSilence(repo, TrimSilence.SONGS)
+        val songs = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { repo.flow.first { SoundChoices.trimSilence(it) == TrimSilence.SONGS } } }
+        assertEquals(true, songs.skipSilence)
+        assertEquals(false, songs.sound.skipSilenceEpisodes)
+        SoundChoices.setTrimSilence(repo, TrimSilence.OFF)
+        kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { repo.flow.first { SoundChoices.trimSilence(it) == TrimSilence.OFF } } }
+    }
+
+    /** #351: a fixed crossfade goes up to 30 s and is kept, and its tail holds the whole of it. */
+    @Test fun aCrossfadeCanRunToThirtySeconds() {
+        assertEquals(30, com.vinz.music.data.prefs.MAX_CROSSFADE_SECONDS)
+        assertEquals(6, base.mix.seconds)
+        val tailHolds = com.vinz.music.playback.MixEngine.TAIL_BUFFER_MS
+        org.junit.Assert.assertTrue(com.vinz.music.playback.MixEngine.tailNeedsMs(30_000) <= tailHolds)
+        val repo = com.vinz.music.data.prefs.SettingsRepository(
+            org.robolectric.RuntimeEnvironment.getApplication(),
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
+        )
+        val was = kotlinx.coroutines.runBlocking { repo.flow.first() }.mix.seconds
+        fun readBack(wanted: Int) = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { repo.flow.first { it.mix.seconds == wanted } } }.mix.seconds
+        repo.setMixSeconds(30); assertEquals(30, readBack(30))
+        repo.setMixSeconds(45); assertEquals(30, readBack(30))
+        repo.setMixSeconds(was); assertEquals(was, readBack(was))
     }
 }

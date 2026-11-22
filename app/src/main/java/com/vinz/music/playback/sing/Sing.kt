@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback.sing
 
 import com.vinz.music.R
@@ -615,6 +614,10 @@ class Sing(private val c: AppContainer) : VocalStemProcessor.Source {
                             // used to throw a nearly done separation away), then let go.
                             if (!stillWorking) throw Stopped(tr(R.string.sing_was_switched_off))
                             if (steppedDown) throw SteppedDown()
+                            // Not being sung right now (getting songs ready, or finishing one after Sing's off): this
+                            // waits its turn out of sight. Four network threads ran on with nobody listening (#373's log,
+                            // Android closed Vinz for it). Out here, so the chunks' own timing isn't fooled.
+                            if (!onNow || !c.player.isPlaying.value) com.vinz.music.playback.BackgroundBudget.pace { stillWorking }
                             val in44 = reader.next() ?: break
                             val vocalsNow = back.push(spleeter.feed(in44))
                             if (vocalsNow.isNotEmpty()) {

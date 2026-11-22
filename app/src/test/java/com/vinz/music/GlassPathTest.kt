@@ -15,6 +15,12 @@ import org.junit.Test
 class GlassPathTest {
     @Test fun liquidGlassWithBlur() = assertEquals(GlassPath.LIQUID, glassPath(31, liquid = true, frosted = false, haze = true))
 
+    /** 1.8.2.1: up to a sixth off the graphics chip's frame on an A16, on the look most people have. */
+    @Test fun frostSamplesAtHalfSizeExceptAThinOne() {
+        assertEquals(dev.chrisbanes.haze.HazePerformanceMode.Performance, com.vinz.music.ui.theme.frostedInput(thin = false))
+        assertEquals(dev.chrisbanes.haze.HazePerformanceMode.Default, com.vinz.music.ui.theme.frostedInput(thin = true))
+    }
+
     @Test fun noGlassBelowAndroid12() {
         for (sdk in 26..30) {
             assertEquals("sdk $sdk", GlassPath.SOLID, glassPath(sdk, liquid = true, frosted = false, haze = true))
@@ -42,6 +48,17 @@ class GlassPathTest {
         // Glass off, as Performance mode turns it.
         assertFalse(glassSamplesThePage(34, liquid = false, frosted = false))
         for (sdk in 26..30) assertFalse("sdk $sdk", glassSamplesThePage(sdk, liquid = true, frosted = true))
+    }
+
+    /** #355: the tab bar and mini player aren't drawn only while the keyboard covers all of them. */
+    @Test fun theBarsGoOnlyWhenTheKeyboardCoversThemWhole() {
+        assertTrue(com.vinz.music.ui.theme.hiddenByKeyboard(900, 200f))
+        assertTrue(com.vinz.music.ui.theme.hiddenByKeyboard(200, 200f))
+        // Still coming up, or a small bar for a hardware keyboard.
+        assertFalse(com.vinz.music.ui.theme.hiddenByKeyboard(120, 200f))
+        // No keyboard, or a floating one, which takes no room.
+        assertFalse(com.vinz.music.ui.theme.hiddenByKeyboard(0, 200f))
+        assertFalse(com.vinz.music.ui.theme.hiddenByKeyboard(0, 0f))
     }
 
     /** Every surface that samples the page finds it copied: the two agree on every setting and Android version. */

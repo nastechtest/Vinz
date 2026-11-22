@@ -63,9 +63,14 @@ class ForYou(private val c: AppContainer) {
      * The mixes, read once per change and kept (null until the first read). Their songs are stored as JSON; decoding a
      * few hundred songs happened on the main thread every time Made for you scrolled back onto Home (1.7.4).
      */
-    val mixes: StateFlow<List<Mix>?> = c.db.mixes().allFlow().map { list -> list.map(::toMix).sortedBy(::order) }
+    val mixes: StateFlow<List<Mix>?> = c.db.mixes().allFlow().map { list -> list.filterNot { Discover.isDiscover(it.id) }.map(::toMix).sortedBy(::order) }
         .flowOn(Dispatchers.Default)
         .stateIn(c.scope, SharingStarted.Eagerly, null)
+
+    /** New to you and Deep cuts ([Discover]): their own sections on Home, not part of Made for you. Read once anything looks. */
+    val discovered: StateFlow<Map<String, Mix>> = c.db.mixes().allFlow().map { list -> list.filter { Discover.isDiscover(it.id) }.map(::toMix).associateBy { it.id } }
+        .flowOn(Dispatchers.Default)
+        .stateIn(c.scope, SharingStarted.Lazily, emptyMap())
 
     suspend fun mix(id: String): Mix? = c.db.mixes().get(id)?.let(::toMix)
 
@@ -87,6 +92,8 @@ class ForYou(private val c: AppContainer) {
 
     /** Makes whatever is due: the Daily Mixes once a day, the time-of-day mix when the part of the day changes. */
     suspend fun refresh(force: Boolean = false) = lock.withLock {
+        // New history (an import) or "Make my mixes again": New to you and Deep cuts are made again too, if they're on Home.
+        if (force) c.discover.markStale()
         val today = LocalDate.now().toString()
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val bucket = MadeForYou.TimeBucket.of(hour)
@@ -160,7 +167,7 @@ class ForYou(private val c: AppContainer) {
      * Where new songs come from: YouTube Music's radio of a song, its Related tab and its similar artists' top songs.
      * Each asked once per run (several mixes can share a seed or an artist).
      */
-    private fun sources() = object : MixMaker.Sources {
+    internal fun sources() = object : MixMaker.Sources {
         private val radios = java.util.concurrent.ConcurrentHashMap<String, List<Song>>()
         private val related = java.util.concurrent.ConcurrentHashMap<String, com.vinz.music.data.model.Related>()
         private val tops = java.util.concurrent.ConcurrentHashMap<String, List<Song>>()
@@ -277,7 +284,7 @@ class ForYou(private val c: AppContainer) {
 
     companion object {
         /** A queue started from one of Vinz's mixes (a Daily Mix, the time mix, Release Radar, a mix from your music). */
-        fun isMixId(id: String) = id.startsWith("daily:") || id == MadeForYou.TIME || id == MadeForYou.RADAR || YourMusic.isLibraryMix(id)
+        fun isMixId(id: String) = id.startsWith("daily:") || id == MadeForYou.TIME || id == MadeForYou.RADAR || YourMusic.isLibraryMix(id) || Discover.isDiscover(id)
 
         private const val TAG = "ForYou"
         private const val DAILY_DAY = "daily_day"

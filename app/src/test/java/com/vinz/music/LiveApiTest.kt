@@ -34,11 +34,13 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import java.util.concurrent.TimeUnit
+import org.junit.experimental.categories.Category
 
 /**
  * Live integration checks against YouTube Music and the lyric/metadata
  * providers, run on the JVM (signed-out). Run with: gradlew :app:testReleaseUnitTest
  */
+@Category(LiveNetwork::class)
 class LiveApiTest {
     companion object {
         private val http = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
@@ -374,5 +376,19 @@ class LiveApiTest {
             if (canvas != null) hits++
         }
         assertTrue("at least two songs have animated cover art", hits >= 2)
+    }
+
+    /** Owner, 2026-11-13: "The Burden (Interlude)" by Memphis May Fire played The Beatles' animated cover. */
+    @Test
+    fun aSongsAnimatedCoverIsItsOwn() = runBlocking {
+        val repo = com.vinz.music.data.canvas.CanvasRepository(http)
+        for (q in listOf("The Burden (Interlude) Memphis May Fire", "The Sinner Memphis May Fire", "Be Careful What You Wish For Memphis May Fire")) {
+            for (s in ytm.search(q, SearchFilter.SONGS).items.filterIsInstance<SongItem>().take(2).map { it.song }) {
+                val canvas = repo.canvasFor(s)
+                log("canvas for '${s.title}' by ${s.primaryArtist} (${s.album?.title}, ${s.id}): $canvas")
+                val by = canvas?.artist ?: continue
+                assertTrue("'${s.title}' by ${s.primaryArtist} got ${canvas.album} by $by", by.contains(s.primaryArtist, ignoreCase = true))
+            }
+        }
     }
 }

@@ -19,4 +19,14 @@ class SpeedDialPagesTest {
         assertEquals(listOf(9), sizes(9))
         assertEquals(emptyList<Int>(), sizes(0))
     }
+
+    /** #349: with "YouTube Music's only" nothing may fill the last page, and cutting it hid YouTube's own tiles. */
+    @Test fun youTubeOnlyKeepsItsShortLastPage() {
+        fun kept(n: Int) = speedDialPages((1..n).toList(), keepShortPage = true).map { it.size }
+        assertEquals(listOf(9, 9, 2), kept(20))
+        assertEquals(listOf(9, 9), kept(18))
+        assertEquals(listOf(4), kept(4))
+        // Every tile YouTube sent, in its order.
+        assertEquals((1..20).toList(), speedDialPages((1..20).toList(), keepShortPage = true).flatten())
+    }
 }

@@ -142,7 +142,7 @@ class TvHomeCustomizeTests {
         downTo(a)
         // OK hides A.
         TvFixture.ok()
-        waitFor(5_000, "A hidden") { com.vinz.music.ui.tv.hiddenIn(settings.current.homeLayout, a) }
+        waitFor(5_000, "A hidden") { com.vinz.music.ui.tv.hiddenIn(settings.current.home.layout, a) }
 
         // C, carried up twice with Move beside it, put down with OK. Each press passes one row Home shows: B, then
         // (past A, hidden now, and the rows Home doesn't show) to the top.
@@ -185,8 +185,8 @@ class TvHomeCustomizeTests {
             com.vinz.music.data.prefs.HomeSectionConfig(c, "Vinz test C"),
             com.vinz.music.data.prefs.HomeSectionConfig(a, "Vinz test A"),
         ))
-        settings.setHomeLayout(com.vinz.music.ui.tv.layoutWithShown(settings.current.homeLayout, a, "Vinz test A", shown = false))
-        waitFor(5_000, "the layouts kept") { keys().isNotEmpty() && com.vinz.music.ui.tv.hiddenIn(settings.current.homeLayout, a) }
+        settings.setHomeLayout(com.vinz.music.ui.tv.layoutWithShown(settings.current.home.layout, a, "Vinz test A", shown = false))
+        waitFor(5_000, "the layouts kept") { keys().isNotEmpty() && com.vinz.music.ui.tv.hiddenIn(settings.current.home.layout, a) }
         TvFixture.launch()
         compose.awaitFocusOn(hasTestTag("$TAG_HOME/row0/0"), 15_000)
         awaitHomeTitles(listOf("Vinz test C", "Vinz test B"), 5_000)
@@ -205,7 +205,7 @@ class TvHomeCustomizeTests {
         TvFixture.up()
         compose.awaitFocusOn(hasTestTag("$TAG_HOME_EDITOR/reset"))
         TvFixture.ok()
-        waitFor(5_000, "no layout kept, A shown") { keys().isEmpty() && !com.vinz.music.ui.tv.hiddenIn(settings.current.homeLayout, a) }
+        waitFor(5_000, "no layout kept, A shown") { keys().isEmpty() && !com.vinz.music.ui.tv.hiddenIn(settings.current.home.layout, a) }
         // Back to Settings, then Home: as it came.
         TvFixture.back()
         compose.awaitFocusOn(hasTestTag("$TAG_SETTINGS/setting/0"), 10_000)

@@ -39,6 +39,29 @@ object AudioPick {
         }
     }
 
+    /** The quality a song is picked at, and the mobile data quality when it held Premium's best back ([heldBack]). */
+    data class Quality(val quality: AudioQuality, val heldBack: AudioQuality? = null)
+
+    /**
+     * Which quality to pick at. Data saver on mobile data (#40) wins over lossless: the mobile data quality, at most
+     * Normal. Lossless always takes the best. On mobile data the mobile data quality. With Premium quality on and its
+     * formats in hand ([premiumInHand]), Wi-Fi takes the best of them, whatever the quality setting (1.8.7, #373 #179
+     * #148: Normal picked 128-160 kbps out of them and nothing said so); otherwise the quality setting.
+     */
+    fun quality(
+        wifiQuality: AudioQuality, cellularQuality: AudioQuality, lossless: Boolean, dataSaver: Boolean,
+        metered: Boolean, premiumInHand: Boolean,
+    ): Quality {
+        val q = when {
+            dataSaver && metered -> cellularQuality.takeIf { it != AudioQuality.HIGH } ?: AudioQuality.NORMAL
+            lossless -> AudioQuality.HIGH
+            metered -> cellularQuality
+            premiumInHand -> AudioQuality.HIGH
+            else -> wifiQuality
+        }
+        return Quality(q, q.takeIf { premiumInHand && metered && it != AudioQuality.HIGH })
+    }
+
     const val OPUS_WORTH = 1.3
     /** Streams this close in bitrate are the same tier. */
     private const val TIER_KBPS = 24

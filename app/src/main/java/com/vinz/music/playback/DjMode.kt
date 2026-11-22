@@ -49,6 +49,13 @@ class DjMode {
         _rescan.update { it + 1 }
     }
 
+    /** Bumped when Shuffle is pressed with DJ mode on (#374): the playback service deals a new DJ set. */
+    private val _newSets = MutableStateFlow(0)
+    val newSets: StateFlow<Int> = _newSets
+
+    /** A new DJ set: another song next, the rest in the order that follows on from it. */
+    fun newSet() = _newSets.update { it + 1 }
+
     internal fun setProgress(p: DjProgress?) { _progress.value = p }
     internal fun bump() = _revision.update { it + 1 }
 }
@@ -58,6 +65,22 @@ class DjMode {
  * because they'd have to be downloaded and that isn't allowed now (mobile data).
  */
 data class DjProgress(val looked: Int, val all: Int, val keyed: Int, val needNetwork: Int = 0)
+
+/** How the Crossfade settings read while DJ mode is on. Pure, so each case is a plain unit test ([DjBlendTest]). */
+object DjBlend {
+    /**
+     * Whether blends work out their own length ([MixEngine.autoLengthMs]): as the listener set it, and in DJ mode
+     * unless they set a fixed length (#502: Crossfade on, not Automatic). With Crossfade off DJ mode blends anyway, at
+     * the automatic length (the length stored for Off isn't one they chose to hear).
+     */
+    fun automatic(mixOn: Boolean, mixAuto: Boolean, dj: Boolean): Boolean = if (dj) mixAuto || !mixOn else mixAuto
+
+    /**
+     * Whether DJ mode's keys may stretch or cut a blend's length ([MixEngine]'s harmonic): only a length worked out
+     * ([automatic]); a fixed one is the listener's (#502).
+     */
+    fun keysSetLength(dj: Boolean, automatic: Boolean): Boolean = dj && automatic
+}
 
 /** What the queue says about DJ mode, honestly: it only claims an order it has. */
 object DjStatus {

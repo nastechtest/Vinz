@@ -64,7 +64,7 @@ class LyricsBeforeAfterTest {
                 VinzTheme(base, artworkColor = null) {
                     Column(Modifier.width(412.dp).background(Color(0xFF0A0A0D)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (style in LyricsStyle.entries) for ((name, change) in details) {
-                            val s = base.copy(lyricsLook = change(LyricsLookPrefs(style = style)), lyricsAlign = if (name.startsWith("caps")) LyricsAlign.CENTER else LyricsAlign.START)
+                            val s = base.copy(lyricsLook = change(LyricsLookPrefs(style = style)), lyrics = base.lyrics.copy(align = if (name.startsWith("caps")) LyricsAlign.CENTER else LyricsAlign.START))
                             CompositionLocalProvider(LocalAppSettings provides s) {
                                 Text("${style.name} · $name", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
                                 Row(Modifier.fillMaxWidth()) {

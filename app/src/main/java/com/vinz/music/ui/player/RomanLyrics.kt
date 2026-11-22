@@ -49,7 +49,8 @@ fun rememberRomanized(state: LyricsState): List<LyricLine?>? {
         if (mode == RomanizeMode.OFF || lines.isEmpty()) return@produceState
         if (lines.none { (Script.foreignIn(it.text) - skip).isNotEmpty() }) return@produceState
         // Only the lyrics' text goes to Google (a few KB), so data saver doesn't hold it back.
-        value = runCatching { c.romanizer.romanize(state.song.id, lines, skip, network = c.network.online.value) }
+        value = runCatching { c.romanizer.romanize(state.song.id, lines, skip, network = c.network.online.value, title = state.song.title,
+            artist = state.song.artists.joinToString(" ") { it.name }, album = state.song.album?.title.orEmpty()) }
             .onFailure { android.util.Log.w("VinzRoman", "Couldn't romanize the lyrics: $it") }.getOrNull()
             ?.takeIf { r -> r.any { it != null } }
     }

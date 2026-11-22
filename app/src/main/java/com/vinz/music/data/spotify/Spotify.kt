@@ -68,8 +68,14 @@ class Spotify(private val c: AppContainer) {
 
     val recent = SpotifyRecent(api, c.db, c.imports.importer, store)
     val top = SpotifyTop(api, c.db, dir)
-    val playlists = SpotifyPlaylists(api, c.db, c.imports.importer, dir, LibraryHands(c.vinzLibrary), match)
-    val likes = SpotifyLikes(api, c.db, c.imports.importer, dir, { c.imports.likeImported(it) }, { c.imports.keptLikes() }, match)
+    private val ownLibrary = ApiLibrary(api)
+    private val webLibrary by lazy {
+        WebLibrary(web) { p -> SpotifyPlaylists.isYours(p, store.userId.orEmpty()) || p.id in playlists.mirror().brought }
+    }
+    /** The library as the connection reads it now: the sign-in's reads, or the listener's own developer app. */
+    private val library: () -> SpotifyLibrary = { if (store.sessionOn) webLibrary else ownLibrary }
+    val playlists = SpotifyPlaylists(api, c.db, c.imports.importer, dir, LibraryHands(c.vinzLibrary), match, library = library)
+    val likes = SpotifyLikes(api, c.db, c.imports.importer, dir, { c.imports.likeImported(it) }, { c.imports.keptLikes() }, match, library = library)
 
     // ---- The connection
 
@@ -87,7 +93,45 @@ class Spotify(private val c: AppContainer) {
     private val _connection = MutableStateFlow(connectionNow())
     val connection: StateFlow<Connection> = _connection
 
+    // ---- "Sign in to Spotify" (1.8.7.5): the web-player session, read only
+
+    val sessionTokens by lazy { SessionTokens(store, SessionWeb(c.app, c.http)) }
+    /** The session's reads (liked songs, playlists). Nothing here can change anything on Spotify. */
+    val web by lazy { SpotifyWeb(c.http, sessionTokens, SpotifyCodeBook(store.prefs, c.http), userAgent = { SessionWeb.userAgent(c.app) }) }
+
+    /** Connected by the sign-in on Spotify's page (not by the listener's own developer app). */
+    val bySession: Boolean get() = store.sessionOn
+
+    /**
+     * The sign-in screen calls this once Spotify's page has landed signed in ([SessionWeb.signedIn]): the first token
+     * is fetched and the account's name read. False (and [Connection.Failed]) when no token came for them.
+     */
+    suspend fun sessionSignedIn(): Boolean {
+        _connection.value = Connection.Waiting
+        return try {
+            // One route at a time: an own-key connection is given up for the sign-in.
+            if (store.tokens() != null) store.clearTokens()
+            if (!sessionTokens.begin()) throw SpotifyError.Unavailable(0, "no token after the sign-in")
+            val p = SpotifyWebParse.profile(web.read("profileAttributes"))
+            store.userId = p.id
+            store.userName = p.name
+            log("connected by sign-in")
+            _connection.value = Connection.Connected(p.name)
+            schedule()
+            enabledFeatures().forEach { f -> c.scope.launch { run(f) } }
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("sign-in didn't finish: ${e.javaClass.simpleName}")
+            store.clearSession()
+            _connection.value = Connection.Failed(tr(R.string.spot_failed_network))
+            false
+        }
+    }
+
     private fun connectionNow(): Connection = when {
+        store.sessionOn && store.sessionEnded -> Connection.Revoked
         store.revoked -> Connection.Revoked
         store.connected -> Connection.Connected(store.userName ?: store.userId.orEmpty())
         else -> Connection.None
@@ -193,11 +237,16 @@ class Spotify(private val c: AppContainer) {
         cancelConnect()
         SpotifyWorker.cancel(c.app)
         // The tokens first, so a feature running now stops at its next request; then each waits for its run to end.
+        val session = store.sessionOn
         store.wipe(clientIdToo)
+        // A sign-in on Spotify's page also leaves this phone: its cookies and the page's storage.
+        if (session) withContext(Dispatchers.Main) { SessionWeb.signOut() }
         running.getValue(SpotifyFeature.PLAYLISTS).withLock { runCatching { playlists.forget(keepPlaylists) } }
         running.getValue(SpotifyFeature.TOP).withLock { top.forget() }
         running.getValue(SpotifyFeature.LIKES).withLock { likes.forget() }
         dir.deleteRecursively()
+        // 1.8.7.6: the canvases Spotify's canvas remembered go with the connection.
+        c.canvas.spotify?.forget()
         guards.values.forEach { it.reset() }
         _options.value = optionsNow()
         _hidden.value = hiddenNow()
@@ -221,6 +270,8 @@ class Spotify(private val c: AppContainer) {
         val playlists: Boolean = false,
         val keepInStep: Boolean = true,
         val likes: Boolean = false,
+        /** With the sign-in: followed playlists come into Library by themselves (1.8.7.5; off: each is a tap away). */
+        val followedToo: Boolean = false,
     ) {
         fun on(f: SpotifyFeature) = when (f) {
             SpotifyFeature.RECENT -> recent; SpotifyFeature.TOP -> top; SpotifyFeature.PLAYLISTS -> playlists; SpotifyFeature.LIKES -> likes
@@ -229,7 +280,7 @@ class Spotify(private val c: AppContainer) {
 
     private fun optionsNow() = Options(
         store.prefs.getBoolean("on_recent", false), store.prefs.getBoolean("on_top", false), store.prefs.getBoolean("on_playlists", false),
-        store.prefs.getBoolean("keep_in_step", true), store.prefs.getBoolean("on_likes", false),
+        store.prefs.getBoolean("keep_in_step", true), store.prefs.getBoolean("on_likes", false), store.prefs.getBoolean("followed_too", false),
     )
 
     private val _options = MutableStateFlow(optionsNow())
@@ -278,8 +329,54 @@ class Spotify(private val c: AppContainer) {
         _hidden.value = now
     }
 
+    /** True with the sign-in: a followed playlist can be brought in ([bringFollowed]); a developer app only gets its name. */
+    val canBringFollowed: Boolean get() = store.sessionOn && !store.sessionEnded
+
+    /**
+     * "Bring it in" on a followed playlist (the sign-in only): read, made a Vinz playlist and kept in step from then
+     * on. Its Vinz playlist's id, or null when it didn't work (the guard hears why).
+     */
+    suspend fun bringFollowed(id: String): String? {
+        _bringing.value = _bringing.value + id
+        try {
+            return running.getValue(SpotifyFeature.PLAYLISTS).withLock {
+                if (!canBringFollowed || !_options.value.playlists) return@withLock null
+                val guard = guards.getValue(SpotifyFeature.PLAYLISTS)
+                try {
+                    playlists.bringIn(id).also { guard.succeeded(); matchSoon() }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: SpotifyError.Revoked) {
+                    _connection.value = Connection.Revoked; null
+                } catch (e: Exception) {
+                    guard.failed(e); null
+                }
+            }
+        } finally {
+            _bringing.value = _bringing.value - id
+        }
+    }
+
+    private val _bringing = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Followed playlists being brought in right now (read from Spotify): Library and the sheet say so, wherever the listener went. */
+    val followedBringing: StateFlow<Set<String>> = _bringing
+
+    /** The Vinz playlists that show Spotify ones, as they come and go (Library's mark follows it). */
+    val mirroredPlaylists: StateFlow<Set<String>> get() = playlists.mirrored
+
+    /** Spotify playlists still being matched: how many of their songs have been looked up, of how many. */
+    val playlistFilling: StateFlow<Map<String, SpotifyPlaylists.Fill>> get() = playlists.filling
+
     /** "Refresh now": the playlists read again at once (a copy just made in Spotify appears), whatever the day's run did. */
     fun refreshPlaylistsNow(): Job = c.scope.launch { run(SpotifyFeature.PLAYLISTS) }
+
+    /** "Followed playlists too" (the sign-in only): on, they are read at once; off, the ones already in stay. */
+    fun setFollowedToo(on: Boolean) {
+        store.prefs.edit().putBoolean("followed_too", on).apply()
+        _options.value = optionsNow()
+        if (on) refreshPlaylistsNow()
+    }
 
     fun setKeepInStep(on: Boolean) {
         store.prefs.edit().putBoolean("keep_in_step", on).apply()
@@ -302,6 +399,8 @@ class Spotify(private val c: AppContainer) {
      */
     suspend fun run(f: SpotifyFeature, scheduled: Boolean = false, unmetered: Boolean = true, now: Long = System.currentTimeMillis()) = running.getValue(f).withLock {
         if (!store.connected || !_options.value.on(f)) return@withLock
+        // Recent plays and the top lists exist only on the Web API, which refuses a session (the A16 trial, 2026-11-15).
+        if (store.sessionOn && (f == SpotifyFeature.RECENT || f == SpotifyFeature.TOP)) return@withLock
         val guard = guards.getValue(f)
         if (!guard.mayRun()) return@withLock
         val daily = !scheduled || unmetered
@@ -310,9 +409,11 @@ class Spotify(private val c: AppContainer) {
                 SpotifyFeature.RECENT -> recent.sync()
                 SpotifyFeature.TOP -> if (!scheduled || top.due(now)) top.refresh(now)
                 SpotifyFeature.PLAYLISTS ->
-                    if (daily && (!scheduled || now - playlists.mirror().listedAt >= DAILY_MS)) playlists.refreshAll(store.userId.orEmpty(), now)
+                    if (daily && (!scheduled || now - playlists.mirror().listedAt >= DAILY_MS)) playlists.refreshAll(store.userId.orEmpty(), now, bringAll = store.sessionOn && _options.value.followedToo, except = hiddenNow())
                     else playlists.reapply()
-                SpotifyFeature.LIKES -> if (daily && (!scheduled || now - likes.state().lastRun >= DAILY_MS)) likes.sync(now)
+                SpotifyFeature.LIKES ->
+                    if (daily && (!scheduled || now - likes.state().lastRun >= DAILY_MS)) likes.sync(now)
+                    else likes.placeMatched()
             }
             guard.succeeded()
             matchSoon()
@@ -340,6 +441,17 @@ class Spotify(private val c: AppContainer) {
                 .any { it.state == androidx.work.WorkInfo.State.RUNNING || it.state == androidx.work.WorkInfo.State.ENQUEUED }
             if (!busy) ImportMatchWorker.enqueue(c.app, c.imports.matchOnMobile.value)
         }
+    }
+
+    /**
+     * The background matching has matched some songs: they go into their mirrored playlists and the waiting likes are
+     * liked, now, without asking Spotify anything. (Before 1.8.7.5 they waited for the next run: hours for playlists,
+     * a day for likes.)
+     */
+    suspend fun placeMatched() = withContext(Dispatchers.IO) {
+        if (!store.connected) return@withContext
+        if (_options.value.playlists) running.getValue(SpotifyFeature.PLAYLISTS).withLock { runCatching { playlists.reapply() } }
+        if (_options.value.likes) running.getValue(SpotifyFeature.LIKES).withLock { runCatching { likes.placeMatched() } }
     }
 
     /** A Spotify playlist's Vinz playlist was opened: kept in step (read again when Spotify says it changed). */

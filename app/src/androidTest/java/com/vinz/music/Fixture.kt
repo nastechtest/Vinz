@@ -21,6 +21,14 @@ object Fixture {
         container.settings.editNow {
             it[booleanPreferencesKey("onboarded")] = true
             it[booleanPreferencesKey("performance_offered")] = true
+            // 1.8.6: "Use music videos?" answered (no), so the player doesn't ask in the middle of a test.
+            it[booleanPreferencesKey("canvas_use_videos")] = false
+            // A new install's own defaults (owner, 2026-11-13) pinned to how Vinz came before, so a test that walks
+            // through the welcome after this (setOnboarded) sees what the suite was written against. Only where the test
+            // hasn't set it already: a test that switched the cover's flight on before this had it switched off again.
+            for (name in com.vinz.music.data.prefs.NewInstall.on + com.vinz.music.data.prefs.NewInstall.motion) {
+                booleanPreferencesKey(name).let { k -> if (it[k] == null) it[k] = false }
+            }
             // A TV's welcome (1.8.0) seen too: tests start where a listener's day does.
             it[booleanPreferencesKey("tv_welcomed")] = true
         }
@@ -87,16 +95,26 @@ object Fixture {
      * A silent WAV of [seconds] in Music/, as a music file the phone's media store lists under [title]. Android 10+
      * through the store itself; Android 9 has no RELATIVE_PATH, so the file is written there (the storage permission
      * Vinz declares up to 9) and the media scanner lists it, its title from the file's name. Delete it with its uri.
+     * [hz] above 0 makes it a sine at that pitch (at a third of full scale), [rate] Hz with [channels] channels.
      */
-    fun tone(title: String, seconds: Int = 25): android.net.Uri {
-        val rate = 8_000
+    fun tone(title: String, seconds: Int = 25, hz: Double = 0.0, rate: Int = 8_000, channels: Int = 1): android.net.Uri {
         val samples = rate * seconds
-        val data = java.io.ByteArrayOutputStream()
+        val bytes = samples * channels * 2
+        val data = java.io.ByteArrayOutputStream(bytes + 44)
         fun le32(v: Int) = data.write(byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte()))
         fun le16(v: Int) = data.write(byteArrayOf(v.toByte(), (v shr 8).toByte()))
-        data.write("RIFF".toByteArray()); le32(36 + samples * 2); data.write("WAVEfmt ".toByteArray())
-        le32(16); le16(1); le16(1); le32(rate); le32(rate * 2); le16(2); le16(16)
-        data.write("data".toByteArray()); le32(samples * 2); data.write(ByteArray(samples * 2))
+        data.write("RIFF".toByteArray()); le32(36 + bytes); data.write("WAVEfmt ".toByteArray())
+        le32(16); le16(1); le16(channels); le32(rate); le32(rate * channels * 2); le16(channels * 2); le16(16)
+        data.write("data".toByteArray()); le32(bytes)
+        val pcm = ByteArray(bytes)
+        if (hz > 0) for (i in 0 until samples) {
+            val v = (kotlin.math.sin(2 * Math.PI * hz * i / rate) * 32767 / 3).toInt()
+            for (ch in 0 until channels) {
+                val at = (i * channels + ch) * 2
+                pcm[at] = v.toByte(); pcm[at + 1] = (v shr 8).toByte()
+            }
+        }
+        data.write(pcm)
         if (android.os.Build.VERSION.SDK_INT < 29) {
             InstrumentationRegistry.getInstrumentation().uiAutomation
                 .grantRuntimePermission(context.packageName, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)

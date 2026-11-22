@@ -38,16 +38,29 @@ class NetworkState(context: Context) {
     /** [block] runs (on a background thread) each time the phone gets back online. */
     fun onReconnect(block: () -> Unit) { listeners += block }
 
+    private val switch = NetworkSwitch()
+    private val _changes = MutableStateFlow(0)
+    /**
+     * 1.8.7: goes up each time the phone moves to another network or comes back online (not for the first network
+     * seen, nor for changes within one network). Playback lifts its blocks on songs that failed on the old one.
+     */
+    val changes: StateFlow<Int> = _changes
+
     init {
         // The default network's own capabilities, as the callback hands them over: activeNetwork can lag behind it (seen
         // after Android's system restarted: the phone was back on mobile data, Vinz stayed "offline").
         runCatching {
             cm?.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
-                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = update(of(caps))
-                override fun onLost(network: Network) = update(false to true)
-                override fun onAvailable(network: Network) = update(of(cm.getNetworkCapabilities(network)))
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = update(of(caps), network)
+                override fun onLost(network: Network) = update(false to true, null)
+                override fun onAvailable(network: Network) = update(of(cm.getNetworkCapabilities(network)), network)
             })
         }
+    }
+
+    private fun update(state: Pair<Boolean, Boolean>, network: Network?) {
+        if (synchronized(switch) { switch.seen(network, state.first) }) _changes.value++
+        update(state)
     }
 
     private fun update(state: Pair<Boolean, Boolean>) {
@@ -60,4 +73,21 @@ class NetworkState(context: Context) {
 
     /** True when it's worth trying the network (a fresh check, as the callback can lag a moment behind). */
     fun isOnline(): Boolean = read().first
+}
+
+/**
+ * Tells a move to another network from the callbacks of one ([NetworkState.changes]): true when the phone is online now
+ * and was offline before, or on another network. The first network seen only sets where it starts.
+ */
+internal class NetworkSwitch {
+    private var known = false
+    private var current: Any? = null
+
+    fun seen(network: Any?, online: Boolean): Boolean {
+        val was = current
+        val wasKnown = known
+        known = true
+        current = if (online) network else null
+        return online && wasKnown && was != network
+    }
 }

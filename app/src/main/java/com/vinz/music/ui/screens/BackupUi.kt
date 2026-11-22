@@ -168,17 +168,6 @@ private fun WorkingDialog(text: String) {
     )
 }
 
-/** Settings → About: back up and restore. */
-@Composable
-fun BackupGroup() {
-    val backup = rememberBackupFlow()
-    val restore = rememberRestoreFlow()
-    Group(tr(R.string.backup)) {
-        Item(tr(R.string.back_up), tr(R.string.settings_library_replay_sign_in_you), onClick = backup)
-        Item(tr(R.string.restore_from_a_backup), tr(R.string.replaces_what_the_backup_holds_then), onClick = restore)
-    }
-}
-
 /** On the welcome screen, for a fresh install coming from a backup. */
 @Composable
 fun WelcomeRestoreButton() {

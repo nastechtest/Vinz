@@ -42,6 +42,20 @@ object RewindCalendar {
         return year < current || (year == current && (early || now >= opensAt(year, zone)))
     }
 
+    /** "Your Rewind is ready" goes out at this hour of the opening day, local time. */
+    const val NOTICE_HOUR = 10
+
+    /** When [year]'s "Your Rewind is ready" is due: 1 December, 10:00 on the clock in [zone]. */
+    fun noticeAt(year: Int, zone: ZoneId = ZoneId.systemDefault()): Long =
+        LocalDate.of(year, OPENS_MONTH, OPENS_DAY).atTime(NOTICE_HOUR, 0).atZone(zone).toInstant().toEpochMilli()
+
+    /** The next notice from [now]: this year's while it's still ahead, else next year's. */
+    fun nextNotice(now: Long, zone: ZoneId = ZoneId.systemDefault()): Pair<Int, Long> {
+        val year = yearOf(now, zone)
+        val target = if (now < noticeAt(year, zone)) year else year + 1
+        return target to noticeAt(target, zone)
+    }
+
     /** Every year with listening, newest first, from the first play's year to now (gaps included: a quiet year is a short story). */
     fun years(firstEventMs: Long?, now: Long, zone: ZoneId = ZoneId.systemDefault()): List<Int> {
         val first = firstEventMs?.let { yearOf(it, zone) } ?: return emptyList()
@@ -117,6 +131,19 @@ data class RewindSnapshot(
     val vinz: VinzYear = VinzYear(),
     /** A line from the #1 song, where its best part starts. */
     val topLyric: String? = null,
+    // 1.8.5. Rewinds kept before have none of these (they load as they are, without the slides that need them).
+    /** Time listened on each day of the year (index 0 = 1 January, local). */
+    val days: List<Long> = emptyList(),
+    /** Time listened in each hour of each weekday: index weekday × 24 + hour (0 = Monday, midnight; local). */
+    val weekHours: List<Long> = emptyList(),
+    /** The most played songs in the year's busiest hour of the day ([habits]' peak hour). */
+    val hourSongs: List<SongPlays> = emptyList(),
+    /** The milestones reached in the year, a few of the biggest ([RewindParts.milestones]). */
+    val milestones: List<RewindMilestone> = emptyList(),
+    /** Songs first heard this year through Vinz's radio, Smart Shuffle, DJ, a blend or a mix, then played on ([RewindParts.finds]). */
+    val finds: List<SongPlays> = emptyList(),
+    /** How many songs were found that way in all ([finds] keeps the top few). */
+    val findCount: Int = 0,
 ) {
     fun habits() = Habits(byHour.toLongArray(), byWeekday.toLongArray(), longestStreak, biggestDay?.let { LocalDate.parse(it) }, biggestDayMs)
 
@@ -145,7 +172,8 @@ class RewindStore(private val dir: File) {
 /** The parts of a Replay or Rewind story. */
 enum class StoryPart(val seconds: Int) {
     INTRO(6), MINUTES(9), SEASONS(9), GENRES(8), TOP_ARTIST(9), TOP_ARTISTS(8), TOP_SONG(10), TOP_SONGS(8), TOP_ALBUM(8),
-    MONTHS(8), FIRST_SONG(8), HABITS(9), DISCOVERY(8), VINZ_YEAR(9), YEAR_COMPARE(8), PERSONALITY(9), SUMMARY(0),
+    MONTHS(8), CALENDAR(8), FIRST_SONG(8), HABITS(9), CLOCK(9), DISCOVERY(8), FOUND(8), MILESTONES(9), VINZ_YEAR(9),
+    YEAR_COMPARE(8), PERSONALITY(9), SUMMARY(0),
 }
 
 /** What a story has to go on, for [StoryParts.pick]. */
@@ -164,12 +192,27 @@ data class StoryFacts(
     val newArtists: Int = 0,
     val vinz: Boolean = false,
     val previous: Boolean = false,
+    /** Days of the year with music, from the year's calendar (1.8.5; 0 for a Rewind kept before). */
+    val calendarDays: Int = 0,
+    /** Hours of the week (of 168) with music, and whether the busiest hour has its songs (the clock, 1.8.5). */
+    val clockHours: Int = 0,
+    val hourSong: Boolean = false,
+    val milestones: Int = 0,
+    val finds: Int = 0,
 )
 
 object StoryParts {
     /** Under this, the story is a short one: the total, the top song and artist, and the summary. */
     const val LIGHT_MS = 30 * 60_000L
     const val LIGHT_PLAYS = 15
+
+    // The 1.8.5 slides, each only with enough to show: a calendar of a few scattered days, a week of hours with a
+    // handful lit, one song found or one milestone is a slide about nearly nothing.
+    const val CALENDAR_DAYS = 20
+    const val CLOCK_DAYS = 14
+    const val CLOCK_HOURS = 12
+    const val FINDS = 2
+    const val MILESTONES = 2
 
     /** Which parts a story has: each only when there's enough to make it worth a slide. */
     fun pick(f: StoryFacts): List<StoryPart> = buildList {
@@ -190,9 +233,13 @@ object StoryParts {
         if (f.songs >= 3) add(StoryPart.TOP_SONGS)
         if (f.rewind && f.album != null && f.album.songs >= 2 && f.album.plays >= 5) add(StoryPart.TOP_ALBUM)
         if (f.rewind && f.monthsWithListening >= 3) add(StoryPart.MONTHS)
+        if (f.rewind && f.calendarDays >= CALENDAR_DAYS) add(StoryPart.CALENDAR)
         if (f.rewind && f.firstSong) add(StoryPart.FIRST_SONG)
         if (f.activeDays >= 5) add(StoryPart.HABITS)
+        if (f.rewind && f.activeDays >= CLOCK_DAYS && f.clockHours >= CLOCK_HOURS && f.hourSong) add(StoryPart.CLOCK)
         if (f.newArtists > 0) add(StoryPart.DISCOVERY)
+        if (f.rewind && f.finds >= FINDS) add(StoryPart.FOUND)
+        if (f.rewind && f.milestones >= MILESTONES) add(StoryPart.MILESTONES)
         if (f.rewind && f.vinz) add(StoryPart.VINZ_YEAR)
         if (f.rewind && f.previous) add(StoryPart.YEAR_COMPARE)
         if (f.activeDays >= 5) add(StoryPart.PERSONALITY)

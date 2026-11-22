@@ -491,6 +491,12 @@ val LocalPageBackdrop = compositionLocalOf<PageBackdrop?> { null }
 fun Modifier.pane(shape: Shape, fallback: Color = Color.Unspecified): Modifier {
     if (LocalFrosted.current) {
         val dark = LocalIsDark.current
+        // #326, "Glass on more of the screen": a light falling on it from above and a brighter edge, no blur. Only the
+        // page's own background passes behind a card, and that's soft already, so a live blur wouldn't show but would cost.
+        if (com.vinz.music.ui.theme.LocalAppSettings.current.glassEverywhere) return clip(shape)
+            .background(frostFill())
+            .background(Brush.verticalGradient(0f to Color.White.copy(alpha = if (dark) 0.09f else 0.30f), 0.55f to Color.Transparent))
+            .border(1.dp, glassEdge(), shape)
         return clip(shape).background(frostFill())
             .border(0.7.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.16f else 0.7f), Color.White.copy(alpha = 0.02f))), shape)
     }
@@ -534,8 +540,14 @@ fun Modifier.dissolveBottom(start: Float = 0.5f): Modifier = graphicsLayer { com
 
 /** The see-through fill of frosted panels and buttons on a frosted page. */
 @Composable
-fun frostFill(strength: Float = 1f): Color =
-    if (LocalIsDark.current) Color.White.copy(alpha = 0.10f * strength) else Color.White.copy(alpha = 0.55f * strength)
+fun frostFill(strength: Float = 1f): Color {
+    // #326: with "Glass on more of the screen" on, the Frost slider reaches the page's glass too; where the slider can't
+    // be reached (Glass off, below Android 12) a value set earlier doesn't quietly thin the panels.
+    val s = com.vinz.music.ui.theme.LocalAppSettings.current
+    val sliderHere = s.glassEverywhere && (s.liquidGlass || s.frostedGlass) && android.os.Build.VERSION.SDK_INT >= 31
+    val k = strength * (if (sliderHere) s.view.glass.frost else 1f)
+    return if (LocalIsDark.current) Color.White.copy(alpha = 0.10f * k) else Color.White.copy(alpha = 0.55f * k)
+}
 
 /** A pane of frosted glass for content on a frosted page: see-through, with a light top edge. */
 @Composable

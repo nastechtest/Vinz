@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import com.vinz.music.R
@@ -25,10 +24,90 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class QueueEntry(val index: Int, val song: Song, val uid: String)
+
+/** Repeat's next state, the player's and the lock screen's (1.8.3, D47) alike: off → all → one → off. */
+fun nextRepeatMode(mode: Int): Int = when (mode) {
+    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+    else -> Player.REPEAT_MODE_OFF
+}
+
+/** Shuffle as the listener has it: off, on, or Smart Shuffle (on, with recommendations mixed in). */
+enum class ShuffleMode { OFF, SHUFFLE, SMART }
+
+/**
+ * Shuffle's button (the player's, the TV's, the browser remote's): off → shuffle → Smart Shuffle (where the queue
+ * allows it) → off. With Settings → Playback → Shuffle button set to "Shuffle only" (1.8.4, D57) it's off → on → off,
+ * and someone still in Smart Shuffle goes to off with the next tap.
+ */
+fun nextShuffle(now: ShuffleMode, button: com.vinz.music.data.prefs.ShuffleButton, smartAllowed: Boolean): ShuffleMode = when (now) {
+    ShuffleMode.OFF -> ShuffleMode.SHUFFLE
+    ShuffleMode.SHUFFLE -> if (button == com.vinz.music.data.prefs.ShuffleButton.SHUFFLE_AND_SMART && smartAllowed) ShuffleMode.SMART else ShuffleMode.OFF
+    ShuffleMode.SMART -> ShuffleMode.OFF
+}
+
+/** What a new queue is, for [carryShuffle]. */
+enum class StartKind {
+    /** A list a song was tapped in, or played from the top: a playlist, an album, the library, Replay, a shelf. */
+    LIST,
+    /** One song (Search, a card): Autoplay follows it. */
+    SINGLE,
+    RADIO,
+    /** "Play as a DJ set": DJ mode decides the order. */
+    DJ_SET,
+    /** Started as its music video. */
+    VIDEO,
+    /** A podcast episode or a live stream. */
+    SPOKEN,
+}
+
+/** [StartKind] of the queue [songs] starting at [start]; [asVideo]: the first one plays as its video; [dj]: as a DJ set. */
+fun startKind(source: QueueSource, songs: List<Song>, start: Int, asVideo: Boolean, dj: Boolean): StartKind {
+    val first = songs.getOrNull(start)
+    return when {
+        dj -> StartKind.DJ_SET
+        source.kind == QueueKind.RADIO -> StartKind.RADIO
+        asVideo -> StartKind.VIDEO
+        first?.isEpisode == true || first?.isLive == true -> StartKind.SPOKEN
+        source.kind == QueueKind.SINGLE || songs.size < 2 -> StartKind.SINGLE
+        else -> StartKind.LIST
+    }
+}
+
+/**
+ * The shuffle a new queue starts with. As always: on when its own Shuffle was pressed ([asked]), else off. With
+ * Settings → Playback → "Keep shuffle on for the next list" ([keep]; 1.8.4, #416) a [StartKind.LIST] keeps what the
+ * last queue had ([was]): the song it starts on plays first and the rest is shuffled. Smart Shuffle stays Smart Shuffle
+ * where the new queue allows it ([smartAllowed]) and the button still offers it ([button]), plain shuffle otherwise.
+ * Radios, single songs, DJ sets, videos and episodes are left alone.
+ */
+fun carryShuffle(
+    was: ShuffleMode, keep: Boolean, kind: StartKind, asked: Boolean,
+    button: com.vinz.music.data.prefs.ShuffleButton, smartAllowed: Boolean,
+): ShuffleMode = when {
+    !keep || kind != StartKind.LIST -> if (asked) ShuffleMode.SHUFFLE else ShuffleMode.OFF
+    !asked && was == ShuffleMode.OFF -> ShuffleMode.OFF
+    was == ShuffleMode.SMART && button == com.vinz.music.data.prefs.ShuffleButton.SHUFFLE_AND_SMART && smartAllowed -> ShuffleMode.SMART
+    else -> ShuffleMode.SHUFFLE
+}
+
+/**
+ * Added to the playhead to get the lyrics' time: the listener's nudge for this song, plus Settings → Lyrics → timing
+ * for every song (1.8.4, #404; both positive = lyrics earlier), minus how far a music video runs behind its song.
+ */
+fun lyricShiftOf(songOffsetMs: Long, settingMs: Int, videoLagMs: Long): Long = songOffsetMs + settingMs - videoLagMs
+
+/** A long list's later pages join the queue this many songs at a time (#356). */
+private const val FILL_BATCH = 400
+/** With this little of the song left, the song after it stays where it is while a list fills in (#356). */
+private const val SOON_MS = 30_000L
 
 /** Outputs that take over when they connect (not microphones, call channels or the phone's own parts). */
 private val NEW_OUTPUTS = setOf(
@@ -57,7 +136,11 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val pending = mutableListOf<(ExoPlayer) -> Unit>()
 
-    val player: ExoPlayer? get() = service?.player
+    val player: ExoPlayer? get() = service?.player ?: testPlayer
+
+    /** Tests only: a player to drive when the playback service isn't running (it has no notification, autoplay or effects). */
+    @androidx.annotation.VisibleForTesting
+    internal var testPlayer: ExoPlayer? = null
 
     private val _current = MutableStateFlow<Song?>(null)
     val currentSong: StateFlow<Song?> = _current
@@ -74,9 +157,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** Queue indices in the order they'll actually play after the current one (follows shuffle). */
     private val _upNext = MutableStateFlow<List<Int>>(emptyList())
     val upNext: StateFlow<List<Int>> = _upNext
-    private val _nextPreviewSong = MutableStateFlow<Song?>(null)
-    /** Natural playback target, including repeat and shuffle; presentation only. */
-    val nextPreviewSong: StateFlow<Song?> = _nextPreviewSong
     private val _played = MutableStateFlow<List<Int>>(emptyList())
     /** Queue indices already played (before the current song in play order), oldest first. */
     val played: StateFlow<List<Int>> = _played
@@ -131,8 +211,17 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** The listener's own nudge for this song (and mode), in ms; positive shows lyrics earlier. */
     val lyricOffset: StateFlow<Long> = _lyricOffset
     private val _lyricShift = MutableStateFlow(0L)
-    /** Added to the playhead to get the lyrics' time (the offset, minus any video lag). */
+    /** Added to the playhead to get the lyrics' time ([lyricShiftOf]: this song's offset, Settings' for all, less any video lag). */
     val lyricShift: StateFlow<Long> = _lyricShift
+    /** Settings → Lyrics → timing (#404), as last read: for every song, on top of [lyricOffset]. */
+    private var lyricsSettingMs = 0
+
+    init {
+        // A change applies at once, while the song plays: every reader of the lyrics' time goes through [lyricShift].
+        scope.launch {
+            c.settings.flow.map { it.behavior.lyricsOffsetMs }.distinctUntilChanged().collect { lyricsSettingMs = it; updateShift() }
+        }
+    }
     private var syncKey: String? = null
     private var syncJob: kotlinx.coroutines.Job? = null
 
@@ -191,7 +280,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     private fun updateShift() {
         val lag = (_videoSync.value as? VideoSyncState.Synced)?.lagMs ?: 0L
-        _lyricShift.value = _lyricOffset.value - lag
+        _lyricShift.value = lyricShiftOf(_lyricOffset.value, lyricsSettingMs, lag)
     }
 
     private val _episodeSpeed = MutableStateFlow(1f)
@@ -300,18 +389,29 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** Asks the UI to bring the full player up. */
     val showPlayer = _showPlayer.asSharedFlow()
 
-    /** Songs found for music videos / live performances this session (video id -> song). */
-    private val videoSongs = java.util.concurrent.ConcurrentHashMap<String, Song>()
     private var playToken = 0
 
-    fun playQueue(songs: List<Song>, startIndex: Int = 0, source: QueueSource, shuffle: Boolean = false) {
+    /**
+     * [rest]: for a long list started from its first page (#356), gives the next page's songs each time it's asked, null
+     * when there are no more. They join the queue behind the songs playing ([fillQueue]).
+     */
+    fun playQueue(songs: List<Song>, startIndex: Int = 0, source: QueueSource, shuffle: Boolean = false, rest: (suspend () -> List<Song>?)? = null) {
         if (songs.isEmpty()) return
+        // "No repeats this session" (#159): a radio starts without what's been heard, on the song it starts on.
+        if (source.kind == QueueKind.RADIO && c.settings.current.behavior.autoplayNoRepeats) {
+            val (kept, at) = c.sessionHeard.radioStart(songs, startIndex)
+            if (kept.size < songs.size) { startFiltered(kept, at, source, shuffle, rest); return }
+        }
+        startFiltered(songs, startIndex, source, shuffle, rest)
+    }
+
+    private fun startFiltered(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, rest: (suspend () -> List<Song>?)?) {
         // #216: with the explicit filter on, explicit songs don't go in (a tapped one gives way to the next that may play).
         val mode = c.settings.current.behavior.explicitContent
         if (mode != com.vinz.music.data.prefs.ExplicitContent.SHOW && songs.any { it.explicit }) {
             val (kept, at) = com.vinz.music.data.ExplicitFilter.queue(mode, songs, startIndex) ?: run { reportError(tr(R.string.explicit_none_left)); return }
             if (!shuffle && songs.getOrNull(startIndex)?.explicit == true) reportError(tr(R.string.explicit_skipped))
-            playQueue(kept, at, source, shuffle)
+            startFiltered(kept, at, source, shuffle, rest)
             return
         }
         source.page?.let { c.recentCollections.played(it) }
@@ -319,41 +419,160 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val first = if (shuffle) songs.indices.random() else startIndex.coerceIn(0, songs.lastIndex)
         val tapped = songs[first]
         val everywhere = songsEverywhere()
+        // #383: a playlist's videos, as YouTube pairs them with their songs (one request), for when each comes up.
+        val pairsFrom = playlistToPair(everywhere, source, c.settings.current.isLoggedIn)
         // Live streams play as they are: they have no "song version" to swap in.
-        if ((shuffle && !everywhere) || !tapped.isVideo || tapped.isLive || tapped.isEpisode) { startQueue(songs, first, source, shuffle, null); return }
+        if ((shuffle && !everywhere) || !tapped.isVideo || tapped.isLive || tapped.isEpisode) {
+            if (pairsFrom != null) scope.launch { pairPlaylist(pairsFrom, tapped.id, source.title) }
+            startQueue(songs, first, source, shuffle, null, rest = rest)
+            return
+        }
         // With the Song / Video switch off the player is audio only (#48): a music video plays as its song, or as
         // the video's sound when it has no song, never with its picture (there'd be no switch to turn it off).
         // "Songs, not videos" everywhere (#80) plays it as its song too, and so does a shuffled start.
-        val audioOnly = !c.settings.current.showVideoSwitch || everywhere || shuffle
+        // On mobile data with "No videos on mobile data" (#281) too, unless the picture's kept on the phone.
+        val audioOnly = !c.settings.current.showVideoSwitch || everywhere || shuffle || (VideoOnData.off(c) && !c.downloads.videoSaved(tapped.id))
         // A music video or live performance opens as the song it's of, already showing the video
         // (the Song button then plays the track itself). With no song to match, the video plays as it is.
         if (!audioOnly) _showPlayer.tryEmit(Unit)
         scope.launch {
-            val song = songFor(tapped, 4_000)
+            // The playlist's own pairing first (a playlist from Home: Vinz's title search missed half of #383's).
+            val started = android.os.SystemClock.elapsedRealtime()
+            if (pairsFrom != null) pairPlaylist(pairsFrom, tapped.id, source.title)
+            val song = songFor(tapped, (4_000 - (android.os.SystemClock.elapsedRealtime() - started)).coerceAtLeast(500))
             if (token != playToken) return@launch
             val list = if (song == null) songs else songs.toMutableList().also { it[first] = song }
-            startQueue(list, first, source, shuffle, tapped.id.takeUnless { audioOnly })
+            startQueue(list, first, source, shuffle, tapped.id.takeUnless { audioOnly }, rest = rest)
         }
+    }
+
+    /**
+     * Holds a place for a queue still being looked up (a long press's Play or Shuffle, #356). [stillStarting] says no
+     * once something else was played or the queue stopped meanwhile: that wins, and the lookup's songs aren't played.
+     * The queue playing carries on as it was until there's a new one ([fillQueue] included): the lookup may come to nothing.
+     */
+    fun queueStarting(): Int = ++playToken
+    fun stillStarting(token: Int) = token == playToken
+
+    /** The job adding a long list's later pages to the queue (#356). */
+    private var fill: kotlinx.coroutines.Job? = null
+
+    private fun stopFill() {
+        fill?.cancel()
+        fill = null
+        c.queue.filling = false
+    }
+
+    /**
+     * Adds what [rest] gives to the queue behind the playing song: the rest of a long list, started from its first page
+     * so nothing waits on the whole of it (#356). Songs the queue started with ([have]) aren't added twice and the
+     * explicit filter applies as it did to them. Stops by itself when the queue is replaced, whoever replaces it: what's
+     * started here, a car, a watch or a spoken request. Added a batch at a time, as each one makes the player rebuild
+     * its timeline and the UI re-read the whole queue.
+     */
+    private fun fillQueue(rest: suspend () -> List<Song>?, source: QueueSource, have: List<Song>) {
+        stopFill()
+        c.queue.filling = true
+        val mode = c.settings.current.behavior.explicitContent
+        val seen = have.mapTo(HashSet()) { it.id }
+        var job: kotlinx.coroutines.Job? = null
+        // Not by [playToken], which moves as soon as anything is asked for, even what then fails to load: Vinz's own
+        // new queues end this with [stopFill], and what replaces the queue from outside changes its source.
+        fun wanted() = job?.isActive == true && c.queue.source.value == source
+        job = scope.launch {
+            try {
+                val waiting = ArrayList<Song>()
+                while (true) {
+                    val page = try {
+                        withContext(Dispatchers.IO) { rest() }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // What came so far stays; the queue just ends sooner than the list.
+                        AudioDiagnostics.log("queue", "the rest of \"${source.title}\" didn't load: ${e.message}")
+                        null
+                    } ?: break
+                    if (!wanted()) return@launch
+                    page.filterTo(waiting) { com.vinz.music.data.ExplicitFilter.plays(mode, it) && seen.add(it.id) }
+                    if (waiting.size >= FILL_BATCH) { addFilled(waiting); waiting.clear() }
+                }
+                if (wanted() && waiting.isNotEmpty()) addFilled(waiting)
+            } finally {
+                if (fill === job) { fill = null; c.queue.filling = false }
+            }
+            // The list is all in: only now can autoplay tell the queue is nearly over.
+            if (wanted()) service?.maybeAutoplay()
+        }
+        fill = job
+    }
+
+    /** [songs] at the end of the queue (before autoplay's suggestions), and shuffled in among what's still to come. */
+    private suspend fun addFilled(songs: List<Song>) {
+        val items = withContext(Dispatchers.Default) { songs.map { it.toMediaItem() } }
+        val p = player ?: return
+        val auto = c.queue.autoplayStart.value
+        val at = if (auto in 0..p.mediaItemCount) auto else p.mediaItemCount
+        p.addMediaItems(at, items)
+        if (auto >= 0) c.queue.autoplayStart.value = auto + items.size
+        if (!p.shuffleModeEnabled) return
+        val order = p.shuffleOrder as? HistoryShuffleOrder ?: return
+        val playing = p.currentMediaItemIndex
+        val ahead = playOrder(p).let { o -> o.drop(o.indexOf(playing) + 1) }
+        // What the listener lined up with Play next stays next; so does a next song that's about to start (its stream
+        // is ready, and a crossfade may be under way).
+        val queued = ahead.takeWhile { p.getMediaItemAt(it).mediaId in c.queue.userQueued.value }.size
+        val soon = p.duration > 0 && p.duration - p.currentPosition < SOON_MS
+        p.setShuffleOrder(order.scattered((at until at + items.size).toList(), playing, keep = queued + if (soon) 1 else 0))
     }
 
     /** Settings → Playback → "Songs, not videos" → Everywhere (#80). */
     fun songsEverywhere(): Boolean = c.settings.current.let { it.radioSongsOnly && it.songsEverywhere }
 
     /**
-     * The song a music video is of ([YouTubeMusic.songForVideo]), remembered for the session; the video becomes the
-     * song's counterpart (its Video button). Null when there's none, or it took longer than [timeoutMs].
+     * #383 (1.8.3): the playlist's watch queue, asked once, with YouTube's own song for each of its music videos: kept
+     * with the other pairings ([com.vinz.music.data.meta.PlaysAs]), so each video plays as its song when it comes up
+     * (signed out YouTube pairs nothing there, and the title search alone missed many: Telugu film songs whose videos
+     * are a label's uploads). 1.8.7: YouTube's own pairing stands over a title search's from earlier.
+     */
+    private suspend fun pairPlaylist(playlistId: String, startId: String, title: String) {
+        val pairs = kotlinx.coroutines.withTimeoutOrNull(2_500) {
+            runCatching { withContext(Dispatchers.IO) { c.ytm.next(startId, playlistId).videoSongs() } }.getOrNull()
+        } ?: return
+        c.plays.learnAll(pairs.toList(), com.vinz.music.data.meta.PairSource.PLAYLIST)
+        AudioDiagnostics.log("queue", "\"$title\": YouTube pairs ${pairs.size} of its videos with their songs")
+    }
+
+    companion object {
+        /** The playlist whose pairing is asked for ([pairPlaylist]): Everywhere, signed in, a playlist queue. */
+        internal fun playlistToPair(everywhere: Boolean, source: QueueSource, signedIn: Boolean): String? =
+            source.originId?.removePrefix("VL")?.takeIf { everywhere && signedIn && source.kind == QueueKind.PLAYLIST && it.isNotBlank() }
+    }
+
+    /**
+     * The song a music video plays as: the pairing [com.vinz.music.data.meta.PlaysAs] knows (kept on the phone since
+     * 1.8.7, whoever learned it), else the one [YouTubeMusic.songForVideo] finds, kept there; the video becomes the song's
+     * counterpart (its Video button). Null when the listener picked a version for the video (it plays as itself, with the
+     * pick), when there's none, or it took longer than [timeoutMs].
      */
     suspend fun songFor(video: Song, timeoutMs: Long = 8_000): Song? =
-        (videoSongs[video.id] ?: kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
-            runCatching { kotlinx.coroutines.withContext(Dispatchers.IO) { c.ytm.songForVideo(video) } }.getOrNull()
-        }?.also { videoSongs[video.id] = it })?.also { c.queue.counterparts[it.id] = video.id }
+        c.plays.songForVideo(video) {
+            kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+                runCatching { kotlinx.coroutines.withContext(Dispatchers.IO) { c.ytm.songForVideo(video) } }.getOrNull()
+            }
+        }?.also { c.queue.counterparts[it.id] = video.id }
 
-    private fun startQueue(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, startVideo: String?, startMs: Long = 0) {
+    private fun startQueue(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, startVideo: String?, startMs: Long = 0, rest: (suspend () -> List<Song>?)? = null) {
+        stopFill()
+        // Before the player starts: autoplay would otherwise see a short first page as a queue nearly over.
+        c.queue.filling = rest != null
+        val token = playToken
         // DJ mode is for the queue it was turned on in; "Play as a DJ set" turns it on for the new one.
         val dj = djNext && !shuffle
         djNext = false
         c.dj.setOn(false)
-        // A new queue starts as plain shuffle (or none); Smart Shuffle is turned on per queue.
+        // A new queue starts as plain shuffle (or none); Smart Shuffle is turned on per queue. With "Keep shuffle on for
+        // the next list" (#416) a list takes over what the queue before it had, Smart Shuffle too ([carryShuffle], below).
+        val wasSmart = c.queue.smartShuffle.value
         c.queue.smartShuffle.value = false
         c.queue.smartPicks.value = emptySet()
         c.queue.source.value = source
@@ -362,14 +581,30 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.userQueued.value = emptySet()
         ensureStarted()
         withPlayer { p ->
-            p.shuffleModeEnabled = shuffle
+            // Whatever Autoplay was still finding was for the queue going now: this one asks for its own, below.
+            service?.dropAutoplay()
             val start = startIndex.coerceIn(0, songs.lastIndex)
+            val was = when { !p.shuffleModeEnabled -> ShuffleMode.OFF; wasSmart -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
+            val prefs = c.settings.current.behavior
+            val mode = carryShuffle(
+                was, prefs.keepShuffle, startKind(source, songs, start, asVideo = startVideo != null, dj = dj), asked = shuffle,
+                prefs.shuffleButton, c.queue.smartAllowed(),
+            )
+            val shuffled = mode != ShuffleMode.OFF
+            p.shuffleModeEnabled = shuffled
             p.setMediaItems(songs.mapIndexed { i, s -> s.toMediaItem(if (i == start) startVideo else null) }, start, startMs.coerceAtLeast(0))
-            if (shuffle) reshuffle(p)
+            // The song it starts on first, the rest in a new order.
+            if (shuffled) reshuffle(p)
             p.prepare()
             p.play()
+            if (mode == ShuffleMode.SMART) {
+                c.queue.smartShuffle.value = true
+                // Its picks now: the service's Smart Shuffle collector never saw it go off and on again above.
+                c.queue.smartStarted.value++
+            }
             service?.maybeAutoplay()
             if (dj) c.dj.setOn(true)
+            if (rest != null && token == playToken) fillQueue(rest, source, songs)
         }
     }
 
@@ -389,6 +624,14 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     /** Plays a lone song; autoplay then continues with similar music. */
     fun playSingle(song: Song) = playQueue(listOf(song), 0, QueueSource(QueueKind.SINGLE, tr(R.string.autoplay), seedId = song.id))
+
+    /** [playSingle] from [startMs] in (a recognized song carrying on from what was heard, #215); 0 is the start. */
+    fun playSingleFrom(song: Song, startMs: Long) {
+        // The explicit filter (#216) has its say the usual way.
+        if (startMs <= 0 || (song.explicit && c.settings.current.behavior.explicitContent != com.vinz.music.data.prefs.ExplicitContent.SHOW)) { playSingle(song); return }
+        ++playToken
+        startQueue(listOf(song), 0, QueueSource(QueueKind.SINGLE, tr(R.string.autoplay), seedId = song.id), shuffle = false, startVideo = null, startMs = startMs)
+    }
 
     /**
      * Plays [song] from its best part (its most replayed stretch, or its chorus), then on as [playSingle] would.
@@ -413,6 +656,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val p = player
         if (p == null || p.mediaItemCount == 0 || p.currentMediaItem?.mediaId != song.id) { playQueue(listOf(song), 0, source); return }
         ++playToken
+        stopFill()
         // As a new queue would be: just this song (what came before stays in Played), in order, the radio to follow.
         djNext = false
         c.dj.setOn(false)
@@ -427,9 +671,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (at + 1 < p.mediaItemCount) p.removeMediaItems(at + 1, p.mediaItemCount)
         if (at > 0) p.removeMediaItems(0, at)
         if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
-        // An autoplay load still out for the old queue drops its songs when it lands (the source changed): the radio
-        // asks now rather than wait on it.
-        c.queue.autoplayLoading = false
+        // An autoplay load still out for the old queue is dropped: the radio asks now rather than wait on it.
+        service?.dropAutoplay()
         service?.maybeAutoplay()
     }
 
@@ -457,6 +700,15 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         return kept
     }
 
+    /**
+     * With nothing on, [songs] become the queue: one song as a single (its radio follows), several (songs picked with
+     * Select many, which come with no [source], #476: only the first used to play) in their order.
+     */
+    private fun startWith(songs: List<Song>, source: QueueSource?) {
+        if (source == null && songs.size == 1) playSingle(songs.first())
+        else playQueue(songs, 0, source ?: QueueSource(QueueKind.OTHER, ""))
+    }
+
     /** Songs (one, or a whole album or playlist) straight after the current song, or played, with nothing on. */
     fun playNext(songs: List<Song>, source: QueueSource?) {
         if (songs.isEmpty()) return
@@ -464,8 +716,21 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (allowed.size < songs.size) return playNext(allowed, source)
         withPlayer { p ->
             if (p.mediaItemCount == 0) {
-                if (source == null) playSingle(songs.first()) else playQueue(songs, 0, source)
-            } else insertQueued(p, p.currentMediaItemIndex + 1, songs)
+                startWith(songs, source)
+            } else {
+                // #368: a song already coming up moves up (it used to go in a second time). Next already: nothing moves,
+                // so a stream or a blend being got ready for it carries on.
+                val order = playOrder(p)
+                val ahead = order.drop(order.indexOf(p.currentMediaItemIndex) + 1)
+                val aheadIds = ahead.map { p.getMediaItemAt(it).mediaId }
+                val ids = songs.map { it.id }
+                if (aheadIds.take(ids.size) == ids) {
+                    c.queue.userQueued.value = c.queue.userQueued.value + ids
+                    return@withPlayer
+                }
+                QueueEdit.copiesMovingUp(aheadIds, ids).map { ahead[it] }.sortedDescending().forEach { removeAt(it) }
+                insertQueued(p, p.currentMediaItemIndex + 1, songs)
+            }
         }
     }
 
@@ -479,7 +744,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (allowed.size < songs.size) return addToQueue(allowed, source)
         withPlayer { p ->
             if (p.mediaItemCount == 0) {
-                if (source == null) playSingle(songs.first()) else playQueue(songs, 0, source)
+                startWith(songs, source)
             } else {
                 val auto = c.queue.autoplayStart.value
                 val cur = p.currentMediaItemIndex
@@ -505,6 +770,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     fun follow(songs: List<Song>, positionMs: Long, title: String, playing: Boolean, index: Int = 0) {
         if (songs.isEmpty()) return
         ++playToken
+        stopFill()
         c.queue.source.value = QueueSource(QueueKind.OTHER, title)
         c.queue.autoplayContinuation = null
         c.queue.autoplayStart.value = -1
@@ -526,6 +792,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     fun takeOver(songs: List<Song>, index: Int, positionMs: Long, playing: Boolean, order: List<Int>?, repeat: Int, title: String) {
         if (songs.isEmpty()) return
         ++playToken
+        stopFill()
         djNext = false
         c.dj.setOn(false)
         c.queue.smartShuffle.value = false
@@ -570,6 +837,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     /** Takes everything after the current song out of the queue. */
     fun clearUpcoming() = withPlayer { p ->
+        stopFill()
         val i = p.currentMediaItemIndex
         if (i + 1 < p.mediaItemCount) p.removeMediaItems(i + 1, p.mediaItemCount)
         c.queue.autoplayStart.value = -1
@@ -578,6 +846,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     /** Stops and empties the queue, so the mini player goes (#59: swiped down). */
     fun stop() = withPlayer { p ->
+        ++playToken
+        stopFill()
         p.stop()
         p.clearMediaItems()
         c.queue.autoplayStart.value = -1
@@ -596,6 +866,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     fun next() = withPlayer { it.seekToNext() }
     fun previous() = withPlayer { it.seekToPrevious() }
+    /** The song before, wherever this one is (#481: Previous held): the player's own previous item, so shuffle's order. */
+    fun previousSong() = withPlayer { it.seekToPreviousMediaItem() }
 
     /** Calls [done] once the player is reached (after commands asked for before it, such as a widget's), at once if it is. */
     fun afterPending(done: () -> Unit) = withPlayer { done() }
@@ -721,6 +993,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val order = playOrder(p)
         val at = order.indexOf(index)
         if (at < 0) return@withPlayer
+        stopFill()
         removeMany(order.drop(at + 1))
     }
 
@@ -751,12 +1024,22 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         }
         return out
     }
-    /** Shuffle's button: off → shuffle → Smart Shuffle (where the queue allows it) → off. */
+    /**
+     * Shuffle's button (the player's, the TV's and the browser remote's all come here): off → shuffle → Smart Shuffle
+     * (where the queue allows it) → off, or off → on → off with "Shuffle only" (D57): [nextShuffle].
+     */
     fun toggleShuffle() = withPlayer {
-        when {
-            !it.shuffleModeEnabled -> { reshuffle(it); it.shuffleModeEnabled = true }
-            !c.queue.smartShuffle.value && c.queue.smartAllowed() -> c.queue.smartShuffle.value = true
-            else -> { c.queue.smartShuffle.value = false; it.shuffleModeEnabled = false }
+        // #374: in DJ mode Shuffle deals a new DJ set; DJ mode stays on and its order stays the order (no Media3 shuffle).
+        if (c.dj.onNow) {
+            if (it.shuffleModeEnabled) it.shuffleModeEnabled = false
+            c.dj.newSet()
+            return@withPlayer
+        }
+        val now =when { !it.shuffleModeEnabled -> ShuffleMode.OFF; c.queue.smartShuffle.value -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
+        when (nextShuffle(now, c.settings.current.behavior.shuffleButton, c.queue.smartAllowed())) {
+            ShuffleMode.SHUFFLE -> { reshuffle(it); it.shuffleModeEnabled = true }
+            ShuffleMode.SMART -> c.queue.smartShuffle.value = true
+            ShuffleMode.OFF -> { c.queue.smartShuffle.value = false; it.shuffleModeEnabled = false }
         }
     }
 
@@ -770,13 +1053,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val cur = p.currentMediaItemIndex.coerceIn(0, n - 1)
         p.setShuffleOrder(HistoryShuffleOrder.shuffled(n, cur) { p.currentMediaItemIndex })
     }
-    fun cycleRepeat() = withPlayer {
-        it.repeatMode = when (it.repeatMode) {
-            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
-        }
-    }
+    fun cycleRepeat() = withPlayer { it.repeatMode = nextRepeatMode(it.repeatMode) }
 
     private val _videoLoading = MutableStateFlow(false)
     /** True from tapping the video button until its first frame shows. */
@@ -803,6 +1080,11 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val s = service ?: return
         if (enabled && c.cast.casting) {
             _errors.tryEmit(tr(R.string.videos_play_on_this_phone_while))
+            return
+        }
+        // #281: asked for some way other than the button (a gesture, the web remote).
+        if (enabled && _videoOffOnData.value) {
+            _errors.tryEmit(tr(R.string.videos_are_off_on_mobile_data))
             return
         }
         _videoLoading.value = enabled
@@ -867,9 +1149,29 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         }
     }
 
-    val position: Long get() = player?.currentPosition ?: 0
-    val duration: Long get() = player?.duration?.takeIf { it > 0 } ?: ((_current.value?.durationSec ?: 0) * 1000L)
-    val bufferedPosition: Long get() = player?.bufferedPosition ?: 0
+    // The player may only be asked on its own thread (main). Asked from anywhere else (Compose's test clock can run a frame
+    // on a worker, which made QuickPicksPlayingTest fail now and then), these give the last value read on that thread.
+    @Volatile private var lastPosition = 0L
+    @Volatile private var lastDuration = 0L
+    @Volatile private var lastBuffered = 0L
+
+    val position: Long get() {
+        val p = player ?: return 0
+        return if (android.os.Looper.myLooper() == p.applicationLooper) p.currentPosition.also { lastPosition = it } else lastPosition
+    }
+    val duration: Long get() {
+        val p = player
+        val d = when {
+            p == null -> 0L
+            android.os.Looper.myLooper() == p.applicationLooper -> p.duration.also { lastDuration = it }
+            else -> lastDuration
+        }
+        return d.takeIf { it > 0 } ?: ((_current.value?.durationSec ?: 0) * 1000L)
+    }
+    val bufferedPosition: Long get() {
+        val p = player ?: return 0
+        return if (android.os.Looper.myLooper() == p.applicationLooper) p.bufferedPosition.also { lastBuffered = it } else lastBuffered
+    }
 
     // ------------------------------------------------------------ State mirroring
 
@@ -902,8 +1204,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             var i = tl.getNextWindowIndex(p.currentMediaItemIndex, Player.REPEAT_MODE_OFF, p.shuffleModeEnabled)
             while (i != C.INDEX_UNSET && size < tl.windowCount) { add(i); i = tl.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, p.shuffleModeEnabled) }
         }
-        val nextPreviewIndex = nextPreviewWindow(p.currentTimeline, p.currentMediaItemIndex, p.repeatMode, p.shuffleModeEnabled)
-        _nextPreviewSong.value = _queue.value.firstOrNull { it.index == nextPreviewIndex }?.song
         // Before the current song in play order, oldest first (#68: the queue only went forward).
         _played.value = buildList {
             val tl = p.currentTimeline
@@ -928,6 +1228,15 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      */
     val videoFailedFor: StateFlow<String?> = _videoFailedFor
 
+    private val _videoOffOnData = MutableStateFlow(false)
+    /** #281: the song playing has no video for now, because videos are off on mobile data ([VideoOnData]). */
+    val videoOffOnData: StateFlow<Boolean> = _videoOffOnData
+
+    /** #281: the network or the setting changed, so the Video button may have too. */
+    internal fun recheckVideo() {
+        _current.value?.let { checkVideo(it) }
+    }
+
     /**
      * Finds the song's music video as it starts (and warms it up), so the
      * button is ready. Greyed out only when there definitely isn't a video;
@@ -935,9 +1244,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      */
     private fun checkVideo(song: Song) {
         _videoLoading.value = false
+        val saved = c.downloads.downloadedVideoId(song.id)
+        // #281: nothing's looked up or warmed up either: that's data too.
+        _videoOffOnData.value = VideoOnData.stops(VideoOnData.off(c), saved != null)
+        if (_videoOffOnData.value) { _videoAvailable.value = false; return }
         // A live stream carries its own picture (the same HLS stream), so there's nothing to look up.
         if (song.isLive) { _videoAvailable.value = true; return }
-        val saved = c.downloads.downloadedVideoId(song.id)
         if (saved == null && song.id in c.queue.noVideo) { _videoAvailable.value = false; return }
         val known = if (song.isVideo) song.id else saved ?: c.queue.counterparts[song.id]
         _videoAvailable.value = known != null

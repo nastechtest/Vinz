@@ -37,8 +37,6 @@ data class LyricLine(
     val isGap: Boolean = false,
     /** Background vocals sung with the line ("(Back to let you know)"), word-timed; drawn smaller under it (#66). */
     val background: List<LyricWord> = emptyList(),
-    /** Evidence for branding eligibility; ordinary gap presentation does not imply vocal silence. */
-    val gapProvenance: GapProvenance = GapProvenance.UNKNOWN,
 ) {
     val isWordSynced: Boolean get() = words.isNotEmpty()
 
@@ -239,8 +237,26 @@ object Lrc {
     private val tag = Regex("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]")
     private val meta = Regex("^\\[(ar|ti|al|by|offset|length|re|ve|id|au|la|tool|#):.*]$", RegexOption.IGNORE_CASE)
     private val offsetTag = Regex("^\\[offset:\\s*([+-]?\\d+)\\s*]$", RegexOption.IGNORE_CASE)
+    /** A word's start in enhanced LRC: "[00:12.00]<00:12.00>Word <00:12.48>by". */
+    private val wordTag = Regex("<(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?>")
 
     fun isLrc(text: String) = tag.containsMatchIn(text)
+
+    private fun ms(min: String, sec: String, frac: String): Long =
+        min.toLong() * 60_000 + sec.toLong() * 1000 + when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
+
+    /** Enhanced LRC's line as its words ("Word " keeps the space after it), each to the next one's start; empty for a plain line. */
+    private fun words(content: String, lineEndMs: Long): List<LyricWord> {
+        val tags = wordTag.findAll(content).toList()
+        if (tags.isEmpty()) return emptyList()
+        return tags.mapIndexedNotNull { i, m ->
+            val text = content.substring(m.range.last + 1, tags.getOrNull(i + 1)?.range?.first ?: content.length)
+            if (text.isEmpty()) return@mapIndexedNotNull null
+            val start = ms(m.groupValues[1], m.groupValues[2], m.groupValues[3])
+            val next = tags.getOrNull(i + 1)?.let { ms(it.groupValues[1], it.groupValues[2], it.groupValues[3]) }
+            LyricWord(start, maxOf(start, next ?: lineEndMs), text)
+        }
+    }
 
     /** An ID tag's value ("[ti:Thriller(Single Version)]" → "Thriller(Single Version)"), or null. */
     fun metaTag(text: String, name: String): String? =
@@ -258,20 +274,18 @@ object Lrc {
             val stamps = tag.findAll(line).toList()
             if (stamps.isEmpty()) continue
             val content = line.substring(stamps.last().range.last + 1).trim()
-            if (creditLine.matches(content)) continue
-            for (m in stamps) {
-                val min = m.groupValues[1].toLong()
-                val sec = m.groupValues[2].toLong()
-                val frac = m.groupValues[3]
-                val ms = when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
-                raw += (min * 60_000 + sec * 1000 + ms) to content
-            }
+            if (creditLine.matches(content.replace(wordTag, ""))) continue
+            for (m in stamps) raw += ms(m.groupValues[1], m.groupValues[2], m.groupValues[3]) to content
         }
         val sorted = raw.map { (t, s) -> (t - offset).coerceAtLeast(0) to s }.sortedBy { it.first }
         return sorted.mapIndexed { i, (t, s) ->
             val end = sorted.getOrNull(i + 1)?.first ?: (t + 5000)
-            LyricLine(t, s, end, isGap = s.isBlank(),
-                gapProvenance = if (s.isBlank()) GapProvenance.LRC_BLANK else GapProvenance.UNKNOWN)
+            val text = s.replace(wordTag, "")
+            // Enhanced LRC ([words]), as [com.vinz.music.data.local.LyricsTags] writes it into files: the stamps never show.
+            val words = if (text.length == s.length) emptyList() else words(s, end + offset).map { w ->
+                w.copy(startMs = (w.startMs - offset).coerceAtLeast(0), endMs = (w.endMs - offset).coerceAtLeast(0))
+            }
+            LyricLine(t, text.trim(), end, words = words, isGap = text.isBlank())
         }.withLeadingGap()
     }
 
@@ -281,7 +295,7 @@ object Lrc {
 /** An intro before the first sung line reads as an instrumental break. */
 private fun List<LyricLine>.withLeadingGap(): List<LyricLine> {
     val first = firstOrNull { !it.isGap } ?: return this
-    return if (first.timeMs > 3000 && firstOrNull()?.isGap != true) listOf(LyricLine(0, "", first.timeMs, isGap = true, gapProvenance = GapProvenance.INFERRED_INTRO)) + this else this
+    return if (first.timeMs > 3000 && firstOrNull()?.isGap != true) listOf(LyricLine(0, "", first.timeMs, isGap = true)) + this else this
 }
 
 /** Apple Music TTML (word or line timed), as served by Better Lyrics. */
@@ -377,7 +391,7 @@ internal fun List<LyricLine>.withInstrumentalGaps(): List<LyricLine> {
     val withGaps = mutableListOf<LyricLine>()
     sortedBy { it.timeMs }.forEachIndexed { i, l ->
         val prevEnd = withGaps.lastOrNull()?.endMs ?: 0L
-        if (i > 0 && l.timeMs - prevEnd > 6000) withGaps += LyricLine(prevEnd, "", l.timeMs, isGap = true, gapProvenance = GapProvenance.INFERRED_TIMING)
+        if (i > 0 && l.timeMs - prevEnd > 6000) withGaps += LyricLine(prevEnd, "", l.timeMs, isGap = true)
         withGaps += l
     }
     return withGaps.withLeadingGap()
@@ -520,7 +534,8 @@ object WordFormat {
         if (bytes.size < 5 || String(bytes, 0, 4, Charsets.US_ASCII) != "krc1") return null
         val key = intArrayOf(64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105)
         val data = ByteArray(bytes.size - 4) { i -> (bytes[i + 4].toInt() xor key[i % 16]).toByte() }
-        java.util.zip.InflaterInputStream(data.inputStream()).bufferedReader(Charsets.UTF_8).readText()
+        // KuGou's files can start with a byte-order mark, which then stuck to the first line's first word (#403's KAIRO).
+        java.util.zip.InflaterInputStream(data.inputStream()).bufferedReader(Charsets.UTF_8).readText().replace("﻿", "")
     }.getOrNull()
 }
 
@@ -544,7 +559,25 @@ class LyricsRepository(
     private fun getText(url: okhttp3.HttpUrl, headers: Map<String, String> = emptyMap()): String? {
         val b = Request.Builder().url(url).header("User-Agent", browserUa)
         headers.forEach { (k, v) -> b.header(k, v) }
-        return http.newCall(b.build()).execute().use { r -> if (!r.isSuccessful) null else r.body.string() }
+        return http.newCall(b.build()).execute().use { r ->
+            // A server in trouble (or turning us away for now) hasn't said it has no lyrics: not a miss (6.2).
+            if (r.code >= 500 || r.code == 429) throw java.io.IOException("HTTP ${r.code} from ${url.host}")
+            if (!r.isSuccessful) null else r.body.string()
+        }
+    }
+
+    /** Whether the phone is online; no lyric service is asked while it isn't (6.2). */
+    var online: () -> Boolean = { true }
+
+    /** A JSON answer's own title, artist and length, where it gives them, are the song's ([SongMatch]); unknown passes. */
+    private fun metaFits(song: Song, meta: JsonElement?): Boolean {
+        if (meta !is JsonObject) return true
+        fun first(vararg keys: String) = keys.firstNotNullOfOrNull { k -> meta[k]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content } }
+        val title = first("title", "trackName", "track_name", "track", "song", "songName", "song_name")
+        val artist = first("artist", "artistName", "artist_name", "artists")
+        // No length: these services were asked with the song's length already, and what they call a duration (LyricsPlus'
+        // "totalDuration" is the lyrics' own, "4:50.984") isn't the recording's.
+        return SongMatch.fits(song, title, artist, null)
     }
 
     private fun getJson(url: okhttp3.HttpUrl, headers: Map<String, String> = emptyMap()): JsonElement? =
@@ -557,8 +590,7 @@ class LyricsRepository(
      * an extended or radio edit 10–30 s off when that was all they had, and every line ran early or late.
      * A few seconds' difference (fade-outs, rounding) is normal; unknown lengths pass.
      */
-    private fun lengthFits(song: Song, sec: Double?): Boolean =
-        song.durationSec <= 0 || sec == null || sec <= 0 || abs(sec - song.durationSec) <= MAX_LENGTH_GAP_SEC
+    private fun lengthFits(song: Song, sec: Double?): Boolean = SongMatch.length(song, sec) != SongMatch.Verdict.MISMATCH
 
     // Word timings that aren't the words' (outside their line, every word the same length) are shown by their lines (#301).
     private fun build(source: LyricsSource, text: String?): Lyrics? = parse(source, text)?.let(::untimedIfBogus)
@@ -607,9 +639,15 @@ class LyricsRepository(
         }.build()
 
     private fun fetchApple(song: Song): String? {
+        // A mirror that can't be reached isn't a "no": only when none answered at all is it network trouble (6.2).
+        var trouble: java.io.IOException? = null
+        var answered = false
         for (base in listOf("https://api.betterlyrics.org/getLyrics", "https://lyrics-api.boidu.dev/getLyrics")) {
-            runCatching { getJson(betterLyricsUrl(base, song)).str("ttml") }.getOrNull()?.takeIf { it.contains("<p") }?.let { return it }
+            val res = try { getJson(betterLyricsUrl(base, song)).also { answered = true } } catch (e: java.io.IOException) { trouble = e; null }
+            if (!metaFits(song, res)) continue
+            res.str("ttml")?.takeIf { it.contains("<p") }?.let { return it }
         }
+        if (!answered) trouble?.let { throw it }
         return null
     }
 
@@ -635,16 +673,29 @@ class LyricsRepository(
             .addQueryParameter("artist_name", song.primaryArtist)
         song.album?.title?.let { base.addQueryParameter("album_name", it) }
         if (song.durationSec > 0) base.addQueryParameter("duration", song.durationSec.toString())
-        val exact = runCatching { getJson(base.build()) }.getOrNull()
-        val pick = exact ?: run {
+        // Network trouble goes up to [fetchRaw], which doesn't keep it as a miss (6.2); it used to be swallowed here.
+        val exact = getJson(base.build())
+        val pick = pickLrcLib(song, exact, null) ?: run {
             val search = "https://lrclib.net/api/search".toHttpUrl().newBuilder()
                 .addQueryParameter("track_name", title)
                 .addQueryParameter("artist_name", song.primaryArtist).build()
-            val list = (runCatching { getJson(search) }.getOrNull() as? JsonArray) ?: return null
-            list.minByOrNull { abs((it.str("duration")?.toDoubleOrNull() ?: 0.0) - song.durationSec) }
-                ?.takeIf { lengthFits(song, it.str("duration")?.toDoubleOrNull()) }
+            pickLrcLib(song, null, getJson(search) as? JsonArray ?: return null)
         }
         return pick.str("syncedLyrics")?.takeIf { it.isNotBlank() } ?: pick.str("plainLyrics")
+    }
+
+    /**
+     * LRCLIB's answer that is [song] (PR #494 by NeeL21YT): its exact lookup can return the nearest recording, and its
+     * search is broad ("São Paulo" by someone else). Each hit's own title, artist and length have to fit ([SongMatch]);
+     * of the search's, the closest length.
+     */
+    internal fun pickLrcLib(song: Song, exact: JsonElement?, search: JsonArray?): JsonElement? {
+        fun fits(v: JsonElement) = v is JsonObject &&
+            SongMatch.fits(song, v.str("trackName"), v.str("artistName"), v.str("duration")?.toDoubleOrNull())
+        if (exact != null && fits(exact)) return exact
+        return search.orEmpty().filter(::fits).minByOrNull {
+            if (song.durationSec > 0) abs((it.str("duration")?.toDoubleOrNull() ?: 0.0) - song.durationSec) else 0.0
+        }
     }
 
     internal fun fetchNetEase(song: Song): String? {
@@ -653,15 +704,7 @@ class LyricsRepository(
             .addQueryParameter("s", "${cleanTitle(song.title)} ${song.primaryArtist}")
             .addQueryParameter("type", "1").addQueryParameter("limit", "10").build()
         val songs = getJson(search, headers).field("result").field("songs") as? JsonArray ?: return null
-        val wantTitle = norm(cleanTitle(song.title))
-        val wantArtist = norm(song.primaryArtist)
-        val candidates = songs.filter { s ->
-            val t = norm(s.str("name") ?: "")
-            val artists = (s.field("artists") as? JsonArray)?.map { norm(it.str("name") ?: "") } ?: emptyList()
-            (t == wantTitle || t.contains(wantTitle) || wantTitle.contains(t)) &&
-                artists.any { it.isNotBlank() && (it.contains(wantArtist) || wantArtist.contains(it)) } &&
-                lengthFits(song, s.str("duration")?.toDoubleOrNull()?.div(1000))
-        }.sortedBy { abs((it.str("duration")?.toLongOrNull() ?: 0L) / 1000 - song.durationSec) }
+        val candidates = netEaseMatches(songs, song)
         // Several editions often match; not all of them carry lyrics.
         for (best in candidates.take(4)) {
             val id = best.str("id") ?: continue
@@ -676,25 +719,69 @@ class LyricsRepository(
         return null
     }
 
+    /** NetEase search hits that are [song] ([SongMatch]: its name or one of its other names, its artists, its length), closest length first. */
+    internal fun netEaseMatches(songs: JsonArray, song: Song): List<JsonElement> = songs.filter { s ->
+        val artists = (s.field("artists") as? JsonArray)?.mapNotNull { it.str("name") }.orEmpty()
+        val sec = s.str("duration")?.toDoubleOrNull()?.div(1000)
+        val names = listOfNotNull(s.str("name")) + listOf("alias", "transNames").flatMap { k -> (s.field(k) as? JsonArray)?.mapNotNull { it.str() }.orEmpty() }
+        names.ifEmpty { listOf("") }.any { SongMatch.fits(song, it.ifBlank { null }, artists, sec) }
+    }.sortedBy { abs((it.str("duration")?.toLongOrNull() ?: 0L) / 1000 - song.durationSec) }
+
     private suspend fun fetchYtMusic(song: Song): String? {
         val next = ytm.next(song.id, queue = false)
         val id = next.lyricsBrowseId ?: return null
         // Time-synced when YouTube Music has them (its app's "live lyrics"; many songs other sources lack, Arabic ones
         // among them), else its plain text.
-        runCatching { ytm.syncedLyrics(id) }.getOrNull()?.let { return it }
+        // Network trouble isn't "no synced lyrics" (6.2): the plain text would be kept in their place.
+        try { ytm.syncedLyrics(id) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: java.io.IOException) { throw e } catch (e: Exception) { null }
+            ?.let { return it }
         return ytm.lyrics(id)
     }
 
+    /**
+     * The file hashes of KuGou song-search hits ([results], song_search_v2) that are [song]: its title, one of its
+     * singers and its length; best first, up to 3.
+     */
+    internal fun kuGouSongHashes(results: JsonElement?, song: Song): List<String> {
+        val hits = results.field("data").field("lists") as? JsonArray ?: return emptyList()
+        if (norm(cleanTitle(song.title)).isBlank() || norm(song.primaryArtist).isBlank()) return emptyList()
+        return hits.filter { s ->
+            val t = s.str("OriSongName")?.takeIf { it.isNotBlank() } ?: s.str("SongName")
+            val singers = s.str("SingerName")?.takeIf { it.isNotBlank() }
+            // Both have to be there and be the song's: a hit by an unknown singer was never taken.
+            !t.isNullOrBlank() && singers != null &&
+                SongMatch.artist(listOf(singers), song) == SongMatch.Verdict.MATCH &&
+                SongMatch.fits(song, t, singers, s.str("Duration")?.toDoubleOrNull())
+        }.mapNotNull { it.str("FileHash")?.takeIf { h -> h.isNotBlank() } }.take(3)
+    }
+
+    /**
+     * KuGou lyric-search candidates that are [song]: each names its song and singer, and filtering them by length alone
+     * took another song of the same length (6.1). Its search goes by the length it's given, so this is most of what
+     * comes back for a song KuGou doesn't have.
+     */
+    internal fun kuGouCandidates(candidates: JsonArray, song: Song): List<JsonElement> = candidates.filter {
+        SongMatch.fits(song, it.str("song"), it.str("singer"), it.str("duration")?.toDoubleOrNull()?.div(1000))
+    }
+
     private fun fetchKuGou(song: Song): String? {
-        fun search(keyword: String) = "https://lyrics.kugou.com/search".toHttpUrl().newBuilder()
+        fun search(keyword: String, hash: String = "") = "https://lyrics.kugou.com/search".toHttpUrl().newBuilder()
             .addQueryParameter("ver", "1").addQueryParameter("man", "yes").addQueryParameter("client", "pc")
             .addQueryParameter("keyword", keyword)
             .addQueryParameter("duration", (song.durationSec * 1000L).toString())
-            .addQueryParameter("hash", "").build()
-        // KuGou matches "Artist - Title" far more often than the other way round.
+            .addQueryParameter("hash", hash).build()
+        fun found(url: okhttp3.HttpUrl) =(getJson(url).field("candidates") as? JsonArray)?.takeIf { it.isNotEmpty() }
+        // KuGou's song search, which (unlike its lyric search) doesn't go by the artist's exact case.
+        fun songHashes() = kuGouSongHashes(getJson("https://songsearch.kugou.com/song_search_v2".toHttpUrl().newBuilder()
+            .addQueryParameter("keyword", "${song.primaryArtist} ${cleanTitle(song.title)}")
+            .addQueryParameter("page", "1").addQueryParameter("pagesize", "10")
+            .addQueryParameter("platform", "WebFilter").build()), song)
+        // KuGou matches "Artist - Title" far more often than the other way round. The lyric search goes by the artist's
+        // exact case ("KAIRO" finds nothing, "Kairo" does, #403); the song search's file hash finds those.
         val candidates = listOf("${song.primaryArtist} - ${cleanTitle(song.title)}", "${cleanTitle(song.title)} - ${song.primaryArtist}")
-            .firstNotNullOfOrNull { (getJson(search(it)).field("candidates") as? JsonArray)?.takeIf { c -> c.isNotEmpty() } } ?: return null
-        val fitting = candidates.filter { lengthFits(song, it.str("duration")?.toDoubleOrNull()?.div(1000)) }
+            .firstNotNullOfOrNull { found(search(it)) }
+            ?: songHashes().firstNotNullOfOrNull { found(search("", it)) } ?: return null
+        val fitting = kuGouCandidates(candidates, song)
             .sortedBy { abs((it.str("duration")?.toLongOrNull() ?: 0L) - song.durationSec * 1000L) }
         // KuGou lists some edits under the album's length: "Thriller" (5:57) came back as "[ti:Thriller(Single Version)]",
         // every line 45 s early. The lyrics' own title says which edition they are; another one is passed over.
@@ -715,6 +802,12 @@ class LyricsRepository(
         return null
     }
 
+    /** The first Genius search hit that is [song] ([SongMatch]; Genius gives no length, so the artist has to be there). */
+    internal fun geniusPick(hits: JsonArray, song: Song): JsonElement? = hits.map { it.field("result") }.firstOrNull { r ->
+        val a = r.str("primary_artist_names") ?: r.field("primary_artist").str("name")
+        r != null && a != null && !r.str("title").isNullOrBlank() && SongMatch.artist(listOf(a), song) != SongMatch.Verdict.ABSENT && SongMatch.fits(song, r.str("title"), a, null)
+    }
+
     /** Plain lyrics with [Verse]/[Chorus] headers from Genius. */
     private fun fetchGenius(song: Song): String? {
         // Genius titles leave guests out: "IV. Sweatpants (feat. Jason Martin)" is "IV. Sweatpants" there.
@@ -723,13 +816,7 @@ class LyricsRepository(
         val search = "https://genius.com/api/search/multi".toHttpUrl().newBuilder().addQueryParameter("q", q).build()
         val sections = getJson(search).field("response").field("sections") as? JsonArray ?: return null
         val hits = sections.firstOrNull { it.str("type") == "song" }.field("hits") as? JsonArray ?: return null
-        val title = norm(bare)
-        val artist = norm(song.primaryArtist)
-        val url = hits.map { it.field("result") }.firstOrNull { r ->
-            val t = norm(r.str("title") ?: "")
-            val a = norm(r.str("primary_artist_names") ?: r.field("primary_artist").str("name") ?: "")
-            (t.contains(title) || title.contains(t)) && (a.contains(artist) || artist.contains(a))
-        }.str("url") ?: return null
+        val url = geniusPick(hits, song).str("url") ?: return null
         val doc = Jsoup.parse(getText(url.toHttpUrl()) ?: return null)
         val containers = doc.select("div[data-lyrics-container=true]")
         if (containers.isEmpty()) return null
@@ -739,6 +826,20 @@ class LyricsRepository(
             c.text().replace("\\n", "\n").lines().joinToString("\n") { it.trim() }
         }
         return text.replace(Regex("\\n{3,}"), "\n\n").trim().takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * The Bini result that is [song] ([SongMatch]): word-timed editions first, then line-timed, then the closest length.
+     * Its first result of any title used to be taken when none had the song's.
+     */
+    internal fun biniPick(results: JsonArray, song: Song): JsonElement? {
+        fun timingRank(t: String?) = when (t) { "word" -> 0; "line" -> 1; else -> 2 }
+        return results.filter {
+            SongMatch.fits(song, it.str("track_name"), it.str("artist_name") ?: it.str("artist"), it.str("duration")?.toDoubleOrNull())
+        }.sortedWith(compareBy({ timingRank(it.str("timing_type")) }, { abs((it.str("duration")?.toDoubleOrNull() ?: 0.0) - song.durationSec) }))
+            .firstOrNull()
+            // Else a cover's untimed words under the song's own title ([SongMatch.sameWordsUntimed]).
+            ?: results.firstOrNull { it.str("timing_type") == "none" && SongMatch.sameWordsUntimed(song, it.str("track_name"), it.str("duration")?.toDoubleOrNull()) }
     }
 
     /** Apple Music TTML through the Bini catalogue (a second matcher over Apple's lyrics). */
@@ -751,13 +852,7 @@ class LyricsRepository(
         // Its duration match is strict, and YouTube's length often differs by a second or two.
         val results = (getJson(query(true)).field("results") as? JsonArray)?.takeIf { it.isNotEmpty() }
             ?: getJson(query(false)).field("results") as? JsonArray ?: return null
-        val title = norm(cleanTitle(song.title))
-        // Prefer word-timed editions, then line-timed, then the closest length.
-        fun timingRank(t: String?) = when (t) { "word" -> 0; "line" -> 1; else -> 2 }
-        val fitting = results.filter { lengthFits(song, it.str("duration")?.toDoubleOrNull()) }
-        val best = fitting.filter { norm(it.str("track_name") ?: "").let { t -> t == title || t.startsWith(title) } }
-            .sortedWith(compareBy({ timingRank(it.str("timing_type")) }, { abs((it.str("duration")?.toIntOrNull() ?: 0) - song.durationSec) }))
-            .firstOrNull() ?: fitting.firstOrNull() ?: return null
+        val best = biniPick(results, song) ?: return null
         val doc = best.str("lyricsUrl")?.takeIf { it.startsWith("https://") } ?: return null
         return getText(doc.toHttpUrl())?.takeIf { it.contains("<tt") }
     }
@@ -778,6 +873,9 @@ class LyricsRepository(
     /** Syllable-timed lyrics from LyricsPlus (Apple / QQ / Musixmatch), across volunteer mirrors. */
     private fun fetchLyricsPlus(song: Song): String? {
         val hosts = lyricsPlusGood?.let { listOf(it) + lyricsPlusMirrors.filter { m -> m != it } } ?: lyricsPlusMirrors
+        // No mirror answering at all is network trouble, not a "no" (6.2): it used to be kept as a miss for a day.
+        var trouble: java.io.IOException? = null
+        var answered = false
         for (host in hosts) {
             val url = "$host/v2/lyrics/get".toHttpUrl().newBuilder()
                 .addQueryParameter("title", cleanTitle(song.title))
@@ -786,19 +884,27 @@ class LyricsRepository(
                     if (song.durationSec > 0) addQueryParameter("duration", song.durationSec.toString())
                     song.album?.title?.let { addQueryParameter("album", it) }
                 }.build()
-            val (code, body) = runCatching {
+            val (code, body) = try {
                 quickHttp.newCall(Request.Builder().url(url).header("User-Agent", browserUa).build()).execute()
                     .use { r -> r.code to (if (r.isSuccessful) r.body.string() else null) }
-            }.getOrNull() ?: continue
+            } catch (e: java.io.IOException) { trouble = e; continue }
+            if (code < 500) answered = true
             // The mirror known to work saying it hasn't got the song is the answer: asking the others as well only made
             // a song without lyrics wait longer. (A dead mirror answers 404 to everything, so only the good one counts.)
             if (code == 404 && host == lyricsPlusGood) return null
             if (body == null) continue
-            if (LyricsPlusFormat.parse(body).isNotEmpty()) {
+            val lines = LyricsPlusFormat.parse(body)
+            if (lines.isNotEmpty()) {
                 lyricsPlusGood = host
+                // Its own title and artist, where it says them, have to be the song's (6.1); a cover's words without
+                // timings under the song's own title will do ([SongMatch.sameWordsUntimed]).
+                val meta = runCatching { InnerTube.json.parseToJsonElement(body) }.getOrNull().field("metadata")
+                val untimed = lines.filter { !it.isGap }.map { it.timeMs }.distinct().size <= 1
+                if (!metaFits(song, meta) && !(untimed && SongMatch.sameWordsUntimed(song, meta.str("title"), null))) return null
                 return LyricsPlusFormat.PREFIX + body
             }
         }
+        if (!answered) trouble?.let { throw it }
         return null
     }
 
@@ -813,12 +919,20 @@ class LyricsRepository(
             }.build()
         val res = getJson(url) ?: return null
         if (res.str("success") != "true") return null
+        // Its own title, artist and length, where it says them, have to be the song's (6.1).
+        if (!metaFits(song, res.field("data"))) return null
         return res.field("data").str("lyrics")?.takeIf { it.isNotBlank() }
     }
 
     /** [source]'s lyrics for [song] (saved copy first), with any starred-out words filled in ([uncensor]). */
-    suspend fun fetch(song: Song, source: LyricsSource, force: Boolean = false): Lyrics? =
-        fetchRaw(song, source, force)?.let { uncensor(song, it) }?.let { linedUp(song, it) }
+    suspend fun fetch(song: Song, source: LyricsSource, force: Boolean = false): Lyrics? {
+        // Fetched again on purpose: "another song's" is worked out afresh for what comes back.
+        if (force && isOtherSong(song, source)) wordShifts?.edit()?.remove(shiftKey(song, source))?.apply()
+        return fetchRaw(song, source, force)?.let { uncensor(song, it) }?.let { linedUp(song, it) }
+    }
+
+    /** Whether [source]'s word lyrics for [song] were found to be another song's ([linedUp], 6.1). */
+    private fun isOtherSong(song: Song, source: LyricsSource) = wordShifts?.getString(shiftKey(song, source), null) == OTHER_SONG
 
     /**
      * Where each song's word timings were found early or late against its line-timed lyrics (#301): "<song id>|<source>"
@@ -833,11 +947,13 @@ class LyricsRepository(
      * again after a week, and a reference that doesn't come in time is asked for the next time the lyrics load. Without
      * it, only line-timed lyrics already on the phone are compared with.
      */
-    private suspend fun linedUp(song: Song, l: Lyrics, network: Boolean = true): Lyrics {
-        if (!l.wordSynced) return l
+    private suspend fun linedUp(song: Song, l: Lyrics, network: Boolean = true): Lyrics? {
+        // A file's own lyrics are timed to that file, and no service gets asked about them.
+        if (!l.wordSynced || l.source == LyricsSource.EMBEDDED) return l
         val prefs = wordShifts ?: return l
         val key = shiftKey(song, l.source)
         val kept = prefs.getString(key, null)
+        if (kept == OTHER_SONG) return null
         kept?.toLongOrNull()?.let { return withShift(l, it) }
         val asked = kept?.removePrefix("?")?.toLongOrNull()
         val reference = if (!network) lineReference(song, network = false).ifEmpty { return l }
@@ -849,6 +965,13 @@ class LyricsRepository(
             prefs.edit().putString(key, "?${System.currentTimeMillis()}").apply()
             return l
         }
+        // Word lyrics that share under 40% of their lines with the song's line-timed lyrics are another song's (6.1):
+        // dropped, and remembered so they aren't shown again (until fetched again on purpose).
+        SongMatch.linesInCommon(l.lines, reference)?.takeIf { it < SongMatch.MIN_LINES_IN_COMMON }?.let { share ->
+            prefs.edit().putString(key, OTHER_SONG).apply()
+            com.vinz.music.playback.AudioDiagnostics.log("lyrics", "${l.source.name} words for ${song.id} share ${(share * 100).toInt()}% of the lines: another song's, dropped")
+            return null
+        }
         val shift = WordTiming.offsetAgainst(l.lines, reference) ?: 0L
         prefs.edit().putString(key, shift.toString()).apply()
         if (shift != 0L) com.vinz.music.playback.AudioDiagnostics.log("lyrics", "${l.source.name} words $shift ms off the line timing for ${song.id}: lined up")
@@ -856,7 +979,7 @@ class LyricsRepository(
     }
 
     /** Whether [l]'s words were compared with the song's line timing already ([linedUp]). */
-    private fun shiftKnown(song: Song, l: Lyrics) = wordShifts?.getString(shiftKey(song, l.source), null)?.toLongOrNull() != null
+    private fun shiftKnown(song: Song, l: Lyrics) = l.source == LyricsSource.EMBEDDED || wordShifts?.getString(shiftKey(song, l.source), null)?.toLongOrNull() != null
 
     private fun shiftKey(song: Song, source: LyricsSource) = "${song.id}|${source.name}"
 
@@ -904,6 +1027,8 @@ class LyricsRepository(
     }
 
     private suspend fun fetchRaw(song: Song, source: LyricsSource, force: Boolean = false): Lyrics? = withContext(Dispatchers.IO) {
+        // Never saved in the database: the file is the copy, and it may change.
+        if (source == LyricsSource.EMBEDDED) return@withContext inFile(song)
         if (!force) dao.get(song.id, source.name)?.let { cached ->
             // A real answer is kept; a "not found" is retried after a day.
             // NetEase and KuGou answers from before they went word-by-word are fetched again once.
@@ -911,6 +1036,8 @@ class LyricsRepository(
                 !cached.content.startsWith(WordFormat.PREFIX)
             // Answers from before the length check ([lengthFits]) may be another edit's timings: asked again once.
             val recheck = (source in LENGTH_CHECKED && cached.fetchedAt < LENGTH_CHECK_SINCE) ||
+                // Answers from before the title and artist check ([SongMatch]) may be another song's: asked again once.
+                (source in MATCH_CHECKED && cached.content.isNotEmpty() && cached.fetchedAt < MATCH_CHECK_SINCE) ||
                 // KuGou's lyrics for another edition of the song (its own title says so), saved before that was checked.
                 (source == LyricsSource.KUGOU && Editions.otherEdition(Lrc.metaTag(cached.content, "ti"), song.title)) ||
                 // YouTube Music's plain text, saved before its synced lyrics were asked for: asked again once.
@@ -920,6 +1047,8 @@ class LyricsRepository(
         }
         // If asking again fails (no network), what was saved still serves.
         val saved = if (force) null else dao.get(song.id, source.name)?.content?.takeIf { it.isNotEmpty() }
+        // Offline, no service is asked, and nothing is noted as "not found" (6.2): going offline hid lyrics for a day.
+        if (!online()) return@withContext saved?.let { build(source, it) }
         // The title and artist the listener gave this song's lyrics, if any (#63); saved under the song all the same.
         val asked = searchSong(song)
         val text = try {
@@ -934,6 +1063,7 @@ class LyricsRepository(
                 LyricsSource.KUGOU -> fetchKuGou(asked)
                 LyricsSource.UNISON -> fetchUnison(asked)
                 LyricsSource.GENIUS -> fetchGenius(asked)
+                LyricsSource.EMBEDDED -> null
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // Never record a cancelled lookup as "no lyrics".
@@ -950,8 +1080,13 @@ class LyricsRepository(
     private companion object {
         /** When NetEase and KuGou started returning word-by-word lyrics (Oct 2026). */
         const val WORDS_SINCE = 1_791_080_000_000L
-        /** How far (s) a source's edition may differ in length from the song playing. */
-        const val MAX_LENGTH_GAP_SEC = 8.0
+        /** [wordShifts]' mark for word lyrics found to be another song's (6.1). */
+        const val OTHER_SONG = "other"
+        /** How long [auto] waits for the sources all told before the best answer so far shows (6.2). */
+        const val DEADLINE_MS = 12_000L
+        /** When the title and artist check came in ([SongMatch], 2026-11-14): LRCLIB and KuGou answers saved before it are checked again once. */
+        const val MATCH_CHECK_SINCE = 1_794_614_400_000L
+        val MATCH_CHECKED = setOf(LyricsSource.LRCLIB, LyricsSource.KUGOU)
         /** When the length check came in (2026-10-14); saved answers from these sources before it are checked again. */
         const val LENGTH_CHECK_SINCE = 1_791_936_000_000L
         /** YouTube Music's synced lyrics came in (1.6.4); plain text from it saved before this is asked for again. */
@@ -972,6 +1107,12 @@ class LyricsRepository(
             LyricsSource.NETEASE, LyricsSource.KUGOU, LyricsSource.UNISON,
         )
     }
+
+    /** The lyrics text in the file [Song] plays from, if it has one (#344). Blocking: only called on IO. */
+    var fileLyrics: ((Song) -> String?)? = null
+
+    private fun inFile(song: Song): Lyrics? =
+        runCatching { fileLyrics?.invoke(song) }.getOrNull()?.let { build(LyricsSource.EMBEDDED, it) }
 
     /** Remembers which source the listener picked for a song (song id -> source name). */
     var choices: android.content.SharedPreferences? = null
@@ -1019,7 +1160,8 @@ class LyricsRepository(
         val reference = if (!s.skipCensored) null else REFERENCE_SOURCES.firstNotNullOfOrNull { src ->
             rows[src.name]?.let { build(src, it.content) }?.takeIf { !it.censored }?.plain
         }
-        val all = s.lyricsSources.mapNotNull { src -> rows[src.name]?.let { build(src, it.content) } }
+        val all = s.lyricsSources.filterNot { isOtherSong(song, it) }
+            .mapNotNull { src -> if (src == LyricsSource.EMBEDDED) inFile(song) else rows[src.name]?.let { build(src, it.content) } }
             .map { if (it.source == LyricsSource.GENIUS) it else Uncensor.fill(it, reference) }
             .filterNot { skipCensored() && it.censored }
         if (!s.preferSynced) return@withContext all.firstOrNull()
@@ -1048,7 +1190,10 @@ class LyricsRepository(
     /** Lyrics already on the phone (the source picked for the song first), with no lyric service asked (#95). */
     suspend fun savedOnly(song: Song): Lyrics? {
         if (song.isEpisode) return null
-        val picked = chosen(song)?.let { src -> withContext(Dispatchers.IO) { dao.allFor(song.id) }.firstOrNull { it.source == src.name }?.let { build(src, it.content) } }
+        val picked = chosen(song)?.let { src ->
+            if (src == LyricsSource.EMBEDDED) withContext(Dispatchers.IO) { inFile(song) }
+            else withContext(Dispatchers.IO) { dao.allFor(song.id) }.firstOrNull { it.source == src.name }?.let { build(src, it.content) }
+        }
         return (picked ?: saved(song))?.let { linedUp(song, it, network = false) }
     }
 
@@ -1059,7 +1204,7 @@ class LyricsRepository(
      */
     suspend fun download(song: Song): Lyrics? {
         chosen(song)?.let { src -> fetch(song, src)?.let { return it } }
-        saved(song)?.takeIf { it.wordSynced }?.let { return linedUp(song, it) }
+        saved(song)?.takeIf { it.wordSynced }?.let { linedUp(song, it)?.let { l -> return l } }
         val order = settings().lyricsSources
         var best: Lyrics? = null
         var censored: Lyrics? = null
@@ -1079,6 +1224,9 @@ class LyricsRepository(
      * already saved (so downloaded songs have lyrics offline, instantly), else
      * sources in the user's order, preferring karaoke (word by word), then time-synced lines, when enabled.
      */
+    /** How long [auto] waits on the sources all told ([DEADLINE_MS]; tests shorten it). */
+    internal var deadlineMs = DEADLINE_MS
+
     suspend fun auto(song: Song, force: Boolean = false): Lyrics? {
         if (song.isEpisode) return null
         val s = settings()
@@ -1090,7 +1238,12 @@ class LyricsRepository(
             // instantly), and the saved copy is the fallback, offline too.
             savedBest = saved(song)?.let { linedUp(song, it, network = false) }
             // Saved karaoke not yet checked against the song's line timing (#301) is checked once, the network allowed.
-            savedBest?.takeIf { it.wordSynced || !s.preferSynced }?.let { return if (it.wordSynced && !shiftKnown(song, it)) linedUp(song, it) else it }
+            savedBest?.takeIf { it.wordSynced || !s.preferSynced }?.let {
+                if (!it.wordSynced || shiftKnown(song, it)) return it
+                linedUp(song, it)?.let { l -> return l }
+                // Another song's words (6.1): the sources are asked.
+                savedBest = null
+            }
         }
         var plainFallback: Lyrics? = null
         var censored: Lyrics? = null
@@ -1099,11 +1252,16 @@ class LyricsRepository(
         // source) waited for each in turn: about a minute for some songs. Now each source has [HEAD_START_MS] to
         // answer before the next one is asked as well (at once if it's done sooner), and the answers are still taken
         // in the listener's order. Whatever is still out when the choice is made is dropped.
+        // All told they have [deadlineMs] (6.2): one hung source (30 s read timeout) held every one after it, so the
+        // answers already in from further down the list never showed. At the deadline the best of those shows.
         val job = kotlinx.coroutines.SupervisorJob()
         val asks = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + job)
+        val inSoFar = java.util.concurrent.atomic.AtomicReferenceArray<Lyrics?>(order.size)
         try {
-            val answers = order.map { src ->
-                asks.async(start = kotlinx.coroutines.CoroutineStart.LAZY) { runCatching { fetch(song, src, force) }.getOrNull() }
+            val answers = order.mapIndexed { i, src ->
+                asks.async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                    runCatching { fetch(song, src, force) }.getOrNull().also { inSoFar.set(i, it) }
+                }
             }
             asks.launch {
                 for (a in answers) {
@@ -1111,18 +1269,31 @@ class LyricsRepository(
                     kotlinx.coroutines.withTimeoutOrNull(HEAD_START_MS) { a.join() }
                 }
             }
-            for ((i, src) in order.withIndex()) {
-                val l = answers[i].await() ?: continue
-                if (unwanted(l)) { if (censored == null || (l.synced && !censored.synced)) censored = l; continue }
-                if (l.wordSynced || !s.preferSynced) return l
-                if (l.synced) {
-                    // Karaoke beats time-synced lines, even from a source further down the list: those that can have
-                    // it are asked as well, all at once so it stays quick, and the first in the listener's order wins.
-                    val rest = order.indices.drop(i + 1).filter { order[it] in WORD_SOURCES }.map { answers[it] }
-                    rest.forEach { it.start() }
-                    return rest.firstNotNullOfOrNull { a -> a.await()?.takeIf { it.wordSynced && !unwanted(it) } } ?: l
+            var finished = false
+            val inOrder = kotlinx.coroutines.withTimeoutOrNull(deadlineMs) {
+                for ((i, _) in order.withIndex()) {
+                    val l = answers[i].await() ?: continue
+                    if (unwanted(l)) { if (censored.let { c -> c == null || (l.synced && !c.synced) }) censored = l; continue }
+                    if (l.wordSynced || !s.preferSynced) return@withTimeoutOrNull l
+                    if (l.synced) {
+                        // Karaoke beats time-synced lines, even from a source further down the list: those that can have
+                        // it are asked as well, all at once so it stays quick, and the first in the listener's order wins.
+                        val rest = order.indices.drop(i + 1).filter { order[it] in WORD_SOURCES }.map { answers[it] }
+                        rest.forEach { it.start() }
+                        return@withTimeoutOrNull rest.firstNotNullOfOrNull { a -> a.await()?.takeIf { it.wordSynced && !unwanted(it) } } ?: l
+                    }
+                    if (plainFallback == null) plainFallback = l
                 }
-                if (plainFallback == null) plainFallback = l
+                finished = true
+                null
+            }
+            if (inOrder != null) return inOrder
+            if (!finished) {
+                val got = (0 until inSoFar.length()).mapNotNull { inSoFar.get(it) }
+                val wanted = got.filterNot(::unwanted)
+                (wanted.firstOrNull { it.wordSynced } ?: wanted.firstOrNull { it.synced }?.takeIf { s.preferSynced } ?: wanted.firstOrNull())
+                    ?.let { return it }
+                if (censored == null) censored = got.maxByOrNull { level(it) }
             }
         } finally {
             job.cancel()

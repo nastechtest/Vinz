@@ -220,7 +220,7 @@ class TvSettingsTests {
     @Test fun aHomeRowHiddenInSettingsIsGoneFromHome() {
         Fixture.ready()
         val c = Fixture.container
-        val before = c.settings.current.homeLayout
+        val before = c.settings.current.home.layout
         try {
             // A shelf on Home (fresh for this run, so nothing is asked of the network).
             val title = "Vinz settings row"
@@ -244,7 +244,7 @@ class TvSettingsTests {
             }
             compose.awaitFocusOn(hasTestTag("${com.vinz.music.ui.tv.TAG_HOME_EDITOR}/row/$key"))
             TvFixture.ok()
-            compose.waitUntil(10_000) { com.vinz.music.ui.tv.hiddenIn(c.settings.current.homeLayout, key) }
+            compose.waitUntil(10_000) { com.vinz.music.ui.tv.hiddenIn(c.settings.current.home.layout, key) }
             TvFixture.back()
             compose.awaitFocusOn(hasTestTag("$TAG_SETTINGS/setting/0"), 10_000)
             goTo(TvSection.HOME)

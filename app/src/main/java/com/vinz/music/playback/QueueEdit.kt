@@ -27,6 +27,33 @@ object QueueEdit {
     }
 
     /**
+     * #368: Play next on a song already coming up moves it up instead of putting it in twice. [ahead]: the ids of the
+     * songs still to come, in play order; [wanted]: the songs tapped. The places in [ahead] of the copies that make way
+     * (the first copy of each song, so a list that holds a song twice keeps its other copy), lowest first.
+     */
+    fun copiesMovingUp(ahead: List<String>, wanted: List<String>): List<Int> {
+        val taken = java.util.TreeSet<Int>()
+        for (id in wanted) ahead.indices.firstOrNull { it !in taken && ahead[it] == id }?.let { taken += it }
+        return taken.toList()
+    }
+
+    /** The queue's sections, which between them list the songs in exactly the order they play. */
+    class Sections<T>(val queued: List<T>, val upcoming: List<T>, val autoplay: List<T>)
+
+    /**
+     * #368: [order] (what's still to come, in play order) under the queue's headings. "Next in queue" is the listener's
+     * songs that really come next; the rest stay where they play. It used to pick the listener's songs out from anywhere:
+     * a song added to the queue was listed first though it plays after the list's own songs (Next seemed to skip it), and
+     * a song tapped with Play next had its other copy, further down, listed right beside it.
+     */
+    fun <T> sections(order: List<T>, isQueued: (T) -> Boolean, isAutoplay: (T) -> Boolean): Sections<T> {
+        val queued = order.takeWhile(isQueued)
+        val rest = order.drop(queued.size)
+        val upcoming = rest.takeWhile { !isAutoplay(it) }
+        return Sections(queued, upcoming, rest.drop(upcoming.size))
+    }
+
+    /**
      * Where Undo puts a song taken out of the queue back (#149; Reddit, 1.8.1.1: "Undo does nothing"): its place in the
      * play order as it is when Undo is tapped. [order]: the songs' ids in play order now (the shuffled order while
      * shuffled); [now]: the playing song's place in it (-1: none). [after] / [before]: the songs it played after and

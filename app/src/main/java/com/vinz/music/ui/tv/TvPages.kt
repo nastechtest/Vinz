@@ -124,7 +124,7 @@ fun TvHomePlace(nav: TvNav, onSearch: () -> Unit) {
     // Laid out as Customize Home has them: shown or hidden as the phone's Home layout has the rows both have (so phone
     // and TV agree), the hero and the order as the TV's own layout keeps them (none kept: the phone's order, else Home
     // as it comes).
-    val phoneLayout = settings.homeLayout
+    val phoneLayout = settings.home.layout
     // Every phone Home section the TV can show, from the same places the phone reads them (TvHomeSources): Vinz's
     // mixes, your own lists, the Replay card, moods, tiles, pins… Only the rows Home shows are worked out.
     val online by c.network.online.collectAsState()
@@ -290,6 +290,7 @@ fun TvPlayerPage(nav: TvNav) {
                 onLike = { c.player.currentSong.value?.let { c.library.toggleLike(it) } },
                 onMore = { panel = Panel.MORE },
                 accent = accent,
+                onSeek = { ms -> c.player.seekBy(ms) },
             )
         }
         when (panel) {

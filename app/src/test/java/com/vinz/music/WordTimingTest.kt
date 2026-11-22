@@ -13,6 +13,7 @@ import com.vinz.music.data.lyrics.WordTiming
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.prefs.AppSettings
+import com.vinz.music.data.prefs.LyricsPrefs
 import com.vinz.music.data.prefs.LyricsSource
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -115,7 +116,7 @@ class WordTimingTest {
             override suspend fun clearMisses() {}
             override suspend fun allFor(songId: String) = rows.filter { it.songId == songId }
         }
-        val settings = AppSettings(lyricsOrder = listOf(LyricsSource.APPLE, LyricsSource.LRCLIB), preferSynced = true)
+        val settings = AppSettings(preferSynced = true, lyrics = LyricsPrefs(order = listOf(LyricsSource.APPLE, LyricsSource.LRCLIB)))
         val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("lyrics_word_shift_test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         return LyricsRepository(OkHttpClient(), dao, YouTubeMusic(InnerTube(OkHttpClient(), { settings })), { settings }).apply { wordShifts = prefs } to prefs

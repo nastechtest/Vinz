@@ -17,8 +17,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.TimeUnit
+import org.junit.experimental.categories.Category
 
 /** The word-by-word sources: QQ (Better Lyrics "Portato"), NetEase YRC and KuGou KRC. */
+@Category(LiveNetwork::class)
 class WordLyricsLiveTest {
     private val http = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
     private var settings = AppSettings()
@@ -63,7 +65,7 @@ class WordLyricsLiveTest {
     /** Downloads go for word-by-word lyrics even when a line-synced source comes first in the order. */
     @Test
     fun downloadsPreferWordByWord() = runBlocking {
-        settings = settings.copy(lyricsOrder = listOf(LyricsSource.LRCLIB) + LyricsSource.entries.filter { it != LyricsSource.LRCLIB })
+        settings = settings.copy(lyrics = settings.lyrics.copy(order = listOf(LyricsSource.LRCLIB) + LyricsSource.entries.filter { it != LyricsSource.LRCLIB }))
         for (s in listOf(
             song("bpOSxM0rNPM", "Do I Wanna Know?", "Arctic Monkeys", "AM", 272),
             song("TUVcZfQe-Kw", "Levitating", "Dua Lipa", "Future Nostalgia", 203),

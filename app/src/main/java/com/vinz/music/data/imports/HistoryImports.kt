@@ -131,6 +131,9 @@ class HistoryImports(private val c: AppContainer) {
     /** What Replay, Rewind and the Replay card count now. */
     fun replay(): PlayStats = stats(_counted.value)
 
+    /** The same plays by name, for a question of [com.prism.music.data.db.CountedPlayDao] Replay doesn't ask. */
+    fun countedOrigins(): List<String> = listOf(CountedPlays.VINZ) + _counted.value.sortedBy { it.ordinal }.map { it.key }
+
     fun stats(sources: Set<ImportSource>): PlayStats =
         if (sources.isEmpty()) VinzPlays(c.db.plays()) else CountedPlays(sources.sortedBy { it.ordinal }, c.db.counted(), c.db.plays())
 

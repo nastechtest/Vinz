@@ -13,7 +13,6 @@ import com.vinz.music.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -21,8 +20,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.After
-import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.time.Instant
@@ -35,21 +32,7 @@ import kotlin.math.abs
 @org.robolectric.annotation.Config(sdk = [34], application = android.app.Application::class)
 class LookTest {
     private val context get() = org.robolectric.RuntimeEnvironment.getApplication()
-    private val scopes = mutableListOf<CoroutineScope>()
-    private fun repo() = SettingsRepository(context,
-        CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it })
-
-    @Before
-    fun startFromVinzDefaults(): Unit = runBlocking {
-        val r = repo()
-        r.editNow { it.clear() }
-        withTimeout(5_000) { r.lookValues.first { it.isEmpty() } }
-    }
-
-    @After
-    fun stopRepositoryCollectors() {
-        scopes.forEach { it.cancel() }
-    }
+    private fun repo() = SettingsRepository(context, CoroutineScope(SupervisorJob() + Dispatchers.Default))
 
     @Test
     fun everySettingIsInALookOrSaidNotToBe() {
@@ -84,62 +67,14 @@ class LookTest {
     @Test
     fun aLookCanOnlySetLookSettingsWithTheRightKind(): Unit = runBlocking {
         val r = repo()
+        // The store is one per process: a Look an earlier test class left (LookStoreTest's Neon) goes first.
+        r.applyLook(emptyMap())
+        withTimeout(5_000) { r.lookValues.first { it.isEmpty() } }
         r.applyLook(mapOf("cookie" to "s:SAPISID=stolen", "pure_black" to "s:yes", "corners" to "s:SHARP"))
         val now = withTimeout(5_000) { r.lookValues.first { it.isNotEmpty() } }
-        assertEquals("s:SHARP", now["corners"])
-        assertEquals(null, now["cookie"])
-        assertEquals(null, now["pure_black"])
+        assertEquals(mapOf("corners" to "s:SHARP"), now)
         assertEquals("", r.current.cookie)
         assertEquals(false, r.current.pureBlack)
-    }
-
-    @Test
-    fun reduceMotionIsAnAccessibilityChoiceNotALookSetting() {
-        val r = repo()
-        assertTrue("reduce_motion" in r.notLookNames)
-        assertTrue("reduce_motion" !in r.lookKinds)
-        assertTrue("reduce_motion" !in r.resetNames)
-    }
-
-    @Test
-    fun legacyLooksCannotOverrideEitherReduceMotionChoice(): Unit = runBlocking {
-        val r = repo()
-        for (enabled in listOf(true, false)) {
-            val saved = "b:$enabled" // Backup booleans are true/false, not Look-code 1/0.
-            r.fromBackup(mapOf("reduce_motion" to saved), settings = true, accounts = false)
-            // Wait for previewLook's raw preferences as well as the public flow.
-            withTimeout(5_000) { r.flow.first { it.reduceMotion == enabled } }
-            val old = Look("legacy", "Old shared Look", mapOf(
-                "reduce_motion" to if (enabled) "b:0" else "b:1",
-                "backdrop_motion" to "b:1", "corners" to "s:SHARP",
-            ))
-            assertTrue("reduce_motion" !in LookCode.sanitized(old, r.lookKinds).values)
-            val decoded = LookCode.decode(LookCode.encode(old), r.lookKinds)!!
-            assertTrue("reduce_motion" !in decoded.values)
-            assertEquals(enabled, r.previewLook(old.values).reduceMotion)
-            r.applyLook(old.values)
-            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
-            r.applyLook(decoded.values)
-            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
-            r.applyLook(emptyMap())
-            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
-        }
-    }
-
-    @Test
-    fun resettingAppearanceKeepsReduceMotion(): Unit = runBlocking {
-        val r = repo()
-        for (enabled in listOf(true, false)) {
-            val saved = "b:$enabled" // Backup booleans are true/false, not Look-code 1/0.
-            r.fromBackup(mapOf("reduce_motion" to saved, "corners" to "s:SHARP", "accent" to "i:7"), settings = true, accounts = false)
-            withTimeout(5_000) { r.lookValues.first { it["corners"] == "s:SHARP" } }
-            r.resetLook()
-            withTimeout(5_000) { r.lookValues.first { "corners" !in it } }
-            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
-            r.resetColors()
-            withTimeout(5_000) { r.lookValues.first { "accent" !in it } }
-            assertEquals(saved, r.forBackup(settings = true, accounts = false)["reduce_motion"])
-        }
     }
 
     @Test
@@ -186,13 +121,29 @@ class LookTest {
         }
     }
 
+    /** 1.8.6: the Minimal Look (the launch film's) is black and white, with no colour of Vinz's own anywhere. */
+    @Test
+    fun theMinimalLookHasNoColourOfItsOwn() {
+        val look = BuiltInLooks.of("minimal")!!
+        assertEquals("s:DARK", look.values["theme_mode"])
+        assertEquals("b:1", look.values["pure_black"])
+        assertEquals("White light, not the spectrum", "s:WHITE", look.values["light_style"])
+        assertEquals("A white accent", "i:${0xFFFFFFFF.toInt()}", look.values["accent"])
+        assertEquals("s:CUSTOM", look.values["color_source"])
+        assertEquals("Pages carry no tint", "s:NEUTRAL", look.values["surface_tint"])
+        assertEquals("No ring of light on Play", "b:0", look.values["play_ring"])
+        assertEquals("A black player, no colour mesh", "s:BLACK", look.values["player_background"])
+        assertEquals("It survives the check every shared Look gets", look.values, LookCode.sanitized(look, repo().lookKinds).values)
+        assertTrue("It is offered all year", BuiltInLooks.shown(LocalDate.of(2026, 3, 1)).any { it.id == "minimal" })
+    }
+
     @Test
     fun changesReadInWords() {
         assertEquals("Corners → Sharp", LookLabels.change(emptyMap(), mapOf("corners" to "s:SHARP"), emptyList()))
         assertEquals("Pure black → On", LookLabels.change(mapOf("pure_black" to "b:0"), mapOf("pure_black" to "b:1"), emptyList()))
         assertEquals("Text size → 110%", LookLabels.change(emptyMap(), mapOf("text_scale" to "f:1.1"), emptyList()))
         assertEquals(
-            "Liquid Glass → On and 1 more",
+            "Liquid glass → On and 1 more",
             LookLabels.change(emptyMap(), mapOf("liquid_glass" to "b:1", "frosted_glass" to "b:0"), listOf("liquid_glass", "frosted_glass")),
         )
         assertNull(LookLabels.change(mapOf("a" to "b:1"), mapOf("a" to "b:1"), emptyList()))

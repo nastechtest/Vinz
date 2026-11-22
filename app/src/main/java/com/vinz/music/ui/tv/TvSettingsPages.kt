@@ -115,7 +115,7 @@ fun TvSettingsPlace(nav: TvNav) {
             ),
             TvSettingRow(
                 TvSetting(tr(R.string.lyrics_source), settings.lyricsSources.firstOrNull()?.label),
-                TvSettingAction.Choose(settings.lyricsSources.map { s -> s.label to { c.settings.setLyricsOrder(listOf(s) + settings.lyricsOrder.filter { it != s }) } }),
+                TvSettingAction.Choose(settings.lyricsSources.map { s -> s.label to { c.settings.setLyricsOrder(listOf(s) + settings.lyrics.order.filter { it != s }) } }),
             ),
         ),
         TvSettingGroup(tr(R.string.sing), VinzIcons.Mic, emptyList()) to listOf(
@@ -134,7 +134,7 @@ fun TvSettingsPlace(nav: TvNav) {
         // Home's rows: shown or hidden, in what order (also from the end of Home itself); the editor is TvHomeEditor.
         TvSettingGroup(tr(R.string.home), VinzIcons.Home, emptyList()) to listOf(
             TvSettingRow(
-                TvSetting(tr(R.string.customize_home), TvHomeLayout.hiddenCount(settings.tv.homeLayout, settings.homeLayout).takeIf { it > 0 }?.let { tr(R.string.tv_home_hidden_count, it) }),
+                TvSetting(tr(R.string.customize_home), TvHomeLayout.hiddenCount(settings.tv.homeLayout, settings.home.layout).takeIf { it > 0 }?.let { tr(R.string.tv_home_hidden_count, it) }),
                 TvSettingAction.Run { nav.go(TvRoute.HomeEditor) },
             ),
         ),
@@ -201,3 +201,4 @@ private fun TvPanelBox(screen: String, content: @Composable androidx.compose.fou
     // Focus stays in the panel (Settings' rows behind it can't be reached and pressed unseen).
     androidx.compose.runtime.CompositionLocalProvider(LocalTvScreen provides screen) { Box(Modifier.fillMaxSize().tvHoldsFocus(), content = content) }
 }
+

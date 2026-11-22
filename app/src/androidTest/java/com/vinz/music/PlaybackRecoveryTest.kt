@@ -53,6 +53,57 @@ class PlaybackRecoveryTest {
         assertTrue("it started over or went back (${before} → ${after} ms)", after >= before - 1_000)
     }
 
+    /**
+     * Reddit, 1.8.1.1: "Player stuck playing with no progress for 10000 ms" at 0:00, and the song was given up on. It plays
+     * on from there with a new decoder and audio track; only a third time does the next song get its turn. Media3's own
+     * failure is stood in for: the player is really stopped and handed the same error, since a real one needs a phone whose
+     * sound output has stopped (an emulator waits 30 s, and freezing its audio server didn't set it off).
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test fun aStuckPlayerTriesTheSongAgainThenMovesOn() {
+        Fixture.ready()
+        val perm = if (android.os.Build.VERSION.SDK_INT >= 33) android.Manifest.permission.READ_MEDIA_AUDIO else android.Manifest.permission.READ_EXTERNAL_STORAGE
+        val main = InstrumentationRegistry.getInstrumentation()
+        main.uiAutomation.grantRuntimePermission(Fixture.context.packageName, perm)
+        tones += Fixture.tone("Vinz stuck tone one", 120)
+        tones += Fixture.tone("Vinz stuck tone two", 120)
+        Fixture.launch()
+        val local = Fixture.container.localMusic
+        runBlocking { local.scan() }
+        val songs = listOf("one", "two").map { w -> local.tracks.value.first { it.song.title == "Vinz stuck tone $w" }.song }
+        val player = Fixture.container.player
+        main.runOnMainSync { player.playQueue(songs, 0, QueueSource(QueueKind.OTHER, "Stuck test")) }
+        waitFor(20_000) { PlaybackServices.failForTest != null && player.currentSong.value?.id == songs[0].id && position(player) > 3_000 }
+
+        fun stuck() {
+            main.runOnMainSync { player.player!!.stop() }
+            waitFor(5_000) { var idle = false; main.runOnMainSync { idle = player.player!!.playbackState == androidx.media3.common.Player.STATE_IDLE }; idle }
+            main.runOnMainSync {
+                PlaybackServices.failForTest!!.invoke(
+                    PlaybackException(
+                        "Unexpected runtime error",
+                        androidx.media3.common.util.StuckPlayerException(androidx.media3.common.util.StuckPlayerException.STUCK_PLAYING_NO_PROGRESS, 10_000),
+                        PlaybackException.ERROR_CODE_TIMEOUT,
+                    ),
+                )
+            }
+        }
+        fun isPlaying(): Boolean { var p = false; main.runOnMainSync { p = player.player!!.isPlaying }; return p }
+
+        repeat(2) { round ->
+            val before = position(player)
+            stuck()
+            waitFor(8_000) { isPlaying() }
+            assertEquals("round $round: the song was skipped", songs[0].id, player.currentSong.value?.id)
+            val at = position(player)
+            assertTrue("round $round: it started over ($before → $at ms)", at >= before - 1_000)
+            Thread.sleep(1_500)
+            assertTrue("round $round: it isn't moving", position(player) > at)
+        }
+        stuck()
+        waitFor(10_000) { player.currentSong.value?.id == songs[1].id && isPlaying() }
+    }
+
     private fun position(player: com.vinz.music.playback.PlayerConnection): Long {
         var p = 0L
         InstrumentationRegistry.getInstrumentation().runOnMainSync { p = player.position }

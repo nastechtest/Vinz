@@ -52,6 +52,15 @@ object LocalRadio {
         return out
     }
 
+    /**
+     * Played around a seed this much (summed 1/distance: twice right next to it, or more often further off) and it
+     * belongs with the seed on its own, when there's no genre to go by. Once is chance: whatever came before a song
+     * picked from search (#461).
+     */
+    const val CO_CLOSE = 2.0
+    /** Two known tempos further apart than this (after reading one at half or double) aren't one sound. */
+    const val TEMPO_APART = 1.2
+
     class Pool(
         val songs: List<Song>,
         val coListen: Map<String, Map<String, Double>>,
@@ -59,17 +68,44 @@ object LocalRadio {
         val genreOf: (String) -> String?,
         /** 0..1: how well two songs' keys blend (0 when either isn't known). */
         val keyFit: (String, String) -> Double = { _, _ -> 0.0 },
+        /** A song's measured tempo (DJ mode's scan), null when it hasn't been measured. */
+        val bpmOf: (String) -> Double? = { null },
     )
 
-    data class Pick(val song: Song, val score: Double, val related: Boolean)
+    /**
+     * How close a pick is to the seeds, for playing beside YouTube's radio ([besideYouTube]):
+     * - [CLOSE]: the seed's artist; the seed's genre (and not a far tempo, when both are measured); or, with no genre
+     *   to go by, played around the seed again and again ([CO_CLOSE]).
+     * - [APART]: both genres known and different, or the same genre at tempos far apart: never beside the radio.
+     * - [UNKNOWN]: nothing to tell either way.
+     */
+    enum class Fit { CLOSE, UNKNOWN, APART }
+
+    /** [related]: anything ties it to the seeds (how it's scored); [fit]: whether it may play beside YouTube's radio. */
+    data class Pick(val song: Song, val score: Double, val related: Boolean, val fit: Fit = Fit.UNKNOWN)
 
     /**
-     * Your picks to play beside YouTube's radio: only the ones that belong with the seeds (played around them, the same
-     * artist or genre). Favourites that have nothing to do with them fill in only when your music is all there is
-     * ([onlyYours]: offline, after a file on the phone, or "Your music"). Reddit, after 1.7.8: "if I select rock it
-     * plays NSYNC, if I select opera, NSYNC too".
+     * Your picks to play beside YouTube's radio: only the ones close to the seeds ([Fit.CLOSE]), and ones nothing is
+     * known of whose artist is on YouTube's own radio for them ([radio]). Favourites that have nothing to do with them
+     * fill in only when your music is all there is ([onlyYours]: offline, after a file on the phone, or "Your music").
+     * Reddit, after 1.7.8: "if I select rock it plays NSYNC, if I select opera, NSYNC too". #461: an amapiano song from
+     * search brought the phonk, R&B and pop played before it.
      */
-    fun besideYouTube(picks: List<Pick>, onlyYours: Boolean): List<Pick> = if (onlyYours) picks else picks.filter { it.related }
+    fun besideYouTube(picks: List<Pick>, onlyYours: Boolean, radio: List<Song> = emptyList()): List<Pick> {
+        if (onlyYours) return picks
+        val ids = radio.mapTo(HashSet()) { it.id }
+        val artists = radio.map { it.primaryArtist.lowercase() }.filterTo(HashSet()) { it.isNotBlank() }
+        return picks.filter { p ->
+            p.fit == Fit.CLOSE || p.song.id in ids || (p.fit == Fit.UNKNOWN && p.song.primaryArtist.lowercase() in artists)
+        }
+    }
+
+    /** True when both tempos are known and far apart, even taking one as read at half or double. */
+    fun tempoApart(a: Double?, b: Double?): Boolean {
+        if (a == null || b == null || a <= 0 || b <= 0) return false
+        val off = listOf(0.5, 1.0, 2.0).minOf { k -> kotlin.math.abs(kotlin.math.ln(a * k / b)) }
+        return off > kotlin.math.ln(TEMPO_APART)
+    }
 
     /**
      * Up to [count] songs to follow [seeds] (newest last), from [pool], leaving out [exclude]. [jitter]: a small
@@ -80,25 +116,38 @@ object LocalRadio {
         val weights = seeds.asReversed().take(3).mapIndexed { i, s -> s to listOf(1.0, 0.6, 0.4)[i] }
         val seedIds = seeds.map { it.id }.toSet()
         val seedSongs = seeds.map { sameSong(it) }.toSet()
+        val seedGenres = weights.associate { (seed, _) -> seed.id to pool.genreOf(seed.id) }
+        val seedBpm = HashMap<String, Double?>()
         val scored = pool.songs.asSequence()
             .filter { it.id !in exclude && it.id !in seedIds && sameSong(it) !in seedSongs }
             .distinctBy { it.id }
             .map { x ->
                 var rel = 0.0
                 var related = false
+                var close = false
+                var apart = false
+                val xGenre = pool.genreOf(x.id)
                 for ((seed, w) in weights) {
                     val co = pool.coListen[seed.id]?.get(x.id) ?: 0.0
                     val sameArtist = seed.primaryArtist.isNotBlank() && seed.primaryArtist.equals(x.primaryArtist, ignoreCase = true)
-                    val g = pool.genreOf(seed.id)
-                    val sameGenre = g != null && g == pool.genreOf(x.id)
+                    val g = seedGenres[seed.id]
+                    val sameGenre = g != null && g == xGenre
                     val fit = pool.keyFit(seed.id, x.id)
                     if (co > 0 || sameArtist || sameGenre) related = true
                     rel += w * (3.0 * min(1.0, co / 2.0) + 1.2 * (if (sameArtist) 1.0 else 0.0) + 0.8 * (if (sameGenre) 1.0 else 0.0) + 0.5 * fit)
+                    // Closeness, for beside YouTube's radio: the genre decides when both are known (a sitting's
+                    // neighbours don't make R&B belong with amapiano); without one, only a lasting habit does.
+                    when {
+                        sameArtist -> close = true
+                        g != null && xGenre != null ->
+                            if (sameGenre && !tempoApart(seedBpm.getOrPut(seed.id) { pool.bpmOf(seed.id) }, pool.bpmOf(x.id))) close = true else apart = true
+                        co >= CO_CLOSE -> close = true
+                    }
                 }
                 val like = pool.affinity(x).coerceIn(0.0, 1.0)
                 // Something the seeds have nothing to do with only fills in, a long way behind.
                 val score = (rel + 1.0 * like) * (if (related) 1.0 else 0.3) * jitter(x.id)
-                Pick(x, score, related)
+                Pick(x, score, related, if (close) Fit.CLOSE else if (apart) Fit.APART else Fit.UNKNOWN)
             }
             .sortedByDescending { it.score }
             .distinctBy { sameSong(it.song) }

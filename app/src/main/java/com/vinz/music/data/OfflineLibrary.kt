@@ -2,32 +2,41 @@ package com.vinz.music.data
 
 import android.content.Context
 import com.vinz.music.data.innertube.InnerTube
+import com.vinz.music.data.innertube.SearchRank
 import com.vinz.music.data.model.AlbumItem
 import com.vinz.music.data.model.ArtistItem
+import com.vinz.music.data.model.ArtistPage
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.BrowseItem
 import com.vinz.music.data.model.CollectionKind
 import com.vinz.music.data.model.CollectionPage
 import com.vinz.music.data.model.PlaylistItem
 import com.vinz.music.data.model.PodcastItem
+import com.vinz.music.data.model.Shelf
 import com.vinz.music.data.model.Song
+import com.vinz.music.data.model.SongItem
 import kotlinx.serialization.Serializable
 import java.io.File
 
 /**
  * What Vinz keeps so the library works without a network (#55): the account's playlists, albums and artists as last
- * synced, and the playlists and albums it has opened, with their songs. Offline, Library lists them as usual, and a
- * playlist opens from its saved copy and plays its downloaded songs (the rest show, greyed out).
+ * synced, and the playlists, albums and artists it has opened, with their songs. Offline, Library lists them as usual,
+ * and a playlist opens from its saved copy and plays its downloaded songs (the rest show, greyed out).
  */
 class OfflineLibrary(context: Context) {
     private val dir = File(context.filesDir, "offline").apply { mkdirs() }
     private val pagesDir = File(dir, "pages").apply { mkdirs() }
+    /** Artist pages as they were last opened (1.8.2), one file each. */
+    private val artistsDir = File(dir, "artists").apply { mkdirs() }
     private val listsFile = File(dir, "library.json")
+    private val uploadsFile = File(dir, "uploads.json")
 
     @Serializable
     private data class Item(
         val kind: String, val id: String, val title: String, val subtitle: String, val thumbnail: String? = null,
         val playlistId: String? = null, val isMix: Boolean = false, val seedVideoId: String? = null, val params: String? = null,
+        /** On an artist's page, a shelf can hold songs and videos. */
+        val song: Song? = null, val plays: Long? = null,
     )
 
     @Serializable
@@ -41,6 +50,21 @@ class OfflineLibrary(context: Context) {
         val explicit: Boolean = false, val artistThumbnail: String? = null,
     )
 
+    @Serializable
+    private data class KeptShelf(
+        val title: String, val strapline: String? = null, val items: List<Item>,
+        val grid: Boolean = false, val rows: Boolean = false, val stacked: Boolean = false,
+    )
+
+    @Serializable
+    private data class KeptArtist(
+        val id: String, val name: String, val thumbnail: String? = null, val description: String? = null, val subscribers: String? = null,
+        val views: String? = null, val channelId: String? = null, val subscribed: Boolean = false, val shelves: List<KeptShelf>,
+    )
+
+    @Serializable
+    private data class KeptUploads(val songs: List<Song> = emptyList(), val albums: List<Item> = emptyList(), val artists: List<Item> = emptyList())
+
     data class Library(val playlists: List<BrowseItem>, val albums: List<BrowseItem>, val artists: List<BrowseItem>)
 
     private fun BrowseItem.toItem(): Item? = when (this) {
@@ -48,6 +72,7 @@ class OfflineLibrary(context: Context) {
         is AlbumItem -> Item("album", id, title, subtitle, thumbnail, playlistId = playlistId)
         is ArtistItem -> Item("artist", id, title, subtitle, thumbnail)
         is PodcastItem -> Item("podcast", id, title, subtitle, thumbnail)
+        is SongItem -> Item("song", id, title, subtitle, thumbnail, song = song, plays = plays)
         else -> null
     }
 
@@ -56,6 +81,7 @@ class OfflineLibrary(context: Context) {
         "album" -> AlbumItem(id, title, subtitle, thumbnail, playlistId)
         "artist" -> ArtistItem(id, title, subtitle, thumbnail)
         "podcast" -> PodcastItem(id, title, subtitle, thumbnail)
+        "song" -> song?.let { SongItem(it, plays) }
         else -> null
     }
 
@@ -99,10 +125,80 @@ class OfflineLibrary(context: Context) {
         .sortedByDescending { it.lastModified() }
         .mapNotNull { f -> f.name.removeSuffix(".json").let { id -> page(id)?.let { id to it } } }
 
+    private fun artistFile(id: String) = File(artistsDir, id.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
+
+    private fun keptShelves(page: ArtistPage, itemsEach: Int) = page.shelves.mapNotNull { s ->
+        val items = s.items.take(itemsEach).mapNotNull { it.toItem() }
+        if (items.isEmpty()) null else KeptShelf(s.title, s.strapline, items, s.grid, s.rows, s.stacked)
+    }
+
+    /**
+     * Keeps an artist's page as it was opened, for opening offline (1.8.2): their shelves ([MAX_ARTIST_ITEMS] items
+     * each at most), biography and facts. What only the network can use (mixes, shuffle, "See all") stays out. A page
+     * over [MAX_ARTIST_BYTES] keeps shorter shelves and no biography, and one still over it isn't kept. False when
+     * nothing was kept.
+     */
+    fun saveArtist(page: ArtistPage): Boolean {
+        val full = KeptArtist(
+            page.id, page.name, page.thumbnail, page.description?.take(MAX_ARTIST_BIO), page.subscribers, page.views, page.channelId, page.subscribed,
+            keptShelves(page, MAX_ARTIST_ITEMS),
+        )
+        if (full.shelves.isEmpty()) return false
+        var text = InnerTube.json.encodeToString(KeptArtist.serializer(), full)
+        if (text.length > MAX_ARTIST_BYTES) text = InnerTube.json.encodeToString(KeptArtist.serializer(), full.copy(description = null, shelves = keptShelves(page, TRIMMED_ARTIST_ITEMS)))
+        if (text.length > MAX_ARTIST_BYTES) return false
+        runCatching { atomicWrite(artistFile(page.id), text) }.getOrElse { return false }
+        artistsDir.listFiles { f -> f.name.endsWith(".json") }?.sortedByDescending { it.lastModified() }?.drop(MAX_ARTISTS)?.forEach { it.delete() }
+        return true
+    }
+
+    private fun KeptArtist.toPage() = ArtistPage(
+        id = id, name = name, thumbnail = thumbnail, description = description, subscribers = subscribers,
+        shelves = shelves.mapNotNull { s ->
+            val items = s.items.mapNotNull { it.toBrowse() }
+            if (items.isEmpty()) null else Shelf(s.title, s.strapline, items, grid = s.grid, rows = s.rows, stacked = s.stacked)
+        },
+        radioPlaylistId = null, shufflePlaylistId = null, views = views, channelId = channelId, subscribed = subscribed,
+    )
+
+    private fun readArtist(file: File): KeptArtist? = runCatching { InnerTube.json.decodeFromString(KeptArtist.serializer(), file.readText()) }.getOrNull()
+
+    /** The kept copy of the artist whose page is [id], if there is one. */
+    fun artist(id: String): ArtistPage? = readArtist(artistFile(id))?.toPage()
+
+    fun hasArtist(id: String): Boolean = artistFile(id).exists()
+
+    /**
+     * The kept copy of the artist called [name], when the page was kept under another of their ids (YouTube has more
+     * than one for many artists, and an artist a song names without a link has none). Reads every copy: for when the id
+     * found nothing.
+     */
+    fun artistNamed(name: String): ArtistPage? {
+        val want = SearchRank.norm(name).ifBlank { return null }
+        return artistsDir.listFiles { f -> f.name.endsWith(".json") }.orEmpty().sortedByDescending { it.lastModified() }
+            .firstNotNullOfOrNull { f -> readArtist(f)?.takeIf { SearchRank.norm(it.name) == want } }?.toPage()
+    }
+
+    /** Keeps the account's uploads as last listed (1.8.2), so Library → Uploads opens offline. */
+    fun saveUploads(songs: List<Song>, albums: List<BrowseItem>, artists: List<BrowseItem>) {
+        val kept = KeptUploads(songs.take(MAX_UPLOADS), albums.take(MAX_UPLOADS).mapNotNull { it.toItem() }, artists.take(MAX_UPLOADS).mapNotNull { it.toItem() })
+        runCatching { atomicWrite(uploadsFile, InnerTube.json.encodeToString(KeptUploads.serializer(), kept)) }
+    }
+
+    data class Uploads(val songs: List<Song>, val albums: List<AlbumItem>, val artists: List<ArtistItem>)
+
+    fun uploads(): Uploads? = runCatching {
+        val k = InnerTube.json.decodeFromString(KeptUploads.serializer(), uploadsFile.readText())
+        // A list kept before repeats were weeded out mustn't crash its page offline.
+        Uploads(k.songs.distinctBy { it.id }, k.albums.mapNotNull { it.toBrowse() as? AlbumItem }.distinctBy { it.id }, k.artists.mapNotNull { it.toBrowse() as? ArtistItem }.distinctBy { it.id })
+    }.getOrNull()
+
     /** Forgets everything kept (after signing out). */
     fun clear() {
         listsFile.delete()
+        uploadsFile.delete()
         pagesDir.listFiles()?.forEach { it.delete() }
+        artistsDir.listFiles()?.forEach { it.delete() }
     }
 
     /** When the copy of [id] was saved (0 if there's none). */
@@ -111,7 +207,8 @@ class OfflineLibrary(context: Context) {
     /** Every saved page's cover and songs' covers, so the covers they need are kept. */
     fun covers(): List<String?> = pagesDir.listFiles()?.flatMap { f ->
         runCatching { InnerTube.json.decodeFromString(Page.serializer(), f.readText()).let { listOf(it.thumbnail) } }.getOrDefault(emptyList())
-    }.orEmpty() + (library()?.let { l -> (l.playlists + l.albums + l.artists).map { it.thumbnail } } ?: emptyList())
+    }.orEmpty() + artistsDir.listFiles()?.mapNotNull { f -> readArtist(f)?.thumbnail }.orEmpty() +
+        (library()?.let { l -> (l.playlists + l.albums + l.artists).map { it.thumbnail } } ?: emptyList())
 
     /** The most recently saved pages stay; the rest go (each is a few hundred KB at most). */
     private fun trimPages() {
@@ -125,7 +222,15 @@ class OfflineLibrary(context: Context) {
         if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
     }
 
-    private companion object {
+    internal companion object {
         const val MAX_PAGES = 400
+        /** Artist pages kept: the most recently opened. Their photos go with them ([covers]). */
+        const val MAX_ARTISTS = 120
+        const val MAX_ARTIST_BYTES = 256 * 1024
+        const val MAX_ARTIST_ITEMS = 40
+        const val TRIMMED_ARTIST_ITEMS = 12
+        const val MAX_ARTIST_BIO = 6_000
+        /** Songs (and albums, and artists) of the account's uploads kept for offline. */
+        const val MAX_UPLOADS = 5_000
     }
 }

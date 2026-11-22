@@ -33,6 +33,24 @@ object AudioDiagnostics {
 
     fun init(context: Context) {
         file = File(context.filesDir, "diagnostics/audio.log").also { it.parentFile?.mkdirs() }
+        summaryFile = File(context.filesDir, "diagnostics/diagnostics-summary.json")
+    }
+
+    /** 1.8.7: counts since the playback service started (it calls [SessionCounters.reset] as it starts). */
+    val session = SessionCounters()
+
+    private var summaryFile: File? = null
+
+    /**
+     * The tick's line ([session]'s counts, after [line]) and the session's counts written to `diagnostics-summary.json`
+     * (`{"session": {...}}`), only while diagnostics are on.
+     */
+    fun tick(line: String) {
+        if (!enabled) return
+        log("tick", "$line; ${session.line()}")
+        val json = session.json()
+        val f = summaryFile ?: return
+        writer.execute { runCatching { writeAtomically(f, json) } }
     }
 
     /** Turned on or off from the setting; [header] describes the phone and the audio settings at the start. */
@@ -48,7 +66,6 @@ object AudioDiagnostics {
     }
 
     /** One line in the log ([kind] is a short tag: "track", "underrun", "device", "route", "scan", "mark"…). */
-    @android.annotation.SuppressLint("LogTagMismatch") // VinzDiag is the documented tag consumed by the release logcat workflow.
     fun log(kind: String, message: String) {
         if (!enabled) return
         // The release check's night hunt reads these from logcat (a release build's files can't be read over adb):
@@ -163,15 +180,36 @@ object AudioDiagnostics {
         return buildString {
             append("Phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
             append("Vinz: ${com.vinz.music.BuildConfig.VERSION_NAME} (${com.vinz.music.BuildConfig.VERSION_CODE}) ${com.vinz.music.BuildConfig.APPLICATION_ID}\n")
-            append("Build: ${com.vinz.music.BuildConfig.BUILD_CHANNEL} ${com.vinz.music.BuildConfig.GIT_SHA}\n")
-            append("Settings: quality ${s.audioQuality}, lossless ${s.lossless}, normalize ${s.normalize}, ")
-            append("skip silence ${s.skipSilence}, crossfade ${s.mix} (${s.mixSeconds} s), spatial ${s.spatial} (${(s.spatialAmount * 100).toInt()}%), ")
+            val metered = c.app.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered
+            // #372, #373, #377: with no secrets in it (cookie names, never their values).
+            append("Account: ${com.vinz.music.data.innertube.AccountSummary.of(s.cookie, s.authUser, s.dataSyncId, s.visitorData, s.behavior.accountSavedAt)}; YouTube takes requests as: ${c.innerTube.seen.value?.text ?: "not asked yet"}\n")
+            append("Settings: Premium quality ${s.premiumStream} (${c.streams.premiumState.value}), Data saver ${s.dataSaver}, network metered $metered, history paused ${com.vinz.music.data.HistoryPause.paused(s.behavior)}, ")
+            append("quality ${s.audioQuality}, lossless ${s.lossless}, normalize ${s.normalize}, ")
+            append("skip silence ${s.skipSilence}, crossfade ${s.mix.on} (${s.mix.seconds} s), spatial ${s.spatial} (${(s.spatialAmount * 100).toInt()}%), ")
             append("EQ ${s.eq.enabled}, Sing ${c.sing.on.value}, DJ ${c.dj.onNow}, ")
             append("headphone correction ${c.headphoneEq.active.value?.let { "'${it.profile.name}' at ${(it.strength * 100).toInt()}%" } ?: "none"}\n")
             append("Now: ${n.codec} ${n.sampleRate} Hz → ${n.outputEncoding} ${n.outputSampleRate} Hz, decoder ${n.decoder}, offload ${n.offload}, underruns ${n.underruns}\n")
             append("Outputs: ${devices(c.app)}")
         }
     }
+
+    /**
+     * 1.8.6: the Canvas lines for the song playing ([com.vinz.music.data.canvas.canvasDiagnostics]): the setting, what
+     * shows, and why there is no loop from its music video. Reads the database and the loop folders: off the main thread.
+     */
+    suspend fun canvas(c: com.vinz.music.AppContainer): String = runCatching {
+        val song = c.player.currentSong.value
+        val row = song?.let { c.canvasClips.row(it.id) }
+        val kept = row?.videoId?.let { c.clipFiles.of(it) }.orEmpty()
+        com.vinz.music.data.canvas.canvasDiagnostics(
+            stored = c.settings.stored.value, used = c.settings.current,
+            metered = c.app.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == true,
+            videoMode = c.player.videoMode.value, song = song, hidden = song != null && song.id in c.canvas.hiddenLoops.value,
+            cover = song?.let { c.canvas.cached(it, spotifyOk = it.id !in c.canvas.hiddenSpotify.value, vinzOk = it.id !in c.canvas.hidden.value) }, row = row, kept = kept,
+            coverHidden = song != null && song.id in c.canvas.hidden.value,
+            spotify = c.canvas.spotifyAsked(), spotifyHidden = song != null && song.id in c.canvas.hiddenSpotify.value,
+        )
+    }.getOrElse { "Canvas: couldn't read (${it.javaClass.simpleName})" }
 
     /** Clears the log (it starts again with a fresh header if diagnostics are on). */
     fun clear(header: () -> String) {

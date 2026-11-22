@@ -4,6 +4,9 @@ import com.vinz.music.ui.theme.VinzIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +50,8 @@ import com.vinz.music.ui.theme.hairline
 /**
  * One choice in an [ActionSheet], as a tile ([QuickActions]) or a row ([ActionGroup]).
  * [value] is shown on the right of a row (a timer, a percentage); [active] lights it up (a mode
- * that's on); [keepOpen] runs it without closing the sheet; [danger] is for deleting things.
+ * that's on); [keepOpen] runs it without closing the sheet; [danger] is for deleting things. [toggle], when set, makes it
+ * a switch for a screen reader: it says the item's name, "On" or "Off", and that a tap changes it.
  */
 @Immutable
 class ActionItem(
@@ -57,8 +61,17 @@ class ActionItem(
     val active: Boolean = false,
     val keepOpen: Boolean = false,
     val danger: Boolean = false,
+    val toggle: Boolean? = null,
     val onClick: () -> Unit,
 )
+
+/** A tap on [a]: a switch ([ActionItem.toggle]) says its state to a screen reader; anything else is a plain button. */
+private fun Modifier.actionTap(a: ActionItem, onClick: () -> Unit): Modifier {
+    val on = a.toggle ?: return clickable(onClickLabel = a.label, onClick = onClick)
+    val state = com.vinz.music.tr(if (on) com.vinz.music.R.string.on_2 else com.vinz.music.R.string.off)
+    return toggleable(on, role = androidx.compose.ui.semantics.Role.Switch) { onClick() }
+        .semantics { stateDescription = state }
+}
 
 fun SheetItem.toAction() = ActionItem(icon, label, danger = danger, onClick = onClick)
 
@@ -108,9 +121,9 @@ fun ActionSheet(
 /**
  * What's left of an upward scroll or fling once the menu has reached its end stays with the menu (#147): handed to the
  * sheet, a fast fling pushed the whole sheet up past its top, under the status bar, and it bounced back down. Downward
- * leftovers still go to the sheet, so pulling it down closes it as before.
+ * leftovers still go to the sheet, so pulling it down closes it as before. Add to playlist's list has it too (#401).
  */
-private val KeepUpwardScroll = object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+internal val KeepUpwardScroll = object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
     override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource) =
         if (available.y < 0f) androidx.compose.ui.geometry.Offset(0f, available.y) else androidx.compose.ui.geometry.Offset.Zero
 
@@ -170,7 +183,7 @@ fun QuickActions(items: List<ActionItem>, onPick: (ActionItem) -> Unit) {
         items.forEachIndexed { i, a ->
             val hue = com.vinz.music.ui.theme.VinzTokens.hue(i * step)
             Column(
-                Modifier.weight(1f).clip(LocalUi.current.tile).clickable(onClickLabel = a.label) { onPick(a) }
+                Modifier.weight(1f).clip(LocalUi.current.tile).actionTap(a) { onPick(a) }
                     .padding(horizontal = 4.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
@@ -183,7 +196,8 @@ fun QuickActions(items: List<ActionItem>, onPick: (ActionItem) -> Unit) {
                 Spacer(Modifier.height(7.dp))
                 Text(
                     a.value ?: a.label, style = MaterialTheme.typography.labelMedium, color = if (a.active) scheme.onSurface else scheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                    // Two lines: "Remove download" (#471) and longer words in other languages weren't cut short.
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                 )
             }
         }
@@ -214,7 +228,8 @@ private fun ActionRow(a: ActionItem, onClick: () -> Unit) {
         else -> scheme.onSurface
     }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
+        Modifier.fillMaxWidth().then(if (a.toggle != null) Modifier.actionTap(a, onClick) else Modifier.clickable(onClick = onClick))
+            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(

@@ -40,7 +40,7 @@ object SsdpSearch {
                 val p = DatagramPacket(buf, buf.size)
                 try { s.receive(p) } catch (_: SocketTimeoutException) { continue }
                 val m = SsdpMessage.parse(String(p.data, 0, p.length, Charsets.UTF_8)) ?: continue
-                if (Ssdp.isRenderer(m)) onFound(m, p.address)
+                if (Ssdp.isRenderer(m) && Ssdp.speaksForItself(m, p.address)) onFound(m, p.address)
             }
         }
     }
@@ -56,16 +56,19 @@ object Describe {
         literal && Lan.isLocal(InetAddress.getByName(host))
     }.getOrDefault(false)
 
-    /** The renderer a description at [location] describes, or null (not on the local network, not a renderer, no answer). */
-    fun fetch(http: OkHttpClient, location: String): Renderer? {
-        if (!isLocalLink(location)) return null
-        val client = http.newBuilder().connectTimeout(3, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(6, TimeUnit.SECONDS).build()
+    /**
+     * The renderer a description at [location] describes, or null (not on the local network, not a renderer, no answer).
+     * [problem] hears why, for diagnostics: a speaker that answers the search and then isn't listed is otherwise silent.
+     */
+    fun fetch(http: OkHttpClient, location: String, problem: (String) -> Unit = {}): Renderer? {
+        if (!isLocalLink(location)) { problem("not on the local network: $location"); return null }
+        val client = with(LanHttp) { http.newBuilder().lanFirst() }.connectTimeout(3, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(6, TimeUnit.SECONDS).build()
         val text = runCatching {
             client.newCall(Request.Builder().url(location).header("User-Agent", "Android UPnP/1.1 Vinz/1.7").build()).execute().use { r ->
-                if (!r.isSuccessful) null else r.body?.byteStream()?.use { s -> s.readNBytesCompat(512 * 1024) }?.toString(Charsets.UTF_8)
+                if (!r.isSuccessful) { problem("HTTP ${r.code} from $location"); null } else r.body?.byteStream()?.use { s -> s.readNBytesCompat(512 * 1024) }?.toString(Charsets.UTF_8)
             }
-        }.getOrNull() ?: return null
-        return Description.parse(text, location)
+        }.onFailure { problem("couldn't read $location: $it") }.getOrNull() ?: return null
+        return Description.parse(text, location).also { if (it == null) problem("$location doesn't describe something that plays") }
     }
 
     private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray {

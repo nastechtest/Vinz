@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.download
 
 import android.content.Context
@@ -160,10 +159,10 @@ class SmartDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         smartIds.forEach { id ->
             val st = downloads[id]?.state
             when {
-                c.library.isDisliked(id) -> { c.downloads.remove(id); removed++ }
-                st == Download.STATE_QUEUED && id !in addIds && canAdd -> { c.downloads.remove(id); removed++ }
-                st == Download.STATE_QUEUED && id !in target -> { c.downloads.remove(id); removed++ }
-                st == Download.STATE_COMPLETED && id !in target && rotated < 25 -> { c.downloads.remove(id); rotated++ }
+                c.library.isDisliked(id) -> { c.downloads.remove(id, byListener = false); removed++ }
+                st == Download.STATE_QUEUED && id !in addIds && canAdd -> { c.downloads.remove(id, byListener = false); removed++ }
+                st == Download.STATE_QUEUED && id !in target -> { c.downloads.remove(id, byListener = false); removed++ }
+                st == Download.STATE_COMPLETED && id !in target && rotated < 25 -> { c.downloads.remove(id, byListener = false); rotated++ }
             }
         }
         toAdd.forEach { song ->

@@ -4,7 +4,6 @@ import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.trp
 import com.vinz.music.ui.theme.VinzIcons
-import android.app.Activity
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,7 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -53,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -65,16 +65,22 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
 import coil3.compose.AsyncImage
+import com.vinz.music.data.ArtistOpened
 import com.vinz.music.data.FavoriteArtist
 import com.vinz.music.data.ShareLinks
+import com.vinz.music.data.albumFromPhone
+import com.vinz.music.data.artistEssentials
+import com.vinz.music.data.artistSongsOnPhone
+import com.vinz.music.data.artistYou
+import com.vinz.music.data.keepArtist
+import com.vinz.music.data.openArtist
+import com.vinz.music.data.opensOffline
 import com.vinz.music.data.model.AlbumItem
 import com.vinz.music.data.model.ArtistItem
 import com.vinz.music.data.model.ArtistPage
@@ -124,11 +130,17 @@ import kotlinx.coroutines.withTimeoutOrNull
 @Composable
 fun ArtistScreen(id: String, bottomPadding: Dp) {
     val c = LocalContainer.current
-    val load = rememberLoad("artist:$id") { c.ytm.artist(id) }
+    // Without a network: the copy kept when it last opened, or a page made from what's on the phone (1.8.2).
+    val load = rememberLoad("artist:$id") { c.openArtist(id) }
     when (val s = load.state) {
         Load.Loading -> Box(Modifier.fillMaxSize().statusBarsPadding()) { LoadingState(Modifier.align(Alignment.Center)) }
         is Load.Err -> Box(Modifier.fillMaxSize().statusBarsPadding()) { ErrorState(s.message) { load.reload(false) } }
-        is Load.Ok -> ArtistContent(s.value, bottomPadding)
+        is Load.Ok -> {
+            // Back online, the page is YouTube's again.
+            val online by c.network.online.collectAsState()
+            LaunchedEffect(online, s.value.kept) { if (online && s.value.kept) load.reload(true) }
+            ArtistContent(s.value, bottomPadding)
+        }
     }
 }
 
@@ -162,15 +174,32 @@ private fun Shelf.newestFirst() = copy(items = Releases.newestFirst(items))
  * own; the rest of the page sits on the frosted glass.
  */
 @Composable
-private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
+private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
     val c = LocalContainer.current
+    val fromYouTube = opened.page
     // The listener's own photo of the artist (1.7.6), everywhere on the page, when they've picked one.
     val page = c.covers.custom(c.covers.artistKey(fromYouTube.id))?.let { fromYouTube.copy(thumbnail = it) } ?: fromYouTube
     val nav = LocalNavigator.current
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val onSong: (SongItem) -> Unit = { c.player.playSingle(it.song) }
-    val open: (BrowseItem) -> Unit = { nav.open(it, onSong) }
+    // Without a network (1.8.2): what's on the phone plays and opens; the rest is dimmed, as on album pages.
+    val online by c.network.online.collectAsState()
+    val offline = !online || opened.kept
+    val dls by c.downloadState.collectAsState()
+    val onPhone by produceState(emptyList<Song>(), page.id, offline) { value = if (offline) c.artistSongsOnPhone(page.id, page.name) else emptyList() }
+    val phoneReady = remember(onPhone, dls) { onPhone.filter { c.availableOffline(it.id) } }
+    val reachable by produceState(emptySet<String>(), page, offline, onPhone) {
+        value = if (!offline) emptySet() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            page.shelves.flatMap { it.items }.filter { c.opensOffline(it, onPhone) }.map { it.id }.toSet()
+        }
+    }
+    val notHere = { android.widget.Toast.makeText(context, tr(R.string.offline_not_on_phone), android.widget.Toast.LENGTH_SHORT).show() }
+    val open: (BrowseItem) -> Unit = { if (offline && it.id !in reachable) notHere() else nav.open(it, onSong) }
+    val dimmed: (BrowseItem) -> Boolean = { offline && it.id !in reachable }
     val sections = remember(page) { ArtistSections(page) }
+    // An uploaded artist's page (#332) has no mixes, shuffles or links of YouTube's: what plays is what it lists.
+    val uploads = com.vinz.music.data.innertube.Parser.isUploadArtist(page.id)
     val list = rememberLazyListState()
     val palette = rememberArtPalette(page.thumbnail)
     val frost = rememberFrost(page.thumbnail)
@@ -208,17 +237,58 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
             }
         }
     }
-    val shuffle = { playList(page.shufflePlaylistId, page.name, page.shuffleVideoId, page.shuffleParams) }
-    val mix = { playList(page.radioPlaylistId, tr(R.string.mix, page.name), page.radioVideoId, page.radioParams) }
     // The page itself only carries five top songs; the list behind "See all" has the rest.
     val quickTop = remember(sections) { sections.topSongs?.items?.filterIsInstance<SongItem>()?.map { it.song }.orEmpty() }
-    val fullTop by produceState<List<Song>?>(null, page.id) {
+    val fullTop by produceState<List<Song>?>(null, page.id, offline) {
         val id = sections.topSongs?.moreBrowseId?.takeIf { it.startsWith("VL") } ?: return@produceState
+        if (offline) return@produceState
         value = runCatching { c.ytm.playlist(id).songs }.getOrNull()?.filter { !it.isVideo }
     }
     val topSongs = fullTop?.takeIf { it.size > quickTop.size }?.take(TOP_SONGS) ?: quickTop
+    // Which of the page's songs play right now (null: all of them).
+    val ready = if (!offline) null else remember(topSongs, dls) { topSongs.filter { c.availableOffline(it.id) }.map { it.id }.toSet() }
+    // What Play and Shuffle play when YouTube's own lists are out of reach.
+    val ownPool: List<Song>? = when {
+        offline -> (phoneReady + topSongs.filter { ready?.contains(it.id) == true }).distinctBy { it.id }
+        uploads -> quickTop
+        else -> null
+    }
+    fun playOwn(pool: List<Song>, shuffled: Boolean) {
+        if (pool.isEmpty()) notHere() else c.player.playQueue(pool, 0, QueueSource(QueueKind.OTHER, page.name), shuffle = shuffled)
+    }
+    val shuffle = { if (ownPool != null) playOwn(ownPool, true) else playList(page.shufflePlaylistId, page.name, page.shuffleVideoId, page.shuffleParams) }
+    val mix = { playList(page.radioPlaylistId, tr(R.string.mix, page.name), page.radioVideoId, page.radioParams) }
+    // Kept (with the whole top songs list, once it's in), to open offline later.
+    if (!opened.kept) LaunchedEffect(fromYouTube, fullTop) {
+        val top = fullTop?.takeIf { it.size > quickTop.size }?.take(TOP_SONGS)
+        c.keepArtist(
+            if (top == null) fromYouTube
+            else fromYouTube.copy(shelves = fromYouTube.shelves.map { s -> if (s == sections.topSongs) s.copy(items = top.map { SongItem(it) }) else s }),
+        )
+    }
+    // The page's own extras (1.8.2), each with its switch: from the plays on this phone, and Wikipedia's bio.
+    val behavior = com.vinz.music.ui.theme.LocalAppSettings.current.behavior
+    val you by produceState<com.vinz.music.data.ArtistYou?>(null, page.id, page.name, behavior.artistYou) {
+        value = if (behavior.artistYou) runCatching { c.artistYou(page.id, page.name) }.getOrNull() else null
+    }
+    val essentials by produceState(emptyList<Song>(), page.id, page.name, topSongs, behavior.artistEssentials) {
+        value = if (!behavior.artistEssentials || opened.fromPhone || uploads) emptyList()
+        else runCatching { c.artistEssentials(page.id, page.name, topSongs) }.getOrDefault(emptyList())
+    }
+    val essentialsReady = if (!offline) null else remember(essentials, dls) { essentials.filter { c.availableOffline(it.id) }.map { it.id }.toSet() }
+    val bio by produceState<com.vinz.music.data.ArtistBio?>(null, page.id, behavior.artistBio, offline) {
+        val lang = com.vinz.music.data.ArtistBioCheck.wikiLanguage(java.util.Locale.getDefault())
+        // YouTube's own description being Wikipedia's text, the page already has it (with its credit), so nothing's asked.
+        value = if (!behavior.artistBio || lang == null || uploads || com.vinz.music.data.ArtistBioCheck.youTubeQuotesIt(page.description)) null
+        else runCatching {
+            // A page made from the phone can't be told apart well enough to ask with, but what was kept still shows.
+            val mayAsk = !offline && !opened.kept && !c.dataSaving()
+            c.artistBios.bio(page.id, page.name, com.vinz.music.data.ArtistBioCheck.titlesOf(page), lang, mayAsk)
+        }.getOrNull()
+    }
     // Streams on air on the artist's channel (YouTube Music doesn't show them; youtube.com's Live tab does).
-    val streams by produceState(emptyList<SongItem>(), page.id) {
+    val streams by produceState(emptyList<SongItem>(), page.id, offline) {
+        if (offline || uploads) { value = emptyList(); return@produceState }
         value = runCatching {
             c.ytm.liveStreams(page.channelId ?: page.id, com.vinz.music.data.model.ArtistRef(page.name, page.id))
         }.getOrDefault(emptyList()).map { SongItem(it) }
@@ -226,7 +296,8 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
     // Play: their top songs in order (the whole list behind "See all" when it loads quickly).
     val playTop: () -> Unit = {
         val shelf = sections.topSongs
-        scope.launch {
+        if (ownPool != null) playOwn(ownPool, false)
+        else scope.launch {
             val full = fullTop ?: shelf?.moreBrowseId?.takeIf { it.startsWith("VL") }?.let { id ->
                 withTimeoutOrNull(3_000) { runCatching { c.ytm.playlist(id).songs }.getOrNull() }
             }
@@ -235,7 +306,7 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
             else shuffle()
         }
     }
-    fun more(shelf: Shelf): (() -> Unit)? = shelf.moreBrowseId?.let { id ->
+    fun more(shelf: Shelf): (() -> Unit)? = shelf.moreBrowseId?.takeIf { !offline }?.let { id ->
         { if (id.startsWith("VL")) nav.go(Routes.playlist(id)) else nav.go(Routes.browse(id, shelf.moreParams, shelf.title)) }
     }
 
@@ -275,35 +346,64 @@ private fun ArtistContent(fromYouTube: ArtistPage, bottomPadding: Dp) {
                         onSignature = { showSignature = true },
                     )
                 }
-                latestRelease(sections)?.let { latest ->
-                    item("latest") { Spotlight(latest, onOpen = { open(latest) }) }
+                // Says what this page is when it isn't YouTube's answer of a moment ago.
+                if (offline && opened.kept) item("offlineNote") {
+                    Text(
+                        if (opened.fromPhone) tr(R.string.artist_offline_from_phone) else tr(R.string.artist_offline_kept),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
+                    )
                 }
+                if (opened.fromPhone && page.shelves.isEmpty()) item("nothing") {
+                    com.vinz.music.ui.components.EmptyState(VinzIcons.CloudOff, page.name, tr(R.string.artist_nothing_on_phone, page.name))
+                }
+                latestRelease(sections)?.takeIf { !offline || it.id in reachable }?.let { latest ->
+                    item("latest") { Spotlight(latest, offline, onOpen = { open(latest) }) }
+                }
+                // A kept page's top songs may not be the ones that are here: those come first, under their own heading.
+                if (offline && !opened.fromPhone && phoneReady.isNotEmpty()) item("phone") {
+                    AppleHeader(tr(R.string.on_this_phone), null)
+                    TopSongsGrid(phoneReady, page.name)
+                }
+                you?.let { y -> item("you") { ArtistYouPanel(y) } }
                 sections.topSongs?.let { shelf ->
                     item("top") {
-                        AppleHeader(tr(R.string.top_songs_2), more(shelf))
-                        TopSongsGrid(topSongs, tr(R.string.top_songs, page.name))
+                        AppleHeader(
+                            when { opened.fromPhone -> tr(R.string.your_songs_by_artist); uploads -> tr(R.string.songs); else -> tr(R.string.top_songs_2) },
+                            more(shelf),
+                        )
+                        TopSongsGrid(topSongs, tr(R.string.top_songs, page.name), ready)
                     }
+                }
+                if (essentials.isNotEmpty()) item("essentials") {
+                    AppleHeader(tr(R.string.artist_essentials_title), null)
+                    TopSongsGrid(essentials, tr(R.string.artist_essentials_title), essentialsReady)
                 }
                 if (streams.isNotEmpty()) item("streams") {
                     AppleHeader(tr(R.string.livestreams), null)
                     CardRow(streams, 260.dp, aspect = 16f / 9f, open = open)
                 }
-                sections.albums?.let { s -> item("albums") { AppleHeader(tr(R.string.albums), more(s)); CardRow(s.items, 168.dp, open = open) } }
-                sections.singles?.let { s -> item("singles") { AppleHeader(tr(R.string.singles_eps), more(s)); CardRow(s.items, 140.dp, open = open) } }
-                sections.videos?.let { s -> item("videos") { AppleHeader(tr(R.string.music_videos), more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open) } }
-                sections.live?.let { s -> item("live") { AppleHeader(tr(R.string.live), more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open) } }
-                sections.featured?.let { s -> item("featured") { AppleHeader(tr(R.string.appears_on), more(s)); CardRow(s.items, 150.dp, open = open) } }
-                sections.playlists?.let { s -> item("playlists") { AppleHeader(tr(R.string.artist_playlists), more(s)); CardRow(s.items, 150.dp, open = open) } }
-                sections.others.forEachIndexed { place, shelf -> shelfItems(shelf, place = place, open = open) }
-                sections.similar?.let { s -> item("similar") { AppleHeader(tr(R.string.similar_artists), more(s)); CardRow(s.items, 128.dp, round = true, open = open) } }
+                sections.albums?.let { s -> item("albums") { AppleHeader(tr(R.string.albums), more(s)); CardRow(s.items, 168.dp, open = open, dim = dimmed) } }
+                sections.singles?.let { s -> item("singles") { AppleHeader(tr(R.string.singles_eps), more(s)); CardRow(s.items, 140.dp, open = open, dim = dimmed) } }
+                sections.videos?.let { s -> item("videos") { AppleHeader(tr(R.string.music_videos), more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open, dim = dimmed) } }
+                sections.live?.let { s -> item("live") { AppleHeader(tr(R.string.live), more(s)); CardRow(s.items, 260.dp, aspect = 16f / 9f, open = open, dim = dimmed) } }
+                sections.featured?.let { s -> item("featured") { AppleHeader(tr(R.string.appears_on), more(s)); CardRow(s.items, 150.dp, open = open, dim = dimmed) } }
+                sections.playlists?.let { s -> item("playlists") { AppleHeader(tr(R.string.artist_playlists), more(s)); CardRow(s.items, 150.dp, open = open, dim = dimmed) } }
+                // The other shelves leave out what wouldn't open (they're drawn by what Search and Browse share).
+                sections.others.forEachIndexed { place, shelf ->
+                    val shown = if (!offline) shelf else shelf.copy(items = shelf.items.filter { it.id in reachable }, moreBrowseId = null)
+                    if (shown.items.isNotEmpty()) shelfItems(shown, place = place, open = open)
+                }
+                sections.similar?.let { s -> item("similar") { AppleHeader(tr(R.string.similar_artists), more(s)); CardRow(s.items, 128.dp, round = true, open = open, dim = dimmed) } }
+                bio?.let { b -> item("bio") { ArtistBioPanel(b) } }
                 item("about") { AboutCard(page, genre) { showInfo = true } }
             }
 
             // Content melts away under the bar into the page's own frost.
             ScrollEdge({ solid }, statusTop + 60.dp + 34.dp, pageHeight) { m -> FrostedBackdrop(frost, palette, heroHeight, heroScroll, m, bleed = true) }
-            TopBar(page, { solid }, hasMix = page.radioPlaylistId != null, favorite = favorite,
+            TopBar(page, { solid }, hasMix = page.radioPlaylistId != null && !offline, favorite = favorite,
                 onMix = mix, onShare = { sharing = true }, onSignature = { showSignature = true }, onFavorite = toggleFavorite,
-                onColor = { pageColor = true })
+                onColor = { pageColor = true }, shareable = !uploads)
         }
 
         if (showInfo) InfoSheet(page, genre, favorite, onFavorite = toggleFavorite, onShare = { showInfo = false; sharing = true }) { showInfo = false }
@@ -440,19 +540,15 @@ private fun TopBar(
     page: ArtistPage, solid: () -> Float,
     hasMix: Boolean, favorite: Boolean, onMix: () -> Unit, onShare: () -> Unit, onSignature: () -> Unit, onFavorite: () -> Unit,
     onColor: () -> Unit,
+    /** An uploaded artist has no page anyone else could open. */
+    shareable: Boolean = true,
 ) {
     val nav = LocalNavigator.current
-    val view = LocalView.current
     val dark = LocalIsDark.current
     // Light status-bar icons over the photo; the theme's own once the page's frost has taken over.
     val lightIcons by remember(dark) { derivedStateOf { solid() < 0.5f || dark } }
-    DisposableEffect(lightIcons) {
-        val window = (view.context as? Activity)?.window
-        val ctl = window?.let { WindowCompat.getInsetsController(it, view) }
-        val previous = ctl?.isAppearanceLightStatusBars
-        ctl?.isAppearanceLightStatusBars = !lightIcons
-        onDispose { if (previous != null) ctl.isAppearanceLightStatusBars = previous }
-    }
+    // Shared with the solid pages' asks: Home's solid page closing after this one came in leaves these icons be.
+    com.vinz.music.ui.theme.StatusBarIcons(lightBar = !lightIcons)
     var menu by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().statusBarsPadding().height(60.dp)) {
@@ -466,7 +562,7 @@ private fun TopBar(
                 Box {
                     com.vinz.music.ui.components.RoundAction(VinzIcons.More, tr(R.string.more), glass = true) { menu = true }
                     DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem({ Text(tr(R.string.share_artist)) }, { menu = false; onShare() }, leadingIcon = { Icon(VinzIcons.Share, null) })
+                        if (shareable) DropdownMenuItem({ Text(tr(R.string.share_artist)) }, { menu = false; onShare() }, leadingIcon = { Icon(VinzIcons.Share, null) })
                         DropdownMenuItem(
                             { Text(if (favorite) tr(R.string.remove_from_favorites) else tr(R.string.add_to_favorites)) }, { menu = false; onFavorite() },
                             leadingIcon = { Icon(if (favorite) VinzIcons.StarFilled else VinzIcons.Star, null) },
@@ -516,11 +612,16 @@ private fun AppleHeader(title: String, onMore: (() -> Unit)?) {
 
 /** The latest release in a frosted card of its own, as Apple Music features it. */
 @Composable
-private fun Spotlight(item: AlbumItem, onOpen: () -> Unit) {
+private fun Spotlight(item: AlbumItem, offline: Boolean, onOpen: () -> Unit) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
-    // Track count and running time come from the release itself.
-    val release by produceState<List<Song>?>(null, item.id) { value = runCatching { c.ytm.album(item.id).songs }.getOrNull() }
+    // Track count and running time come from the release itself (offline, its kept copy or its songs on the phone).
+    val release by produceState<List<Song>?>(null, item.id, offline) {
+        value = runCatching {
+            if (!offline) c.ytm.album(item.id).songs
+            else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { (c.offline.page(item.id) ?: c.albumFromPhone(item.id))?.songs?.filter { c.availableOffline(it.id) } }
+        }.getOrNull()
+    }
     val details = release?.takeIf { it.isNotEmpty() }?.let { songs ->
         val min = (songs.sumOf { it.durationSec } + 30) / 60
         listOfNotNull(com.vinz.music.data.model.songCount(songs.size), min.takeIf { it > 0 }?.let { tr(R.string.min, it) }).joinToString(" · ")
@@ -547,7 +648,7 @@ private fun Spotlight(item: AlbumItem, onOpen: () -> Unit) {
                 Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface).border(1.5.dp, com.vinz.music.ui.theme.VinzTokens.spectrumRing(), CircleShape)
                     .clickable(onClickLabel = tr(R.string.play, item.title)) {
                         scope.launch {
-                            val songs = release ?: runCatching { c.ytm.album(item.id).songs }.getOrNull().orEmpty()
+                            val songs = release ?: if (offline) emptyList() else runCatching { c.ytm.album(item.id).songs }.getOrNull().orEmpty()
                             if (songs.isNotEmpty()) c.player.playQueue(songs, 0, QueueSource(QueueKind.ALBUM, item.title))
                         }
                     },
@@ -559,8 +660,9 @@ private fun Spotlight(item: AlbumItem, onOpen: () -> Unit) {
 
 /** Apple's Top Songs: columns of four that page sideways, the next column peeking in. */
 @Composable
-private fun TopSongsGrid(songs: List<Song>, title: String) {
+private fun TopSongsGrid(songs: List<Song>, title: String, ready: Set<String>? = null) {
     val c = LocalContainer.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val current by c.player.currentSong.collectAsState()
     val columns = remember(songs) { songs.chunked(4) }
     val state = rememberLazyListState()
@@ -578,10 +680,16 @@ private fun TopSongsGrid(songs: List<Song>, title: String) {
             Column(Modifier.width(width)) {
                 columns[col].forEachIndexed { i, s ->
                     val index = col * 4 + i
+                    // Offline: only what's on the phone plays, and only that goes in the queue; the rest is dimmed.
+                    val out = ready != null && s.id !in ready
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).then(if (out) Modifier.alpha(0.4f) else Modifier)
                             .combinedClickable(
-                                onClick = { c.player.playQueue(songs, index, QueueSource(QueueKind.OTHER, title)) },
+                                onClick = {
+                                    if (ready == null) c.player.playQueue(songs, index, QueueSource(QueueKind.OTHER, title))
+                                    else if (out) android.widget.Toast.makeText(context, tr(R.string.you_re_offline_and_this_song), android.widget.Toast.LENGTH_SHORT).show()
+                                    else songs.filter { it.id in ready }.let { q -> c.player.playQueue(q, q.indexOfFirst { it.id == s.id }.coerceAtLeast(0), QueueSource(QueueKind.OTHER, title)) }
+                                },
                                 // Held, a top song offers the same menu as a song anywhere else.
                                 onLongClick = { menuFor = s },
                             )
@@ -615,13 +723,13 @@ private fun TopSongsGrid(songs: List<Song>, title: String) {
 
 /** A row of Apple-style cards: artwork, then a title and a quiet second line (the year for releases). */
 @Composable
-private fun CardRow(items: List<BrowseItem>, width: Dp, aspect: Float = 1f, round: Boolean = false, open: (BrowseItem) -> Unit) {
+private fun CardRow(items: List<BrowseItem>, width: Dp, aspect: Float = 1f, round: Boolean = false, open: (BrowseItem) -> Unit, dim: (BrowseItem) -> Boolean = { false }) {
     val ui = LocalUi.current
     val menu = rememberPlayMenu()
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         items(items.distinctBy { it.id + it.title }, key = { it.id + it.title }) { item ->
             Column(
-                Modifier.width(width).clip(ui.shape(10.dp))
+                Modifier.width(width).clip(ui.shape(10.dp)).then(if (dim(item)) Modifier.alpha(0.4f) else Modifier)
                     .combinedClickable(onClick = { open(item) }, onLongClick = item.playable()?.let { p -> { menu(p) } }),
                 horizontalAlignment = if (round) Alignment.CenterHorizontally else Alignment.Start,
             ) {
@@ -648,6 +756,79 @@ private fun CardRow(items: List<BrowseItem>, width: Dp, aspect: Float = 1f, roun
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+/** "You and this artist" (1.8.2): from the plays on this phone. The top song plays when tapped. */
+@Composable
+private fun ArtistYouPanel(you: com.vinz.music.data.ArtistYou) {
+    val c = LocalContainer.current
+    val scope = rememberCoroutineScope()
+    fun time(ms: Long): String {
+        val minutes = ms / 60_000
+        return if (minutes < 60) tr(R.string.min, minutes.coerceAtLeast(1).toString()) else tr(R.string.hr, com.vinz.music.ui.components.wholeNumber(minutes / 60))
+    }
+    val first = remember(you.firstPlayedAt) {
+        com.vinz.music.ui.components.longDate(java.time.Instant.ofEpochMilli(you.firstPlayedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate())
+    }
+    Text(
+        tr(R.string.artist_you_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 10.dp),
+    )
+    FrostedPanel(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ArtistYouFact(tr(R.string.artist_you_plays), com.vinz.music.ui.components.wholeNumber(you.plays.toLong()), Modifier.weight(1f))
+                ArtistYouFact(tr(R.string.artist_you_time), time(you.ms), Modifier.weight(1f))
+            }
+            ArtistYouFact(tr(R.string.artist_you_first_play), first)
+            ArtistYouFact(
+                tr(R.string.artist_you_top_song), "${you.topSongTitle} · ${com.vinz.music.ui.components.wholeNumber(you.topSongPlays.toLong())}",
+                Modifier.fillMaxWidth().clickable {
+                    scope.launch {
+                        val song = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { c.db.songs().getAll(listOf(you.topSongId)).firstOrNull()?.toSong() }
+                        if (song != null) c.player.playSingle(song)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArtistYouFact(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+        Text(value, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Wikipedia's bio (1.8.2), its credit beside it as the licence asks: the article by name and link, its writers, the
+ * licence by name and link. Tapped, the whole of what's kept shows.
+ */
+@Composable
+private fun ArtistBioPanel(bio: com.vinz.music.data.ArtistBio) {
+    var whole by remember { mutableStateOf(false) }
+    val link = androidx.compose.ui.text.TextLinkStyles(androidx.compose.ui.text.SpanStyle(color = MaterialTheme.colorScheme.primary))
+    val creditText = tr(R.string.artist_bio_credit, bio.title, bio.licenseName)
+    val credit = remember(creditText, bio, link) {
+        androidx.compose.ui.text.AnnotatedString.Builder(creditText).apply {
+            creditText.indexOf(bio.title).takeIf { it >= 0 }?.let { addLink(androidx.compose.ui.text.LinkAnnotation.Url(bio.url, link), it, it + bio.title.length) }
+            creditText.lastIndexOf(bio.licenseName).takeIf { it >= 0 }?.let { addLink(androidx.compose.ui.text.LinkAnnotation.Url(bio.licenseUrl, link), it, it + bio.licenseName.length) }
+        }.toAnnotatedString()
+    }
+    FrostedPanel(Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp).fillMaxWidth(), onClick = { whole = !whole }) {
+        Column(Modifier.padding(16.dp).animateContentSize()) {
+            Eyebrow(tr(R.string.artist_bio_from_wikipedia))
+            Text(
+                bio.text, Modifier.padding(top = 6.dp),
+                // Its own language's direction, whatever Vinz's is.
+                style = MaterialTheme.typography.bodyMedium.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content),
+                maxLines = if (whole) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis,
+            )
+            Text(credit, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

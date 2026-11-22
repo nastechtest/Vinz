@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import com.vinz.music.R
@@ -13,7 +12,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.vinz.music.AppContainer
 import com.vinz.music.BuildConfig
+import com.vinz.music.data.artistSongsOnPhone
 import com.vinz.music.data.innertube.SearchFilter
+import com.vinz.music.data.openArtist
 import com.vinz.music.data.model.AlbumItem
 import com.vinz.music.data.model.ArtistItem
 import com.vinz.music.data.model.PlaylistItem
@@ -190,8 +191,13 @@ class MediaTree(private val c: AppContainer) {
             c.radio(parts.getOrNull(1)?.ifBlank { null }, parts[0], parts.getOrNull(2)?.ifBlank { null }, keepFirst = true)
         }.getOrNull()
             ?.let { r -> songList(parentId, tr(R.string.mix_2), r.songs) } ?: emptyList()
-        parentId.startsWith("ar:") -> runCatching { c.ytm.artist(parentId.removePrefix("ar:")) }.getOrNull()
-            ?.let { a -> songList(parentId, a.name, a.shelves.flatMap { s -> s.items.filterIsInstance<SongItem>().map { it.song } }.distinctBy { it.id }) }
+        // Without a network, the songs of the artist's kept page and on the phone, those that play (1.8.2).
+        parentId.startsWith("ar:") -> runCatching { c.openArtist(parentId.removePrefix("ar:")) }.getOrNull()
+            ?.let { o ->
+                val listed = o.page.shelves.flatMap { s -> s.items.filterIsInstance<SongItem>().map { it.song } }
+                val songs = if (!o.kept) listed else c.artistSongsOnPhone(o.page.id, o.page.name) + listed
+                songList(parentId, o.page.name, songs.distinctBy { it.id }.filter { !o.kept || c.availableOffline(it.id) })
+            }
             ?: emptyList()
         else -> emptyList()
     }
@@ -438,6 +444,11 @@ class ArtworkProvider : ContentProvider() {
             // ...or a holiday mix's cover, drawn by Vinz (1.8.0).
             val holiday = File(ctx.filesDir, "seasonal").canonicalPath
             val path = file.canonicalPath
+            // ...or the cover inside a file on the phone (#350), which the scan kept as it found it: a PNG goes out as a JPEG too.
+            if (path.startsWith(File(ctx.filesDir, "artwork/local").canonicalPath + File.separator)) {
+                if (!file.exists()) return null
+                return cached(ctx, "local:$path:${file.lastModified()}:${file.length()}") { file.readBytes() }
+            }
             if (!(path.startsWith(covers + File.separator) || path.startsWith(holiday + File.separator)) || !file.exists()) return null
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         }
@@ -478,7 +489,7 @@ class ArtworkProvider : ContentProvider() {
      * a JPEG, as [getType] says: YouTube's own mixes and "Liked Music" come as PNGs, and those were left blank.
      */
     private fun cached(ctx: android.content.Context, key: String, make: () -> ByteArray?): ParcelFileDescriptor? {
-        val name = MessageDigest.getInstance(tr(R.string.sha_1)).digest(key.toByteArray()).joinToString("") { "%02x".format(it) }
+        val name = MessageDigest.getInstance("SHA-1").digest(key.toByteArray()).joinToString("") { "%02x".format(it) }
         val dir = File(ctx.cacheDir, "auto_art2").apply { mkdirs() }
         val file = File(dir, "$name.jpg")
         if (!file.exists()) {
@@ -495,7 +506,7 @@ class ArtworkProvider : ContentProvider() {
         const val RES = "res:"
         /** The query parameter naming the tile shown when the picture can't be had. */
         const val OR = "or"
-        private const val LOCAL_ALBUM_ART = "content://media/external/audio/albumart/"
+        const val LOCAL_ALBUM_ART = "content://media/external/audio/albumart/"
         private const val TILE_PX = 288
 
         /** [url] served through this provider (a car can't open the app's own files, nor every web address). */
@@ -530,4 +541,4 @@ internal fun asJpeg(bytes: ByteArray): ByteArray? {
 private fun mixOrPlaylistId(item: PlaylistItem): String =
     if (!item.isMix) "pl:${item.id}"
     else if (item.seedVideoId == null && item.params == null) "mix:${item.id}"
-    else tr(R.string.mix_3, item.id, item.seedVideoId.orEmpty(), item.params.orEmpty())
+    else "mix:${item.id}|${item.seedVideoId.orEmpty()}|${item.params.orEmpty()}"

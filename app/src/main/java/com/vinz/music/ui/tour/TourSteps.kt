@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.vinz.music.BuildConfig
 import com.vinz.music.ui.Routes
+import com.vinz.music.ui.screens.settings.SettingsPageId
 import com.vinz.music.ui.theme.VinzIcons
 
 /**
@@ -27,6 +28,12 @@ data class TourStep(
     /** "Show me": where it opens (the tour closes; it can be taken again from Settings → About). */
     val showMe: String? = null,
     val kind: Kind = Kind.PLAIN,
+    /**
+     * 1.8.7.6 (plan-1.8.7.6 §4.1 S6, D5): the card ends with one line asking to support Vinz, shown once per release and
+     * never with "I've supported Vinz" on ([com.vinz.music.ui.support.SupportWhatsNewLine]). Only on the last card of
+     * a release's cards (`TourTest`).
+     */
+    val support: Boolean = false,
 ) {
     enum class Kind { PLAIN, NOTIFICATIONS }
 }
@@ -55,6 +62,20 @@ private const val V1_7_9_2 = 51
 private const val V1_8_0 = 53
 /** Vinz 1.8.1 (build 55): your history brought in, Spotify with your own key, History & Replay, your requests. */
 private const val V1_8_1 = 55
+/** Vinz 1.8.2 (build 57): the lock screen player. */
+private const val V1_8_2 = 57
+/** Vinz 1.8.3 (build 59): your library, smarter. */
+private const val V1_8_3 = 59
+/** Vinz 1.8.4 (build 61): Settings, made simple, and your requests. */
+private const val V1_8_4 = 61
+/** Vinz 1.8.5 (build 63): Replay & Rewind 2026. */
+private const val V1_8_5 = 63
+private const val V1_8_6 = 64
+private const val V1_8_7 = 65
+/** Vinz 1.8.7.5 (build 66): Your Spotify, and fixes. */
+private const val V1_8_7_5 = 66
+/** Vinz 1.8.7.6 (build 67): the small things, and Spotify's canvas. */
+private const val V1_8_7_6 = 67
 
     /** Every step, in the order they're shown. */
     val steps: List<TourStep> = listOf(
@@ -516,6 +537,265 @@ private const val V1_8_1 = 55
                 tr(R.string.tour_181_tv),
             ),
             listOf(VinzIcons.Car, VinzIcons.Tv),
+        ),
+        TourStep(
+            V1_8_2, VinzIcons.Lock, tr(R.string.tour_182_lock_title),
+            tr(R.string.tour_182_lock_body),
+            listOf(tr(R.string.tour_182_lock_point_1), tr(R.string.tour_182_lock_point_2), tr(R.string.tour_182_lock_point_3)),
+            showMe = Routes.settings("player", find = tr(R.string.lock_screen_title)),
+        ),
+        TourStep(
+            V1_8_2, VinzIcons.Radio, tr(R.string.tour_182_discover_title),
+            tr(R.string.tour_182_discover_body),
+            listOf(
+                tr(R.string.tour_182_discover_new),
+                tr(R.string.tour_182_discover_deep),
+                tr(R.string.tour_182_discover_day),
+                tr(R.string.tour_182_discover_tune),
+            ),
+            showMe = Routes.settings("library", find = tr(R.string.tune_radios)),
+        ),
+        TourStep(
+            V1_8_2, VinzIcons.QueueMusic, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(
+                tr(R.string.tour_182_also_shows),
+                tr(R.string.tour_182_also_offline),
+                tr(R.string.tour_182_also_pages),
+                tr(R.string.tour_182_also_files),
+                tr(R.string.tour_182_also_crossfade),
+            ),
+        ),
+        TourStep(
+            V1_8_3, VinzIcons.SmartShuffle, tr(R.string.tour_183_smart_title),
+            tr(R.string.tour_183_smart_body),
+            listOf(tr(R.string.tour_183_smart_point_1), tr(R.string.tour_183_smart_point_2), tr(R.string.tour_183_smart_point_3)),
+            showMe = Routes.LIBRARY,
+        ),
+        TourStep(
+            V1_8_3, VinzIcons.Tag, tr(R.string.tour_183_tags_title),
+            tr(R.string.tour_183_tags_body),
+            listOf(tr(R.string.tour_183_tags_point_1), tr(R.string.tour_183_tags_point_2), tr(R.string.tour_183_tags_point_3)),
+        ),
+        TourStep(
+            V1_8_3, VinzIcons.CheckCircle, tr(R.string.tour_183_select_title),
+            tr(R.string.tour_183_select_body),
+            listOf(tr(R.string.tour_183_select_point_1), tr(R.string.tour_183_select_point_2)),
+        ),
+        TourStep(
+            V1_8_3, VinzIcons.Search, tr(R.string.tour_183_search_title),
+            tr(R.string.tour_183_search_body),
+            listOf(tr(R.string.tour_183_search_point_1), tr(R.string.tour_183_search_point_2), tr(R.string.tour_183_search_point_3)),
+            showMe = Routes.librarySearch(),
+        ),
+        TourStep(
+            V1_8_3, VinzIcons.QueueMusic, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(
+                tr(R.string.tour_183_also_file),
+                tr(R.string.tour_183_also_duplicates),
+                tr(R.string.tour_183_also_songs_from),
+                tr(R.string.tour_183_also_lock),
+                tr(R.string.tour_183_also_uploads),
+            ),
+        ),
+        TourStep(
+            // Opens Settings' new first page (plan §5).
+            V1_8_4, VinzIcons.Settings, tr(R.string.tour_184_settings_title),
+            tr(R.string.tour_184_settings_body),
+            listOf(
+                tr(R.string.tour_184_settings_point_1),
+                tr(R.string.tour_184_settings_point_2),
+                tr(R.string.tour_184_settings_point_3),
+                tr(R.string.tour_184_settings_point_4),
+                tr(R.string.tour_184_settings_point_5),
+            ),
+            listOf(VinzIcons.Search, VinzIcons.Speed),
+            showMe = Routes.SETTINGS,
+        ),
+        TourStep(
+            // #404, with #392 and the car's Long lines. Opens Lyrics & Sing at the group with "Lyrics earlier / later".
+            V1_8_4, VinzIcons.Lyrics, tr(R.string.tour_184_lyrics_title),
+            tr(R.string.tour_184_lyrics_body),
+            listOf(tr(R.string.tour_184_lyrics_point_1), tr(R.string.tour_184_lyrics_point_2), tr(R.string.tour_184_lyrics_point_3)),
+            listOf(VinzIcons.Timer, VinzIcons.Car),
+            showMe = Routes.settings(SettingsPageId.LYRICS_SING.key, find = tr(R.string.ls_sources_and_timing)),
+        ),
+        TourStep(
+            // D53. Opens Player at Modes, where the lock screen and its options are.
+            V1_8_4, VinzIcons.Lock, tr(R.string.tour_184_lock_title),
+            tr(R.string.tour_184_lock_body),
+            listOf(
+                tr(R.string.tour_184_lock_point_1, tr(R.string.settings_player_same_look), tr(R.string.settings_player_lock_options)),
+                tr(R.string.tour_184_lock_point_2),
+                tr(R.string.tour_184_lock_point_3),
+            ),
+            listOf(VinzIcons.PlayCircle, VinzIcons.HeartFilled),
+            showMe = Routes.settings(SettingsPageId.PLAYER.key, find = tr(R.string.settings_player_modes)),
+        ),
+        TourStep(
+            // D54, D55, D56 and #406. Opens Home & Library at Lists, with "Button to find the playing song".
+            V1_8_4, VinzIcons.QueueMusic, tr(R.string.tour_184_lists_title),
+            tr(R.string.tour_184_lists_body),
+            listOf(
+                tr(R.string.tour_184_lists_point_1, tr(R.string.go_to_the_playing_song)),
+                tr(R.string.tour_184_lists_point_2, tr(R.string.hl_locate_button)),
+                tr(R.string.tour_184_lists_point_3),
+                tr(R.string.tour_184_lists_point_4),
+                tr(R.string.tour_184_lists_point_5),
+            ),
+            listOf(VinzIcons.Album, VinzIcons.Library),
+            showMe = Routes.settings(SettingsPageId.HOME_LIBRARY.key, find = tr(R.string.hl_lists)),
+        ),
+        TourStep(
+            // D57 + #416, D58/D59, #413, and the fixes #432 and #429.
+            V1_8_4, VinzIcons.QueueMusic, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(
+                tr(R.string.tour_184_also_shuffle),
+                tr(R.string.tour_184_also_replay),
+                tr(R.string.tour_184_also_color),
+                tr(R.string.tour_184_also_crossfade),
+                tr(R.string.tour_184_also_glass),
+            ),
+            listOf(VinzIcons.Shuffle, VinzIcons.Stats),
+        ),
+        TourStep(
+            // The listening clock, the calendar, milestones and the monthly recap. Opens Replay.
+            V1_8_5, VinzIcons.Stats, tr(R.string.tour_185_replay_title),
+            tr(R.string.tour_185_replay_body),
+            listOf(
+                tr(R.string.tour_185_replay_point_1),
+                tr(R.string.tour_185_replay_point_2),
+                tr(R.string.tour_185_replay_point_3),
+                tr(R.string.tour_185_replay_point_4),
+            ),
+            listOf(VinzIcons.Timer, VinzIcons.StarFilled),
+            showMe = Routes.REPLAY,
+        ),
+        TourStep(
+            V1_8_5, VinzIcons.ReplayFilled, tr(R.string.tour_185_rewind_title),
+            tr(R.string.tour_185_rewind_body),
+            listOf(tr(R.string.tour_185_rewind_point_1), tr(R.string.tour_185_rewind_point_2), tr(R.string.tour_185_rewind_point_3)),
+        ),
+        TourStep(
+            // The widgets, the two notices and Finish the lyric. Opens Recommendations & history at Replay, where the switches are.
+            V1_8_5, VinzIcons.Update, tr(R.string.tour_185_more_title),
+            tr(R.string.tour_185_more_body),
+            listOf(
+                tr(R.string.tour_185_more_point_1),
+                tr(R.string.tour_185_more_point_2, tr(R.string.replay_notices)),
+                tr(R.string.tour_185_more_point_3, tr(R.string.finish_lyric_title)),
+            ),
+            listOf(VinzIcons.Lyrics, VinzIcons.Home),
+            showMe = Routes.settings(SettingsPageId.RECOMMENDATIONS_HISTORY.key, find = tr(R.string.replay_2)),
+        ),
+        TourStep(
+            // #469, #477, face-down pause, #374, #481 and Open with Vinz.
+            V1_8_5, VinzIcons.QueueMusic, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(
+                tr(R.string.tour_185_also_history),
+                tr(R.string.tour_185_also_search),
+                tr(R.string.tour_185_also_face_down, tr(R.string.playback_face_down_pause)),
+                tr(R.string.tour_185_also_dj),
+                tr(R.string.tour_185_also_open_with),
+            ),
+            listOf(VinzIcons.Search, VinzIcons.Shuffle),
+        ),
+        TourStep(
+            // 1.8.6 Canvas. Opens the Player page at Cover, the group the Canvas row is in.
+            V1_8_6, VinzIcons.AnimatedCover, tr(R.string.tour_186_canvas_title),
+            tr(R.string.tour_186_canvas_about),
+            listOf(
+                tr(R.string.tour_186_canvas_point_1),
+                // Owner, 2026-11-13: Canvas (the loops from music videos) and Animated covers are two settings.
+                tr(R.string.tour_186_canvas_two, tr(R.string.canvas), tr(R.string.animated_covers)),
+                tr(R.string.tour_186_canvas_point_3, tr(R.string.canvas_pick_video), tr(R.string.canvas_pick_part)),
+                tr(R.string.tour_186_canvas_point_4),
+            ),
+            listOf(VinzIcons.Video, VinzIcons.Fullscreen),
+            showMe = Routes.settings(SettingsPageId.PLAYER.key, find = tr(R.string.cover)),
+        ),
+        TourStep(
+            // The hours on Replay's "Hours by month" bars (the owner's ask, 2026-11-13).
+            V1_8_6, VinzIcons.Stats, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(tr(R.string.tour_186_also_hours, tr(R.string.hours_by_month))),
+            showMe = Routes.REPLAY,
+        ),
+        TourStep(
+            // 1.8.7 It just plays. Opens Backup & about at Diagnostics, where "Is playback working?" is.
+            V1_8_7, VinzIcons.Play, tr(R.string.tour_187_plays_title),
+            tr(R.string.tour_187_plays_about),
+            listOf(
+                tr(R.string.tour_187_plays_point_1),
+                tr(R.string.tour_187_plays_point_2),
+                tr(R.string.tour_187_plays_point_3),
+                tr(R.string.tour_187_plays_point_4, tr(R.string.selftest_title), tr(R.string.diagnostics)),
+            ),
+            listOf(VinzIcons.Check, VinzIcons.Info),
+            showMe = Routes.settings(SettingsPageId.BACKUP_ABOUT.key, find = tr(R.string.diagnostics)),
+        ),
+        TourStep(
+            // Opens the Player page at Cover: "Keep lyrics showing" is in the Canvas row's sheet there.
+            V1_8_7, VinzIcons.Lyrics, tr(R.string.also_new),
+            tr(R.string.tour_187_also_about),
+            listOf(
+                tr(R.string.tour_187_also_lyrics_line, tr(R.string.canvas_lyrics)),
+                tr(R.string.tour_187_also_lyrics_right),
+                tr(R.string.tour_187_also_blend, tr(R.string.crossfade)),
+                tr(R.string.tour_187_also_lighter),
+            ),
+            listOf(VinzIcons.Shuffle, VinzIcons.Speed),
+            showMe = Routes.settings(SettingsPageId.PLAYER.key, find = tr(R.string.cover)),
+        ),
+        TourStep(
+            // 1.8.7.5 Your Spotify. Opens Accounts & sharing at Spotify, where the Connect sheet's two cards are.
+            V1_8_7_5, VinzIcons.Link, tr(R.string.tour_1875_spotify_title),
+            tr(R.string.tour_1875_spotify_about),
+            listOf(
+                tr(R.string.tour_1875_spotify_point_1),
+                tr(R.string.tour_1875_spotify_point_2),
+                tr(R.string.tour_1875_spotify_point_3),
+                tr(R.string.tour_1875_spotify_point_4),
+            ),
+            listOf(VinzIcons.Heart, VinzIcons.QueueMusic),
+            showMe = Routes.settings(SettingsPageId.ACCOUNTS_SHARING.key, find = tr(R.string.spotify)),
+        ),
+        TourStep(
+            V1_8_7_5, VinzIcons.Check, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(
+                tr(R.string.tour_1875_also_queue),
+                tr(R.string.tour_1875_also_home),
+                tr(R.string.tour_1875_also_busy),
+                tr(R.string.tour_1875_also_heard),
+            ),
+        ),
+        TourStep(
+            V1_8_7_6, VinzIcons.PlayCircle, tr(R.string.tour_1876_canvas_title),
+            tr(R.string.tour_1876_canvas_about),
+            listOf(
+                tr(R.string.tour_1876_canvas_point_1),
+                tr(R.string.tour_1876_canvas_point_2),
+                tr(R.string.tour_1876_canvas_point_3),
+            ),
+            // The Canvas switch and "Spotify's canvas first" under it are in the Player page's Cover group.
+            showMe = Routes.settings(SettingsPageId.PLAYER.key, find = tr(R.string.cover)),
+        ),
+        TourStep(
+            V1_8_7_6, VinzIcons.Check, tr(R.string.also_new),
+            tr(R.string.from_your_requests),
+            listOf(
+                tr(R.string.tour_1876_also_loop),
+                tr(R.string.tour_1876_also_eq),
+                tr(R.string.tour_1876_also_kids),
+                tr(R.string.tour_1876_also_cast),
+                tr(R.string.tour_1876_also_history),
+            ),
+            // The release's last card carries the one line about supporting Vinz (plan-1.8.7.6 §4.1 S6).
+            support = true,
         ),
         TourStep(
             V1_7, VinzIcons.Update, tr(R.string.stay_in_the_loop),

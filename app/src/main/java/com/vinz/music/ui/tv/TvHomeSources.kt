@@ -126,7 +126,7 @@ internal fun rememberTvOwnRows(
 ): List<TvOwnRow> {
     TvHomeOwn.forAccount(account)
     val stored = settings.tv.homeLayout
-    val phone = settings.homeLayout
+    val phone = settings.home.layout
     fun want(k: String) = TvHomeLayout.isShown(k, stored, phone, settings.autoAddSections)
     val offline: (Song) -> Boolean = { online || c.availableOffline(it.id) }
     val lastPlayed = recent.firstOrNull()?.id
@@ -200,7 +200,7 @@ internal fun rememberTvOwnRows(
     // Liked songs, the tiles, your top genres and downloads.
     val liked by c.library.likedShown.collectAsState()
     val dls by c.downloadState.collectAsState()
-    val wantDownloads = want(HomeSections.DOWNLOADS) || (want(HomeSections.GREETING) && HomeShortcut.DOWNLOADS in settings.homeShortcuts)
+    val wantDownloads = want(HomeSections.DOWNLOADS) || (want(HomeSections.GREETING) && HomeShortcut.DOWNLOADS in settings.home.shortcuts)
     val downloads by produceState(emptyList<Song>(), wantDownloads, dls.size) {
         if (!wantDownloads || dls.isEmpty()) return@produceState
         value = withContext(Dispatchers.Default) { runCatching { c.downloads.completedSongs() }.getOrDefault(emptyList()) }
@@ -226,7 +226,7 @@ internal fun rememberTvOwnRows(
     }
 
     val year = remember { Calendar.getInstance().get(Calendar.YEAR) }
-    return remember(holidayCovers, wantHoliday, picks, mixes, yours, releases, replay, moods, liked, downloads, genres, vinzLists, recent, own, phone, online, settings.homePlaylists, settings.homeShortcuts, settings.homeRecentTiles) {
+    return remember(holidayCovers, wantHoliday, picks, mixes, yours, releases, replay, moods, liked, downloads, genres, vinzLists, recent, own, phone, online, settings.home.playlists, settings.home.shortcuts, settings.home.recentTiles) {
         buildList {
             if (wantPicks) picks?.let { tvSongRow(HomeSections.QUICK_PICKS, tvRowTitle(phone, HomeSections.QUICK_PICKS), it) }?.let(::add)
             if (wantHoliday) {
@@ -252,16 +252,16 @@ internal fun rememberTvOwnRows(
             }?.let(::add)
             if (wantMoods) moods?.let { tvMoodRow(tvRowTitle(phone, HomeSections.MOODS), it) }?.let(::add)
             if (want(HomeSections.GREETING)) {
-                val likedList = TvPlayList(tr(R.string.liked_songs), liked.filter(offline)).takeIf { HomeShortcut.LIKED in settings.homeShortcuts }
-                val dlList = TvPlayList(tr(R.string.downloads), downloads).takeIf { HomeShortcut.DOWNLOADS in settings.homeShortcuts }
+                val likedList = TvPlayList(tr(R.string.liked_songs), liked.filter(offline)).takeIf { HomeShortcut.LIKED in settings.home.shortcuts }
+                val dlList = TvPlayList(tr(R.string.downloads), downloads).takeIf { HomeShortcut.DOWNLOADS in settings.home.shortcuts }
                 // A Vinz playlist shows its current name and cover; a deleted one's pin has nothing to open.
-                val pinned: List<BrowseItem> = settings.homePlaylists.mapNotNull { pin ->
+                val pinned: List<BrowseItem> = settings.home.playlists.mapNotNull { pin ->
                     val vinz = pin.id.startsWith(com.vinz.music.data.VinzLibrary.PREFIX)
                     val live = vinzLists.firstOrNull { it.id == pin.id }?.item()
                     if (vinz && live == null) null
                     else PlaylistItem(pin.id, live?.title ?: pin.title, tr(R.string.playlist), c.covers.art(pin.id, live?.thumbnail ?: pin.thumbnail))
                 }
-                val albums = recent.filter { it.album?.id != null }.distinctBy { it.album!!.id }.take(settings.homeRecentTiles)
+                val albums = recent.filter { it.album?.id != null }.distinctBy { it.album!!.id }.take(settings.home.recentTiles)
                     .map { s -> AlbumItem(s.album!!.id!!, s.album.title, s.primaryArtist, s.thumbnail) }
                 tvTilesRow(
                     tvRowTitle(phone, HomeSections.GREETING), likedList, songCount(likedList?.songs?.size ?: 0),

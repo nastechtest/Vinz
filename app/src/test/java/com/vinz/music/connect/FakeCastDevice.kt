@@ -66,20 +66,7 @@ class FakeCastDevice(
     init {
         Thread({
             while (!closed) {
-                // A TLS provider can fail inside accept(); do not lose the original cause before the client fails.
-                val s = runCatching { server.accept() }.onFailure { if (!closed) it.printStackTrace() }.getOrNull() ?: break
-                // Start TLS before handing the socket to a second thread; otherwise the client can wait on the
-                // handshake while the lazily-started protocol reader is delayed under the full test suite.
-                if (s is javax.net.ssl.SSLSocket) {
-                    s.soTimeout = 20_000
-                    try {
-                        s.useClientMode = false
-                        s.startHandshake()
-                    } catch (_: Exception) {
-                        runCatching { s.close() }
-                        continue
-                    }
-                }
+                val s = runCatching { server.accept() }.getOrNull() ?: break
                 Thread({ serve(s) }, "fake-cast-client").apply { isDaemon = true; start() }
             }
         }, "fake-cast").apply { isDaemon = true; start() }
@@ -223,9 +210,11 @@ class FakeCastDevice(
         p.inputStream.readBytes()
         check(p.waitFor() == 0) { "keytool failed" }
         val store = java.security.KeyStore.getInstance("PKCS12").apply { file.inputStream().use { load(it, pass) } }
-        // The fake device uses the JDK's TLS implementation; the app's client uses the platform default.
+        // The device's end uses the same TLS as the app's end (the JVM's default now). Robolectric tests that ran earlier
+        // in this JVM make Conscrypt (the phone's TLS) the default, and the app's Conscrypt against the JDK's own TLS
+        // here never finished its handshake (2026-11-07: overTlsLikeARealDevice failed in every full run, passed alone).
         val kmf = javax.net.ssl.KeyManagerFactory.getInstance("SunX509", "SunJSSE").apply { init(store, pass) }
-        val ctx = javax.net.ssl.SSLContext.getInstance("TLS", "SunJSSE").apply { init(kmf.keyManagers, null, null) }
+        val ctx = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(kmf.keyManagers, null, null) }
         return ctx.serverSocketFactory.createServerSocket(port, 4, InetAddress.getByName(bind))
     }
 

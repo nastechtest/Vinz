@@ -85,6 +85,12 @@ class Backup(private val c: AppContainer) {
                 zip.write(InnerTube.json.encodeToString(SETTINGS_MAP, settings).toByteArray())
                 zip.closeEntry()
             }
+            // Tags (1.8.3) live in the database (History) but belong to the library: they go as a file of their own.
+            if (BackupPart.LIBRARY in parts) {
+                zip.putNextEntry(ZipEntry(TAGS_ENTRY))
+                zip.write(c.tags.exportJson(c.tags.export()).toByteArray())
+                zip.closeEntry()
+            }
             filesToBackUp(parts).forEach { f ->
                 zip.putNextEntry(ZipEntry(f.relativeTo(data).invariantSeparatorsPath))
                 f.inputStream().use { it.copyTo(zip) }
@@ -96,18 +102,7 @@ class Backup(private val c: AppContainer) {
     /** About how big a backup of [parts] would be, in bytes. */
     suspend fun estimate(parts: Set<BackupPart>): Long = withContext(Dispatchers.IO) { filesToBackUp(parts).sumOf { it.length() } }
 
-    private fun filesToBackUp(parts: Set<BackupPart>): List<File> {
-        val keep = mutableListOf<File>()
-        File(data, "databases").listFiles()?.forEach { f ->
-            if ((BackupPart.HISTORY in parts && f.name.startsWith(DB)) || (BackupPart.DOWNLOADS in parts && f.name.startsWith(EXO_DB))) keep += f
-        }
-        File(data, "shared_prefs").listFiles()?.forEach { f -> if (prefsPart(f.name.removeSuffix(".xml")) in parts) keep += f }
-        ctx.filesDir.walkTopDown()
-            .onEnter { dir -> dir == ctx.filesDir || filePart(dir.relativeTo(ctx.filesDir).invariantSeparatorsPath.substringBefore('/')) in parts }
-            .filter { it.isFile && (it.parentFile != ctx.filesDir || filePart(it.name) in parts) }
-            .forEach { keep += it }
-        return keep
-    }
+    private fun filesToBackUp(parts: Set<BackupPart>): List<File> = filesToBackUp(data, ctx.filesDir, parts)
 
     /** The parts the backup at [uri] holds (every one for a backup made before 1.7.8), or null when it isn't one. */
     suspend fun partsOf(uri: Uri): Set<BackupPart>? = withContext(Dispatchers.IO) {
@@ -235,6 +230,27 @@ class Backup(private val c: AppContainer) {
         private const val DB = "vinz.db"
         private const val EXO_DB = "exoplayer_internal.db"
         private val ALLOWED = listOf("databases/", "shared_prefs/", "datastore/", "files/")
+        /** The settings store's own folder under files/: it holds the YouTube Music sign-in beside the settings (#498). */
+        private const val STORE_DIR = "datastore"
+
+        /**
+         * The files a backup of [parts] takes from the app's [data] folder ([filesDir] inside it). Never the settings
+         * store's own file, whatever the parts: settings and the sign-in travel as values ([export]), each with its part.
+         */
+        internal fun filesToBackUp(data: File, filesDir: File, parts: Set<BackupPart>): List<File> {
+            val keep = mutableListOf<File>()
+            File(data, "databases").listFiles()?.forEach { f ->
+                if ((BackupPart.HISTORY in parts && f.name.startsWith(DB)) || (BackupPart.DOWNLOADS in parts && f.name.startsWith(EXO_DB))) keep += f
+            }
+            File(data, "shared_prefs").listFiles()?.forEach { f -> if (prefsPart(f.name.removeSuffix(".xml")) in parts) keep += f }
+            filesDir.walkTopDown()
+                .onEnter { dir -> dir == filesDir || filePart(dir.relativeTo(filesDir).invariantSeparatorsPath.substringBefore('/')) in parts }
+                .filter { it.isFile && (it.parentFile != filesDir || filePart(it.name) in parts) }
+                // A restore's tags not read in yet: the database's are written above instead.
+                .filter { "files/" + it.relativeTo(filesDir).invariantSeparatorsPath != TAGS_ENTRY }
+                .forEach { keep += it }
+            return keep
+        }
         private val SETTINGS_MAP = MapSerializer(String.serializer(), String.serializer())
 
         private const val BRING_HISTORY = "bring/history.json"
@@ -242,6 +258,8 @@ class Backup(private val c: AppContainer) {
         /** Vinz's playlists in the library file's own format, at the library file's own place in a backup. */
         private const val BRING_LIBRARY = "files/library/vinz.json"
         private const val BRING_LOOK = "bring/look.txt"
+        /** The library's tags (1.8.3), read in at the next start ([TagStore.readPending]). */
+        private const val TAGS_ENTRY = "files/library/" + TagStore.PENDING
         /** All a bundle may unpack to (its own size is held to [com.vinz.music.connect.BringTransfer.MAX_BYTES]). */
         private const val BRING_UNPACKED_MAX = 128L * 1024 * 1024
 
@@ -306,7 +324,7 @@ class Backup(private val c: AppContainer) {
             listOf("artist_prefs", "artist_thumbs", "playlist_covers", "library_order", "blend", "liked_playlist", "recent_collections", "song_versions")
                 .forEach { put(it, BackupPart.LIBRARY) }
             listOf(
-                "dislikes", "exclusions", "for_you", "for_you_feedback", "release_radar", "search", "episode_progress", "episode_played", "best_part_mine",
+                "dislikes", "exclusions", "for_you", "for_you_feedback", com.vinz.music.data.foryou.Discover.PREFS, "release_radar", "search", "episode_progress", "episode_played", "best_part_mine",
                 "mix_tempo", "song_loudness", "song_peak", "song_key", "dj_quick", "loudness", "lyric_offsets", "lyrics_choice", "lyrics_search_as",
                 "romanize_songs", "video_sync", "local_album_tags", "local_lengths", "local_no_art", "lyrics_word_shift",
                 // 1.8.1: Bring your history's choices (what Replay counts, what shapes the mixes).
@@ -317,7 +335,13 @@ class Backup(private val c: AppContainer) {
             listOf(
                 "canvas_saved", "download_lyrics", "download_failures", "download_auto_retry", "download_formats", "smart_downloads", "download_standins",
                 "lossless_links", "lossless_misses", "lossless_hidden", "lossless_alac",
+                // 1.8.2: songs skipped in lists' downloads (#221), when kept playlists were last read (#298).
+                "download_skips", "kept_playlists",
+                // 1.8.7 (#408): downloads coming down as their music video's sound.
+                com.vinz.music.AppContainer.DOWNLOAD_SOUNDS,
             ).forEach { put(it, BackupPart.DOWNLOADS) }
+            // 1.8.7 (#408): which way gets links on each of this phone's networks, by an id only this phone knows.
+            put(com.vinz.music.data.stream.WayMemory.PREFS, null)
             // The Last.fm connection (and its waiting scrobbles) is the listener's account.
             put("lastfm", BackupPart.ACCOUNTS)
             // 1.8.1: the Spotify connection's Client ID and switches go with the accounts (a Client ID is public in
@@ -328,8 +352,18 @@ class Backup(private val c: AppContainer) {
             listOf("discord", "connect_remote", "connect_handoff").forEach { put(it, null) }
             // The song cache's formats describe this phone's cache, which a backup doesn't carry.
             put("cache_formats", null)
+            // What this sitting's mixes have played (1.8.2): over within hours, nothing a restored phone would want.
+            put("session_heard", null)
+            // 1.8.7 (#498): this phone's own state, not settings. What its account was seen to have (Premium's formats
+            // by sign-in, uploads), the last song a widget showed, Home's sections as last read, crash and update marks.
+            listOf("premium_quality", "uploads", "widget_state", "home_shelf_ids", "crashlog", "updates", "playback_service").forEach { put(it, null) }
+            // Replay's own notes (which recap and milestones were told, Rewind's state) go with the listening.
+            listOf("recap", "milestones", "rewind").forEach { put(it, BackupPart.HISTORY) }
             // Which install this is (RestoredInstall): restoring one's own backup elsewhere mustn't look like Android's.
             put(RestoredInstall.PREFS, null)
+            // 1.8.7.6: which asks to support Vinz were shown go with the settings (as the switch does), so a restored
+            // phone doesn't ask again.
+            put(com.vinz.music.ui.support.SupportMarks.PREFS, BackupPart.SETTINGS)
         }
 
         /** Folders (and files) right under files/ by part; anything else counts as Settings. */
@@ -345,6 +379,15 @@ class Backup(private val c: AppContainer) {
             listOf(STAGING, "models", "stems", REDOWNLOAD, RESTORED_SETTINGS).forEach { put(it, null) }
             // Lyric translations (1.7.8) are a cache of Google's answers, asked for again when missing.
             put("translations", null)
+            // 1.8.7 (#498): the settings store's own file holds the sign-in; it went out with "Settings" because
+            // anything not named here counts as Settings. Never in a backup: its values travel by part ([export]).
+            put(STORE_DIR, null)
+            // The playback diagnostics and crash logs name songs and the account's state; Canvas clips and their index
+            // are a cache of videos, fetched again.
+            listOf("diagnostics", "crashes", "canvas_clips", "canvas_index.json").forEach { put(it, null) }
+            // 1.8.7 §3.2: the music videos' songs as YouTube and Vinz's matches paired them, learned again when missing.
+            // (The listener's picks go with the Library, download stand-ins with the Downloads, in their own files.)
+            put(com.vinz.music.data.meta.PlaysAs.DIR, null)
         }
 
         internal fun prefsPart(name: String): BackupPart? = if (name in PREFS_PARTS) PREFS_PARTS[name] else BackupPart.SETTINGS
@@ -368,6 +411,11 @@ class Backup(private val c: AppContainer) {
                 val data = files.parentFile!!
                 val whole = m.parts == null
                 val parts = m.partSet()
+                // Tags are the library's, kept in the database: a restore of the history alone keeps this phone's.
+                if (BackupPart.HISTORY in parts && BackupPart.LIBRARY !in parts) TagStore.readFrom(File(data, "databases/$DB"))?.let { mine ->
+                    File(files, "library").mkdirs()
+                    File(files, "library/" + TagStore.PENDING).writeText(InnerTube.json.encodeToString(TagsFile.serializer(), mine))
+                }
                 // Out with what the backup replaces.
                 File(data, "databases").listFiles()?.forEach {
                     if ((BackupPart.HISTORY in parts && it.name.startsWith(DB)) || (BackupPart.DOWNLOADS in parts && it.name.startsWith(EXO_DB))) it.delete()
@@ -380,6 +428,9 @@ class Backup(private val c: AppContainer) {
                     if (whole) { if (m.withDownloads || filePart(f.name) != BackupPart.DOWNLOADS) f.deleteRecursively() }
                     else if (filePart(f.name) in parts) f.deleteRecursively()
                 }
+                // A backup by parts never brings the settings store's own file. One made by 1.7.8 to 1.8.6 with
+                // "Settings" ticked did (#498): restored, it would sign this phone in as whoever made the backup.
+                if (!whole) File(staging, "files/$STORE_DIR").deleteRecursively()
                 // In with the backup.
                 val settingsFile = File(staging, SETTINGS_ENTRY)
                 staging.walkTopDown().filter { it.isFile && it != manifestFile && it != settingsFile }.forEach { f ->

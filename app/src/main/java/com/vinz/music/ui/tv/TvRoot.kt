@@ -236,6 +236,13 @@ fun TvNavFrame(
                         }
                         if (now != null) {
                             androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 16.dp))
+                            // Reddit (1.8.1): the song's title was cut off at the bottom here. The item leaves its two
+                            // lines 32 dp (its height less its padding), so they're sized to that, whatever the text size.
+                            val density = androidx.compose.ui.platform.LocalDensity.current
+                            val body = MaterialTheme.typography.bodyMedium
+                            fun line(size: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) = with(density) {
+                                body.copy(fontSize = size.toSp(), lineHeight = height.toSp(), platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false))
+                            }
                             NavigationDrawerItem(
                                 selected = false,
                                 onClick = onNowPlaying,
@@ -246,9 +253,9 @@ fun TvNavFrame(
                                         now.second, Modifier.size(28.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp), size = 96,
                                     )
                                 },
-                                supportingContent = { Text(now.first, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                                supportingContent = { Text(now.first, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = line(11.dp, 14.dp)) },
                                 modifier = Modifier.tvItem(TAG_NAV_NOW),
-                            ) { Text(tr(R.string.now_playing), maxLines = 1) }
+                            ) { Text(tr(R.string.now_playing), maxLines = 1, style = line(14.dp, 16.dp)) }
                         }
                     }
                 }

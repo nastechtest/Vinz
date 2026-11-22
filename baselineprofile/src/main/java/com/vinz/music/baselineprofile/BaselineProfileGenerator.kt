@@ -3,6 +3,7 @@ package com.vinz.music.baselineprofile
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.vinz.music.baselineprofile.Journeys.library
+import com.vinz.music.baselineprofile.Journeys.openAnAlbumFromResults
 import com.vinz.music.baselineprofile.Journeys.openAPlaylist
 import com.vinz.music.baselineprofile.Journeys.pastOnboarding
 import com.vinz.music.baselineprofile.Journeys.playAndOpenPlayer
@@ -31,6 +32,7 @@ class BaselineProfileGenerator {
         scrollHome()
         openAPlaylist()
         search("daft punk")
+        openAnAlbumFromResults()
         playAndOpenPlayer()
         library()
         settings()

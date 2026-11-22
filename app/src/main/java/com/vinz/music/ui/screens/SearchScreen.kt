@@ -98,10 +98,19 @@ import com.vinz.music.ui.theme.GlassSurface
 import com.vinz.music.ui.theme.LocalContainer
 import com.vinz.music.playback.QueueKind
 import com.vinz.music.playback.QueueSource
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private fun history(context: Context) = context.getSharedPreferences("search", Context.MODE_PRIVATE)
+
+/** Recent searches (#477): the last [KEEP] kept, newest first and each once; [SHOWN] of them before "Show all". */
+internal object RecentSearches {
+    const val KEEP = 30
+    const val SHOWN = 12
+
+    fun add(list: List<String>, query: String): List<String> = (listOf(query) + list.filter { it != query }).take(KEEP)
+}
 
 @Composable
 fun SearchScreen(bottomPadding: Dp) {
@@ -133,13 +142,21 @@ fun SearchScreen(bottomPadding: Dp) {
     var loading by remember { mutableStateOf(false) }
     var continuation by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Worked out once from the first letter, apart from the typing: the next letter would cancel it and start it over.
+    val typingTaste = remember {
+        lazy {
+            c.scope.async {
+                runCatching { c.taste.searchTaste() }.getOrDefault(com.vinz.music.data.innertube.SearchRank.Taste.NONE)
+            }
+        }
+    }
 
     fun saveQuery(q: String) {
         val v = q.trim()
         // #296: nothing searched is kept while history is paused.
         if (v.isBlank() || com.vinz.music.data.HistoryPause.paused(c.settings.current.behavior)) return
-        recents.remove(v); recents.add(0, v)
-        while (recents.size > 12) recents.removeAt(recents.lastIndex)
+        val kept = RecentSearches.add(recents, v)
+        recents.clear(); recents.addAll(kept)
         history(context).edit().putString("q", recents.joinToString("\n")).apply()
     }
 
@@ -160,8 +177,12 @@ fun SearchScreen(bottomPadding: Dp) {
     LaunchedEffect(query) {
         if (query.isBlank()) { suggestions.clear(); suggestedItems.clear(); live = ""; return@LaunchedEffect }
         // The listener's own artists and searches come first (from the phone, at once), then YouTube's completions.
-        val taste = runCatching { c.taste.searchTaste() }.getOrDefault(com.vinz.music.data.innertube.SearchRank.Taste.NONE)
-        val mine = com.vinz.music.data.innertube.SearchRank.predict(query, taste, recents.toList(), limit = 2)
+        val taste = typingTaste.value.await()
+        val mySearches = recents.toList()
+        // Off the main thread (#355): this looks through every artist the listener knows, for each letter.
+        val mine = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.vinz.music.data.innertube.SearchRank.predict(query, taste, mySearches, limit = 2)
+        }
         suggestions.clear(); suggestions.addAll(mine)
         delay(140)
         val (s, items) = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { c.ytm.searchSuggestionsWithItems(query) } }
@@ -222,11 +243,16 @@ fun SearchScreen(bottomPadding: Dp) {
     val inLibrary by androidx.compose.runtime.produceState(emptyList<BrowseItem>(), live, onPhone) {
         value = if (live.isBlank() || onPhone) emptyList() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val words = phoneNorm(live).split(' ').filter { it.isNotBlank() }
-            fun has(vararg parts: String) = phoneNorm(parts.joinToString(" ")).let { hay -> words.isNotEmpty() && words.all { it in hay } }
+            // Titles in other scripts by their Latin spelling too (1.8.3, #363), once spelled (in the background).
+            val spelled = c.titleSpellings.known.value
+            c.titleSpellings.want(c.library.likedShown.value.map { it.title })
+            fun has(vararg parts: String) = phoneNorm(parts.joinToString(" ") { p -> spelled[p]?.let { "$p $it" } ?: p }).let { hay -> words.isNotEmpty() && words.all { it in hay } }
             val songs = c.library.likedShown.value.filter { has(it.title, it.artistText) }.take(3).map { SongItem(it) }
             val lists = (c.vinzLibrary.lists.value.map { it.item() } + c.library.playlists.value + c.library.albums.value + c.library.artists.value)
                 .filter { has(it.title) }.distinctBy { it.id }.take(4)
-            songs + lists
+            // The listener's tags (1.8.3), opening their songs.
+            val tags = c.db.tags().summaries().filter { has(it.tag) }.take(3).map { tagItem(it) }
+            songs + tags + lists
         }
     }
     // Your music files and downloads that match, a few of them in Top results (all of them under "On this phone").
@@ -239,15 +265,15 @@ fun SearchScreen(bottomPadding: Dp) {
 
     // The keyboard put away (Back, its own button) means "show me the results": the field stops being typed in, so the
     // suggestions give way to them. Only once the keyboard has been up, so a hardware keyboard keeps the suggestions.
+    // #395: not when a window of its own (a result's menu) took it away, which closed the typed list under the menu.
     @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
     val imeUp = WindowInsets.isImeVisible
+    val windowFocused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
     var imeWasUp by remember { mutableStateOf(false) }
-    LaunchedEffect(imeUp, focused) {
-        when {
-            !focused -> imeWasUp = false
-            imeUp -> imeWasUp = true
-            imeWasUp -> { imeWasUp = false; focus.clearFocus() }
-        }
+    LaunchedEffect(imeUp, focused, windowFocused) {
+        val step = SearchKeyboard.step(focused, imeUp, imeWasUp, windowFocused)
+        imeWasUp = step.imeWasUp
+        if (step.showResults) focus.clearFocus()
     }
 
     val ui = com.vinz.music.ui.theme.LocalUi.current
@@ -295,6 +321,7 @@ fun SearchScreen(bottomPadding: Dp) {
                 recents, moods, bottomPadding, opened,
                 onPick = { submit(it) },
                 onRemove = { r -> recents.remove(r); history(context).edit().putString("q", recents.joinToString("\n")).apply() },
+                onClearAll = { recents.clear(); history(context).edit().remove("q").apply() },
                 onForget = { o -> SearchMemory.forget(context, o); opened = SearchMemory.opened(context) },
                 onOpen = { item -> SearchMemory.remember(context, item); opened = SearchMemory.opened(context); nav.open(item, onSong) },
                 onMood = { nav.open(it, onSong) },
@@ -342,18 +369,30 @@ fun SearchScreen(bottomPadding: Dp) {
         } else when (val r = list) {
             null, Load.Loading -> LoadingState()
             is Load.Err -> ErrorState(r.message)
-            is Load.Ok -> LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
-                items(r.value.distinctBy { it.id + it.title }, key = { it.id + it.title }) { item -> ResultRow(item) { open(item) } }
-                if (continuation != null) item {
-                    LaunchedEffect(continuation) {
-                        val token = continuation ?: return@LaunchedEffect
-                        runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { c.ytm.search(live, filter, token) } }.onSuccess { more ->
-                            continuation = more.continuation
-                            list = Load.Ok(r.value + com.vinz.music.data.ExplicitFilter.items(c.settings.current.behavior.explicitContent, more.items).filter { n -> r.value.none { it.id == n.id } })
-                        }.onFailure { continuation = null }
+            is Load.Ok -> Box(Modifier.fillMaxSize()) {
+                val resultsState = androidx.compose.foundation.lazy.rememberLazyListState()
+                // Select many (1.8.3): the songs among the results.
+                val resultSongs = remember(r.value) { r.value.filterIsInstance<SongItem>().map { it.song }.distinctBy { it.id } }
+                com.vinz.music.ui.components.SelectableSongs(resultSongs) {
+                LazyColumn(state = resultsState, contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
+                    items(r.value.distinctBy { it.id + it.title }, key = { it.id + it.title }) { item -> ResultRow(item) { open(item) } }
+                    if (continuation != null) item {
+                        LaunchedEffect(continuation) {
+                            val token = continuation ?: return@LaunchedEffect
+                            runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { c.ytm.search(live, filter, token) } }.onSuccess { more ->
+                                continuation = more.continuation
+                                list = Load.Ok(r.value + com.vinz.music.data.ExplicitFilter.items(c.settings.current.behavior.explicitContent, more.items).filter { n -> r.value.none { it.id == n.id } })
+                            }.onFailure { continuation = null }
+                        }
+                        LoadingState()
                     }
-                    LoadingState()
                 }
+                }
+                // A long list of results (#376), which only grows as it's scrolled.
+                com.vinz.music.ui.components.FastScroller(
+                    resultsState, Modifier.align(Alignment.CenterEnd).padding(bottom = bottomPadding),
+                    description = tr(R.string.scroll_through_the_list), thumbOnly = true,
+                ) { _ -> (resultsState.firstVisibleItemIndex + 1).toString() }
             }
         }
     }
@@ -384,19 +423,28 @@ private fun PhoneResults(query: String, bottomPadding: Dp, onPlay: () -> Unit) {
         )
         return
     }
-    LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
-        listOf(tr(R.string.your_music_files) to files, tr(R.string.downloads) to downloads).forEachIndexed { g, (title, songs) ->
-            if (songs.isEmpty()) return@forEachIndexed
-            item(key = "h:$g") { SectionHeader(title, strapline = com.vinz.music.data.model.songCount(songs.size)) }
-            items(songs.size, key = { "$g:$it:" + songs[it].id }) { i ->
-                com.vinz.music.ui.components.SwipeToQueue(songs[i]) {
-                    SongRow(songs[i], playing = current?.id == songs[i].id) {
-                        onPlay()
-                        c.player.playQueue(songs, i, QueueSource(QueueKind.LIBRARY, tr(R.string.search_2, query)))
+    Box(Modifier.fillMaxSize()) {
+        val resultsState = androidx.compose.foundation.lazy.rememberLazyListState()
+        com.vinz.music.ui.components.SelectableSongs(files + downloads) {
+        LazyColumn(state = resultsState, contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
+            listOf(tr(R.string.your_music_files) to files, tr(R.string.downloads) to downloads).forEachIndexed { g, (title, songs) ->
+                if (songs.isEmpty()) return@forEachIndexed
+                item(key = "h:$g") { SectionHeader(title, strapline = com.vinz.music.data.model.songCount(songs.size)) }
+                items(songs.size, key = { "$g:$it:" + songs[it].id }) { i ->
+                    com.vinz.music.ui.components.SwipeToQueue(songs[i]) {
+                        SongRow(songs[i], playing = current?.id == songs[i].id) {
+                            onPlay()
+                            c.player.playQueue(songs, i, QueueSource(QueueKind.LIBRARY, tr(R.string.search_2, query)))
+                        }
                     }
                 }
             }
         }
+        }
+        com.vinz.music.ui.components.FastScroller(
+            resultsState, Modifier.align(Alignment.CenterEnd).padding(bottom = bottomPadding),
+            description = tr(R.string.scroll_through_the_list), thumbOnly = true,
+        ) { _ -> null }
     }
 }
 
@@ -424,11 +472,7 @@ private fun phoneMatches(query: String, songs: List<com.vinz.music.data.model.So
 }
 
 /** Lower case, without accents or punctuation, so "Beyonce" finds "Beyoncé" and "ac dc" finds "AC/DC". */
-private fun phoneNorm(s: String): String = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
-    .replace(MARKS, "").replace(NOT_WORDS, " ").trim()
-
-private val MARKS = Regex("\\p{Mn}+")
-private val NOT_WORDS = Regex("[^\\p{L}\\p{N}]+")
+internal fun phoneNorm(s: String): String = com.vinz.music.data.LibrarySearch.norm(s)
 
 /** The top card's play button: plays the song, the album or playlist from the start, or shuffles the artist. */
 private suspend fun playTop(c: com.vinz.music.AppContainer, item: BrowseItem) {
@@ -473,13 +517,19 @@ private fun TopResults(
         item("lyr-h") { SectionHeader(tr(R.string.from_the_lyrics)) }
         items(hits, key = { "lyr:" + it.song.id }) { h -> LyricHitRow(h) { onSongs(hitSongs, hitSongs.indexOf(h.song)) } }
     }
+    // Select many (1.8.3): every song row shown here is what "All" picks.
+    val shownSongs = (hitSongs + inLibrary.filterIsInstance<SongItem>().map { it.song } + onPhoneHits +
+        r.sections.filter { it.first == SearchFilter.SONGS }.flatMap { (_, items) -> items.filterIsInstance<SongItem>().map { it.song }.distinctBy { it.id }.take(4) })
+        .distinctBy { it.id }
+    com.vinz.music.ui.components.SelectableSongs(shownSongs) {
     LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp)) {
         if (lyricsFirst) fromTheLyrics()
         r.top?.let { t -> item("top") { TopCard(t, { open(t) }, { onPlay(t) }) } }
         if (!lyricsFirst) fromTheLyrics()
         // Already yours (1.7.6): what in your library matches, before the rest.
         if (inLibrary.isNotEmpty()) {
-            item("lib-h") { SectionHeader(tr(R.string.in_your_library)) }
+            // All of it, with filters (1.8.3).
+            item("lib-h") { val nav = com.vinz.music.ui.LocalNavigator.current; SectionHeader(tr(R.string.in_your_library), onMore = { nav.go(com.vinz.music.ui.Routes.librarySearch(query)) }) }
             items(inLibrary, key = { "lib:" + it.id }) { item -> ResultRow(item) { open(item) } }
         }
         if (onPhoneHits.isNotEmpty()) {
@@ -500,6 +550,7 @@ private fun TopResults(
                 }
             }
         }
+    }
     }
 }
 

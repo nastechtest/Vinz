@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.download
 
 import com.vinz.music.tr
@@ -55,6 +54,17 @@ data class DownloadInfo(val song: Song?, val state: Int, val percent: Float, val
  */
 fun Map<String, DownloadInfo>.forRow(id: String, standIns: Map<String, String>): DownloadInfo? = this[id] ?: standIns[id]?.let { this[it] }
 
+/**
+ * A song row's downloaded mark (#385, 1.8.3): downloaded under its id or its song's (#315), or it plays from a file on
+ * the phone. Playing matches a file by the song (title, artist, length), while the mark went by id only, so another
+ * playlist's id for the same song played the FLAC with no mark. [fromPhone] is asked only while lossless sync has
+ * files at all.
+ */
+fun rowDownloaded(song: Song, downloads: Map<String, DownloadInfo>, standIns: Map<String, String>, fromPhone: (Song) -> Boolean): Boolean {
+    if (downloads.forRow(song.id, standIns)?.state == Download.STATE_COMPLETED) return true
+    return !song.isLocal && !song.isVideo && downloads.values.any { it.lossless } && fromPhone(song)
+}
+
 /** A song's music video saved for offline: its picture, plus the video's own audio when that isn't the song's. */
 data class VideoDownload(val videoId: String, val state: Int, val percent: Float, val bytes: Long)
 
@@ -69,6 +79,21 @@ private const val VIDEO_AUDIO = "vaud:"
 private const val AUTO_RETRY_GAP_MS = 6 * 60 * 60_000L
 private fun isVideoPart(id: String) = id.startsWith(VIDEO_PICTURE) || id.startsWith(VIDEO_AUDIO)
 private fun partSongId(id: String) = id.substringAfter(':')
+
+/**
+ * Whether a music video downloads as its song (#186). #390 (1.8.3): only when it would also play as its song ("Songs, not
+ * videos: Everywhere"); with "Radios" a video picked from search plays with its own sound, so it downloads that way too,
+ * not as the album track.
+ */
+internal fun downloadsAsSong(song: Song, s: com.vinz.music.data.prefs.AppSettings): Boolean =
+    song.isVideo && !song.isUpload && !song.isLive && !song.isEpisode && swapsVideos(s)
+
+/** The download stand-ins as kept since 1.8.1 (#315, "download_standins"): video id -> the song id it came down as. */
+internal fun readStandIns(prefs: android.content.SharedPreferences): Map<String, String> =
+    prefs.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+
+/** "Songs, not videos: Everywhere" (#80): a music video in any list plays, and downloads, as its song. */
+fun swapsVideos(s: com.vinz.music.data.prefs.AppSettings): Boolean = s.radioSongsOnly && s.songsEverywhere
 
 @OptIn(UnstableApi::class)
 class DownloadRepository(private val context: Context, private val c: AppContainer, scope: CoroutineScope) {
@@ -97,7 +122,7 @@ class DownloadRepository(private val context: Context, private val c: AppContain
      * playlist's video row shows its song's download (#315: those rows read "not downloaded" whatever was saved).
      */
     private val standInPrefs = context.getSharedPreferences("download_standins", Context.MODE_PRIVATE)
-    private val _standIns = MutableStateFlow(standInPrefs.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap())
+    private val _standIns = MutableStateFlow(readStandIns(standInPrefs))
 
     private fun standIn(videoId: String, songId: String) {
         if (videoId == songId || _standIns.value[videoId] == songId) return
@@ -106,12 +131,20 @@ class DownloadRepository(private val context: Context, private val c: AppContain
         publish()
     }
 
-    /** The id a download is kept under: a music video downloaded as its song is kept under the song's. */
-    private fun keptAs(id: String): String = if (id in _media.value || id in _lossless.value) id else _standIns.value[id] ?: id
+    /**
+     * The id a download is kept under: a music video downloaded as its song is kept under the song's, and so (1.8.7
+     * §3.2) is one whose song is known while videos play as their songs: the same rows the downloaded mark goes by.
+     */
+    private fun keptAs(id: String): String = if (id in _media.value || id in _lossless.value) id else rowsKeptAs()[id] ?: id
+
+    /** Row id -> the song id its download is kept under ([com.vinz.music.data.meta.PlaysAsRules.keptAs]). */
+    private fun rowsKeptAs(): Map<String, String> = c.downloadStandIns.value
 
     private fun publish() {
         _downloads.value = _lossless.value + _media.value
-        c.downloadStandIns.value = _standIns.value
+        // The stand-ins are one of PlaysAs' sources; what rows are kept as comes back from it.
+        c.plays.setDownloaded(_standIns.value) { id -> _downloads.value[id]?.song }
+        c.downloadStandIns.value = c.plays.keptAs(swapsVideos(c.settings.current))
         c.downloadState.value = _downloads.value
         c.smartPickBytes = _smartIds.value.sumOf { _media.value[it]?.bytes ?: 0L }
     }
@@ -246,6 +279,7 @@ class DownloadRepository(private val context: Context, private val c: AppContain
                     Download.STATE_FAILED -> {
                         noteFailure(download.request.id, DownloadFailures.describe(finalException))
                         android.util.Log.w("VinzDownload", "failed ${download.request.id}", finalException)
+                        soundOfVideoInstead(download, finalException)
                     }
                     Download.STATE_COMPLETED -> noteFailure(download.request.id, null)
                 }
@@ -275,7 +309,10 @@ class DownloadRepository(private val context: Context, private val c: AppContain
                 applyRequirements()
                 noteFailure(download.request.id, null)
                 c.forgetDownloadFormat(download.request.id)
+                c.setDownloadSound(download.request.id, null)
                 c.canvasStore.forgetDownloads(listOf(download.request.id))
+                // 1.8.6: its loop from the music video goes back to the recent ones.
+                c.canvasAhead.forgetDownloads(listOf(download.request.id))
             }
         })
         scope.launch {
@@ -436,8 +473,38 @@ class DownloadRepository(private val context: Context, private val c: AppContain
         manager.currentDownloads.filter { it.state != Download.STATE_COMPLETED }.forEach { manager.removeDownload(it.request.id) }
     }
 
-    /** The YouTube id a download's bytes come from (a video part's is its video's). */
-    private fun streamOf(d: Download): String? = if (isVideoPart(d.request.id)) d.part()?.videoId else d.request.id
+    /** The YouTube id a download's bytes come from (a video part's is its video's, a stand-in's its video's sound). */
+    private fun streamOf(d: Download): String? = if (isVideoPart(d.request.id)) d.part()?.videoId else c.downloadSoundOf(d.request.id) ?: d.request.id
+
+    /**
+     * 1.8.7 (#408): a song download YouTube refused every way (its link turned away through all the retries, or no way
+     * gave one) comes down as its music video's sound, as playback plays it then (#93, Reddit R2): only a video of the
+     * song's length, never for an age-restricted or Premium-only song or a blocked network ([DownloadFallback]). Once per
+     * download; what came of the song's own stream goes first, since another recording's bytes can't join it.
+     */
+    private fun soundOfVideoInstead(d: Download, error: Exception?) {
+        val id = d.request.id
+        if (isVideoPart(id) || error == null) return
+        val song = d.info().song ?: return
+        if (!DownloadFallback.mayTry(song, error, already = c.downloadSoundOf(id) != null)) return
+        c.scope.launch {
+            val video = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                c.queue.counterparts[song.id] ?: runCatching { c.ytm.findMusicVideo(song) }.getOrNull()?.also { c.queue.counterparts[song.id] = it }
+            }?.takeIf { it != song.id }
+            val videoSec = video?.let { v -> kotlinx.coroutines.withContext(Dispatchers.IO) { runCatching { c.streams.durationSec(v, video = true) }.getOrDefault(0L) } } ?: 0L
+            if (video == null || !DownloadFallback.sameLength(song.durationSec.toLong(), videoSec)) {
+                com.vinz.music.playback.AudioDiagnostics.log("download", "$id was refused every way; ${if (video == null) "no music video for it" else "its music video $video runs ${videoSec}s, not ${song.durationSec}s"}: not downloaded in its place")
+                return@launch
+            }
+            c.setDownloadSound(id, video)
+            com.vinz.music.playback.AudioDiagnostics.log("download", "$id was refused every way: downloading its music video $video's sound in its place")
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching { c.downloadCache.removeResource(id) }
+                c.forgetDownloadFormat(id)
+            }
+            mainHandler.post { runCatching { add(d.request) } }
+        }
+    }
 
 
     /**
@@ -471,7 +538,7 @@ class DownloadRepository(private val context: Context, private val c: AppContain
      * those (your own artwork), else the one YouTube Music shows, at full size.
      */
     private suspend fun saveCover(song: Song) {
-        if (song.isLocal) return
+        if (song.isLocal || song.isRss) return
         val lossless = isLosslessOnly(song.id)
         // A cover kept small for the library (an album's, 544 px) is fetched again at full size (#86).
         if (if (lossless) c.artwork.has(song.thumbnail) else c.artwork.hasFull(song.thumbnail)) return
@@ -506,19 +573,26 @@ class DownloadRepository(private val context: Context, private val c: AppContain
 
     fun isDownloaded(id: String) = _downloads.value[id]?.state == Download.STATE_COMPLETED
 
+    /** #385: this song plays from a file on the phone, by the same matcher and settings playback uses. */
+    fun playsFromPhone(song: Song): Boolean {
+        val kinds = com.vinz.music.data.local.OwnFiles.kinds(c.settings.current)
+        return kinds.any && c.localLossless.match(song, lossless = kinds.lossless, lossy = kinds.lossy, note = false) != null
+    }
+
     /** True when this song is only here as a lossless file on the phone (not downloaded by Vinz). */
     fun isLosslessOnly(id: String) = id in _lossless.value && id !in _media.value
 
     fun download(song: Song, asIs: Boolean = false) {
-        // A file on the phone is already offline.
-        if (song.isLocal) return
+        // A file on the phone is already offline. (Episodes from a feed don't download yet.)
+        if (song.isLocal || song.isRss) return
+        c.keptPlaylists.forgive(setOf(song.id, keptAs(song.id)) + rowsKeptAs().filterValues { it == song.id }.keys)
         // A lossless file that was taken out of Downloads just comes back.
         if (c.losslessSync.unhide(song.id)) return
         // (A music video already downloaded as its song counts as downloaded.)
         if (_downloads.value[keptAs(song.id)]?.state.let { it == Download.STATE_COMPLETED || it == Download.STATE_DOWNLOADING || it == Download.STATE_QUEUED }) return
-        // A music video comes down as its song (#186), with "Songs, not videos" on: the audio, without the video's intro
-        // and outro. When there's no song for it, the video's own sound, as before.
-        if (!asIs && song.isVideo && !song.isUpload && !song.isLive && !song.isEpisode && c.settings.current.radioSongsOnly) {
+        // A music video comes down as its song (#186) when it would play as its song: the audio, without the video's
+        // intro and outro. When there's no song for it, the video's own sound, as before.
+        if (!asIs && downloadsAsSong(song, c.settings.current)) {
             c.scope.launch {
                 val audio = c.player.songFor(song)
                 if (audio != null) {
@@ -545,12 +619,35 @@ class DownloadRepository(private val context: Context, private val c: AppContain
         if (appOnScreen()) c.askNotifications()
     }
 
-    fun downloadAll(songs: List<Song>) = songs.forEach(::download)
+    /** A list's download: everything on it, but for the songs marked to skip (#221). */
+    fun downloadAll(songs: List<Song>) = PlaylistDownloads.wanted(songs, c.downloadSkips.ids.value, rowsKeptAs()).forEach(::download)
+
+    /**
+     * Marks a song to skip in lists' downloads, or takes that back (#221). One still to come or failed stops there, so it
+     * leaves Failed downloads and isn't tried again; one already here stays, since nothing asked for it to be deleted.
+     */
+    fun setSkipped(id: String, skip: Boolean) {
+        c.downloadSkips.set(id, skip)
+        if (!skip) return
+        val here = _downloads.value[keptAs(id)] ?: return
+        if (here.state != Download.STATE_COMPLETED) removeMany(listOf(id))
+    }
+
+    /** Every song with a download of any kind, whatever state it's in, from the download list itself; null if it can't be read. */
+    fun knownIds(): Set<String>? = runCatching {
+        buildSet {
+            manager.downloadIndex.getDownloads().use { cursor -> while (cursor.moveToNext()) add(cursor.download.request.id) }
+            addAll(_downloads.value.keys)
+        }
+    }.getOrNull()
 
     // ------------------------------------------------------------ Music videos
 
     /** The video saved for [songId], once all of it is here (what video mode plays offline). */
     fun downloadedVideoId(songId: String): String? = _videos.value[songId]?.takeIf { it.state == Download.STATE_COMPLETED }?.videoId
+
+    /** Whether the video [videoId] is all here, whichever song it was saved for. */
+    fun videoSaved(videoId: String): Boolean = _videos.value.values.any { it.videoId == videoId && it.state == Download.STATE_COMPLETED }
 
     /**
      * Saves the song's music video for offline: the song itself (so it's in Downloads), the video's picture
@@ -582,10 +679,12 @@ class DownloadRepository(private val context: Context, private val c: AppContain
         _videoParts.value.keys.filter { partSongId(it) == songId }.forEach { manager.removeDownload(it) }
     }
 
-    fun remove(asked: String) {
+    /** [byListener]: their choice, so a kept playlist doesn't fetch it back; Smart Downloads tidying up isn't that. */
+    fun remove(asked: String, byListener: Boolean = true) {
         // A video row's download is its song's (#315).
         val id = keptAs(asked)
         if (isLosslessOnly(id)) { c.losslessSync.hide(listOf(id)); return }
+        if (byListener) c.keptPlaylists.noteDeleted(setOf(asked, id))
         DownloadService.sendRemoveDownload(context, VinzDownloadService::class.java, id, false)
         removeVideo(id)
         c.scope.launch(Dispatchers.IO) { c.db.songs().setSmart(id, false); refreshSmartIds() }
@@ -594,12 +693,14 @@ class DownloadRepository(private val context: Context, private val c: AppContain
     /** Deletes many downloads at once, straight through the manager (no intent per song). */
     fun removeMany(asked: Collection<String>) {
         val ids = asked.map(::keptAs).distinct()
+        c.keptPlaylists.noteDeleted(asked.toSet() + ids)
         c.losslessSync.hide(ids.filter(::isLosslessOnly))
         ids.forEach { manager.removeDownload(it); removeVideo(it) }
         c.scope.launch(Dispatchers.IO) { ids.forEach { c.db.songs().setSmart(it, false) }; refreshSmartIds() }
     }
 
     fun removeAll() {
+        c.keptPlaylists.stopAll()
         val ids = _media.value.keys.toList()
         c.losslessSync.hide(_lossless.value.keys)
         manager.removeAllDownloads()
@@ -664,10 +765,12 @@ class DownloadRepository(private val context: Context, private val c: AppContain
      */
     private fun saveCanvas(song: Song): Boolean {
         val s = c.settings.current
-        if (!s.canvasEnabled || !s.canvasWithDownloads || song.isLocal || c.canvas.saved.value.has(song.id, null)) return true
+        if (!s.behavior.canvas.enabled || !s.behavior.canvas.withDownloads || song.isLocal || c.canvas.saved.value.has(song.id, null)) return true
         val metered = context.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered != false
-        if (metered && !s.canvasWithDownloadsCellular) return false
+        if (metered && !s.behavior.canvas.withDownloadsCellular) return false
         c.canvasStore.saveWithDownload(song)
+        // 1.8.6: and its loop from the music video, where one is wanted for it (the player's rule).
+        c.canvasAhead.keepWithDownload(song)
         return true
     }
 
@@ -718,7 +821,7 @@ class VinzDownloadService : DownloadService(
             android.app.PendingIntent.getActivity(this, 0, it, android.app.PendingIntent.FLAG_IMMUTABLE)
         }
         return androidx.core.app.NotificationCompat.Builder(this, DOWNLOAD_CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification_download)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(com.vinz.music.trp(R.plurals.downloading_n_songs, active.size.coerceAtLeast(1)))
             .setContentText(waiting ?: title ?: tr(R.string.getting_ready))
             .setProgress(100, percent.coerceAtLeast(0), percent < 0 && waiting == null)
@@ -749,7 +852,7 @@ private const val PREMIUM_KBPS = 200
 private const val STALL_STOP = 7
 
 /** Sizes offered for Smart Downloads' space (its picks and the songs you've streamed), in GB. */
-val SMART_DOWNLOAD_SIZES = listOf(1f, 2f, 3f, 5f, 7.5f, 10f, 15f, 20f, 30f, 50f)
+val SMART_DOWNLOAD_SIZES = listOf(0.25f, 0.5f, 1f, 2f, 3f, 5f, 7.5f, 10f, 15f, 20f, 30f, 50f)
 
 fun formatGb(gb: Float): String = when {
     gb < 1f -> "${(gb * 1024).roundToInt()} MB"

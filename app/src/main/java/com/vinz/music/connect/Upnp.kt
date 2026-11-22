@@ -165,18 +165,31 @@ object Ssdp {
         val t = m.target ?: return false
         return t.contains(":MediaRenderer:", ignoreCase = true) || t.contains(":AVTransport:", ignoreCase = true) || t.contains(":ZonePlayer:", ignoreCase = true)
     }
+
+    /**
+     * Whether a message's description is on the address it came from. Anyone on the Wi-Fi can answer a search, so it isn't
+     * taken on behalf of another address, least of all the phone's own. Addresses only: a name isn't looked up.
+     */
+    fun speaksForItself(m: SsdpMessage, sender: java.net.InetAddress): Boolean = runCatching {
+        val host = URI(m.location ?: return false).host?.removePrefix("[")?.removeSuffix("]") ?: return false
+        val literal = host.contains(':') || host.split('.').let { p -> p.size == 4 && p.all { it.toIntOrNull() in 0..255 } }
+        literal && java.net.InetAddress.getByName(host).address.contentEquals(sender.address)
+    }.getOrDefault(false)
 }
 
 object Description {
     /**
      * The renderer a device description describes: the (possibly embedded) device that has an AVTransport service, a
      * MediaRenderer preferred. Relative URLs are resolved against URLBase, else [location]. Null when it can't play.
+     * Everything stays on [location]'s host (any port): its actions carry the phone's stream address, and a description
+     * doesn't get to send them, or a look at anything else on the network, to some other address.
      */
     fun parse(xml: String, location: String): Renderer? {
         val doc = Xml.parse(xml) ?: return null
         val root = doc.documentElement ?: return null
         with(Xml) {
-            val base = root.text("URLBase")?.takeIf { it.startsWith("http", ignoreCase = true) } ?: location
+            val base = root.text("URLBase")?.takeIf { it.startsWith("http", ignoreCase = true) && sameHost(it, location) } ?: location
+            fun onDevice(ref: String) = resolve(base, ref)?.takeIf { sameHost(it, location) }
             val devices = (if (root.name().equals("device", true)) listOf(root) else emptyList()) + root.all("device")
             val playable = devices.mapNotNull { d ->
                 val services = d.child("serviceList")?.kids("service").orEmpty()
@@ -189,9 +202,9 @@ object Description {
                 val control = s.text("controlURL")?.takeIf { it.isNotBlank() } ?: return@let null
                 UpnpService(
                     type = s.text("serviceType")!!,
-                    controlUrl = resolve(base, control) ?: return@let null,
-                    eventUrl = s.text("eventSubURL")?.takeIf { it.isNotBlank() }?.let { resolve(base, it) },
-                    scpdUrl = s.text("SCPDURL")?.takeIf { it.isNotBlank() }?.let { resolve(base, it) },
+                    controlUrl = onDevice(control) ?: return@let null,
+                    eventUrl = s.text("eventSubURL")?.takeIf { it.isNotBlank() }?.let { onDevice(it) },
+                    scpdUrl = s.text("SCPDURL")?.takeIf { it.isNotBlank() }?.let { onDevice(it) },
                 )
             }
             val av = service("AVTransport") ?: return null
@@ -219,6 +232,13 @@ object Description {
         if (b.rawPath.isNullOrEmpty()) b = URI(b.scheme, b.rawAuthority, "/", null, null)
         b.resolve(r).toString()
     }.getOrNull()
+
+    /** Plain http on the same host. Read by [URI]'s rules, the ones the address will be used by ("http://a@b/" is on b). */
+    private fun sameHost(url: String, other: String): Boolean = runCatching {
+        val u = URI(url.trim())
+        val o = URI(other.trim())
+        u.scheme.equals("http", ignoreCase = true) && u.host != null && u.host.equals(o.host, ignoreCase = true)
+    }.getOrDefault(false)
 }
 
 /** What a SOAP action came back with: its out-arguments, or the device's UPnP error. */

@@ -254,6 +254,18 @@ interface CountedPlayDao {
     )
     suspend fun monthly(o: List<String>, from: Long, to: Long): List<MonthTotal>
 
+    /** The listening clock (1.8.5) over `counted_plays`: SQL from [com.vinz.music.data.imports.LocalClock.hours]. */
+    @androidx.room.RawQuery
+    suspend fun clockHours(q: androidx.sqlite.db.SupportSQLiteQuery): List<HourTotal>
+
+    /** The listening calendar (1.8.5): SQL from [com.vinz.music.data.imports.LocalClock.days]. */
+    @androidx.room.RawQuery
+    suspend fun clockDays(q: androidx.sqlite.db.SupportSQLiteQuery): List<DayTotal>
+
+    /** One hour's top songs (1.8.5): SQL from [com.vinz.music.data.imports.LocalClock.songs]. */
+    @androidx.room.RawQuery
+    suspend fun clockSongs(q: androidx.sqlite.db.SupportSQLiteQuery): List<SongPlays>
+
     @Query("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime')) FROM counted_plays WHERE origin IN (:o) AND timestamp BETWEEN :from AND :to")
     suspend fun activeDays(o: List<String>, from: Long, to: Long): Int
 
@@ -268,6 +280,9 @@ interface CountedPlayDao {
 
     @Query("SELECT COUNT(DISTINCT songId) FROM counted_plays WHERE origin IN (:o) AND timestamp BETWEEN :from AND :to")
     suspend fun songCount(o: List<String>, from: Long, to: Long): Int
+
+    @Query("SELECT COUNT(*) FROM counted_plays WHERE origin IN (:o) AND songId = :songId AND timestamp <= :to")
+    suspend fun playsOf(o: List<String>, songId: String, to: Long): Int
 
     @Query("SELECT COUNT(DISTINCT s.primaryArtist) FROM counted_plays e JOIN songs s ON s.id = e.songId WHERE e.origin IN (:o) AND e.timestamp BETWEEN :from AND :to AND s.primaryArtist != ''")
     suspend fun artistCount(o: List<String>, from: Long, to: Long): Int
@@ -331,4 +346,37 @@ interface CountedPlayDao {
 
     @Query("SELECT COUNT(*) FROM counted_plays WHERE origin IN (:o) AND timestamp BETWEEN :from AND :to AND songId IS NOT NULL")
     suspend fun matchedCount(o: List<String>, from: Long, to: Long): Int
+
+    /** How many times a song's been played, as Replay counts it (#211's "Your plays"). */
+    @Query("SELECT COUNT(*) FROM counted_plays WHERE origin IN (:o) AND songId = :id")
+    suspend fun songPlays(o: List<String>, id: String): Int
+
+    // An artist's page (1.8.2): their songs by the artist's id or their main artist's name, as Replay names artists.
+
+    @Query(
+        """SELECT e.songId AS songId, COUNT(*) AS plays, SUM(e.playedMs) AS ms, s.title AS title,
+           s.artistName AS artistName, s.thumbnail AS thumbnail, s.albumTitle AS albumTitle,
+           s.durationSec AS durationSec, s.artistId AS artistId, s.primaryArtist AS primaryArtist
+           FROM counted_plays e JOIN songs s ON s.id = e.songId
+           WHERE e.origin IN (:o) AND (s.artistId = :id OR (:name != '' AND s.primaryArtist = :name COLLATE NOCASE))
+           GROUP BY e.songId ORDER BY ms DESC, plays DESC"""
+    )
+    suspend fun artistSongs(o: List<String>, id: String, name: String): List<SongPlays>
+
+    /** [artistSongs] without the plays the listener left out of their taste. */
+    @Query(
+        """SELECT e.songId AS songId, COUNT(*) AS plays, SUM(e.playedMs) AS ms, s.title AS title,
+           s.artistName AS artistName, s.thumbnail AS thumbnail, s.albumTitle AS albumTitle,
+           s.durationSec AS durationSec, s.artistId AS artistId, s.primaryArtist AS primaryArtist
+           FROM counted_plays e JOIN songs s ON s.id = e.songId
+           WHERE e.origin IN (:o) AND e.excluded = 0 AND (s.artistId = :id OR (:name != '' AND s.primaryArtist = :name COLLATE NOCASE))
+           GROUP BY e.songId ORDER BY ms DESC, plays DESC"""
+    )
+    suspend fun artistTasteSongs(o: List<String>, id: String, name: String): List<SongPlays>
+
+    @Query(
+        """SELECT MIN(e.timestamp) FROM counted_plays e JOIN songs s ON s.id = e.songId
+           WHERE e.origin IN (:o) AND (s.artistId = :id OR (:name != '' AND s.primaryArtist = :name COLLATE NOCASE))"""
+    )
+    suspend fun artistFirstPlay(o: List<String>, id: String, name: String): Long?
 }

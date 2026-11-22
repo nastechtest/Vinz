@@ -1,8 +1,7 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-
 package com.vinz.music.ui.player
 
 import com.vinz.music.R
+import com.vinz.music.data.prefs.CanvasPrefs
 import com.vinz.music.tr
 import com.vinz.music.ui.theme.VinzIcons
 import androidx.compose.foundation.layout.Column
@@ -27,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +56,7 @@ import com.vinz.music.ui.components.runAction
 import com.vinz.music.ui.components.shareTarget
 import com.vinz.music.ui.theme.LocalContainer
 import com.vinz.music.ui.theme.LocalUi
+import kotlinx.coroutines.launch
 
 /**
  * The player's ⋯ menu, in the app's frosted look (the song's cover as frosted glass): like and share up top, four quick
@@ -89,17 +88,20 @@ fun PlayerOptionsSheet(
     videoAvailable: Boolean = false,
     onVideoMode: (Boolean) -> Unit = {},
     onButton: (PlayerButton) -> Unit = {},
+    /** 1.8.6: the loop from the song's music video the player shows now, if that is what it shows. */
+    shownClip: com.vinz.music.data.canvas.VideoClip? = null,
     onDismiss: () -> Unit,
 ) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val context = LocalContext.current
-    val locale = LocalConfiguration.current.locales[0]
     val liked by c.library.likedIds.collectAsState()
     val downloads by c.downloadState.collectAsState()
-    val savedDownloads by c.downloads.downloads.collectAsState()
     val videos by c.videoState.collectAsState()
+    // The song's two Canvas switches: its animated cover off ([hidden]), its loop from the music video off ([hiddenLoops]).
     val hidden by c.canvas.hidden.collectAsState()
+    val hiddenLoops by c.canvas.hiddenLoops.collectAsState()
+    val hiddenSpotify by c.canvas.hiddenSpotify.collectAsState()
     val saved by c.canvas.saved.collectAsState()
     val sleepAt by c.player.sleepAt.collectAsState()
     val sleepEnd by c.player.sleepEndOfSong.collectAsState()
@@ -108,10 +110,18 @@ fun PlayerOptionsSheet(
     var pickPlaylist by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    // 1.8.6 Canvas for this song: its row (a loop from the video, the listener's "Use:"), and the two sheets it opens.
+    val clipChanges by c.canvasClips.changes.collectAsState()
+    val clipRow by androidx.compose.runtime.produceState<com.prism.music.data.db.CanvasClipEntity?>(null, song.id, clipChanges) { value = c.canvasClips.row(song.id) }
+    var canvasParts by remember { mutableStateOf(false) }
+    var canvasUse by remember { mutableStateOf(false) }
+    var canvasVideos by remember { mutableStateOf(false) }
 
     var outputs by remember { mutableStateOf(false) }
     var credits by remember { mutableStateOf(false) }
     if (credits) { com.vinz.music.ui.components.SongCreditsSheet(song) { credits = false; onDismiss() }; return }
+    var details by remember { mutableStateOf(false) }
+    if (details) { com.vinz.music.ui.components.SongDetailsSheet(song) { details = false; onDismiss() }; return }
     var versions by remember { mutableStateOf(false) }
     val picks by c.versions.picks.collectAsState()
     if (versions) { com.vinz.music.ui.components.SongVersionsSheet(song) { versions = false; onDismiss() }; return }
@@ -119,6 +129,9 @@ fun PlayerOptionsSheet(
     var coverPick by remember { mutableStateOf(false) }
     if (coverPick) { com.vinz.music.ui.components.CoverPickSheet(com.vinz.music.ui.components.CoverFor.OfSong(song, c.covers.songKey(song.id))) { coverPick = false; onDismiss() }; return }
     if (pickPlaylist) { PlaylistPicker(song) { pickPlaylist = false; onDismiss() }; return }
+    var tagging by remember { mutableStateOf(false) }
+    if (tagging) { com.vinz.music.ui.components.TagPicker(listOf(song), song.title) { tagging = false; onDismiss() }; return }
+    val songTags by remember(song.id) { c.tags.tagsOf(song.id) }.collectAsState(emptyList())
     // Speakers and TVs, from the menu too (Reddit 1.7: "where's the cast button?").
     if (outputs) {
         val profile by c.account.profile.collectAsState()
@@ -129,6 +142,9 @@ fun PlayerOptionsSheet(
     if (sharing) { com.vinz.music.ui.components.ShareSheet(song.shareTarget()) { sharing = false; onDismiss() }; return }
     // Edit this menu, in its place; done, the menu comes back as it now is.
     if (editing) { MenuEditorSheet { editing = false }; return }
+    if (canvasParts) { CanvasPartsSheet(song) { canvasParts = false; onDismiss() }; return }
+    if (canvasVideos) { CanvasVideosSheet(song, clipRow?.videoId) { canvasVideos = false; onDismiss() }; return }
+    if (canvasUse) { CanvasUseSheet(song, canvasUseNow(c.settings.current, clipRow, spotifys = c.canvas.spotifyAsked() && song.id !in hiddenSpotify && c.canvas.cached(song, spotifyOk = true, vinzOk = false) != null)) { canvasUse = false; onDismiss() }; return }
 
     val isLiked = song.id in liked
     val dl = downloads[song.id]
@@ -164,21 +180,20 @@ fun PlayerOptionsSheet(
         )
         ActionSheet(com.vinz.music.data.PlaylistCovers.artOf(song), onDismiss) { close ->
             ActionHeader(com.vinz.music.data.PlaylistCovers.artOf(song), song.shown.title, song.shown.artistText) {
-                SheetIconButton(VinzIcons.Share, tr(R.string.share)) { sharing = true }
+                // (A feed's episode has no address on YouTube to share, and doesn't download.)
+                if (!song.isRss) SheetIconButton(VinzIcons.Share, tr(R.string.share)) { sharing = true }
             }
             // An episode has no radio and goes in no playlist: download and sleep.
-            QuickActions(listOf(downloadItem, sleepItem.tile(MenuAction.SLEEP))) { runAction(it, close) }
+            QuickActions(listOfNotNull(downloadItem.takeIf { !song.isRss }, sleepItem.tile(MenuAction.SLEEP))) { runAction(it, close) }
             ActionGroup(tr(R.string.episode), episode) { runAction(it, close) }
         }
         return
     }
 
     val settings = c.settings.flow.collectAsState().value
-    val translating = settings.lyricsTranslate
+    val translating = settings.lyrics.translate
     // Says which language, so turning it on for a song already in it explains itself.
-    val translateInto = settings.lyricsTranslateTo.ifBlank { defaultTranslateTarget() }.let { tag ->
-        java.util.Locale.forLanguageTag(tag).getDisplayLanguage(locale).ifBlank { tag }
-    }
+    val translateInto = translateTargetName(settings)
     val singOn = c.sing.on.collectAsState().value
     val djOn = c.dj.on.collectAsState().value
     val cover = com.vinz.music.data.canvas.CanvasRepository.albumKey(song)
@@ -193,11 +208,14 @@ fun PlayerOptionsSheet(
     fun put(a: MenuAction, item: ActionItem?) { if (item != null) items[a] = listOf(item) }
     // This song
     put(MenuAction.ADD_TO_PLAYLIST, ActionItem(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) { pickPlaylist = true })
+    put(MenuAction.TAGS, ActionItem(VinzIcons.Tag, tr(R.string.add_a_tag), value = com.vinz.music.ui.components.tagsValue(songTags), active = songTags.isNotEmpty(), keepOpen = true) { tagging = true })
     if (!local) put(MenuAction.RADIO, ActionItem(VinzIcons.Radio, tr(R.string.start_radio)) { c.player.playRadio(song) })
     if (!local) put(MenuAction.DOWNLOAD, downloadItem)
     put(MenuAction.ALBUM, song.shown.album?.id?.let { id -> ActionItem(VinzIcons.Album, tr(R.string.go_to_album)) { onCollapse(); nav.go(Routes.album(id)) } })
     com.vinz.music.ui.components.goToArtists(song) { route -> onCollapse(); nav.go(route) }.takeIf { it.isNotEmpty() }?.let { items[MenuAction.ARTIST] = it }
     if (!song.isEpisode && !local && !song.isLive) put(MenuAction.CREDITS, ActionItem(VinzIcons.Info, tr(R.string.song_credits), keepOpen = true) { credits = true })
+    // As in the song menu: YouTube has nothing to say about the listener's own uploads.
+    if (!song.isEpisode && !local && !song.isLive && !song.isUpload) put(MenuAction.DETAILS, ActionItem(VinzIcons.Replay, tr(R.string.song_details), keepOpen = true) { details = true })
     // Another recording in its place (Reddit 1.7.9: an album song played as someone's cover).
     if (!local && !song.isLive && together !is com.vinz.music.playback.together.TogetherState.Guest) put(
         MenuAction.VERSION, ActionItem(VinzIcons.SwapVertical, tr(R.string.play_a_different_version), active = song.id in picks, keepOpen = true) { versions = true },
@@ -232,7 +250,7 @@ fun PlayerOptionsSheet(
     }
     put(MenuAction.LYRICS_AGAIN, ActionItem(VinzIcons.Refresh, tr(R.string.download_lyrics_again)) { onRedownloadLyrics(); toast(tr(R.string.downloading_lyrics_again)) })
     // Into your own FLAC / MP3 file, for other players (#16).
-    if (local || savedDownloads[song.id]?.lossless == true) put(MenuAction.LYRICS_INTO_FILE, ActionItem(VinzIcons.Download, tr(R.string.save_lyrics_into_the_file)) { c.lyricsToFiles.request(listOf(song)) })
+    if (local || c.downloads.downloads.value[song.id]?.lossless == true) put(MenuAction.LYRICS_INTO_FILE, ActionItem(VinzIcons.Download, tr(R.string.save_lyrics_into_the_file)) { c.lyricsToFiles.request(listOf(song)) })
     // Playing: first what the player's hidden parts did.
     if (MenuAction.OPEN_LYRICS in fromPlayer) put(MenuAction.OPEN_LYRICS, ActionItem(VinzIcons.Lyrics, tr(R.string.show_lyrics), onClick = onOpenLyrics))
     if (MenuAction.OPEN_QUEUE in fromPlayer) put(MenuAction.OPEN_QUEUE, ActionItem(VinzIcons.Queue, tr(R.string.up_next), onClick = onOpenQueue))
@@ -263,9 +281,66 @@ fun PlayerOptionsSheet(
         MenuAction.BEST_PART,
         ActionItem(VinzIcons.Flame, tr(R.string.your_best_part), value = c.bestParts.mine(song.id)?.let { "%d:%02d".format(it / 60_000, it / 1000 % 60) }) { BestPartEditor.open = true },
     )
-    if (hasCanvas && !local) {
-        put(MenuAction.ANIMATED_COVER, ActionItem(VinzIcons.AnimatedCover, tr(R.string.animated_cover), active = song.id !in hidden, keepOpen = true) { c.canvas.setHidden(song.id, song.id !in hidden) })
-        put(
+    // Which video the song's loop comes from: offered for every song while Canvas uses music videos, also one with no
+    // loop yet (the listener may know a video Vinz didn't find or wouldn't take).
+    val canvasPrefs = settings.behavior.canvas
+    val isSong = com.vinz.music.data.canvas.ClipGate.isSong(song)
+    val coverOff = song.id in hidden
+    val loopOff = song.id in hiddenLoops
+    val spotifyOff = song.id in hiddenSpotify
+    val hasVideo = clipRow?.videoId != null
+    // 1.8.7.6 (owner, 2026-11-16): three switches for the song, each on its own. Spotify's canvas, Vinz's animated
+    // cover (Apple Music, Tidal) and Vinz Canvas (the loop from the music video); Spotify's shows first in the cover's
+    // place, and "Animated covers" and Canvas (Vinz's own) may both be off while it does.
+    val spotifyCanvas = c.canvas.spotifyAsked()
+    val spotifyKnown = if (spotifyCanvas) c.canvas.cached(song, spotifyOk = true, vinzOk = false) else null
+    val vinzCover = c.canvas.cached(song, spotifyOk = false, vinzOk = true)
+    // What the cover's place shows for this song: Spotify's canvas unless switched off, else Vinz's animated cover.
+    val known = spotifyKnown.takeIf { !spotifyOff } ?: vinzCover.takeIf { !coverOff }
+    val hasCover = known != null
+    val vinzCovers = com.vinz.music.data.canvas.vinzCoversOn(settings)
+    val coversKind = vinzCovers || spotifyCanvas
+    val canvasOn = settings.behavior.canvas.enabled || spotifyCanvas
+    if (canvasVideoPickShown(settings.behavior.canvas.enabled, canvasPrefs.useVideos, isSong, loopOff)) {
+        put(MenuAction.CANVAS_VIDEO, ActionItem(VinzIcons.Video, tr(R.string.canvas_pick_video), keepOpen = true) { canvasVideos = true })
+    }
+    // Each switch stays after it was switched off for the song, the only way back.
+    val spotifySwitch = canvasSpotifySwitchShown(spotifyCanvas, spotifyKnown != null, spotifyOff)
+    val coverSwitch = canvasCoverSwitchShown(settings.behavior.canvas.enabled, vinzCovers, vinzCover != null, coverOff)
+    val loopSwitch = canvasLoopSwitchShown(settings.behavior.canvas.enabled, canvasPrefs.useVideos, isSong, hasVideo, loopOff)
+    if ((hasCanvas || spotifySwitch || coverSwitch || loopSwitch) && !local) {
+        if (coverSwitch) put(MenuAction.ANIMATED_COVER, canvasToggleItem(!coverOff, tr(R.string.animated_cover), VinzIcons.AnimatedCover) { c.canvas.setHidden(song.id, !coverOff) })
+        if (spotifySwitch && loopSwitch && spotifyKnown != null) {
+            // With Spotify's canvas there, only the one of the two loops that shows is checked; turning one on makes it
+            // the song's choice, so the other reads as off without being switched off for the song.
+            val pair = canvasPairShown(spotifyOff, loopOff, canvasUseNow(settings, clipRow, spotifys = true))
+            put(MenuAction.SPOTIFY_CANVAS, canvasToggleItem(pair.spotify, tr(R.string.spotify_canvas), VinzIcons.AnimatedCover) {
+                if (pair.spotify) c.canvas.setSpotifyHidden(song.id, true)
+                else { c.canvas.setSpotifyHidden(song.id, false); c.scope.launch { c.canvasClips.setChoice(song.id, com.vinz.music.data.canvas.CanvasSource.COVER) } }
+            })
+            put(MenuAction.CANVAS, canvasToggleItem(pair.vinz) {
+                if (pair.vinz) c.canvas.setLoopHidden(song.id, true)
+                else { c.canvas.setLoopHidden(song.id, false); c.scope.launch { c.canvasClips.setChoice(song.id, com.vinz.music.data.canvas.CanvasSource.VIDEO) } }
+            })
+        } else {
+            if (spotifySwitch) put(MenuAction.SPOTIFY_CANVAS, canvasToggleItem(!spotifyOff, tr(R.string.spotify_canvas), VinzIcons.AnimatedCover) { c.canvas.setSpotifyHidden(song.id, !spotifyOff) })
+            if (loopSwitch) put(MenuAction.CANVAS, canvasToggleItem(!loopOff) { c.canvas.setLoopHidden(song.id, !loopOff) })
+        }
+        // A loop from the song's music video shows: another part of it, or not this video at all.
+        if (shownClip != null && !loopOff) {
+            put(MenuAction.CANVAS_PART, ActionItem(VinzIcons.Carousel, tr(R.string.canvas_pick_part), keepOpen = true) { canvasParts = true })
+            put(MenuAction.CANVAS_NOT_THIS_VIDEO, ActionItem(VinzIcons.Block, tr(R.string.canvas_not_this_video)) {
+                c.scope.launch { c.canvasClips.rejectVideo(song.id) }
+            })
+        }
+        // The song has both an animated cover and a video loop: which one it uses, whatever "When a song has both" says.
+        if (canvasUseShown(canvasOn, coversKind, settings.behavior.canvas.enabled && canvasPrefs.useVideos, hasCover, hasVideo, coverOff = false, loopOff = loopOff)) {
+            val now = canvasUseNow(settings, clipRow, spotifys = known?.spotify == true)
+            put(MenuAction.CANVAS_USE, ActionItem(VinzIcons.Video, tr(R.string.canvas_use), value = canvasSourceName(now), keepOpen = true) { canvasUse = true })
+        }
+        // Only a song that has an animated cover (a loop from its video is kept by itself, and with its download). Not
+        // while Spotify's canvas is the one shown: it is never saved (1.8.7.6, plan D5).
+        if (known != null && !known.spotify) put(
             MenuAction.SAVE_ANIMATED_COVER,
             if (saved.has(song.id, cover)) ActionItem(VinzIcons.Download, tr(R.string.animated_cover_saved), active = true, keepOpen = true) { c.canvasStore.unsave(song) }
             else ActionItem(VinzIcons.Download, tr(R.string.save_animated_cover), keepOpen = true) {
@@ -321,17 +396,19 @@ private fun ActionItem.tile(a: MenuAction): ActionItem {
         MenuAction.SLEEP -> tr(R.string.sleep)
         else -> return this
     }
-    return ActionItem(icon, short, value, active, keepOpen, danger, onClick)
+    return ActionItem(icon, short, value, active, keepOpen, danger, toggle, onClick)
 }
 
 /** An action's icon and name in Edit this menu, whatever song is playing. */
 internal fun menuIcon(a: MenuAction): ImageVector = when (a) {
     MenuAction.ADD_TO_PLAYLIST -> VinzIcons.PlaylistAdd
+    MenuAction.TAGS -> VinzIcons.Tag
     MenuAction.RADIO -> VinzIcons.Radio
     MenuAction.DOWNLOAD -> VinzIcons.Download
     MenuAction.ALBUM -> VinzIcons.Album
     MenuAction.ARTIST -> VinzIcons.Person
     MenuAction.CREDITS -> VinzIcons.Info
+    MenuAction.DETAILS -> VinzIcons.Replay
     MenuAction.VERSION -> VinzIcons.SwapVertical
     MenuAction.COVER -> VinzIcons.Photo
     MenuAction.NOT_FOR_ME -> VinzIcons.ThumbDown
@@ -356,7 +433,13 @@ internal fun menuIcon(a: MenuAction): ImageVector = when (a) {
     MenuAction.VIDEO_DOWNLOAD -> VinzIcons.Video
     MenuAction.LISTEN_TOGETHER -> VinzIcons.Groups
     MenuAction.BEST_PART -> VinzIcons.Flame
+    MenuAction.SPOTIFY_CANVAS -> VinzIcons.AnimatedCover
     MenuAction.ANIMATED_COVER -> VinzIcons.AnimatedCover
+    MenuAction.CANVAS -> VinzIcons.Video
+    MenuAction.CANVAS_PART -> VinzIcons.Carousel
+    MenuAction.CANVAS_VIDEO -> VinzIcons.Video
+    MenuAction.CANVAS_USE -> VinzIcons.Video
+    MenuAction.CANVAS_NOT_THIS_VIDEO -> VinzIcons.Block
     MenuAction.SAVE_ANIMATED_COVER -> VinzIcons.Download
     MenuAction.STATS -> VinzIcons.Stats
     MenuAction.MARK_STUTTER -> VinzIcons.Info
@@ -364,11 +447,13 @@ internal fun menuIcon(a: MenuAction): ImageVector = when (a) {
 
 internal fun menuLabel(a: MenuAction): String = when (a) {
     MenuAction.ADD_TO_PLAYLIST -> tr(R.string.add_to_playlist)
+    MenuAction.TAGS -> tr(R.string.add_a_tag)
     MenuAction.RADIO -> tr(R.string.start_radio)
     MenuAction.DOWNLOAD -> tr(R.string.download)
     MenuAction.ALBUM -> tr(R.string.go_to_album)
     MenuAction.ARTIST -> tr(R.string.go_to_artist)
     MenuAction.CREDITS -> tr(R.string.song_credits)
+    MenuAction.DETAILS -> tr(R.string.song_details)
     MenuAction.VERSION -> tr(R.string.play_a_different_version)
     MenuAction.COVER -> tr(R.string.change_cover)
     MenuAction.NOT_FOR_ME -> tr(R.string.not_for_me)
@@ -393,7 +478,13 @@ internal fun menuLabel(a: MenuAction): String = when (a) {
     MenuAction.VIDEO_DOWNLOAD -> tr(R.string.download_video)
     MenuAction.LISTEN_TOGETHER -> tr(R.string.listen_together)
     MenuAction.BEST_PART -> tr(R.string.your_best_part)
+    MenuAction.SPOTIFY_CANVAS -> tr(R.string.spotify_canvas)
     MenuAction.ANIMATED_COVER -> tr(R.string.animated_cover)
+    MenuAction.CANVAS -> tr(R.string.vinz_canvas)
+    MenuAction.CANVAS_PART -> tr(R.string.canvas_pick_part)
+    MenuAction.CANVAS_VIDEO -> tr(R.string.canvas_pick_video)
+    MenuAction.CANVAS_USE -> tr(R.string.canvas_use)
+    MenuAction.CANVAS_NOT_THIS_VIDEO -> tr(R.string.canvas_not_this_video)
     MenuAction.SAVE_ANIMATED_COVER -> tr(R.string.save_animated_cover)
     MenuAction.STATS -> tr(R.string.stats_for_nerds)
     MenuAction.MARK_STUTTER -> tr(R.string.mark_a_stutter)

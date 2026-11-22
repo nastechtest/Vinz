@@ -34,7 +34,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
@@ -46,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -69,7 +69,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -89,10 +88,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -119,11 +115,9 @@ import com.vinz.music.data.prefs.NavBarStyle
 import com.vinz.music.data.prefs.NavLabels
 import com.vinz.music.data.prefs.NavTab
 import com.vinz.music.download.SmartDownloadWorker
-import com.vinz.music.ui.ChromeScrollAccumulator
 import com.vinz.music.ui.LocalNavigator
 import com.vinz.music.ui.Navigator
 import com.vinz.music.ui.Routes
-import com.vinz.music.ui.SplitChromeGeometry
 import com.vinz.music.ui.player.MiniPlayer
 import com.vinz.music.ui.player.NowPlayingScreen
 import com.vinz.music.ui.screens.ArtistScreen
@@ -151,7 +145,7 @@ import com.vinz.music.ui.theme.ink3
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.semantics.selected
-import dev.chrisbanes.haze.hazeSource
+import com.vinz.music.ui.theme.glassSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -163,8 +157,6 @@ import kotlin.math.abs
  * The app's screen. Declared in the manifest as [VinzActivity], so that ".MainActivity" can be the classic app-icon
  * alias (#20) and home-screen icons made before stay valid.
  */
-/** A volume key press on a cast speaker or TV, out of 100. */
-private const val VOLUME_KEY_STEP = 4
 /** How .vinzlook files are sent (a zip: the Look's code and any photos or font it carries). */
 private const val LOOK_MIME = "application/zip"
 
@@ -292,10 +284,18 @@ open class MainActivity : ComponentActivity() {
     }
 
     /** While casting, the volume keys turn the speaker or TV up and down (with Vinz open; elsewhere, the media session does). */
+    private var castVolumeKeyAt = 0L
+
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
         val cast = container.cast
         if (cast.casting && (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)) {
-            cast.adjustVolume(if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) VOLUME_KEY_STEP else -VOLUME_KEY_STEP)
+            // #534: one step per press, and a held key no faster than the phone's own volume climbs.
+            val now = android.os.SystemClock.uptimeMillis()
+            if (com.vinz.music.playback.RemoteVolume.takesKey(event.repeatCount, now, castVolumeKeyAt)) {
+                castVolumeKeyAt = now
+                val up = keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
+                cast.setVolume(com.vinz.music.playback.RemoteVolume.stepped(cast.volume ?: 50, if (up) 1 else -1))
+            }
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -320,6 +320,21 @@ open class MainActivity : ComponentActivity() {
             container.looks.decode(lookCode)?.let { container.looks.pending.value = it }
                 ?: Toast.makeText(this, tr(R.string.that_look_code_couldn_t_be), Toast.LENGTH_SHORT).show()
             return Uri.parse("vinz://looks")
+        }
+        // An audio file opened with Vinz from a file manager (1.8.5): it plays on its own, from the file, and the
+        // player opens. The opener's read grant comes with the intent; nothing is copied. Vinz's own files and providers
+        // are never opened this way (another app could name them).
+        intent?.data?.takeIf {
+            com.vinz.music.data.local.OpenedAudio.accepts(intent.action, it, intent.type ?: runCatching { contentResolver.getType(it) }.getOrNull()) &&
+                !com.vinz.music.data.local.OpenedAudio.vinzsOwn(this, it)
+        }?.let { file ->
+            container.scope.launch(Dispatchers.IO) {
+                val song = com.vinz.music.data.local.OpenedAudio.read(applicationContext, file)
+                withContext(Dispatchers.Main) {
+                    container.player.playQueue(listOf(song), 0, com.vinz.music.playback.QueueSource(com.vinz.music.playback.QueueKind.SINGLE, song.title))
+                }
+            }
+            return Uri.parse("vinz://player")
         }
         lookFile(intent)?.let { file ->
             container.scope.launch(Dispatchers.Main) {
@@ -484,6 +499,9 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 if (settings.behavior.lockPortrait && !tablet) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+        // Settings → Performance → "Smoother scrolling" (#336): the screen's fastest mode while Vinz is open. `settings` is
+        // the effective one, so Performance mode reads it as off; battery saver does too.
+        com.vinz.music.ui.SmoothScrollingEffect(settings.behavior.smoothScrolling)
         val navController = rememberNavController()
         var playerOpen by rememberSaveable { mutableStateOf(false) }
         val navigator = remember(navController) {
@@ -515,7 +533,8 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
         // Done button sat under the tab bar on phones, which it measures itself against when it's opened from Settings).
         val onboardingPicker = (route?.startsWith(Routes.PICK_ARTISTS) == true || route?.startsWith(Routes.ACCOUNT) == true) &&
             backStack?.arguments?.getBoolean("onboarding") == true
-        val showChrome = route != Routes.LOGIN && route != Routes.LOGIN_ADD && route != Routes.DISCORD_LOGIN && route != Routes.WELCOME && !onboardingPicker
+        val showChrome = route != Routes.LOGIN && route != Routes.LOGIN_ADD && route != Routes.DISCORD_LOGIN &&
+            route != Routes.SPOTIFY_BEFORE && route != Routes.SPOTIFY_LOGIN && route != Routes.WELCOME && !onboardingPicker
         val tabs = settings.navTabs.map { it.tab(settings.tabNames[it]) }
 
         val together by c.together.state.collectAsState()
@@ -545,45 +564,24 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             }
         }
 
-        // Keep the established pre-scroll threshold path unless the opt-in split chrome has actually fitted.
-        // The experimental path uses only child-consumed scroll, so overscroll cannot morph the player.
+        // The tab bar shrinks while you scroll down a page and grows back as you scroll up.
         var barCompact by remember { mutableStateOf(false) }
-        var splitChromeEligible by remember { mutableStateOf(false) }
-        val density = LocalDensity.current
-        val chromeScroll = remember(density) { ChromeScrollAccumulator(with(density) { 72.dp.toPx() }) }
-        var chromeTarget by remember { mutableFloatStateOf(0f) }
-        val chromeScrollEnabled = splitChromeEligible && settings.experimentalSplitNavigation &&
-            settings.navStyle == NavBarStyle.FLOATING && settings.navHideOnScroll && !settings.reduceMotion &&
-            song != null && !playerOpen && !useRail
-        val barScroll = remember(chromeScroll, chromeScrollEnabled) {
+        val barScroll = remember {
             object : NestedScrollConnection {
                 var acc = 0f
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                    if (chromeScrollEnabled) return Offset.Zero
                     val dy = available.y
                     if (dy == 0f || abs(available.x) > abs(dy)) return Offset.Zero
                     acc = if ((acc < 0) == (dy < 0)) acc + dy else dy
                     if (acc < -28f) barCompact = true else if (acc > 28f) barCompact = false
                     return Offset.Zero
                 }
-
-                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                    if (!chromeScrollEnabled) return Offset.Zero
-                    val dy = consumed.y
-                    if (!dy.isFinite() || dy == 0f || abs(consumed.x) > abs(dy)) return Offset.Zero
-                    chromeTarget = chromeScroll.consume(dy, true)
-                    return Offset.Zero
-                }
             }
         }
         LaunchedEffect(route) { barCompact = false }
-        LaunchedEffect(route, chromeScrollEnabled) {
-            chromeTarget = if (chromeScrollEnabled) chromeScroll.reset() else 0f
-        }
         val barT by animateFloatAsState(
-            if (chromeScrollEnabled) chromeTarget else if (barCompact && settings.navHideOnScroll) 1f else 0f,
-            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-            label = "bar",
+            if (barCompact && settings.navHideOnScroll) 1f else 0f,
+            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow), label = "bar",
         )
 
         LaunchedEffect(Unit) {
@@ -609,9 +607,8 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             // The tab whose pages are showing: the first tab page above the root, else the root's own.
             val tabRoutes = tabs.map { it.route }.toSet()
             // Optional arguments aside ("liked?genre={genre}" is the Liked songs tab).
-            val currentTab = tabRoutes.firstOrNull { route ->
-                route != root && runCatching { navController.getBackStackEntry(route) }.isSuccess
-            } ?: root
+            val stack = navController.currentBackStack.value.mapNotNull { it.destination.route?.substringBefore('?') }
+            val currentTab = stack.drop(1).firstOrNull { it in tabRoutes } ?: root
             when {
                 // The root tab always means its top, from anywhere.
                 r == root -> if (!navController.popBackStack(root, inclusive = false, saveState = true)) goRoot()
@@ -635,9 +632,13 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
         val musicPlaying = c.player.isPlaying.collectAsState()
         val playingNow = remember(musicPlaying) { { musicPlaying.value } }
         // What the song rows mark (liked, downloaded, video saved): collected here once, not by every row in view.
-        val rowMarks = com.vinz.music.ui.components.rememberRowMarks(c.library.likedIds, c.downloadState, c.downloadStandIns, c.videoState)
+        val rowMarks = com.vinz.music.ui.components.rememberRowMarks(c.library.likedIds, c.downloadState, c.downloadStandIns, c.videoState) { s -> c.downloads.playsFromPhone(s) }
+        // Select many (1.8.3): the songs picked in a list, one selection for the app; Back ends it.
+        val selection = remember { com.vinz.music.ui.components.SongSelection() }
+        androidx.activity.compose.BackHandler(selection.selecting && !playerOpen) { selection.clear() }
         CompositionLocalProvider(
             com.vinz.music.ui.components.LocalRowMarks provides rowMarks,
+            com.vinz.music.ui.components.LocalSongSelection provides selection,
             com.vinz.music.ui.components.LocalPlayerCover provides playerCover,
             com.vinz.music.ui.components.LocalMusicPlaying provides playingNow,
             LocalNavigator provides navigator,
@@ -658,8 +659,8 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 Box(
                     Modifier.fillMaxSize().then(underPlayer).nestedScroll(barScroll)
-                        // The page is copied only when glass will sample it (#343).
-                        .then(if (com.vinz.music.ui.theme.glassSamplesThePage(Build.VERSION.SDK_INT, settings.liquidGlass, settings.frostedGlass)) Modifier.hazeSource(haze) else Modifier)
+                        // The page is copied only when glass will sample it (#343), on the background behind it (1.8.7).
+                        .glassSource(haze, com.vinz.music.ui.theme.glassSamplesThePage(Build.VERSION.SDK_INT, settings.liquidGlass, settings.frostedGlass), MaterialTheme.colorScheme.background)
                         .then(if (settings.swipeTabs && !useRail) swipeBetweenTabs(tabs, route, selectTab) else Modifier),
                 ) {
                   CompositionLocalProvider(com.vinz.music.ui.components.LocalHiddenByPlayer provides hiddenByPlayer) {
@@ -681,19 +682,12 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                     ) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
-                                onSignIn = { navController.navigate(Routes.ACCOUNT) },
-                                // One cloud-backed Vinz Account, followed by the existing artist selection.
+                                onSignIn = { navController.navigate(Routes.LOGIN) },
+                                // A Vinz Account (on this phone), then a few artists, so the mixes and Release Radar have
+                                // something to start from.
                                 onAccount = { navController.navigate(Routes.ACCOUNT + "?onboarding=true") },
                                 onSkip = { navController.navigate(Routes.PICK_ARTISTS + "?onboarding=true") },
                             )
-                        }
-                        // Compatibility destination: old cloud links open the existing account hub, not a second account screen.
-                        composable(Routes.VINZ_CLOUD_ACCOUNT) {
-                            ScreenBackdrop(BackdropScreen.SETTINGS) {
-                                com.vinz.music.ui.screens.VinzAccountScreen(false, bottomPadding) {
-                                    navController.popBackStack()
-                                }
-                            }
                         }
                         composable(
                             Routes.ACCOUNT + "?onboarding={onboarding}",
@@ -769,16 +763,21 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                             ),
                         ) {
                             ScreenBackdrop(BackdropScreen.SETTINGS) {
-                                SettingsScreen(bottomPadding, com.vinz.music.ui.screens.SettingsSection.of(it.arguments?.getString("section")), find = it.arguments?.getString("find"))
+                                // 1.8.4: a page of the map by its key, or an old page's key (an alias), resolved by Settings itself.
+                                SettingsScreen(bottomPadding, key = it.arguments?.getString("section"), find = it.arguments?.getString("find"))
                             }
                         }
                         composable(Routes.EQ) { ScreenBackdrop(BackdropScreen.SETTINGS) { EqualizerScreen(bottomPadding) } }
-                        composable(Routes.CATALOGUE) { ScreenBackdrop(BackdropScreen.HOME) { CatalogueScreen(bottomPadding) } }
+                        composable(Routes.CATALOGUE + "?find={find}", listOf(navArgument("find") { type = NavType.StringType; nullable = true; defaultValue = null })) { ScreenBackdrop(BackdropScreen.HOME) { CatalogueScreen(bottomPadding) } }
                         composable(Routes.MOODS) { ScreenBackdrop(BackdropScreen.SEARCH) { com.vinz.music.ui.screens.MoodsScreen(bottomPadding) } }
+                        composable(Routes.EXPLORE) { ScreenBackdrop(BackdropScreen.SEARCH) { com.vinz.music.ui.screens.ExploreScreen(bottomPadding) } }
                         composable(Routes.IMPORT) { ScreenBackdrop(BackdropScreen.LIBRARY) { com.vinz.music.ui.screens.ImportScreen(bottomPadding) } }
                         composable(Routes.DESIGN_GALLERY) { ScreenBackdrop(BackdropScreen.SETTINGS) { com.vinz.music.ui.components.DesignGallery(bottomPadding) } }
+                        composable(Routes.SUPPORTERS) { ScreenBackdrop(BackdropScreen.SETTINGS) { com.vinz.music.ui.screens.settings.SupportersScreen(bottomPadding) } }
                         composable(Routes.TOGETHER) { ScreenBackdrop(BackdropScreen.LIBRARY) { com.vinz.music.ui.screens.TogetherScreen(bottomPadding) } }
                         composable(Routes.PODCASTS) { ScreenBackdrop(BackdropScreen.LIBRARY) { com.vinz.music.ui.screens.PodcastsScreen(bottomPadding) } }
+                        composable(Routes.UPLOADS) { ScreenBackdrop(BackdropScreen.LIBRARY) { com.vinz.music.ui.screens.UploadsScreen(bottomPadding) } }
+                        composable(Routes.SAVED) { ScreenBackdrop(BackdropScreen.LIBRARY) { com.vinz.music.ui.screens.SavedWhilePlayingScreen(bottomPadding) } }
                         composable("podcast/{id}", listOf(navArgument("id") { type = NavType.StringType })) {
                             Beside { com.vinz.music.ui.screens.PodcastScreen(it.arguments?.getString("id")!!, bottomPadding) }
                         }
@@ -796,6 +795,19 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                         composable(Routes.DISCORD_LOGIN) {
                             com.vinz.music.ui.screens.DiscordLoginScreen(onBack = { navController.popBackStack() })
                         }
+                        composable(Routes.SPOTIFY_BEFORE) {
+                            com.vinz.music.ui.screens.SpotifyBeforeScreen(
+                                onSignIn = { navController.navigate(Routes.SPOTIFY_LOGIN) },
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
+                        composable(Routes.SPOTIFY_LOGIN) {
+                            com.vinz.music.ui.screens.SpotifyLoginScreen(
+                                // Signed in: back past "Before you sign in" to where the listener came from.
+                                onDone = { if (!navController.popBackStack(Routes.SPOTIFY_BEFORE, inclusive = true)) navController.popBackStack() },
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
                         composable(Routes.LOGIN_ADD) {
                             LoginScreen(
                                 onDone = goRoot,
@@ -810,7 +822,15 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                             val id = it.arguments?.getString("id")!!
                             // A playlist made in Vinz (kept on the phone) opens on the same page, from the phone.
                             val type = if (com.vinz.music.data.VinzLibrary.isVinzList(id)) CollectionType.VINZ else CollectionType.PLAYLIST
-                            Beside { CollectionScreen(type, id, null, bottomPadding) }
+                            // A tag found by Search (1.8.3) comes as a playlist: its own page.
+                            if (id.startsWith(com.vinz.music.ui.screens.TAG_PAGE)) Beside { CollectionScreen(CollectionType.TAG, id.removePrefix(com.vinz.music.ui.screens.TAG_PAGE), null, bottomPadding) }
+                            else Beside { CollectionScreen(type, id, null, bottomPadding) }
+                        }
+                        composable("tag/{name}", listOf(navArgument("name") { type = NavType.StringType })) {
+                            Beside { CollectionScreen(CollectionType.TAG, it.arguments?.getString("name")!!, null, bottomPadding) }
+                        }
+                        composable("library-search?q={q}", listOf(navArgument("q") { type = NavType.StringType; nullable = true; defaultValue = null })) {
+                            Beside { com.vinz.music.ui.screens.LibrarySearchScreen(it.arguments?.getString("q").orEmpty(), bottomPadding) }
                         }
                         composable("liked?genre={genre}", listOf(navArgument("genre") { type = NavType.StringType; nullable = true; defaultValue = null })) {
                             Beside { CollectionScreen(CollectionType.LIKED, "liked", it.arguments?.getString("genre"), bottomPadding) }
@@ -854,86 +874,91 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                         AnimatedVisibility(inSession && !playerOpen && route != Routes.TOGETHER, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                             TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
                         }
-                        AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                        AnimatedVisibility(song != null && !playerOpen && !selection.selecting, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                             MiniPlayer(Modifier.widthIn(max = 720.dp).customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER)) { playerOpen = true }
                         }
                     }
                 }
-                // Floating chrome stays exactly as before until its explicit experimental opt-in fits the live layout.
-                if (showChrome && !useRail) {
+                // Select many: its bar in the place of the mini player and tabs while songs are picked.
+                val picking = selection.selecting && showChrome
+                if (picking) com.vinz.music.ui.components.SelectionBar(
+                    selection,
+                    Modifier.align(Alignment.BottomCenter).then(underPlayer).padding(start = if (useRail) railInset else 0.dp)
+                        .navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+                // Floating chrome: mini player + tab bar
+                if (showChrome && !useRail && !picking) {
                     val docked = settings.navStyle == NavBarStyle.DOCKED
-                    val experimentRequested = settings.experimentalSplitNavigation && settings.navStyle == NavBarStyle.FLOATING && settings.navHideOnScroll &&
-                        !settings.reduceMotion && song != null && !playerOpen
-                    BoxWithConstraints(
-                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(underPlayer),
+                    val keyboard = WindowInsets.ime
+                    Column(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(underPlayer)
+                            .graphicsLayer { alpha = if (com.vinz.music.ui.theme.hiddenByKeyboard(keyboard.getBottom(this), size.height)) 0f else 1f }
+                            .then(if (docked) Modifier else Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)),
                     ) {
-                        // maxWidth is the actual available layout width.
-                        val geometry = SplitChromeGeometry.from(
-                            maxWidth.value,
-                            LocalDensity.current.fontScale,
-                            tabs.size,
-                        )
-                        val split = geometry.takeIf { experimentRequested && it.enabled }
-                        androidx.compose.runtime.SideEffect { splitChromeEligible = split != null }
-                        androidx.compose.runtime.DisposableEffect(Unit) {
-                            onDispose { splitChromeEligible = false }
+                        AnimatedVisibility(inSession && !playerOpen && route != Routes.TOGETHER, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                            TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
                         }
-                        Column(
-                            Modifier.fillMaxWidth().then(
-                                if (docked) Modifier
-                                else Modifier.navigationBarsPadding().padding(
-                                    horizontal = if (split != null) 0.dp else 12.dp,
-                                    vertical = 8.dp,
-                                ),
-                            ),
-                        ) {
-                            AnimatedVisibility(inSession && !playerOpen && route != Routes.TOGETHER, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                                TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
-                            }
-                            if (split != null) {
-                                AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                                    SplitChrome(tabs, route, barT, settings, split, selectTab) { playerOpen = true }
-                                }
-                            } else {
-                                // "Joined to the tab bar" (1.7.6): one piece of glass, the mini player on top of the tabs.
-                                val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING
-                                if (!joined) AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                                    // Spectrum's bar (the Card style over the docked tab bar) sits right on the tab bar, edge to edge.
-                                    val flush = docked && settings.miniPlayerStyle == MiniPlayerStyle.CARD && !(settings.liquidGlass || settings.frostedGlass)
-                                    MiniPlayer(
-                                        (if (flush) Modifier else Modifier.padding(bottom = 8.dp).then(if (docked) Modifier.padding(horizontal = 10.dp) else Modifier))
-                                            .customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER),
-                                    ) { playerOpen = true }
-                                }
-                                val joinedMini: (@Composable () -> Unit)? = if (!joined) null else ({
-                                    AnimatedVisibility(song != null && !playerOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                                        MiniPlayer(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER), bare = true) { playerOpen = true }
-                                    }
-                                })
-                                Box(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.TAB_BAR)) { TabBar(tabs, route, barT, settings, joinedMini, selectTab) }
-                            }
+                        // "Joined to the tab bar" (1.7.6): one piece of glass, the mini player on top of the tabs.
+                        val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING
+                        if (!joined) AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                            // Spectrum's bar (the Card style over the docked tab bar) sits right on the tab bar, edge to edge.
+                            val flush = docked && settings.miniPlayerStyle == MiniPlayerStyle.CARD && !(settings.liquidGlass || settings.frostedGlass)
+                            MiniPlayer(
+                                (if (flush) Modifier else Modifier.padding(bottom = 8.dp).then(if (docked) Modifier.padding(horizontal = 10.dp) else Modifier))
+                                    .customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER),
+                            ) { playerOpen = true }
                         }
+                        val joinedMini: (@Composable () -> Unit)? = if (!joined) null else ({
+                            AnimatedVisibility(song != null && !playerOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                                MiniPlayer(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER), bare = true) { playerOpen = true }
+                            }
+                        })
+                        Box(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.TAB_BAR)) { TabBar(tabs, route, barT, settings, joinedMini, selectTab) }
                     }
                 }
                 }
 
                 // "Cover flies into place" (#199): the player fades in while the mini player's cover flies to its spot.
                 val flight = settings.view.coverFlight && !settings.reduceMotion
+                // #223: and back the same way, when it's the player's cover that's showing. Watched through derivedStateOf as
+                // the cover's place changes with every frame of a drag, and this scope mustn't recompose for each one.
+                val coverKnown by remember { androidx.compose.runtime.derivedStateOf { com.vinz.music.ui.player.CoverFlight.player != null } }
+                val flyBack = com.vinz.music.ui.player.CoverFlight.returnsWith(settings.view.coverFlight, settings.view.coverFlightBack, settings.reduceMotion) && coverKnown
                 LaunchedEffect(playerOpen) {
-                    if (!playerOpen) com.vinz.music.ui.player.CoverFlight.player = null
-                    else if (flight) com.vinz.music.ui.player.CoverFlight.fly()
+                    if (!playerOpen) {
+                        if (flyBack) com.vinz.music.ui.player.CoverFlight.flyBack()
+                        com.vinz.music.ui.player.CoverFlight.player = null
+                    } else if (flight) com.vinz.music.ui.player.CoverFlight.fly()
+                }
+                // #354: what the player shows for this song, ready before it's opened.
+                val artAhead = song?.takeIf { !playerOpen }?.let { c.covers.art(it) }
+                if (artAhead != null) {
+                    val warmContext = androidx.compose.ui.platform.LocalContext.current
+                    LaunchedEffect(artAhead, settings.fullBleedArtwork, settings.player.background, settings.player.blur) {
+                        // Not as the song starts, whose own start comes first, nor for a song skipped straight past.
+                        kotlinx.coroutines.delay(1_500)
+                        runCatching {
+                            com.vinz.music.ui.player.warmPlayerArt(
+                                warmContext, artAhead, settings.fullBleedArtwork,
+                                meshToo = settings.player.background != com.vinz.music.data.prefs.PlayerBackground.GRADIENT,
+                                blurStrength = settings.player.blur,
+                            )
+                        }
+                    }
                 }
                 AnimatedVisibility(
                     playerOpen && song != null,
                     enter = if (flight) fadeIn(tween(com.vinz.music.ui.player.CoverFlight.FLIGHT_MS))
-                        else slideInVertically(tween(if (settings.reduceMotion) 260 else 420)) { it } + fadeIn(tween(200)),
-                    exit = slideOutVertically(tween(if (settings.reduceMotion) 240 else 360)) { it } + fadeOut(tween(300)),
+                        else com.vinz.music.ui.player.playerSlideIn(settings.reduceMotion),
+                    exit = if (flyBack) fadeOut(tween(com.vinz.music.ui.player.CoverFlight.FLIGHT_MS))
+                        else com.vinz.music.ui.player.playerSlideOut(settings.reduceMotion),
                 ) {
                     // Settled once it's done sliding in; no longer the moment it starts to leave.
                     val settled = transition.currentState == androidx.compose.animation.EnterExitState.Visible &&
                         transition.targetState == androidx.compose.animation.EnterExitState.Visible
-                    androidx.compose.runtime.SideEffect { playerCover.settled = settled }
-                    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { playerCover.settled = false } }
+                    val leaving = transition.targetState != androidx.compose.animation.EnterExitState.Visible
+                    androidx.compose.runtime.SideEffect { playerCover.settled = settled; playerCover.leaving = leaving }
+                    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { playerCover.settled = false; playerCover.leaving = false } }
                     Box(Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.PLAYER)) { NowPlayingScreen { playerOpen = false } }
                 }
                 com.vinz.music.ui.player.CoverFlightLayer(song?.let { com.vinz.music.data.PlaylistCovers.artOf(it) })
@@ -943,6 +968,7 @@ private fun VinzRoot(deepLink: MutableStateFlow<Uri?>) {
                 com.vinz.music.ui.components.LookUndoBar(
                     if (playerOpen && song != null) Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp).statusBarsPadding().padding(top = 56.dp)
                     else Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = bottomPadding + 8.dp),
+                    overPlayer = playerOpen && song != null,
                 )
                 if (!(playerOpen && song != null)) com.vinz.music.ui.components.ScheduleKeptBar(
                     Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = bottomPadding + 8.dp),
@@ -1044,7 +1070,7 @@ private fun NavRail(tabs: List<Tab>, route: String?, settings: AppSettings, onSe
     val scheme = MaterialTheme.colorScheme
     GlassSurface(modifier.width(RAIL_WIDTH), shape = RoundedCornerShape(RAIL_WIDTH / 2)) {
         Column(
-            Modifier.padding(vertical = 8.dp, horizontal = 6.dp).verticalScroll(rememberScrollState()),
+            Modifier.testTag(NAV_TABS_TAG).padding(vertical = 8.dp, horizontal = 6.dp).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -1076,6 +1102,9 @@ private fun isSelected(tab: Tab, route: String?): Boolean =
         // A page with optional arguments ("liked?genre={genre}") is its tab's own route.
         (route != null && '?' in route && route.substringBefore('?') == tab.route)
 
+/** The tabs' own row (bar or rail), for in-app tests: a page's chip can carry a tab's name too ("Replay", 1.8.5). */
+const val NAV_TABS_TAG = "nav:tabs"
+
 /** @param compact 0 = full bar, 1 = slim bar (while scrolling down). */
 @Composable
 private fun TabBar(
@@ -1091,7 +1120,7 @@ private fun TabBar(
             val full = barSize.floating.dp
             val height = lerp(full, full - 14.dp, compact)
             val tabsRow: @Composable () -> Unit = {
-                Row(Modifier.fillMaxWidth().height(height).padding(lerp(6.dp, 4.dp, compact)), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.testTag(NAV_TABS_TAG).fillMaxWidth().height(height).padding(lerp(6.dp, 4.dp, compact)), verticalAlignment = Alignment.CenterVertically) {
                     tabs.forEach { tab -> TabItem(tab, isSelected(tab, route), settings.navLabels, compact, Modifier.weight(1f).fillMaxHeight()) { onSelect(tab.route) } }
                 }
             }
@@ -1112,7 +1141,7 @@ private fun TabBar(
             val scheme = MaterialTheme.colorScheme
             val row: @Composable () -> Unit = {
                 Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().height(lerp(barSize.docked.dp, barSize.docked.dp - 12.dp, compact)).padding(horizontal = 8.dp),
+                    Modifier.testTag(NAV_TABS_TAG).fillMaxWidth().navigationBarsPadding().height(lerp(barSize.docked.dp, barSize.docked.dp - 12.dp, compact)).padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     tabs.forEach { tab -> TabItem(tab, isSelected(tab, route), settings.navLabels, compact, Modifier.weight(1f).fillMaxHeight(), line = true) { onSelect(tab.route) } }
@@ -1127,77 +1156,11 @@ private fun TabBar(
         NavBarStyle.MINIMAL -> {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 GlassSurface(Modifier.height(barSize.minimal.dp), shape = RoundedCornerShape((barSize.minimal / 2).dp), tint = tint) {
-                    Row(Modifier.fillMaxHeight().padding(5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(Modifier.testTag(NAV_TABS_TAG).fillMaxHeight().padding(5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         tabs.forEach { tab -> MinimalTab(tab, isSelected(tab, route), (barSize.minimal - 10).dp) { onSelect(tab.route) } }
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * Vinz's wide bottom chrome. It contains exactly one [MiniPlayer], so the same controller, gestures and accessibility
- * tree are retained while the user-selected tab names/order are simply divided around it.
- */
-@Composable
-private fun SplitChrome(
-    tabs: List<Tab>,
-    route: String?,
-    compact: Float,
-    settings: AppSettings,
-    geometry: SplitChromeGeometry,
-    onSelect: (String) -> Unit,
-    onOpenPlayer: () -> Unit,
-) {
-    val tabHeight = when (settings.navStyle) {
-        NavBarStyle.FLOATING -> lerp(settings.navBarSize.floating.dp, maxOf(48.dp, settings.navBarSize.floating.dp - 14.dp), compact)
-        NavBarStyle.MINIMAL -> maxOf(48.dp, settings.navBarSize.minimal.dp)
-        NavBarStyle.DOCKED -> return
-    }
-    val playerHeight = miniHeight(settings.miniPlayerStyle)
-    val density = LocalDensity.current
-    val gap = with(density) { 4.dp.roundToPx() }
-    val tint = navFill(settings.navBarFill)
-    val left = tabs.take(geometry.leftTabs)
-    val right = tabs.drop(geometry.leftTabs)
-    val tabGroup: @Composable (List<Tab>, String, Modifier) -> Unit = { group, tag, modifier ->
-        GlassSurface(modifier.testTag(tag), shape = RoundedCornerShape(tabHeight / 2), tint = tint) {
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                group.forEach { tab ->
-                    val selected = isSelected(tab, route)
-                    if (settings.navStyle == NavBarStyle.MINIMAL) MinimalTab(tab, selected, tabHeight - 8.dp) { onSelect(tab.route) }
-                    else TabItem(tab, selected, settings.navLabels, compact, Modifier.weight(1f).fillMaxHeight()) { onSelect(tab.route) }
-                }
-            }
-        }
-    }
-    // A single Layout owns all three children. At t=0 it is the existing stacked player + complete tab row;
-    // at t=1 its measured bounds meet on one row. Nothing is swapped while scrolling.
-    Layout(
-        modifier = Modifier.fillMaxWidth().customizable(com.vinz.music.ui.components.CustomizeTarget.TAB_BAR).testTag("splitChrome"),
-        content = {
-            tabGroup(left, "splitChromeLeft", Modifier)
-            MiniPlayer(
-                Modifier.customizable(com.vinz.music.ui.components.CustomizeTarget.MINI_PLAYER),
-                compactFraction = compact,
-                compactWidth = 48.dp,
-                onOpen = onOpenPlayer,
-            )
-            tabGroup(right, "splitChromeRight", Modifier)
-        },
-    ) { measurables, constraints ->
-        val width = constraints.maxWidth
-        val playerPx = playerHeight.roundToPx()
-        val tabPx = tabHeight.roundToPx()
-        val bounds = geometry.bounds(width, playerPx, tabPx, compact, gap)
-        val leftPlaceable = measurables[0].measure(Constraints.fixed(bounds.left.width.coerceAtLeast(0), bounds.left.height))
-        val playerPlaceable = measurables[1].measure(Constraints.fixed(bounds.player.width.coerceAtLeast(48.dp.roundToPx()), bounds.player.height))
-        val rightPlaceable = measurables[2].measure(Constraints.fixed(bounds.right.width.coerceAtLeast(0), bounds.right.height))
-        layout(width, bounds.hostHeight) {
-            leftPlaceable.placeRelative(bounds.left.x, bounds.left.y)
-            playerPlaceable.placeRelative(bounds.player.x, bounds.player.y)
-            rightPlaceable.placeRelative(bounds.right.x, bounds.right.y)
         }
     }
 }
@@ -1297,7 +1260,7 @@ private fun TabItem(tab: Tab, selected: Boolean, labels: NavLabels, compact: Flo
                     Text(
                         tab.label, color = fg, style = style, maxLines = 1, softWrap = false,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = style.fontSize),
+                        autoSize = com.vinz.music.ui.components.FitAutoSize(minFontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = style.fontSize),
                         modifier = Modifier.padding(horizontal = 6.dp).wrapContentHeight(unbounded = true),
                     )
                 }
@@ -1318,7 +1281,7 @@ private fun TabItem(tab: Tab, selected: Boolean, labels: NavLabels, compact: Flo
                 Text(
                     tab.label, color = fg, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = MaterialTheme.typography.labelSmall.fontSize),
+                    autoSize = com.vinz.music.ui.components.FitAutoSize(minFontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = MaterialTheme.typography.labelSmall.fontSize),
                     modifier = Modifier.padding(top = 2.dp, start = 6.dp, end = 6.dp),
                 )
             }
@@ -1335,7 +1298,7 @@ private fun TabItem(tab: Tab, selected: Boolean, labels: NavLabels, compact: Flo
                 Text(
                     tab.label, color = fg, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = MaterialTheme.typography.labelLarge.fontSize),
+                    autoSize = com.vinz.music.ui.components.FitAutoSize(minFontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp), maxFontSize = MaterialTheme.typography.labelLarge.fontSize),
                 )
             }
         }
@@ -1401,6 +1364,12 @@ private fun handleDeepLink(uri: Uri, nav: Navigator, c: AppContainer) {
             path.firstOrNull()?.toIntOrNull()?.let { c.rewindRequest.value = it }
             nav.go(Routes.REPLAY)
         }
+        // The monthly recap's notification and Home's card (1.8.5): that month's story; a milestone's notice: Replay.
+        uri.scheme == "vinz" && uri.host == "recap" -> {
+            path.firstOrNull()?.let { runCatching { java.time.YearMonth.parse(it) }.getOrNull() }?.let { c.recapRequest.value = it }
+            nav.go(Routes.REPLAY)
+        }
+        uri.scheme == "vinz" && uri.host == "replay" -> nav.go(Routes.REPLAY)
         // A handoff pairing code's notification: Vinz Connect's settings, where the code shows.
         uri.scheme == "vinz" && uri.host == "connect" -> nav.go(Routes.settings(com.vinz.music.ui.screens.SettingsSection.CONNECT.key))
         uri.scheme == "vinz" && uri.host == "mix" && path.isNotEmpty() -> nav.go(Routes.mix(path[0]))

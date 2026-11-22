@@ -46,8 +46,6 @@ class LookStoreTest {
         // Your own mix (Neon with round corners isn't any Look) is kept as "Before Paper" when Paper goes on.
         settings.setCorners(Corners.EXTRA)
         withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:EXTRA" } }
-        // apply() decides whether to save "Before Paper" from settings.current, not lookValues.
-        withTimeout(5_000) { settings.flow.first { it.corners == Corners.EXTRA } }
         val paper = BuiltInLooks.of("paper")!!
         assertEquals(true, looks.changes(paper)?.startsWith("Changes your theme, colors, type, backgrounds and layout"))
         looks.apply(paper)
@@ -78,9 +76,6 @@ class LookStoreTest {
 
         // Changed (back to how Vinz comes, which is Vinz's own Look: still a change to yours) after saving: Vinz offers to update it.
         settings.setCorners(Corners.ROUND)
-        // These independently collected flows can advance in either order: edits() reads lookValues,
-        // while edited is derived from currentId and settings.flow. Wait for the data it asserts on.
-        withTimeout(5_000) { settings.lookValues.first { it["corners"] == "s:ROUND" } }
         assertEquals(mine.id, withTimeout(5_000) { looks.edited.first { it != null } }!!.id)
         assertEquals(true, looks.edits(mine)?.startsWith("You've changed its"))
 

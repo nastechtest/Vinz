@@ -29,6 +29,8 @@ object PlaybackServices {
     @Volatile var failForTest: ((androidx.media3.common.PlaybackException) -> Unit)? = null
     /** Debug builds only, for the in-app tests: Vinz swiped away from Recents (#274). */
     @Volatile var taskRemovedForTest: (() -> Unit)? = null
+    /** Debug builds only, for the in-app tests: the running service's own player, for what it reports (GaplessAppTest). */
+    @Volatile var playerForTest: androidx.media3.exoplayer.ExoPlayer? = null
 
     fun classFor(icon: AppIcon): Class<out PlaybackService> = when (icon) {
         AppIcon.CLASSIC -> PlaybackService::class.java

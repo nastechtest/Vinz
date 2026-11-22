@@ -1,9 +1,9 @@
 package com.vinz.music
 
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.vinz.music.ui.screens.settings.SettingsPageId
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -26,10 +26,10 @@ class BackgroundsPerformanceTest {
         Fixture.ready()
         c.settings.setPerformanceMode(true)
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText("Customize Vinz") and hasClickAction())
-        compose.clickWhenFound(hasText("Glass & backgrounds") and hasClickAction())
-        compose.clickWhenFound(hasText("Screen backgrounds") and hasClickAction())
+        // 1.8.4: Settings → Theme & colors → Pages → Screen backgrounds (it was Customize Vinz → Glass & backgrounds).
+        compose.openSettingsPage(SettingsPageId.THEME_COLORS)
+        compose.clickWhenFound(settingsRow(tr(R.string.screen_backgrounds)))
+        // The Backgrounds screen itself (Theme & colors says it too, in its own card at the top).
         compose.waitForText("Same on every screen")
         assertTrue(
             "the Backgrounds page names Performance mode",

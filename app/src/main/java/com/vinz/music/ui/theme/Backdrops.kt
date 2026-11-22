@@ -13,9 +13,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import kotlin.math.max
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +40,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -94,6 +103,8 @@ enum class Backdrop(
     DEFAULT(tr(R.string.ambient), BackdropKind.SPECIAL, BackdropGroup.YOURS),
     ARTWORK(tr(R.string.widget_now_playing), BackdropKind.SPECIAL, BackdropGroup.YOURS),
     PHOTO(tr(R.string.your_photo), BackdropKind.SPECIAL, BackdropGroup.YOURS),
+    /** #413 (1.8.4): one color of your own, flat. Saved with the color ("COLOR|#RRGGBB"), as a photo is with its file. */
+    COLOR(tr(R.string.solid_color), BackdropKind.SPECIAL, BackdropGroup.YOURS),
 
     /** The vinz's split light as three slow fields: red, green and violet (1.7). */
     SPECTRUM(tr(R.string.spectrum), BackdropKind.FIELDS, BackdropGroup.COLOR,
@@ -165,12 +176,125 @@ enum class Backdrop(
     fun offeredOn(date: java.time.LocalDate): Boolean = season?.contains(date) ?: true
 
     companion object {
-        /** Stored as "NAME" or "PHOTO|/path/to/image". */
+        /**
+         * Stored as "NAME", "PHOTO|/path/to/image" or "COLOR|#RRGGBB"; the second part is the photo's file or the color
+         * ("#RRGGBB", read with [solidColor]). A color not written exactly so is the default.
+         */
         fun parse(v: String?): Pair<Backdrop, String?> {
             if (v.isNullOrBlank()) return DEFAULT to null
             val name = v.substringBefore('|')
-            val style = entries.firstOrNull { it.name == name } ?: DEFAULT
-            return style to v.substringAfter('|', "").ifBlank { null }
+            if (name == COLOR.name) {
+                val argb = com.vinz.music.data.looks.Backgrounds.colorOf(v) ?: return DEFAULT to null
+                return COLOR to colorValue(argb).substringAfter('|')
+            }
+            val path = v.substringAfter('|', "").ifBlank { null }
+            // #378: a word this isn't, with a file after it, is a photo saved under a translated name ("FOTO|…").
+            val style = entries.firstOrNull { it.name == name } ?: if (path?.startsWith("/") == true) PHOTO else DEFAULT
+            return style to path
+        }
+
+        /** What's saved for a photo of your own. The word is a key, not text: it's the same in every language (#378). */
+        fun photoValue(path: String) = "${PHOTO.name}|$path"
+
+        /** What's saved for a solid color (#413): "COLOR|#RRGGBB". */
+        fun colorValue(argb: Int): String = com.vinz.music.data.looks.Backgrounds.colorValue(argb)
+
+        /** The color in [parse]'s second part ("#RRGGBB"), or null when that isn't one. */
+        fun solidColor(detail: String?): Color? =
+            detail?.let { com.vinz.music.data.looks.Backgrounds.colorOf("${COLOR.name}|$it") }?.let { Color(it) }
+    }
+}
+
+// ---------------------------------------------------------------- Solid color (#413, 1.8.4)
+
+/** Whether a page in [color] takes light text (a dark page). The same line [readableOn] turns at. */
+fun solidIsDark(color: Color): Boolean = color.luminance() < 0.18f
+
+/**
+ * [base] for a page that is one flat [color]: the page and its surfaces are that color (cards a step off it), and
+ * everything read on it (text, secondary text, the accent, lines) is moved until it reads there ([readableOn]), whatever
+ * the app's theme is: white on navy, near-black on yellow. Accent-filled things (buttons, switches) keep [base]'s pairs.
+ */
+fun solidScheme(base: ColorScheme, color: Color, minRatio: Float = 4.5f): ColorScheme {
+    val page = color.copy(alpha = 1f)
+    val dark = solidIsDark(page)
+    val (h, s, _) = page.toHsl()
+    // As strong as text gets on it: on a middling color that's pure white or black, and still at least 4.5:1.
+    val ink = readableOn(Color.hsl(h, s.coerceAtMost(0.10f), if (dark) 0.95f else 0.08f), page, max(minRatio, 7f))
+    // Cards step toward the ink (lighter on a dark page, as the themes do) while text still reads on them; else away.
+    val towardInk = contrastRatio(ink, lerp(page, ink, 0.14f)) >= minRatio
+    val far = if (towardInk) ink else if (dark) Color.Black else Color.White
+    fun step(t: Float) = lerp(page, far, t)
+    val highest = step(0.14f)
+    // Read on the page and on its cards; what can't be moved that far (a middling page) is drawn in the ink.
+    fun fit(c: Color, ratio: Float = minRatio): Color {
+        val moved = readableOn(c.copy(alpha = 1f), if (towardInk) highest else page, ratio)
+        return if (contrastRatio(moved, page) >= ratio && contrastRatio(moved, highest) >= ratio) moved else ink
+    }
+    val primary = fit(base.primary)
+    return base.copy(
+        primary = primary, surfaceTint = primary,
+        onPrimary = if (contrastRatio(Color.White, primary) >= contrastRatio(Color.Black, primary)) Color.White else Color.Black,
+        secondary = fit(base.secondary), tertiary = fit(base.tertiary),
+        background = page, onBackground = ink, surface = page, onSurface = ink,
+        surfaceVariant = step(0.10f), onSurfaceVariant = fit(lerp(ink, page, 0.28f)),
+        inverseSurface = ink, inverseOnSurface = page,
+        outline = fit(lerp(ink, page, 0.5f), 3f), outlineVariant = lerp(page, ink, 0.2f),
+        surfaceBright = page, surfaceDim = page,
+        surfaceContainerLowest = page, surfaceContainerLow = step(0.04f), surfaceContainer = step(0.07f),
+        surfaceContainerHigh = step(0.10f), surfaceContainerHighest = highest,
+    )
+}
+
+/** The flat fill itself: one rectangle, nothing else (tests render it to an image). */
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSolid(color: Color) = drawRect(color.copy(alpha = 1f))
+
+/**
+ * [content] as it's drawn on a page of one flat [color]: Vinz's colors made to read on it ([solidScheme]), and its glass
+ * and light as on a dark or a light page, by the color and not by the theme. [bars]: the status bar's icons follow too.
+ */
+@Composable
+internal fun SolidInk(color: Color, bars: Boolean = false, content: @Composable () -> Unit) {
+    val base = MaterialTheme.colorScheme
+    val minRatio = LocalAppSettings.current.contrast.minRatio
+    val scheme = remember(base, color, minRatio) { solidScheme(base, color, minRatio) }
+    val dark = solidIsDark(color)
+    // The status bar's icons dark on a light solid page and light on a dark one, whatever the theme (white icons on a white
+    // page otherwise). The navigation bar stays the theme's: Vinz's own bar sits under it, and that keeps the theme's colors.
+    if (bars) StatusBarIcons(lightBar = !dark)
+    MaterialTheme(colorScheme = scheme) {
+        CompositionLocalProvider(LocalIsDark provides dark, LocalContentColor provides scheme.onBackground, content = content)
+    }
+}
+
+/**
+ * The pages on screen that have asked for the status bar's icons, in the order they asked (two overlap while one page
+ * slides to the next, and the page going is disposed after the one coming has asked).
+ */
+private val statusBarAsks = mutableListOf<Pair<Any, Boolean>>()
+
+/**
+ * Asks for the status bar's icons for as long as it's composed: dark ones ([lightBar], for a light page) or light ones.
+ * The latest ask still on screen wins, and the theme's come back when the last one goes, so a page leaving can't undo
+ * the icons the page coming in asked for (a solid Home page closing after an artist's photo had asked for light icons).
+ */
+@Composable
+fun StatusBarIcons(lightBar: Boolean) {
+    val view = LocalView.current
+    val themeDark = LocalIsDark.current
+    DisposableEffect(lightBar, themeDark, view) {
+        val ask = Any()
+        fun apply() {
+            val window = (view.context as? android.app.Activity)?.window ?: return
+            androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = statusBarAsks.lastOrNull()?.second ?: !themeDark
+        }
+        statusBarAsks += ask to lightBar
+        apply()
+        // Again after this frame's other effects: the app sets the theme's icons when the theme changes.
+        view.post { apply() }
+        onDispose {
+            statusBarAsks.removeAll { it.first === ask }
+            apply()
         }
     }
 }
@@ -185,12 +309,15 @@ fun ScreenBackdrop(screen: BackdropScreen, content: @Composable BoxScope.() -> U
     val c = LocalContainer.current
     val s by c.settings.flow.collectAsState()
     val (style, photo) = Backdrop.parse(s.backdrops[screen.name])
+    // #413: a solid color is that color exactly, with nothing over it (no wash, no blur, nothing moving): one fill.
+    val solid = if (style == Backdrop.COLOR) Backdrop.solidColor(photo) else null
     val motion = s.backdropMotion && !s.reduceMotion
     val frosted = ambientFrostShown(s, LocalIsDark.current)
     val density = LocalDensity.current
     var height by remember { mutableStateOf(0.dp) }
     val draw: @Composable (Modifier) -> Unit = { m ->
         when {
+            solid != null -> Box(m.fillMaxSize().drawBehind { drawSolid(solid) })
             style != Backdrop.DEFAULT -> BackdropLayer(style, photo, s.backdropDim, motion, m)
             frosted -> AmbientFrost(m)
             else -> Box(m.fillMaxSize().background(MaterialTheme.colorScheme.background))
@@ -198,11 +325,17 @@ fun ScreenBackdrop(screen: BackdropScreen, content: @Composable BoxScope.() -> U
     }
     val page = remember(style, photo, frosted, height, s.backdropDim, motion) { PageBackdrop(height, draw) }
     Box(Modifier.fillMaxSize().onSizeChanged { height = with(density) { it.height.toDp() } }) {
-        if (style != Backdrop.DEFAULT || frosted) draw(Modifier.fillMaxSize())
+        // The frost only changes with the song, so it's kept as a picture in a layer: drawn afresh, its gradients and grain
+        // over the whole screen cost a Galaxy A16's GPU about 15 ms of every frame, even a blinking cursor's (#355).
+        if (style != Backdrop.DEFAULT) draw(Modifier.fillMaxSize())
+        else if (frosted) draw(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen })
         // The background reaches under the navigation rail (wide windows); the page itself starts beside it.
         Box(Modifier.fillMaxSize().padding(start = LocalChromeStart.current)) {
             // Over any background (the ambient frost or a picked one), the page's panels and buttons are glass.
-            CompositionLocalProvider(LocalFrosted provides (frosted || style != Backdrop.DEFAULT), LocalPageBackdrop provides page, LocalChromeStart provides 0.dp) { content() }
+            CompositionLocalProvider(LocalFrosted provides (frosted || style != Backdrop.DEFAULT), LocalPageBackdrop provides page, LocalChromeStart provides 0.dp) {
+                // On a solid color the page's text, icons and glass are made to read on that color, whatever the theme.
+                if (solid != null) SolidInk(solid, bars = true) { content() } else content()
+            }
         }
     }
 }
@@ -246,6 +379,9 @@ fun BackdropLayer(style: Backdrop, photo: String?, dim: Float, motion: Boolean, 
                 Box(Modifier.fillMaxSize().background(bg))
                 if (photo != null) AsyncImage(File(photo), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             }
+            // #413: the color, flat (the screens draw it themselves, without the wash below; here it's the previews
+            // and the player, which darkens whatever it's given with [dim]).
+            Backdrop.COLOR -> { val solid = Backdrop.solidColor(photo) ?: bg; Box(Modifier.fillMaxSize().drawBehind { drawSolid(solid) }) }
             else -> when (style.kind) {
                 BackdropKind.FIELDS -> Fields(palette, dark, motion, if (black) 0.45f else 1f)
                 BackdropKind.BLEND -> style.colors(dark).map { Color(it) }.map { if (black) androidx.compose.ui.graphics.lerp(Color.Black, it, 0.45f) else it }.let { (top, bottom) ->
@@ -259,7 +395,8 @@ fun BackdropLayer(style: Backdrop, photo: String?, dim: Float, motion: Boolean, 
         // palettes are pale already, so they take a lighter wash; the patterns are quiet and take less still.
         val base = if (dark) dim else dim * 0.85f
         val wash = if (style.group == BackdropGroup.SIMPLE) base * 0.5f else base
-        Box(
+        // A solid color asked for as it is (no softness) gets nothing over it: the wash's foot would grey it.
+        if (style != Backdrop.COLOR || dim > 0f) Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(listOf(bg.copy(alpha = wash * 0.7f), bg.copy(alpha = wash), bg.copy(alpha = (wash + 0.25f).coerceAtMost(0.95f))))
             ),

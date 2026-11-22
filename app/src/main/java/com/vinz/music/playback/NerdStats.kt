@@ -32,6 +32,8 @@ data class NerdStats(
     val videoCodec: String = "",
     val droppedFrames: Int = 0,
     val underruns: Int = 0,
+    /** The format ("ALAC") of this song's file on the phone that this phone couldn't decode, so its stream plays; blank when none. */
+    val undecodedFile: String = "",
 )
 
 /** A music file's format by its MIME type, as people know it: "audio/x-wav" → "WAV", "audio/mpeg" → "MP3". */

@@ -37,10 +37,17 @@ data class Song(
     val primaryArtist: String get() = artists.firstOrNull()?.name ?: ""
     /** A music file on the phone (Library → Local music), not a YouTube Music song: it plays from the file. */
     val isLocal: Boolean get() = id.startsWith(LOCAL_PREFIX)
+    /**
+     * An episode of a show added by its RSS feed (Podcasts → Add a podcast by RSS): an episode ([isEpisode]) that YouTube
+     * knows nothing of, so its id never goes there, and it can't be liked, downloaded, shared or put in a playlist.
+     */
+    val isRss: Boolean get() = id.startsWith(RSS_PREFIX)
 
     companion object {
         /** Local songs' ids: this, then the file's MediaStore id. */
         const val LOCAL_PREFIX = "local:"
+        /** Feed episodes' ids, and their shows': this, then hashes of the feed ([com.vinz.music.data.podcast.RssPodcasts]). */
+        const val RSS_PREFIX = "rss:"
     }
 }
 
@@ -148,16 +155,20 @@ data class Shelf(
     val rows: Boolean = false,
     /** Cards a few per column: how YouTube Music lays out your own Speed dial and Listen again, in any language. */
     val stacked: Boolean = false,
+    /** Song rows that each play with their own radio (Parser.startsRadios): YouTube Music's Quick picks, in any language. */
+    val startsRadios: Boolean = false,
 )
 
 /**
- * Home's Quick picks. Its title is in the account's language ("Selección rápida", "Schnellauswahl"…), so after the
- * English title it's known by its shape: the first carousel of song rows. (Matched by title alone, Home showed your
- * recent plays in its place for anyone using YouTube in another language.) Shelves of your own recent plays ("Listen
- * again", "Speed dial", in any language: they carry your name, [owner]) are never taken for it.
+ * Home's Quick picks. Its title is in the account's language ("Selección rápida", "Schnellauswahl"…), so it's known by
+ * what it is (1.8.7): the shelf of song rows that each start the song's radio, as Quick picks play on YouTube Music;
+ * else by its English title. Another shelf of song rows ("Trending songs for you", "Escuchas de larga duración") is never
+ * taken for it, on any page (the shape alone let one pass), nor a shelf of your own recent plays (headed with your name,
+ * [owner]).
  */
-fun List<Shelf>.quickPicks(owner: String? = null): Shelf? = firstOrNull { it.title.equals("Quick picks", true) }
-    ?: firstOrNull { s -> s.rows && s.title.lowercase() !in RECENT_SHELVES && !s.yours(owner) && s.items.count { it is SongItem } * 2 > s.items.size }
+fun List<Shelf>.quickPicks(owner: String? = null): Shelf? =
+    firstOrNull { s -> s.rows && s.startsRadios && s.title.lowercase() !in RECENT_SHELVES && !s.yours(owner) && s.items.count { it is SongItem } * 2 > s.items.size }
+        ?: firstOrNull { it.title.equals("Quick picks", true) }
 
 /**
  * YouTube's own Speed dial (or, where it isn't offered, "Listen again"): what Home's Speed dial section starts from.
@@ -167,6 +178,10 @@ fun List<Shelf>.quickPicks(owner: String? = null): Shelf? = firstOrNull { it.tit
  */
 fun List<Shelf>.speedDial(owner: String? = null): Shelf? = firstOrNull { it.title.equals("Speed dial", true) } ?: firstOrNull { it.title.equals("Listen again", true) }
     ?: speedDialByShape(owner)
+
+/** For the diagnostics log (#372): Speed dial's tiles in YouTube's own order, by kind. */
+fun List<Shelf>.speedDialOrderLine(owner: String? = null): String =
+    "; Speed dial's order: " + speedDial(owner)?.items.orEmpty().take(12).joinToString(" ") { it.javaClass.simpleName.removeSuffix("Item").lowercase() }
 
 /**
  * Found by its shape (another language): a shelf headed with your name, else one stacked a few per column; of several,
@@ -300,6 +315,23 @@ data class NextResult(
      * its counterpart, for the player's Video button), and videos with no song version (fan uploads, live clips) are
      * left out. If that would leave almost nothing, the queue stays as it was.
      */
+    /** #383 (1.8.3): each music video in the panel that YouTube pairs with its song: video id -> the song. */
+    fun videoSongs(): Map<String, Song> = songs.filter { it.isVideo && !it.isLive && !it.isEpisode }
+        .mapNotNull { v -> counterpartSongs[v.id]?.takeIf { !it.isVideo }?.let { v.id to it } }.toMap()
+
+    /**
+     * 1.8.7 §3.2: every pairing YouTube gives in the panel as (music video id, its song), whichever half the panel lists:
+     * a video with its song, or a song with its video.
+     */
+    fun songPairs(): List<Pair<String, Song>> = songs.mapNotNull { p ->
+        val o = counterpartSongs[p.id] ?: return@mapNotNull null
+        when {
+            p.isVideo && !o.isVideo && !p.isLive && !p.isEpisode -> p.id to o
+            !p.isVideo && o.isVideo && !o.isLive && !o.isEpisode && !p.isLive && !p.isEpisode -> o.id to p
+            else -> null
+        }
+    }
+
     fun songsOnly(keepFirst: Boolean = false): NextResult {
         val pairs = counterparts.toMutableMap()
         val swapped = songs.mapIndexedNotNull { i, s ->
@@ -334,6 +366,8 @@ data class PlayerExtras(
     val loudnessDb: Double?,
     val trackingUrl: String?,
     val watchtimeUrl: String?,
+    /** How YouTube took the request, for the diagnostics ([com.vinz.music.data.innertube.YouTubeSeen]). */
+    val seen: String? = null,
 )
 
 /** Rewrites a YouTube / Google image URL to request a given square size. */

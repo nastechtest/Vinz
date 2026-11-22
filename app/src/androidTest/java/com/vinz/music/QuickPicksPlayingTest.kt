@@ -35,4 +35,22 @@ class QuickPicksPlayingTest {
         val marked = pick and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Now Playing")
         compose.waitUntil(10_000) { compose.onAllNodes(marked).fetchSemanticsNodes().isNotEmpty() }
     }
+
+    /**
+     * #349: "Quick picks from: YouTube Music" shows YouTube's own, even with Vinz's set there to take their place, and
+     * tapping one starts a radio from it as Vinz's do (with "Quick picks start a radio" on, as it starts).
+     */
+    @Test fun youTubesOwnPicksShowAndStartARadio() {
+        Fixture.ready()
+        val c = Fixture.container
+        kotlinx.coroutines.runBlocking {
+            c.settings.setQuickPicksSource(com.vinz.music.data.prefs.QuickPicksSource.YOUTUBE)
+            kotlinx.coroutines.withTimeout(5_000) { while (c.settings.current.behavior.quickPicksSource != com.vinz.music.data.prefs.QuickPicksSource.YOUTUBE) kotlinx.coroutines.delay(20) }
+        }
+        Fixture.launch()
+        compose.waitForText("Quick picks", 20_000)
+        compose.clickWhenFound(hasText("Choosin' Texas", substring = true) and hasClickAction(), 15_000)
+        compose.waitUntil(10_000) { c.queue.source.value.isSongRadio }
+        org.junit.Assert.assertTrue(c.queue.source.value.title, "Choosin' Texas" in c.queue.source.value.title)
+    }
 }

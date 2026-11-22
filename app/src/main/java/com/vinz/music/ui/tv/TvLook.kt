@@ -77,6 +77,11 @@ fun tvFocusBorder(shape: Shape, width: androidx.compose.ui.unit.Dp = TV_RING): B
 val TvGlassFill = Color.White.copy(alpha = 0.10f)
 /** Panels over a page (the queue, a menu, a setting's choices): darker glass, so what's on them reads. */
 val TvPanelFill = Color(0xFF0C0C11).copy(alpha = 0.86f)
+/**
+ * Side panels lying over a page's own words (the player's queue and ⋯): nearly solid, or the title and "Up next" under
+ * them read through their rows (Reddit, 1.8.1: "Up next" over the list).
+ */
+val TvPanelOverPage = Color(0xFF0C0C11)
 
 /** Frosted glass: [fill], with the phone's light top edge. */
 fun Modifier.tvGlass(shape: Shape, fill: Color = TvGlassFill): Modifier = this

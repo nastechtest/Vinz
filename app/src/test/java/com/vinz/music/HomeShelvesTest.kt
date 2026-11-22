@@ -24,7 +24,8 @@ class HomeShelvesTest {
         Shelf("Vuelve a escucharlo", strapline = owner, items = songs(8) + albums(8)),
         Shelf("Favoritos olvidados", items = albums(9)),
         Shelf("Mixes personalizados", items = albums(8)),
-        Shelf("Selecciones rápidas", items = songs(20), rows = true, stacked = true),
+        // Quick picks' rows each start the song's radio (1.8.7: known by that, not by being the first rows shelf).
+        Shelf("Selecciones rápidas", items = songs(20), rows = true, stacked = true, startsRadios = true),
         Shelf("Escuchas de larga duración", items = songs(11), rows = true, stacked = true),
     )
 
@@ -37,8 +38,12 @@ class HomeShelvesTest {
     @Test fun quickPicksIsTheFirstRowsShelfThatIsntYours() {
         assertEquals("Selecciones rápidas", spanish.quickPicks(owner)?.title)
         // A "Listen again" laid out as song rows, with your name, is never taken for Quick picks.
-        val yoursAsRows = listOf(Shelf("Vuelve a escucharlo", strapline = owner, items = songs(16), rows = true)) + spanish.drop(1)
+        val yoursAsRows = listOf(Shelf("Vuelve a escucharlo", strapline = owner, items = songs(16), rows = true, startsRadios = true)) + spanish.drop(1)
         assertEquals("Selecciones rápidas", yoursAsRows.quickPicks(owner)?.title)
+        // Another shelf of song rows before it, with Quick picks' shape but songs that play alone, isn't them (1.8.7).
+        val longListensFirst = listOf(spanish[4], spanish[3])
+        assertEquals("Selecciones rápidas", longListensFirst.quickPicks(owner)?.title)
+        assertEquals(null, listOf(spanish[4]).quickPicks(owner))
     }
 
     /**

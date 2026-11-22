@@ -8,6 +8,8 @@ import com.vinz.music.data.model.Song
 import com.vinz.music.download.PlayLikelihood
 import com.vinz.music.playback.MusicKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -80,13 +82,18 @@ class YourMusic(private val c: AppContainer) {
         if (seeds.isEmpty()) return emptyList()
         val now = System.currentTimeMillis()
         val recent = s.events.filter { now - it.timestamp < 2 * HOUR }.map { it.songId }.toSet()
+        // A seed new to the phone's music (just picked from search) can still have its genre saved: how close your songs
+        // are to it goes by that (#461).
+        val seedGenres = seeds.filter { it.id !in s.genres }.takeIf { it.isNotEmpty() }
+            ?.let { runCatching { c.meta.cachedGenres(it) }.getOrNull() }.orEmpty()
         val pool = LocalRadio.Pool(
             // Not clips under a minute (an album's intro, a skit, a sound file on the phone): they'd break the run of songs.
             songs = s.songs.values.filter { ok(it) && !it.isVideo && (it.durationSec == 0 || it.durationSec >= 60) && (!offlineOnly || c.availableOffline(it.id)) },
             coListen = s.coListen,
             affinity = { s.model.score(it) * rest(s, it.id) },
-            genreOf = { s.genres[it] },
+            genreOf = { s.genres[it] ?: seedGenres[it] },
             keyFit = { a, b -> keyFit(a, b) },
+            bpmOf = { c.mixTempo.djBpm(it) },
         )
         val day = LocalDate.now().toString()
         return LocalRadio.pick(seeds, pool, inQueue + recent, count) { id -> 0.9 + 0.2 * (((id + day + seedIds.last()).hashCode().toLong() and 0xffff) / 65535.0) }
@@ -187,8 +194,13 @@ class YourMusic(private val c: AppContainer) {
      * a few days, new songs from radios of their top three artists ([radioOf], none they've played), and [youtube]'s own
      * picks when they're by artists the listener plays; taken in turn (two favourites, two new, one of YouTube's), no
      * artist twice running and three at most. With too little history to go on, [youtube] as it is.
+     *
+     * [draw]: which draw of the day (each pull to refresh is another, #371: every draw used to be the day's one, so a
+     * refresh gave the same songs back). [shown] is the set being replaced, kept out where there are others to take.
      */
-    suspend fun quickPicks(youtube: List<Song>, radioOf: suspend (Song) -> List<Song>, count: Int = 20): List<Song> {
+    suspend fun quickPicks(
+        youtube: List<Song>, radioOf: suspend (Song) -> List<Song>, count: Int = 20, draw: Int = 0, shown: Set<String> = emptySet(),
+    ): List<Song> {
         val s = snapshot()
         val now = System.currentTimeMillis()
         val recent = s.events.filter { now - it.timestamp < 90 * DAY }
@@ -206,48 +218,35 @@ class YourMusic(private val c: AppContainer) {
         val heardSongs = heardToday.mapNotNull { s.songs[it] }.map { LocalRadio.sameSong(it) }.toSet()
         fun fresh(song: Song) = ok(song) && !song.isVideo && song.id !in heardToday && LocalRadio.sameSong(song) !in heardSongs
         val day = LocalDate.now().toString()
-        fun j(id: String) = 0.85 + 0.3 * (((id + day).hashCode().toLong() and 0xffff) / 65535.0)
+        fun j(id: String) = 0.85 + 0.3 * (((id + day + draw).hashCode().toLong() and 0xffff) / 65535.0)
+        fun seed(salt: String) = drawSeed(day, salt, draw)
 
         val last = s.events.groupBy { it.songId }.mapValues { (_, e) -> e.maxOf { it.timestamp } }
         val favourites = s.songs.values
             .filter { fresh(it) && (last[it.id] ?: 0) < now - 3 * DAY && affinity(it) > 0.15 && (it.durationSec == 0 || it.durationSec >= 60) }
             .distinctBy { LocalRadio.sameSong(it) }
             // Drawn by weighted chance, the day's own draw, so the same favourites don't head Quick picks every day.
-            .let { all -> Variety.sample(all, count, Variety.daySeed(day, "picks"), sharpness = 1.5) { s.model.score(it) * rest(s, it.id) } }
+            .let { all -> Variety.sample(all, count * if (shown.isEmpty()) 1 else 2, seed("picks"), sharpness = 1.5) { s.model.score(it) * rest(s, it.id) } }
         // New songs from the radios of three of the listener's eight main artists, a different three most days, each from one of their songs drawn by liking.
-        val topArtists = Variety.sample(aff.entries.sortedByDescending { it.value }.take(8), 3, Variety.daySeed(day, "pick-artists")) { it.value }.map { it.key }
+        val topArtists = Variety.sample(aff.entries.sortedByDescending { it.value }.take(8), 3, seed("pick-artists")) { it.value }.map { it.key }
         val seeds = topArtists.mapNotNull { a ->
-            Variety.sample(s.songs.values.filter { it.primaryArtist.equals(a, true) && !it.isVideo && !it.isLocal }, 1, Variety.daySeed(day, "seed:$a"), sharpness = 2.0) { s.model.score(it) }.firstOrNull()
+            Variety.sample(s.songs.values.filter { it.primaryArtist.equals(a, true) && !it.isVideo && !it.isLocal }, 1, seed("seed:$a"), sharpness = 2.0) { s.model.score(it) }.firstOrNull()
         }
         val played = s.events.map { it.songId }.toSet()
         val playedSongs = played.mapNotNull { s.songs[it] }.map { LocalRadio.sameSong(it) }.toSet()
-        val discovered = seeds.flatMap { seed -> runCatching { radioOf(seed) }.getOrDefault(emptyList()).filter { it.id != seed.id } }
+        // All three at once (#371: one after the other, they were a good part of the wait for the section).
+        val radios = kotlinx.coroutines.coroutineScope {
+            seeds.map { seed -> async { runCatching { radioOf(seed) }.getOrDefault(emptyList()).filter { it.id != seed.id } } }.awaitAll()
+        }
+        val discovered = radios.flatten()
             .filter { fresh(it) && it.id !in played && LocalRadio.sameSong(it) !in playedSongs && !c.recFeedback.turnedDown(it.id, known = false) }
             .distinctBy { LocalRadio.sameSong(it) }
             .sortedByDescending { (0.6 + affinity(it)) * j(it.id) }
         val fromYouTube = youtube.filter { fresh(it) && affinity(it) > 0.05 }
 
-        val pools = listOf(favourites.toMutableList(), discovered.toMutableList(), fromYouTube.toMutableList())
-        val turns = listOf(0, 1, 0, 1, 2)
-        val out = ArrayList<Song>()
-        val perArtist = HashMap<String, Int>()
-        val taken = HashSet<String>()
-        fun fits(song: Song): Boolean {
-            val a = song.primaryArtist.lowercase()
-            return LocalRadio.sameSong(song) !in taken && (perArtist[a] ?: 0) < 3 && (out.isEmpty() || out.last().primaryArtist.lowercase() != a || a.isBlank())
-        }
-        var turn = 0
-        while (out.size < count) {
-            val order = listOf(turns[turn % turns.size]) + (0..2).filter { it != turns[turn % turns.size] }
-            val pool = order.map { pools[it] }.firstOrNull { p -> p.any { fits(it) } } ?: break
-            val song = pool.first { fits(it) }
-            pool.remove(song)
-            out += song
-            taken += LocalRadio.sameSong(song)
-            song.primaryArtist.lowercase().let { perArtist[it] = (perArtist[it] ?: 0) + 1 }
-            turn++
-        }
+        val out = takeTurns(favourites, discovered, fromYouTube, count, shown).toMutableList()
         // Still short (a new listener's few artists): YouTube's own fill the rest.
+        val taken = out.map { LocalRadio.sameSong(it) }.toSet()
         youtube.filter { fresh(it) && LocalRadio.sameSong(it) !in taken }.take(count - out.size).forEach { out += it }
         return out
     }
@@ -267,6 +266,42 @@ class YourMusic(private val c: AppContainer) {
     private fun color(key: String) = COLORS[((key.hashCode() % COLORS.size) + COLORS.size) % COLORS.size]
 
     companion object {
+        /** A draw's seed: the day's own for the first ([draw] 0), another for each pull to refresh (#371). */
+        internal fun drawSeed(day: String, salt: String, draw: Int): Long = Variety.daySeed(day, if (draw == 0) salt else "$salt#$draw")
+
+        /**
+         * Quick picks' turns: two favourites, two new, one of YouTube's, no artist twice running and three at most. Songs
+         * in [shown] (the set a pull to refresh replaces) only come when nothing else fits, so a refresh changes the picks
+         * for as far as there are others.
+         */
+        internal fun takeTurns(favourites: List<Song>, discovered: List<Song>, youtube: List<Song>, count: Int, shown: Set<String> = emptySet()): List<Song> {
+            val turns = listOf(0, 1, 0, 1, 2)
+            val out = ArrayList<Song>()
+            val perArtist = HashMap<String, Int>()
+            val taken = HashSet<String>()
+            fun fits(song: Song): Boolean {
+                val a = song.primaryArtist.lowercase()
+                return LocalRadio.sameSong(song) !in taken && (perArtist[a] ?: 0) < 3 && (out.isEmpty() || out.last().primaryArtist.lowercase() != a || a.isBlank())
+            }
+            fun run(pools: List<MutableList<Song>>) {
+                var turn = out.size
+                while (out.size < count) {
+                    val order = listOf(turns[turn % turns.size]) + (0..2).filter { it != turns[turn % turns.size] }
+                    val pool = order.map { pools[it] }.firstOrNull { p -> p.any { fits(it) } } ?: break
+                    val song = pool.first { fits(it) }
+                    pool.remove(song)
+                    out += song
+                    taken += LocalRadio.sameSong(song)
+                    song.primaryArtist.lowercase().let { perArtist[it] = (perArtist[it] ?: 0) + 1 }
+                    turn++
+                }
+            }
+            val pools = listOf(favourites, discovered, youtube)
+            run(pools.map { p -> p.filterTo(ArrayList()) { it.id !in shown } })
+            if (shown.isNotEmpty()) run(pools.map { p -> p.filterTo(ArrayList()) { it.id in shown } })
+            return out
+        }
+
         const val OFFLINE_MIX = "lib:offline"
         fun isLibraryMix(id: String) = id.startsWith("lib:")
         private const val HOUR = 3_600_000L

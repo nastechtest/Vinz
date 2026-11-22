@@ -31,9 +31,11 @@ object DjSequencer {
 
     /**
      * The set's order: [tracks] (not [start], the song before them) arranged to follow on from [start] as smoothly
-     * as can be found.
+     * as can be found. [first] (one of [tracks]): that song goes first, and the rest are the set that follows on from it
+     * (#374, Shuffle in DJ mode); null, the default, leaves the whole order to the set.
      */
-    fun order(start: DjTrack, tracks: List<DjTrack>, flow: DjFlow): List<DjTrack> {
+    fun order(start: DjTrack, tracks: List<DjTrack>, flow: DjFlow, first: DjTrack? = null): List<DjTrack> {
+        if (first != null && first in tracks) return listOf(first) + order(first, tracks - first, flow)
         if (tracks.size < 2) return tracks
         val energy = energies(listOf(start) + tracks)
         val n = tracks.size
@@ -59,6 +61,33 @@ object DjSequencer {
             if (!improved) return seq.map { tracks[it] }
         }
         return seq.map { tracks[it] }
+    }
+
+    /**
+     * #374: Shuffle with DJ mode on deals a new set. [window] is the stretch of the queue DJ mode orders, as it is now
+     * (null: a song it can't place yet, not scanned, or not a song: those stay after the set, in their order), following
+     * [start] (the song before it; null when unknown). Another song than the window's first leads, picked at random
+     * among the better-blending half of those that could follow [start], and the rest is the set that follows on from it
+     * ([order] with `first`). Returns the window's new order as indices into it, or null when there's no other order.
+     */
+    fun newSet(start: DjTrack?, window: List<DjTrack?>, flow: DjFlow, random: java.util.Random): List<Int>? {
+        if (window.size < 2) return null
+        val known = window.indices.filter { window[it] != null }
+        val rest = window.indices.filter { window[it] == null }
+        val from = start ?: DjTrack("", null, null, null, null)
+        if (known.size < 2) {
+            // Nothing to order by: another song first, the rest as they were.
+            val lead = (1 until window.size).random(kotlin.random.Random(random.nextLong()))
+            return listOf(lead) + window.indices.filter { it != lead }
+        }
+        val tracks = known.map { window[it]!! }
+        val energy = energies(listOf(from) + tracks)
+        val candidates = known.indices.filter { known[it] != 0 }
+            .sortedBy { k -> step(from, tracks[k], energy[0], energy[k + 1], 1, tracks.size, flow) }
+        val better = candidates.take(maxOf(1, (candidates.size + 1) / 2))
+        val lead = tracks[better[random.nextInt(better.size)]]
+        val set = order(from, tracks, flow, first = lead)
+        return set.map { t -> known[tracks.indexOf(t)] } + rest
     }
 
     private fun trackOf(start: DjTrack, tracks: List<DjTrack>, i: Int) = if (i < 0) start else tracks[i]

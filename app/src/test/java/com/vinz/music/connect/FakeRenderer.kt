@@ -32,6 +32,13 @@ class FakeRenderer(
     private val audible: Boolean = false,
     val name: String = "Test Renderer",
     private val log: (String) -> Unit = {},
+    /** A real device's own description instead of the made-up one, with its control URLs answered all the same. */
+    private val descriptionXml: String? = null,
+    private val descriptionPath: String = "/description.xml",
+    /** Search targets it answers; null: MediaRenderer, AVTransport and ssdp:all. Sonos: its ZonePlayer. */
+    private val answersTo: Set<String>? = null,
+    /** The error a seek with milliseconds gets when [preciseSeeks] is false. */
+    private val seekRefusal: Int = 711,
 ) : Closeable {
     class Fetch(val url: String, val range: String?, val status: Int, val type: String?, val contentRange: String?, val bytes: ByteArray)
 
@@ -54,7 +61,7 @@ class FakeRenderer(
 
     val port: Int get() = http.address.port
     val ssdpPort: Int get() = ssdp.localPort
-    val location: String get() = "http://127.0.0.1:$port/description.xml"
+    val location: String get() = "http://127.0.0.1:$port$descriptionPath"
     val positionMs: Long get() = if (state == "PLAYING") baseMs + (System.currentTimeMillis() - since) else baseMs
 
     init {
@@ -80,7 +87,8 @@ class FakeRenderer(
             val text = String(p.data, 0, p.length)
             if (!text.startsWith("M-SEARCH")) continue
             val st = text.lines().firstOrNull { it.startsWith("ST:", true) }?.substringAfter(':')?.trim() ?: continue
-            if (!st.contains("MediaRenderer") && !st.contains("AVTransport") && st != "ssdp:all") continue
+            if (answersTo != null) { if (st !in answersTo) continue }
+            else if (!st.contains("MediaRenderer") && !st.contains("AVTransport") && st != "ssdp:all") continue
             val answer = "HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1800\r\nEXT:\r\nLOCATION: $location\r\nSERVER: Fake/1.0 UPnP/1.0\r\n" +
                 "ST: $st\r\nUSN: uuid:fake-renderer-1::$st\r\n\r\n"
             val b = answer.toByteArray()
@@ -111,13 +119,17 @@ class FakeRenderer(
 
     private fun handle(ex: HttpExchange) {
         val path = ex.requestURI.path
-        if (ex.requestMethod == "GET" && path == "/description.xml") return reply(ex, 200, description())
+        if (ex.requestMethod == "GET" && path == descriptionPath) return reply(ex, 200, descriptionXml ?: description())
         if (ex.requestMethod != "POST") return reply(ex, 405, "")
         val action = ex.requestHeaders.getFirst("SOAPACTION")?.trim('"')?.substringAfter('#') ?: return reply(ex, 400, "")
         val body = ex.requestBody.readBytes().toString(Charsets.UTF_8)
         val args = with(Xml) { Xml.parse(body)!!.documentElement.all(action).first().let { a -> a.childNodes.let { l -> (0 until l.length).mapNotNull { l.item(it) as? org.w3c.dom.Element }.associate { it.name() to it.textContent } } } }
         actions += action
-        val service = path.substringAfterLast('/')
+        val service = when {
+            path.contains("RenderingControl") -> "rc"
+            path.contains("ConnectionManager") -> "cm"
+            else -> path.substringAfterLast('/')
+        }
         val out: Map<String, String> = when (action) {
             "SetAVTransportURI" -> {
                 val mime = Xml.parse(args["CurrentURIMetaData"].orEmpty())?.let { d -> with(Xml) { d.documentElement.all("res").firstOrNull()?.getAttribute("protocolInfo") } }
@@ -148,7 +160,7 @@ class FakeRenderer(
             "Pause" -> { if (state == "PLAYING") { baseMs = positionMs; state = "PAUSED_PLAYBACK"; pausePlayer() }; emptyMap() }
             "Stop" -> { baseMs = 0; state = if (uri == null) "NO_MEDIA_PRESENT" else "STOPPED"; stopPlayer(); emptyMap() }
             "Seek" -> {
-                if (!preciseSeeks && args["Target"].orEmpty().contains('.')) return fault(ex, 711, "Illegal seek target")
+                if (!preciseSeeks && args["Target"].orEmpty().contains('.')) return fault(ex, seekRefusal, "Illegal seek target")
                 val to = UpnpTime.parse(args["Target"]) ?: return fault(ex, 711, "Illegal seek target")
                 if (state == "STOPPED" || state == "NO_MEDIA_PRESENT") return fault(ex, 701, "Transition not available")
                 baseMs = to; since = System.currentTimeMillis()

@@ -46,7 +46,14 @@ class Recognizer(private val c: AppContainer) {
         data object Idle : State
         /** [heardMs] of up to [MAX_MS]; [level] 0..1, how loud it is (for the animation). */
         data class Listening(val heardMs: Long, val level: Float) : State
-        data class Found(val recognition: RecognitionEntity, val song: Song?) : State
+        /**
+         * [offsetMs]: where in the song the recording began (Shazam's offset), when it says; [heardAt]: when it began
+         * (SystemClock.elapsedRealtime), so playing it can carry on from there ([startMs], #215).
+         */
+        data class Found(val recognition: RecognitionEntity, val song: Song?, val offsetMs: Long? = null, val heardAt: Long = 0) : State {
+            /** Where [song] starts if played [now] (elapsedRealtime). */
+            fun startAt(now: Long): Long = startMs(offsetMs, heardAt, now, (song?.durationSec ?: 0) * 1000L)
+        }
         data object NotFound : State
         /** Offline: kept, and asked about when there's a network. */
         data object Saved : State
@@ -97,8 +104,11 @@ class Recognizer(private val c: AppContainer) {
         var nextTry = 0
         var offline = false
         var rateLimited = false
+        // Every fingerprint sent starts here, so Shazam's offset is where the song was at this moment.
+        var heardAt = android.os.SystemClock.elapsedRealtime()
         try {
             rec.startRecording()
+            heardAt = android.os.SystemClock.elapsedRealtime()
             while (isActive && have < all.size) {
                 val n = rec.read(chunk, 0, minOf(chunk.size, all.size - have))
                 if (n <= 0) { delay(10); continue }
@@ -116,7 +126,7 @@ class Recognizer(private val c: AppContainer) {
                         tries += async { runCatching { shazam.recognize(ShazamSignature.of(samples)) }.onFailure { offline = true }.getOrNull() }
                     } else offline = true
                 }
-                tries.firstOrNull { it.isCompleted && it.getCompleted() is ShazamResult.Match }?.let { return@withContext found(it.getCompleted() as ShazamResult.Match) }
+                tries.firstOrNull { it.isCompleted && it.getCompleted() is ShazamResult.Match }?.let { return@withContext found(it.getCompleted() as ShazamResult.Match, heardAt) }
                 if (tries.any { it.isCompleted && it.getCompleted() == ShazamResult.RateLimited }) { rateLimited = true; break }
             }
         } finally {
@@ -126,7 +136,7 @@ class Recognizer(private val c: AppContainer) {
         // Listening's over: the last answers.
         for (t in tries) {
             val r = t.await()
-            if (r is ShazamResult.Match) return@withContext found(r)
+            if (r is ShazamResult.Match) return@withContext found(r, heardAt)
             if (r == ShazamResult.RateLimited) rateLimited = true
         }
         when {
@@ -143,7 +153,7 @@ class Recognizer(private val c: AppContainer) {
         }
     }
 
-    private suspend fun found(m: ShazamResult.Match): State {
+    private suspend fun found(m: ShazamResult.Match, heardAt: Long): State {
         val song = runCatching { youtubeSong(m) }.getOrNull()
         val row = RecognitionEntity(
             at = System.currentTimeMillis(), status = "found", title = m.title, artist = m.artist, album = m.album,
@@ -151,7 +161,7 @@ class Recognizer(private val c: AppContainer) {
         )
         val id = c.db.recognitions().insert(row)
         com.vinz.music.widget.RecognizeWidgets.refresh(c.app)
-        return State.Found(row.copy(id = id), song)
+        return State.Found(row.copy(id = id), song, m.offsetMs, heardAt)
     }
 
     /** The song on YouTube Music: the songs search for "title artist", the one whose title and artist agree best. */
@@ -197,6 +207,21 @@ class Recognizer(private val c: AppContainer) {
         const val MAX_MS = 12_000L
         private val TRIES_MS = longArrayOf(4_000, 8_000, 12_000)
 
+        /** How near the end a song heard late starts at most, so a moment of it still plays. */
+        private const val END_ROOM_MS = 5_000L
+
+        /**
+         * #215: where a recognized song starts so it carries on from what was heard: Shazam's [offsetMs] (where in the
+         * song the recording began), plus the time since it began ([heardAt] to [now], on one clock), kept a few seconds
+         * short of the song's end ([durationMs]; 0 when unknown). From the start when there's no offset or it isn't a
+         * place in the song.
+         */
+        fun startMs(offsetMs: Long?, heardAt: Long, now: Long, durationMs: Long): Long {
+            if (offsetMs == null || offsetMs < 0 || (durationMs > 0 && offsetMs >= durationMs)) return 0
+            val at = offsetMs + (now - heardAt).coerceAtLeast(0)
+            return if (durationMs > 0) at.coerceAtMost((durationMs - END_ROOM_MS).coerceAtLeast(0)) else at
+        }
+
         fun norm(s: String) = java.text.Normalizer.normalize(s.lowercase().replace(Regex("""\s*[(\[][^)\]]*[)\]]"""), "").substringBefore(" - "), java.text.Normalizer.Form.NFD)
             .filter { it.isLetterOrDigit() }
     }
@@ -218,7 +243,6 @@ class RecognitionWorker(context: Context, params: WorkerParameters) : CoroutineW
                     Notifications.post(
                         c.app, Notifications.RECOGNITION, (4200 + p.id % 1000).toInt(), tr(R.string.found_it_2, r.title), r.artist,
                         song?.let { "https://music.youtube.com/watch?v=${it.id}" } ?: "vinz://recognized",
-                        iconRes = R.drawable.ic_notification_recognition,
                     )
                 }
                 ShazamResult.NoMatch -> c.db.recognitions().put(p.copy(status = "none", signature = null))

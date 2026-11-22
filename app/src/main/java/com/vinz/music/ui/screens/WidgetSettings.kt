@@ -145,38 +145,6 @@ private fun WidgetSettingsScreen(id: Int, style: WidgetStyle, onDone: () -> Unit
     }
 }
 
-/**
- * Customize Vinz → Icons & shapes → Home-screen widgets: each Vinz widget on the home screen, opening its own settings
- * (the same screen as holding it → Settings). Nothing shows when none is placed.
- */
-@Composable
-fun HomeWidgetsGroup() {
-    val context = LocalContext.current
-    val manager = remember { AppWidgetManager.getInstance(context) }
-    // Looked at again whenever the page comes back (a widget added or removed meanwhile).
-    var tick by remember { mutableStateOf(0) }
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle) { lifecycle.currentStateFlow.collect { if (it == androidx.lifecycle.Lifecycle.State.RESUMED) tick++ } }
-    val placed = remember(tick) {
-        WidgetStyle.entries.flatMap { s ->
-            runCatching { manager.getAppWidgetIds(android.content.ComponentName(context, s.provider)).toList() }.getOrDefault(emptyList()).map { s to it }
-        }
-    }
-    if (placed.isEmpty()) return
-    Group(tr(R.string.home_screen_widgets), info = tr(R.string.each_widget_can_have_its_own)) {
-        placed.forEach { (s, id) ->
-            val label = remember(id) { runCatching { manager.getAppWidgetInfo(id).loadLabel(context.packageManager) }.getOrNull() ?: s.name }
-            val own = !WidgetOptionsStore.get(context, id).isDefault
-            Item(label, if (own) tr(R.string.your_own_settings) else tr(R.string.as_designed), onClick = {
-                context.startActivity(
-                    Intent(context, WidgetConfigActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }) { Chevron() }
-        }
-    }
-}
-
 /** The widget as the home screen will show it, from its own views. */
 @Composable
 private fun WidgetPreview(style: WidgetStyle, o: WidgetOptions) {

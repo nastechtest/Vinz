@@ -151,13 +151,15 @@ class PlayerEditorAppTest {
         compose.waitForText(tr(R.string.edit_this_menu), 10_000)
     }
 
-    /** Settings → Player → What's on the player: a tap on the preview's progress bar hides it, another brings it back. */
+    /**
+     * Settings → Player → On it → What's on the player (1.8.4: a row that opens the editor in a sheet; it was a card on
+     * Customize Vinz → Player): a tap on the preview's progress bar hides it, another brings it back.
+     */
     @Test fun theEditorsPreviewHidesAPart() {
         Fixture.ready()
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText(tr(R.string.customize_vinz)) and hasClickAction(), 15_000)
-        compose.clickWhenFound(hasText(tr(R.string.player)) and hasClickAction(), 15_000)
+        compose.openSettingsPage(com.vinz.music.ui.screens.settings.SettingsPageId.PLAYER)
+        compose.clickWhenFound(settingsRow(tr(R.string.what_s_on_the_player)), 15_000)
         val bar = hasContentDescription(tr(R.string.progress_bar)) and hasClickAction()
         compose.clickWhenFound(bar, 15_000)
         compose.waitUntil(5_000) { !settings.current.shows(PlayerPart.PROGRESS) }

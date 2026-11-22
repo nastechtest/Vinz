@@ -121,6 +121,8 @@ class SpotifyLikes(
     private val kept: () -> Set<String>,
     private val match: suspend (TrackToMatch) -> MatchResult,
     private val pause: suspend (Long) -> Unit = { delay(it) },
+    /** Where Liked Songs are read from now: the Web API, or the sign-in (1.8.7.5: read only, so one way). */
+    private val library: () -> SpotifyLibrary = ApiLibrary(api).let { own -> { own } },
 ) {
     private val file = File(dir, "likes.json")
     private val json = Json { ignoreUnknownKeys = true }
@@ -141,13 +143,7 @@ class SpotifyLikes(
     fun matchKeys(): Set<String> = state().waitingHere.values.toSet()
 
     /** Spotify's Liked Songs, page by page (up to [MAX_LIKES]). */
-    suspend fun spotifyLikes(): List<SavedTrack> {
-        val out = ArrayList<SavedTrack>()
-        var page = SpotifyParse.savedTracks(api.get("/me/tracks", mapOf("limit" to "50")))
-        out += page.items
-        while (out.size < MAX_LIKES) { val next = page.next ?: break; page = SpotifyParse.savedTracks(api.next(next)); out += page.items }
-        return out
-    }
+    suspend fun spotifyLikes(): List<SavedTrack> = library().savedTracks(MAX_LIKES)
 
     suspend fun vinzLikes(): List<VinzLike> = db.songs().liked().filter { !it.id.startsWith(Song.LOCAL_PREFIX) && !it.isVideo }
         .map { e -> e.toSong().let { s -> VinzLike(s.id, s.title, s.primaryArtist.ifBlank { e.artistName }, s.durationSec, e.likedAt) } }
@@ -186,7 +182,10 @@ class SpotifyLikes(
         val found = ArrayList<String>()
         val searched = HashSet<String>()
         val notFound = state.notOnSpotify.toMutableSet()
-        for (p in plan.toLikeOnSpotify.take(SEARCHES_PER_RUN)) {
+        // With the sign-in nothing is written to Spotify: no search, no save. These likes stay unseen, so a later
+        // connection with the listener's own developer app takes them.
+        val there = if (library().canWrite) plan.toLikeOnSpotify.take(SEARCHES_PER_RUN) else emptyList()
+        for (p in there) {
             searched += p.id
             val q = "${ImportKeys.core(p.title)} artist:${ImportKeys.mainArtist(p.artist)}"
             val hits = runCatching { SpotifyParse.searchTracks(api.get("/search", mapOf("q" to q, "type" to "track", "limit" to "5"))) }
@@ -203,6 +202,32 @@ class SpotifyLikes(
         )
         save(state)
         state
+    }
+
+    /**
+     * The Spotify likes matched since the last run are liked here now, without asking Spotify anything (1.8.7.5:
+     * called when the background matching has done some, so a thousand likes don't wait for tomorrow's run).
+     * Returns how many were liked.
+     */
+    suspend fun placeMatched(): Int = lock.withLock {
+        val state = state()
+        val waiting = state.waitingHere
+        if (waiting.isEmpty()) return@withLock 0
+        val matched = SpotifyQueue.matched(db, waiting.values)
+        val vinzIds = vinzLikes().map { it.id }.toSet()
+        val songs = waiting.mapNotNull { (_, key) -> matched[key] }.distinctBy { it.id }.filter { it.id !in vinzIds }
+        if (songs.isNotEmpty()) likeHere(songs)
+        val statuses = waiting.values.chunked(500).flatMap { db.imports().matches(it) }.associate { it.songKey to MatchStatus.of(it.status) }
+        val stillWaiting = waiting.filter { (_, key) -> key !in matched && statuses[key] != MatchStatus.SKIPPED && statuses[key] != null }
+        if (songs.isEmpty() && stillWaiting.size == waiting.size) return@withLock 0
+        val links = state.links.toMutableMap()
+        waiting.forEach { (uri, key) -> matched[key]?.let { links[it.id] = uri } }
+        // Marked as Vinz's own doing, so they are never sent back to Spotify as new likes.
+        save(state.copy(
+            waitingHere = stillWaiting, links = links, likedHere = state.likedHere + songs.size,
+            seenVinz = state.seenVinz + songs.associate { it.id to LikesPlan.OURS },
+        ))
+        songs.size
     }
 
     companion object {

@@ -26,3 +26,23 @@ fun videoWatchVerdict(hasPicture: Boolean, buffering: Boolean, waitedMs: Long): 
 
 /** Whether a video that just failed may have its streams asked for afresh: never yet, or not in the last minute. */
 fun videoRetryAllowed(lastRetryAt: Long?, now: Long): Boolean = lastRetryAt == null || now - lastRetryAt >= VIDEO_RETRY_WINDOW_MS
+
+/**
+ * A music video's retry: its streams asked for afresh, and with [forgetCachedSound], its sound's cached part dropped too.
+ * [serverBusy] (#514): its server kept answering 5xx, so the lookup asks another way first rather than the refused-link
+ * steps (the same way over IPv4 only, then NewPipe, both visionOS links again).
+ */
+data class VideoRetry(val forgetCachedSound: Boolean, val serverBusy: Boolean = false)
+
+/**
+ * Whether a music video that failed gets another go ([videoRetryAllowed]) and how; null: back to the song. Refused (403,
+ * 410), its server busy (5xx, #514), unreadable or a network failure is worth one. [unreadable] (#411): its bytes couldn't
+ * be read, so its sound's cached part goes too, as a song's does: asking afresh alone read the same cached bytes again and
+ * failed at once.
+ */
+fun videoRetry(httpCode: Int?, unreadable: Boolean, network: Boolean, lastRetryAt: Long?, now: Long): VideoRetry? {
+    val busy = com.vinz.music.data.stream.serverBusy(httpCode)
+    return if (videoRetryAllowed(lastRetryAt, now) && (httpCode == 403 || httpCode == 410 || busy || unreadable || network)) {
+        VideoRetry(forgetCachedSound = unreadable, serverBusy = busy)
+    } else null
+}

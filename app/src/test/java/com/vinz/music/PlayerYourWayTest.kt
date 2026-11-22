@@ -31,15 +31,15 @@ class PlayerYourWayTest {
     @Test
     fun defaultsAreThePlayerAs17HadIt() {
         val d = com.vinz.music.data.prefs.AppSettings()
-        assertEquals(PlayerLayout.STANDARD, d.playerLayout)
-        assertEquals(listOf(PlayerButton.LYRICS, PlayerButton.VIDEO, PlayerButton.QUEUE), d.playerButtons)
-        assertEquals(DeckPart.entries, d.playerDeck)
+        assertEquals(PlayerLayout.STANDARD, d.player.layout)
+        assertEquals(listOf(PlayerButton.LYRICS, PlayerButton.VIDEO, PlayerButton.QUEUE), d.player.buttons)
+        assertEquals(DeckPart.entries, d.player.deck)
         assertEquals(listOf(SessionButton.LIKE, SessionButton.SHUFFLE, SessionButton.REPEAT, SessionButton.CAR_LYRICS, SessionButton.RADIO, SessionButton.DISLIKE), d.sessionButtons)
-        assertEquals(PlayerGesture.NEXT, d.coverSwipeLeft)
-        assertEquals(PlayerGesture.PREVIOUS, d.coverSwipeRight)
-        assertEquals(PlayerGesture.QUEUE, d.coverSwipeUp)
-        assertEquals(PlayerGesture.SEEK_SIDES, d.coverDoubleTap)
-        assertEquals(PlayerGesture.STOP, d.miniSwipeDown)
+        assertEquals(PlayerGesture.NEXT, d.gestures.coverSwipeLeft)
+        assertEquals(PlayerGesture.PREVIOUS, d.gestures.coverSwipeRight)
+        assertEquals(PlayerGesture.QUEUE, d.gestures.coverSwipeUp)
+        assertEquals(PlayerGesture.SEEK_SIDES, d.gestures.coverDoubleTap)
+        assertEquals(PlayerGesture.STOP, d.gestures.miniSwipeDown)
         // The mesh stays still unless asked (motion costs frames).
         assertEquals(0f, d.meshSpeed)
     }
@@ -51,12 +51,12 @@ class PlayerYourWayTest {
         s.setSessionButtons(listOf(SessionButton.BACK_10, SessionButton.AHEAD_30))
         // A deck saved without some parts (an older order, say) still has every part, the missing ones at the end.
         s.setPlayerDeck(listOf(DeckPart.TRANSPORT, DeckPart.SCRUBBER))
-        val now = withTimeout(5_000) { s.flow.first { it.playerButtons.first() == PlayerButton.LIKE && it.sessionButtons.size == 2 && it.playerDeck.first() == DeckPart.TRANSPORT } }
-        assertEquals(listOf(PlayerButton.LIKE, PlayerButton.SLEEP, PlayerButton.QUEUE, PlayerButton.DJ), now.playerButtons)
+        val now = withTimeout(5_000) { s.flow.first { it.player.buttons.first() == PlayerButton.LIKE && it.sessionButtons.size == 2 && it.player.deck.first() == DeckPart.TRANSPORT } }
+        assertEquals(listOf(PlayerButton.LIKE, PlayerButton.SLEEP, PlayerButton.QUEUE, PlayerButton.DJ), now.player.buttons)
         assertEquals(listOf(SessionButton.BACK_10, SessionButton.AHEAD_30), now.sessionButtons)
-        assertEquals(listOf(DeckPart.TRANSPORT, DeckPart.SCRUBBER, DeckPart.STRIP, DeckPart.VOLUME, DeckPart.BUTTONS), now.playerDeck)
+        assertEquals(listOf(DeckPart.TRANSPORT, DeckPart.SCRUBBER, DeckPart.STRIP, DeckPart.VOLUME, DeckPart.BUTTONS), now.player.deck)
         s.setGesture("cover_long_press", PlayerGesture.MENU)
-        assertEquals(PlayerGesture.MENU, withTimeout(5_000) { s.flow.first { it.coverLongPress == PlayerGesture.MENU } }.coverLongPress)
+        assertEquals(PlayerGesture.MENU, withTimeout(5_000) { s.flow.first { it.gestures.coverLongPress == PlayerGesture.MENU } }.gestures.coverLongPress)
     }
 
     @Test

@@ -38,9 +38,7 @@ object LookChoices {
 
     fun setGlass(prefs: SettingsRepository, g: GlassChoice) {
         val v = glassValues(g)
-        v.kind?.let { prefs.setGlassKind(it) }
-        v.frosted?.let { prefs.setFrostedGlass(it) }
-        prefs.setLiquidGlass(v.liquid)
+        prefs.setGlassChoice(v.liquid, v.kind, v.frosted)
     }
 
     /** Slide only ever worked with fades on, so fades off reads as None whatever pageSlide says. */

@@ -26,18 +26,26 @@ object TakeoutHistory {
 
     fun isHistoryFile(file: String): Boolean = file.substringAfterLast('/').lowercase().let { it.endsWith(".json") && (it.startsWith("watch-history") || it.startsWith("watch history")) }
 
-    /** Reads a picked `watch-history.json`, or a Takeout zip holding one. False when there was none in it. */
+    /**
+     * Reads a picked history file, or a Takeout zip holding one. False when there was none in it. Takeout names the file
+     * in the account's language (#375: `historial-de-reproducciones.json`), so any JSON in it is read, and it counts by
+     * what's inside: [entry] only takes YouTube Music plays of a video, with their time. Searches, subscriptions and the
+     * rest give none. The English name counts as a history even with no music in it, as it always has.
+     */
     fun read(name: String, input: InputStream, onPlay: (ParsedPlay) -> Unit): Boolean {
         var found = false
+        // A Takeout with My Activity in it too lists the same plays there: each counts once, whichever file it's in.
+        val seen = HashSet<Long>()
         ImportFiles.forEachFile(name, input) { file, stream ->
-            if (!isHistoryFile(file)) return@forEachFile
-            found = true
+            if (!file.endsWith(".json", ignoreCase = true)) return@forEachFile
+            if (isHistoryFile(file)) found = true
             var later: Long? = null
             ImportFiles.arrayItems(stream).forEach { o ->
                 val p = entry(o, later) ?: return@forEach
+                found = true
                 // Newest first: this play's "next" is the one read before it (out of order: no gap known).
                 if (later == null || p.timestamp <= later!!) later = p.timestamp
-                onPlay(p)
+                if (seen.add(p.timestamp * 31 + p.sourceId.hashCode())) onPlay(p)
             }
         }
         return found

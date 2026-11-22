@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import android.net.Uri
@@ -39,9 +38,11 @@ fun Song.toMediaItem(videoId: String? = null): MediaItem {
                 .setTitle(shown.title)
                 .setArtist(shown.artistText)
                 .setAlbumTitle(shown.album?.title)
-                // The cover picked for the song or its album (#305), through the artwork provider so a car can show it too.
+                // The cover picked for the song or its album (#305), or a file's own (#350), through the artwork provider:
+                // a car or a watch can't open Vinz's files, nor Android's album art without its own permission.
                 .setArtworkUri(com.vinz.music.data.PlaylistCovers.artOf(this@toMediaItem).let { art ->
-                    if (art != null && art.startsWith("file:")) ArtworkProvider.contentUri(art) else hiRes(art, 544)?.let(Uri::parse)
+                    if (art != null && (art.startsWith("file:") || art.startsWith(ArtworkProvider.LOCAL_ALBUM_ART))) ArtworkProvider.contentUri(art)
+                    else hiRes(art, 544)?.let(Uri::parse)
                 })
                 .setIsPlayable(true)
                 .setIsBrowsable(false)

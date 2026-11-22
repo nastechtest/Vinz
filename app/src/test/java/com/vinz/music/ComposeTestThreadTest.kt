@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
  * through the rule (Ambient, Browse, Lyrics, Shell, Sing) use the v2 rules; the ones that also wait on the player by
  * sleeping (Link, Playback, Video, Home customize) keep the old ones: with v2, an effect runs only when the test waits
  * through the rule. So does Settings: there Home's first focus, a moment late under v2, took focus back from the side
- * navigation now and then on the slow TV.
+ * navigation now and then on the slow TV. LockScreenTest uses them too (1.8.5): see the flow tests below.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
@@ -34,6 +34,25 @@ class ComposeTestThreadTest {
         compose.setContent { LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Thread.sleep(50) }; after = Thread.currentThread() } }
         compose.waitUntil(5_000) { after != null }
         assertTrue("carried on on ${after?.name}", after !== main)
+    }
+
+    /**
+     * 1.8.5: what LockScreenTest ran into. Its page reads the settings with collectAsState, and a setting the test changes
+     * reaches that flow on DataStore's background thread. Under the old rules the collector (as collectAsState's own: a
+     * LaunchedEffect that collects into a state) carries on on that thread, so the state is written there, and the page's
+     * next frame is now and then composed and applied there too, while the main thread draws it. On the emulator that
+     * attached the Page's statusBarsPadding off the main thread (CalledFromWrongThreadException in its onAttach), and
+     * closing the page later crashed with "Must run runDetachLifecycle() once after runAttachLifecycle()".
+     */
+    @Test fun theOldRulesTakeAFlowsValueOnTheThreadThatSetIt() {
+        val main = Thread.currentThread()
+        val flow = kotlinx.coroutines.flow.MutableStateFlow(0)
+        var tookOn: Thread? = null
+        compose.setContent { LaunchedEffect(Unit) { flow.collect { if (it == 1) tookOn = Thread.currentThread() } } }
+        compose.waitForIdle()
+        kotlinx.coroutines.runBlocking { withContext(Dispatchers.Default) { flow.value = 1 } }
+        compose.waitUntil(5_000) { tookOn != null }
+        assertTrue("took it on ${tookOn?.name}", tookOn !== main)
     }
 }
 
@@ -48,5 +67,17 @@ class ComposeTestThreadV2Test {
         compose.setContent { LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Thread.sleep(50) }; after = Thread.currentThread() } }
         compose.waitUntil(5_000) { after != null }
         assertEquals(main, after)
+    }
+
+    /** The same under the v2 rules: the value is taken on the main thread, as in the app (LockScreenTest uses them). */
+    @Test fun theV2RulesTakeAFlowsValueOnTheMainThread() {
+        val main = Thread.currentThread()
+        val flow = kotlinx.coroutines.flow.MutableStateFlow(0)
+        var tookOn: Thread? = null
+        compose.setContent { LaunchedEffect(Unit) { flow.collect { if (it == 1) tookOn = Thread.currentThread() } } }
+        compose.waitForIdle()
+        kotlinx.coroutines.runBlocking { withContext(Dispatchers.Default) { flow.value = 1 } }
+        compose.waitUntil(5_000) { tookOn != null }
+        assertEquals(main, tookOn)
     }
 }

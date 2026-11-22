@@ -31,9 +31,14 @@ class TvInstallAppTest {
         compose.onNode(hasSetTextAction()).performTextInput("fire tv")
         compose.clickWhenFound(hasText("Share Vinz with a TV") and hasClickAction())
         compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty() }
-        compose.clickWhenFound(hasText("Share Vinz with a TV") and hasClickAction())
+        // Its page: Speakers, TVs & browser → Vinz on a TV (1.8.4), the switch's own row.
+        compose.clickWhenFound(settingsRow("Share Vinz with a TV"))
         val share = Fixture.container.tvInstall
         compose.waitUntil(5_000) { share.running }
+        // On, the address to type on the TV is the row under it; what to do on the TV is behind the switch's ⓘ since
+        // 1.8.4 (it was a note under the switch).
+        compose.waitUntil(5_000) { compose.onAllNodes(settingsRow(tr(R.string.address))).fetchSemanticsNodes().isNotEmpty() }
+        compose.openSettingsInfo("Share Vinz with a TV")
         compose.waitForText("Downloader app")
 
         val apk = File(Fixture.context.applicationInfo.sourceDir)
@@ -55,7 +60,9 @@ class TvInstallAppTest {
         assertEquals("the whole installed APK", apk.length(), length)
         compose.waitForText("Sent. Finish installing on the TV.")
 
-        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        // On a freshly started emulator the keyboard, opening for the first time, can come up after the page has opened:
+        // the first Back then only closes it (a screenshot from inside the app doesn't show it).
+        repeat(2) { if (share.running) { UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack(); Thread.sleep(2_000) } }
         compose.waitUntil(5_000) { !share.running }
         assertFalse(share.running)
     }

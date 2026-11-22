@@ -118,11 +118,11 @@ private fun HolidayMixSheet(mix: HolidayMix, onDismiss: () -> Unit) {
  */
 fun holidayActions(c: AppContainer, context: android.content.Context, mix: HolidayMix): List<SheetItem> {
     val pin = OwnSections.pinOf(mix)
-    val layout = c.settings.current.homeLayout
+    val layout = c.settings.current.home.layout
     val on = layout.any { it.key == pin.key }
     return listOf(
         SheetItem(if (on) VinzIcons.PinFilled else VinzIcons.Pin, if (on) tr(R.string.unpin_from_home) else tr(R.string.pin_to_home)) {
-            val now = c.settings.current.homeLayout
+            val now = c.settings.current.home.layout
             c.settings.setHomeLayout(if (now.any { it.key == pin.key }) now.filterNot { it.key == pin.key } else listOf(pin) + now)
             Toast.makeText(context, if (on) tr(R.string.taken_off_home) else tr(R.string.pinned_to_the_top_of_home), Toast.LENGTH_SHORT).show()
         },

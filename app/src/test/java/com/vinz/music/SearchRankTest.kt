@@ -23,6 +23,51 @@ class SearchRankTest {
 
     private val fan = SearchRank.Taste(listOf(SearchRank.KnownArtist("UCadtr", "A Day to Remember", null, 0.6)), emptyMap())
 
+    /** [SearchRank.norm] as it was before #355, three Regexes compiled per call. */
+    private fun normAsItWas(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        .replace("&", " and ")
+        .replace(Regex("[^\\p{L}\\p{N} ]"), "")
+        .replace(Regex("\\s+"), " ").trim()
+
+    /** #355: walked by hand now, it has to read every name just as the Regexes did. */
+    @Test fun normReadsEveryNameAsBefore() {
+        val names = listOf(
+            "", " ", "   ", "a", "Beyoncé", "AC/DC", "Guns N' Roses", "P!nk", "Simon & Garfunkel", "&", "&&", "a&&b", "a & b", " & x", "x &", "a&",
+            "  leading and trailing  ", "tab\tseparated", "line\nbreak", "non breaking", "a ! b", "! a", "a !b", "a - b", "(what) [ever]",
+            "Motörhead", "Sigur Rós", "Björk", "Ñandú", "ÅSTRÖM", "İstanbul", "ß", "ﬁ ligature", "Ⅷ", "½ life", "١٢٣", "٢٠٢٤",
+            "فيروز", "عَمْرو دِياب", "मोहम्मद रफ़ी", "तू ही रे", "아이유", "방탄소년단", "宇多田ヒカル", "ｱｲｳ", "周杰倫", "Тату", "Μίκης", "ไทย", "עברית",
+            "song 🎵 name", "🎵", "a🎵b", "𝕬𝖇𝖈", "𠮷野家", "\uD83D", "á", "ẹ̈", "z‍w", "﻿bom", "'quoted'", "“curly”", "a_b", "a-b", "1,000", "#1",
+        )
+        for (n in names) assertEquals("reading [$n]", normAsItWas(n), SearchRank.norm(n))
+    }
+
+    private val known = SearchRank.Taste(
+        listOf(
+            SearchRank.KnownArtist(null, "Daft Punk", null, 0.4),
+            SearchRank.KnownArtist(null, "Dafne", null, 0.9),
+            SearchRank.KnownArtist(null, "A Day to Remember", null, 0.6),
+            SearchRank.KnownArtist(null, "Punk Rockers", null, 0.1),
+        ),
+        emptyMap(),
+    )
+
+    /** #355: what a letter offers: the listener's own searches first, then their artists, best known first. */
+    @Test fun lettersOfferOwnSearchesThenBestKnownArtists() {
+        assertEquals(listOf("daft punk get lucky", "Dafne", "Daft Punk"), SearchRank.predict("daf", known, listOf("Daft Punk get lucky".lowercase(), "other")))
+        assertEquals(listOf("Dafne"), SearchRank.predict("daf", known, emptyList(), limit = 1))
+        // A word inside the name counts from three letters.
+        assertEquals(listOf("Daft Punk", "Punk Rockers"), SearchRank.predict("pun", known, emptyList()))
+        assertEquals(listOf("Punk Rockers"), SearchRank.predict("pu", known, emptyList()))
+        // Initials.
+        assertEquals(listOf("A Day to Remember"), SearchRank.predict("adt", known, emptyList()))
+        // What's already typed in full isn't offered, and nothing is for nothing.
+        assertEquals(emptyList<String>(), SearchRank.predict("dafne", known, emptyList()))
+        assertEquals(emptyList<String>(), SearchRank.predict(" ", known, listOf("x")))
+        // The same name twice comes once, as the listener's own search.
+        assertEquals(listOf("DAFNE"), SearchRank.predict("dafn", known, listOf("DAFNE")))
+    }
+
     @Test fun exactMatchWinsWithoutTaste() {
         assertEquals("MPREb_ep", SearchRank.rank("A Day", results).top?.id)
     }

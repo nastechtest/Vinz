@@ -51,6 +51,8 @@ private val libraries = listOf(
     // Vinz TV (1.8.0): the name is the library's own, the same in every language.
     Library(tr(R.string.compose_for_tv),tr(R.string.the_android_open_source_project), tr(R.string.apache_2_0), "apache-2.0", "https://developer.android.com/jetpack/androidx/releases/tv"),
     Library(tr(R.string.songrec_song_recognition_s_audio_fingerprint), tr(R.string.marin_m), tr(R.string.gpl_3_0), "gpl-3.0", "https://github.com/marin-m/SongRec"),
+    // 1.8.7.5: the Spotify sign-in's reads are Vinz's own code; which reads the web player makes was learned from Meld.
+    Library(tr(R.string.meld_spotify_reads), tr(R.string.francesco_grazioso), tr(R.string.gpl_3_0), "gpl-3.0", "https://github.com/FrancescoGrazioso/Meld"),
     Library(tr(R.string.zxing_core_blend_s_qr_codes), tr(R.string.zxing_authors), tr(R.string.apache_2_0), "apache-2.0", "https://github.com/zxing/zxing"),
     Library(tr(R.string.camerax_scanning_a_blend_code), tr(R.string.the_android_open_source_project), tr(R.string.apache_2_0), "apache-2.0", "https://developer.android.com/jetpack/androidx/releases/camera"),
     Library(tr(R.string.onnx_runtime_sing_s_engine_downloaded), tr(R.string.microsoft), "MIT", "onnxruntime", "https://github.com/microsoft/onnxruntime"),
