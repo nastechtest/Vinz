@@ -2,8 +2,8 @@ package com.vinz.music
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.vinz.music.data.db.LyricsDao
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsDao
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.LyricLine

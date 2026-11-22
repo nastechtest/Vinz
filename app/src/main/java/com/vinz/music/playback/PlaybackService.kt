@@ -44,8 +44,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.vinz.music.MainActivity
 import com.vinz.music.R
 import com.vinz.music.container
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.CoroutineScope

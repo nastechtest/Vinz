@@ -209,7 +209,7 @@ class LibraryRequests181Test {
     @Test fun newReleasesCanKeepToFavoriteArtists() {
         Fixture.ready()
         val now = System.currentTimeMillis()
-        fun release(id: String, artist: String, name: String, title: String) = com.vinz.music.data.db.ReleaseEntity(
+        fun release(id: String, artist: String, name: String, title: String) = com.prism.music.data.db.ReleaseEntity(
             id = id, artistId = artist, artistName = name, title = title, kind = "Single", year = java.time.LocalDate.now().year,
             releaseDate = java.time.LocalDate.now().toString(), thumbnail = null, playlistId = null, firstSeenAt = now, baseline = false, notifiedAt = now,
         )

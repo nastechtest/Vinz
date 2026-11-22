@@ -10,11 +10,11 @@ import com.vinz.music.data.SeasonGenre
 import com.vinz.music.data.StoryFacts
 import com.vinz.music.data.StoryPart
 import com.vinz.music.data.StoryParts
-import com.vinz.music.data.db.AlbumPlays
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.FirstPlay
-import com.vinz.music.data.db.MonthTotal
-import com.vinz.music.data.db.SongPlays
+import com.prism.music.data.db.AlbumPlays
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.FirstPlay
+import com.prism.music.data.db.MonthTotal
+import com.prism.music.data.db.SongPlays
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

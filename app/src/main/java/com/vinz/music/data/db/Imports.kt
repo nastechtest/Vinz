@@ -1,4 +1,4 @@
-package com.vinz.music.data.db
+package com.prism.music.data.db
 
 import androidx.room.Dao
 import androidx.room.DatabaseView
@@ -92,7 +92,7 @@ data class CountedPlay(
 )
 
 /** [CountedPlay]'s query: the migration that made the view uses it too (Room checks the view's text matches). */
-const val COUNTED_PLAYS_SQL = """SELECT 'vinz' AS origin, songId, timestamp, playedMs, source, excluded FROM play_events
+const val COUNTED_PLAYS_SQL = """SELECT 'prism' AS origin, songId, timestamp, playedMs, source, excluded FROM play_events
 UNION ALL
 SELECT origin, matchedId AS songId, timestamp, playedMs, origin AS source, 0 AS excluded FROM imported_plays WHERE playedMs >= 10000 AND (matchedId IS NOT NULL OR estimated = 0)"""
 

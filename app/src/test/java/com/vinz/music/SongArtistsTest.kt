@@ -1,9 +1,9 @@
 package com.vinz.music
 
 import com.vinz.music.data.ArtworkStore
-import com.vinz.music.data.db.SongPlays
-import com.vinz.music.data.db.mainArtist
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.SongPlays
+import com.prism.music.data.db.mainArtist
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import org.junit.Assert.assertEquals

@@ -29,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vinz.music.R
-import com.vinz.music.data.db.ImportMatchEntity
+import com.prism.music.data.db.ImportMatchEntity
 import com.vinz.music.data.imports.HistoryImporter
 import com.vinz.music.data.imports.HistoryImports
 import com.vinz.music.data.imports.ImportPreview

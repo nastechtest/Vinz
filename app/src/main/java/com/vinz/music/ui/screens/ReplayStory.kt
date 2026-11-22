@@ -3,7 +3,7 @@ package com.vinz.music.ui.screens
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.trp
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import com.vinz.music.ui.theme.VinzIcons
 import android.content.Context
 import android.content.Intent
@@ -102,9 +102,9 @@ import com.vinz.music.AppContainer
 import com.vinz.music.data.Habits
 import com.vinz.music.data.Personality
 import com.vinz.music.data.ReplayStats
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.SongPlays
-import com.vinz.music.data.db.mainArtist
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.SongPlays
+import com.prism.music.data.db.mainArtist
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.model.hiRes
 import com.vinz.music.playback.VinzMediaSourceFactory
@@ -156,9 +156,9 @@ internal class ReplayStory(
     val topArtistType: ArtistType,
     /** A year's story: its Rewind, with the parts only a year has. */
     val rewind: Boolean = false,
-    val months: List<com.vinz.music.data.db.MonthTotal> = emptyList(),
-    val topAlbum: com.vinz.music.data.db.AlbumPlays? = null,
-    val firstSong: com.vinz.music.data.db.FirstPlay? = null,
+    val months: List<com.prism.music.data.db.MonthTotal> = emptyList(),
+    val topAlbum: com.prism.music.data.db.AlbumPlays? = null,
+    val firstSong: com.prism.music.data.db.FirstPlay? = null,
     val seasons: List<com.vinz.music.data.SeasonGenre> = emptyList(),
     val vinz: com.vinz.music.data.VinzYear = com.vinz.music.data.VinzYear(),
     val topLyric: String? = null,

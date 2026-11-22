@@ -2,6 +2,7 @@ import java.awt.geom.Path2D
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Properties
+import java.util.zip.ZipFile
 
 plugins {
     id("com.android.application")
@@ -11,32 +12,15 @@ plugins {
     id("androidx.room")
     id("androidx.baselineprofile")
 }
-// Local builds use the minimum target in version.properties. CI resolves published stable tags through
-// scripts/ci/version.sh and stamps the same short name/code into main, PR and release APKs. Channel and
-// source identity live in BuildConfig rather than adding extra numbers to the public version.
-val appVersionFile = rootProject.file("version.properties")
-val appVersion = Properties().apply {
-    require(appVersionFile.exists()) {
-        "version.properties is missing; it is the single source of truth for versionName and versionCode."
-    }
-    appVersionFile.inputStream().use { load(it) }
-}
-val ciVersionName: String? = providers.gradleProperty("ciVersionName").orNull
-val ciVersionCode: Int? = providers.gradleProperty("ciVersionCode").orNull?.toInt()
-
-// Which commit and which channel produced this APK. CI sets these; a local build says "local". Filtered to
-// hex/dash so nothing can escape the generated string literal. Crash reports and "Send diagnostics" can then
-// name the exact commit without asking whoever is holding the phone.
-val gitSha = (providers.environmentVariable("VINZ_GIT_SHA").orNull ?: "local")
-    .filter { it.isLetterOrDigit() }.ifEmpty { "local" }
-val buildChannel = (providers.environmentVariable("VINZ_BUILD_CHANNEL").orNull ?: "local")
-    .filter { it.isLetterOrDigit() || it == '-' }.ifEmpty { "local" }
-
 
 // Room writes each database version's schema here (checked in); MigrationTest builds old versions from them.
 room {
     schemaDirectory("$projectDir/schemas")
 }
+
+// Vinz CI stamps the build from version.properties; the literals are the local fallback.
+val ciVersionName = (project.findProperty("ciVersionName") as String?)?.takeIf { it.isNotBlank() }
+val ciVersionCode = (project.findProperty("ciVersionCode") as String?)?.toIntOrNull()
 
 android {
     namespace = "com.vinz.music"
@@ -46,13 +30,8 @@ android {
         applicationId = "com.vinz.music"
         minSdk = 26
         targetSdk = 36
-        versionCode = ciVersionCode ?: appVersion.getProperty("versionCode").toInt()
-        versionName = ciVersionName ?: appVersion.getProperty("versionName")
-        require(versionName?.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) == true) {
-            "versionName must have exactly three numeric parts; use build metadata for channel/identity."
-        }
-        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
-        buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
+        versionCode = ciVersionCode ?: 67
+        versionName = ciVersionName ?: "1.8.7.6"
         vectorDrawables { useSupportLibrary = true }
         // The name under the launcher icon; a side-by-side build (below) is called "Vinz Dev" so it can't be mistaken for Vinz.
         manifestPlaceholders["appLabel"] = "@string/app_name"
@@ -165,8 +144,6 @@ android {
         unitTests.isIncludeAndroidResources = true
         execution = "ANDROIDX_TEST_ORCHESTRATOR"
         animationsDisabled = true
-        // IconRenderTest draws every launcher icon at 432 dpi, twice: the bitmaps do not fit a test worker's default heap.
-        unitTests.all { it.maxHeapSize = "2g" }
     }
 
     packaging {
@@ -203,6 +180,50 @@ androidComponents {
     }
 }
 
+/**
+ * The release APK carries native code for phones' chips only (1.8.7, plan 12b.2): the x86 and x86_64 copies of ONNX
+ * Runtime's bridge (the APK's only native library, ~0.3 MB) are for emulators, and emulators run debug builds, the
+ * side-by-side test copy (`-PsideBySide`) and :baselineprofile's benchmarkRelease / nonMinifiedRelease, which all keep
+ * them. Chromebooks and other x86 Androids with ARM translation still install it. `-PallAbis` keeps them in the release
+ * too, for installing the real release on an x86 emulator without ARM translation (Android 9's `old` tier, the TVs).
+ */
+val releaseDropsAbis = setOf("x86", "x86_64")
+val releaseKeepsAbis = setOf("armeabi-v7a", "arm64-v8a")
+val releaseOnlyArm = !project.hasProperty("sideBySide") && !project.hasProperty("allAbis")
+
+/** Fails the build when a release APK still carries [dropped] chips' libraries or lost one of [required]'s. */
+abstract class CheckReleaseAbis : DefaultTask() {
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val apkDir: DirectoryProperty
+    @get:Input abstract val dropped: SetProperty<String>
+    @get:Input abstract val required: SetProperty<String>
+
+    @TaskAction fun check() {
+        val apks = apkDir.get().asFile.walkTopDown().filter { it.isFile && it.extension == "apk" }.toList()
+        require(apks.isNotEmpty()) { "No APK in ${apkDir.get().asFile}" }
+        for (apk in apks) ZipFile(apk).use { zip ->
+            val abis = zip.entries().asSequence().map { it.name }.filter { it.startsWith("lib/") }
+                .map { it.split('/')[1] }.toSet()
+            val extra = abis intersect dropped.get()
+            require(extra.isEmpty()) { "${apk.name} still carries native libraries for $extra (plan 12b.2)" }
+            val missing = required.get() - abis
+            require(missing.isEmpty()) { "${apk.name} has no native libraries for $missing" }
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { v ->
+        if (!releaseOnlyArm) return@onVariants
+        v.packaging.jniLibs.excludes.addAll(releaseDropsAbis.map { "lib/$it/**" })
+        val check = tasks.register<CheckReleaseAbis>("check${v.name.replaceFirstChar { it.uppercase() }}Abis") {
+            apkDir.set(v.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK))
+            dropped.set(releaseDropsAbis)
+            required.set(releaseKeepsAbis)
+        }
+        tasks.matching { it.name == "assemble${v.name.replaceFirstChar { c -> c.uppercase() }}" }.configureEach { finalizedBy(check) }
+    }
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 
@@ -224,9 +245,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.navigation:navigation-compose:2.10.2")
-    implementation("androidx.datastore:datastore-preferences:1.3.0")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
-    implementation("androidx.palette:palette-ktx:1.1.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
     // Hands the APK's baseline profile (src/main/generated/baselineProfiles, written by :baselineprofile) to Android, so
     // Vinz's busiest code is compiled ahead instead of interpreted after an install or update (1.7.4). Apache-2.0.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
@@ -246,44 +267,44 @@ dependencies {
 
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
-    implementation("com.squareup.okhttp3:okhttp:5.5.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.11.0")
 
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
     // Runs yt-dlp's EJS solver (assets/ejs) on WebView's V8 to decipher signed-in stream URLs.
     implementation("androidx.javascriptengine:javascriptengine:1.1.1")
-    implementation("org.jsoup:jsoup:1.24.1")
+    implementation("org.jsoup:jsoup:1.23.2")
     // Japanese lyrics' kanji readings for romanization (Apache-2.0). Its 13 MB dictionary isn't packed into the APK
     // (see packaging below): it's downloaded on first use (ModelStore). Tests read it from the jar.
     implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
     // Sing's vocal separation (Spleeter) runs on ONNX Runtime (MIT). Its native libraries (13+ MB per CPU type) aren't
     // packed into the APK (see packaging below): they're downloaded with Sing's model on first use (ModelStore).
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     // Blend: QR codes made and read (ZXing core, Apache-2.0), the camera for scanning one (CameraX, Apache-2.0).
-    implementation("com.google.zxing:core:3.5.4")
+    implementation("com.google.zxing:core:3.5.3")
     val camerax = "1.4.2"
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
     // On the PC, tests run the same models with ONNX Runtime's desktop build.
-    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.31.1")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.31.0")
 
-    implementation("dev.chrisbanes.haze:haze:2.1.0")
-    implementation("dev.chrisbanes.haze:haze-blur:2.1.0")
-    implementation("dev.chrisbanes.haze:haze-glass:2.1.0")
+    implementation("dev.chrisbanes.haze:haze:2.0.1")
+    implementation("dev.chrisbanes.haze:haze-blur:2.0.1")
+    implementation("dev.chrisbanes.haze:haze-glass:2.0.1")
 
     testImplementation("junit:junit:4.13.2")
     // NewPipe's own JavaScript engine (shipped with it already), for testing the stream solver's scripts.
-    testImplementation("org.mozilla:rhino:1.9.2")
+    testImplementation("org.mozilla:rhino:1.8.1")
     // Draws composables on the PC (DesignGalleryTest: the redesign's components, light and dark), Apache-2.0, test-only;
     // the manifest piece is debug-only (it registers the empty activity tests draw in).
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Renders the backgrounds to PNGs on the PC (BackdropRenderTest), with Robolectric's real graphics.
-    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 
     // In-app tests (1.7.9, release-check PLAN.md): Compose UI tests on a device, all Apache-2.0, test-only.
     androidTestImplementation(composeBom)
@@ -291,7 +312,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     androidTestUtil("androidx.test:orchestrator:1.6.1")
     androidTestUtil("androidx.test.services:test-services:1.6.0")
 }
@@ -670,14 +691,7 @@ abstract class SplitTranslations : DefaultTask() {
         src.walkTopDown().filter { it.isFile && it.extension == "xml" && !it.parentFile.name.startsWith("values") }
             .plus(manifest.get().asFile).forEach { f -> ref.findAll(f.readText()).forEach { keep += it.groupValues[1] } }
 
-        // Account and future feature tables share the same asset-backed translation system.
-        fun stringTables(folder: File) = folder.listFiles().orEmpty()
-            .filter { it.isFile && it.extension == "xml" }.sortedBy { it.name }
-        fun strings(folder: File) = stringTables(folder).flatMap { elements(parse(it), "string") }
-        val english = strings(File(src, "values"))
-        check(english.map { it.getAttribute("name") }.distinct().size == english.size) {
-            "Duplicate English string resources"
-        }
+        val english = elements(parse(File(src, "values/strings.xml")), "string")
         val names = english.filter { it.getAttribute("translatable") != "false" }.map { it.getAttribute("name") }.filter { it !in keep }
         outAssets.resolve("names").writeText(names.joinToString("\n"))
         // English stays in resources.arsc: it's every language's fallback.
@@ -698,31 +712,20 @@ abstract class SplitTranslations : DefaultTask() {
                 (listOf(default) + locales).joinToString("") { "    <locale android:name=\"$it\"/>\n" } + "</locale-config>\n",
         )
 
-        val translationFolders = src.listFiles().orEmpty()
-            .filter { it.name.startsWith("values-") && File(it, "strings.xml").isFile }
-        translationFolders.forEach { folder ->
-            val translated = strings(folder)
-            check(translated.map { it.getAttribute("name") }.distinct().size == translated.size) {
-                "Duplicate string resources in ${folder.name}"
-            }
-            val texts = translated.associate { it.getAttribute("name") to it.textContent }
-            outAssets.resolve(folder.name.removePrefix("values-")).writeText(
-                names.joinToString("\u0000") { texts[it] ?: "\u0001" },
-            )
-        }
-        val translationNames = translationFolders.map { it.name }.toSet()
         val transformer = javax.xml.transform.TransformerFactory.newInstance().newTransformer()
         src.walkTopDown().filter { it.isFile && it.parentFile != src }.forEach { f ->
             val rel = f.relativeTo(src).path
             val folder = f.parentFile.name
-            if (!(folder in translationNames && f.extension == "xml")) {
+            if (!(folder.startsWith("values-") && f.name == "strings.xml")) {
                 f.copyTo(File(outRes, rel))
                 return@forEach
             }
             val doc = parse(f)
             val qualifier = folder.removePrefix("values-")
+            val texts = elements(doc, "string").associate { it.getAttribute("name") to it.textContent }
+            outAssets.resolve(qualifier).writeText(names.joinToString("\u0000") { texts[it] ?: "\u0001" })
             elements(doc, "string").filter { it.getAttribute("name") !in keep }.forEach { it.parentNode.removeChild(it) }
-            if (f.name == "strings.xml") doc.documentElement.appendChild(doc.createElement("string").apply {
+            doc.documentElement.appendChild(doc.createElement("string").apply {
                 setAttribute("name", "vinz_i18n_table")
                 textContent = qualifier
             })
@@ -748,6 +751,23 @@ androidComponents {
 }
 
 tasks.withType<Test>().configureEach {
+    // Conscrypt (the phone's TLS, made the JVM's default by Robolectric) reads InetAddress's internals for its handshake.
+    jvmArgs("--add-opens=java.base/java.net=ALL-UNNAMED")
+    // Unit tests that reach real services are @Category(LiveNetwork::class) (app/src/test/.../LiveNetwork.kt): left out
+    // of normal runs; -Plive runs everything, -PliveOnly only them. -PnoNetwork sends the test JVM's HTTP(S) through a
+    // dead proxy, which shows any test that reaches the network without the mark.
+    useJUnit {
+        when {
+            project.hasProperty("liveOnly") -> includeCategories("com.vinz.music.LiveNetwork")
+            !project.hasProperty("live") -> excludeCategories("com.vinz.music.LiveNetwork")
+        }
+    }
+    if (project.hasProperty("noNetwork")) {
+        listOf("http", "https").forEach {
+            systemProperty("$it.proxyHost", "127.0.0.1")
+            systemProperty("$it.proxyPort", "9")
+        }
+    }
     testLogging {
         showStandardStreams = true
         events("passed", "failed")

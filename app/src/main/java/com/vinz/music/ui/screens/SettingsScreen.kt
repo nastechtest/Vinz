@@ -2510,7 +2510,7 @@ private fun RecommendationsPage() {
  * own switches), and never count.
  */
 @Composable
-private fun CountHistoryFrom(imported: List<com.vinz.music.data.db.ImportSummary>, counted: Set<com.vinz.music.data.imports.ImportSource>) {
+private fun CountHistoryFrom(imported: List<com.prism.music.data.db.ImportSummary>, counted: Set<com.vinz.music.data.imports.ImportSource>) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val context = LocalContext.current

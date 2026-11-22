@@ -16,10 +16,10 @@ import com.vinz.music.data.BringOver
 import com.vinz.music.data.FavoriteArtist
 import com.vinz.music.data.VinzLibrary
 import com.vinz.music.data.SavedAlbum
-import com.vinz.music.data.db.GenreEntity
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.GenreEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.foryou.Excluded
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.model.AlbumRef
@@ -50,8 +50,8 @@ import kotlin.concurrent.thread
 @org.robolectric.annotation.Config(sdk = [34], application = android.app.Application::class)
 class BringOverTest {
     private val app = RuntimeEnvironment.getApplication()
-    private val phoneDb = Room.inMemoryDatabaseBuilder(app, VinzDatabase::class.java).allowMainThreadQueries().build()
-    private val tvDb = Room.inMemoryDatabaseBuilder(app, VinzDatabase::class.java).allowMainThreadQueries().build()
+    private val phoneDb = Room.inMemoryDatabaseBuilder(app, PrismDatabase::class.java).allowMainThreadQueries().build()
+    private val tvDb = Room.inMemoryDatabaseBuilder(app, PrismDatabase::class.java).allowMainThreadQueries().build()
     private val phonePrefs = { name: String -> app.getSharedPreferences("phone_$name", 0) }
     private val tvPrefs = { name: String -> app.getSharedPreferences("tv_$name", 0) }
     private val dirs = ArrayList<File>()

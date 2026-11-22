@@ -2,11 +2,11 @@ package com.vinz.music.data
 
 import com.vinz.music.R
 import com.vinz.music.tr
-import com.vinz.music.data.db.AlbumPlays
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.FirstPlay
-import com.vinz.music.data.db.MonthTotal
-import com.vinz.music.data.db.SongPlays
+import com.prism.music.data.db.AlbumPlays
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.FirstPlay
+import com.prism.music.data.db.MonthTotal
+import com.prism.music.data.db.SongPlays
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File

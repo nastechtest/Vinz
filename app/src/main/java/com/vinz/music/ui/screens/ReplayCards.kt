@@ -2,7 +2,7 @@ package com.vinz.music.ui.screens
 
 import com.vinz.music.R
 import com.vinz.music.tr
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background

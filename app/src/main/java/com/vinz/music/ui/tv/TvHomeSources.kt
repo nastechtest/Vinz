@@ -9,7 +9,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import com.vinz.music.AppContainer
 import com.vinz.music.R
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import com.vinz.music.data.foryou.ReleaseRadar
 import com.vinz.music.data.foryou.YourMusic
 import com.vinz.music.data.model.AlbumItem

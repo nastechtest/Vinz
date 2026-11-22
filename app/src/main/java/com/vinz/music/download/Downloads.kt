@@ -26,7 +26,7 @@ import androidx.work.WorkerParameters
 import com.vinz.music.AppContainer
 import com.vinz.music.R
 import com.vinz.music.container
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.model.SongItem

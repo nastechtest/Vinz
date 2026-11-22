@@ -14,7 +14,7 @@ import android.view.View
 import android.widget.RemoteViews
 import com.vinz.music.R
 import com.vinz.music.container
-import com.vinz.music.data.db.RecognitionEntity
+import com.prism.music.data.db.RecognitionEntity
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import com.vinz.music.ui.screens.RecognizeActivity

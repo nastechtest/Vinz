@@ -1,7 +1,7 @@
 package com.vinz.music.data.spotify
 
-import com.vinz.music.data.db.ImportMatchEntity
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.ImportMatchEntity
+import com.prism.music.data.db.PrismDatabase
 import com.vinz.music.data.imports.ImportKeys
 import com.vinz.music.data.imports.MatchStatus
 import com.vinz.music.data.model.Song
@@ -15,7 +15,7 @@ object SpotifyQueue {
     fun key(t: SpotifyTrack) = ImportKeys.songKey(t.title, t.artist)
 
     /** Lines [tracks] up for matching; songs already there get Spotify's length and ISRC if they hadn't them. */
-    suspend fun remember(db: VinzDatabase, tracks: List<SpotifyTrack>) {
+    suspend fun remember(db: PrismDatabase, tracks: List<SpotifyTrack>) {
         val dao = db.imports()
         tracks.filter { it.artist.isNotBlank() }.distinctBy(::key).chunked(500).forEach { chunk ->
             val known = dao.matches(chunk.map(::key)).associateBy { it.songKey }
@@ -43,7 +43,7 @@ object SpotifyQueue {
     }
 
     /** The YouTube Music songs [keys] were matched to (sure or picked by the listener), by key. */
-    suspend fun matched(db: VinzDatabase, keys: Collection<String>): Map<String, Song> {
+    suspend fun matched(db: PrismDatabase, keys: Collection<String>): Map<String, Song> {
         val ids = keys.distinct().chunked(500).flatMap { db.imports().matches(it) }
             .filter { MatchStatus.of(it.status).matched && it.matchedId != null }.associate { it.songKey to it.matchedId!! }
         val songs = ids.values.distinct().chunked(500).flatMap { db.songs().getAll(it) }.associateBy { it.id }
@@ -51,7 +51,7 @@ object SpotifyQueue {
     }
 
     /** Of [keys], those not looked up yet. */
-    suspend fun pending(db: VinzDatabase, keys: Collection<String>): Set<String> =
+    suspend fun pending(db: PrismDatabase, keys: Collection<String>): Set<String> =
         keys.distinct().chunked(500).flatMap { db.imports().matches(it) }.filter { MatchStatus.of(it.status) == MatchStatus.PENDING }.map { it.songKey }.toSet()
 
     private const val MAX = 300

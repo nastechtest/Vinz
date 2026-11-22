@@ -59,7 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.vinz.music.data.db.RecognitionEntity
+import com.prism.music.data.db.RecognitionEntity
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.recognize.Recognizer

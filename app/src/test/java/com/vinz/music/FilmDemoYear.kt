@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.SongEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.SongEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.innertube.YouTubeMusic

@@ -3,7 +3,7 @@ package com.vinz.music.data
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.model.AlbumItem
 import com.vinz.music.data.model.ArtistItem
 import com.vinz.music.data.model.BrowseItem

@@ -9,6 +9,7 @@
         <exclude domain="sharedpref" path="connect_remote.xml" />
         <exclude domain="sharedpref" path="connect_handoff.xml" />
         <exclude domain="sharedpref" path="spotify_auth.xml" />
+        <exclude domain="sharedpref" path="stream_ways.xml" />
         <!-- The sign-in page's cookie jar (Google's session): restored, Sign in would let the old session straight back in. -->
         <exclude domain="root" path="app_webview/" />
     </cloud-backup>
@@ -18,6 +19,7 @@
         <exclude domain="sharedpref" path="connect_remote.xml" />
         <exclude domain="sharedpref" path="connect_handoff.xml" />
         <exclude domain="sharedpref" path="spotify_auth.xml" />
+        <exclude domain="sharedpref" path="stream_ways.xml" />
         <!-- The sign-in page's cookie jar (Google's session): restored, Sign in would let the old session straight back in. -->
         <exclude domain="root" path="app_webview/" />
     </device-transfer>

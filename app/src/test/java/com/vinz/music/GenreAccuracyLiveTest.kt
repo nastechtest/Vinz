@@ -1,8 +1,8 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.GenreEntity
-import com.vinz.music.data.db.MetaDao
-import com.vinz.music.data.db.MotionArtEntity
+import com.prism.music.data.db.GenreEntity
+import com.prism.music.data.db.MetaDao
+import com.prism.music.data.db.MotionArtEntity
 import com.vinz.music.data.meta.MetaRepository
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song

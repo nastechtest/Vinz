@@ -4,8 +4,8 @@ import com.vinz.music.R
 import com.vinz.music.tr
 import android.os.Build
 import com.vinz.music.data.ModelStore
-import com.vinz.music.data.db.RomanizedDao
-import com.vinz.music.data.db.RomanizedEntity
+import com.prism.music.data.db.RomanizedDao
+import com.prism.music.data.db.RomanizedEntity
 import com.vinz.music.data.lyrics.roman.Cyrillic
 import com.vinz.music.data.lyrics.roman.Greek
 import com.vinz.music.data.lyrics.roman.Hangul

@@ -2,7 +2,7 @@ package com.vinz.music
 
 import android.view.LayoutInflater
 import android.widget.TextView
-import com.vinz.music.data.db.RecognitionEntity
+import com.prism.music.data.db.RecognitionEntity
 import com.vinz.music.widget.RecognizeWidgets
 import com.vinz.music.widget.RecognizeWidgets.Shape
 import org.junit.Assert.assertEquals

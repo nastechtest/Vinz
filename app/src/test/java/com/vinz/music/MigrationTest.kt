@@ -3,7 +3,7 @@ package com.vinz.music
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.PrismDatabase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -29,7 +29,7 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
 class MigrationTest {
-    private val schemaDir = listOf("schemas", "app/schemas").map { File(it, "com.vinz.music.data.db.VinzDatabase") }.first { it.isDirectory }
+    private val schemaDir = listOf("schemas", "app/schemas").map { File(it, "com.prism.music.data.db.PrismDatabase") }.first { it.isDirectory }
     private val versions = schemaDir.listFiles()!!.mapNotNull { it.nameWithoutExtension.toIntOrNull() }.sorted()
 
     @Test
@@ -40,8 +40,8 @@ class MigrationTest {
             val name = "migrate-from-$from.db"
             context.deleteDatabase(name)
             createAt(context.getDatabasePath(name), from)
-            val db = Room.databaseBuilder(context, VinzDatabase::class.java, name)
-                .addMigrations(*VinzDatabase.MIGRATIONS)
+            val db = Room.databaseBuilder(context, PrismDatabase::class.java, name)
+                .addMigrations(*PrismDatabase.MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             runBlocking {
@@ -82,8 +82,8 @@ class MigrationTest {
             db.insert("genres", null, ContentValues().apply { put("key", "song2:local:7"); put("genre", "Dance & electronic"); put("fetchedAt", 1L) })
             db.insert("genres", null, ContentValues().apply { put("key", "song2:joint"); put("genre", "Pop"); put("fetchedAt", 1L) })
         }
-        val db = Room.databaseBuilder(context, VinzDatabase::class.java, name)
-            .addMigrations(*VinzDatabase.MIGRATIONS).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, PrismDatabase::class.java, name)
+            .addMigrations(*PrismDatabase.MIGRATIONS).allowMainThreadQueries().build()
         runBlocking {
             val artists = db.plays().topArtists(0, Long.MAX_VALUE, 10)
             assertEquals("joint credit counts for its main artist", listOf("The Kid LAROI", "Artist"), artists.map { it.artistName })
@@ -108,13 +108,13 @@ class MigrationTest {
         val name = "migrate-v9-imports.db"
         context.deleteDatabase(name)
         createAt(context.getDatabasePath(name), 8)
-        val db = Room.databaseBuilder(context, VinzDatabase::class.java, name)
-            .addMigrations(*VinzDatabase.MIGRATIONS).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, PrismDatabase::class.java, name)
+            .addMigrations(*PrismDatabase.MIGRATIONS).allowMainThreadQueries().build()
         runBlocking {
             val vinz = listOf("vinz")
             assertEquals(db.plays().totalMs(0, Long.MAX_VALUE), db.counted().totalMs(vinz, 0, Long.MAX_VALUE))
             assertEquals(db.plays().topSongs(0, Long.MAX_VALUE, 5), db.counted().topSongs(vinz, 0, Long.MAX_VALUE, 5))
-            db.imports().insertPlays(listOf(com.vinz.music.data.db.ImportedPlayEntity(
+            db.imports().insertPlays(listOf(com.prism.music.data.db.ImportedPlayEntity(
                 origin = "spotify", timestamp = 5_000L, playedMs = 60_000, title = "Title", artist = "Artist", songKey = "title|artist", matchedId = "song1",
             )))
             assertEquals("not counted unless asked", 200_000L, db.counted().totalMs(vinz, 0, Long.MAX_VALUE))
@@ -127,11 +127,11 @@ class MigrationTest {
     @Test
     fun currentSchemaIsExported() {
         // A version bump without its exported schema would leave the next migration untestable.
-        val fresh = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), VinzDatabase::class.java).allowMainThreadQueries().build()
+        val fresh = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), PrismDatabase::class.java).allowMainThreadQueries().build()
         val current = fresh.openHelper.writableDatabase.version
         fresh.close()
         assertEquals(current, versions.last())
-        assertEquals("one migration per version step", current - 1, VinzDatabase.MIGRATIONS.size)
+        assertEquals("one migration per version step", current - 1, PrismDatabase.MIGRATIONS.size)
     }
 
     /** Builds the database as version [version] of Vinz created it, from the exported schema. */

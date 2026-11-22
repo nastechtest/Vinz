@@ -286,7 +286,7 @@ fun BlendsScreen(bottomPadding: Dp) {
  * the corner. [small] drops the words for list-sized covers.
  */
 @Composable
-fun BlendCover(e: com.vinz.music.data.db.BlendEntity, modifier: Modifier = Modifier, small: Boolean = false) {
+fun BlendCover(e: com.prism.music.data.db.BlendEntity, modifier: Modifier = Modifier, small: Boolean = false) {
     val c = LocalContainer.current
     val stamp by c.blends.coverStamp.collectAsState()
     val custom = remember(e.friendWho, stamp) { c.blends.coverFile(e.friendWho).takeIf { it.exists() } }
@@ -364,7 +364,7 @@ fun BlendScreen(who: String, bottomPadding: Dp) {
     val nav = LocalNavigator.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val entity by produceState<com.vinz.music.data.db.BlendEntity?>(null, who) { value = c.blends.get(who) }
+    val entity by produceState<com.prism.music.data.db.BlendEntity?>(null, who) { value = c.blends.get(who) }
     val e = entity ?: return
     val blend = remember(e) { c.blends.blendOf(e) } ?: return
     val myWho = c.blends.myWho

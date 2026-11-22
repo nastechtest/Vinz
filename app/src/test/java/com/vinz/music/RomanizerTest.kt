@@ -1,8 +1,8 @@
 package com.vinz.music
 
 import com.vinz.music.data.ModelStore
-import com.vinz.music.data.db.RomanizedDao
-import com.vinz.music.data.db.RomanizedEntity
+import com.prism.music.data.db.RomanizedDao
+import com.prism.music.data.db.RomanizedEntity
 import com.vinz.music.data.lyrics.LyricLine
 import com.vinz.music.data.lyrics.LyricWord
 import com.vinz.music.data.lyrics.Romanizer

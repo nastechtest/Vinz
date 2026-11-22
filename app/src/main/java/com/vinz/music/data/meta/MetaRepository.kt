@@ -1,7 +1,7 @@
 package com.vinz.music.data.meta
 
-import com.vinz.music.data.db.GenreEntity
-import com.vinz.music.data.db.MetaDao
+import com.prism.music.data.db.GenreEntity
+import com.prism.music.data.db.MetaDao
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.str
 import com.vinz.music.data.model.Song

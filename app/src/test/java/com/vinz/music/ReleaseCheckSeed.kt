@@ -5,8 +5,8 @@ import com.vinz.music.data.VinzList
 import com.vinz.music.data.looks.Backgrounds
 import com.vinz.music.data.looks.Look
 import com.vinz.music.data.looks.LookCode
-import com.vinz.music.data.db.SongEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.SongEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.innertube.YouTubeMusic

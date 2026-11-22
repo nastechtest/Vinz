@@ -3,7 +3,7 @@ package com.vinz.music.ui.screens
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.trp
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import com.vinz.music.ui.theme.lit
 import androidx.compose.foundation.border
 import com.vinz.music.ui.components.VinzButton
@@ -64,9 +64,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.MonthTotal
-import com.vinz.music.data.db.SongPlays
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.MonthTotal
+import com.prism.music.data.db.SongPlays
 import com.vinz.music.data.model.AlbumRef
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song

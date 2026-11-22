@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Replay (4×2, 1.8.5): this week's top song (cover, title, artist, plays and time) and beside it the top artist (their
+     photo when one is stored, name, time). Nothing played yet: Vinz's mark and a line. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_panel"
+    android:backgroundTint="#FF1B1B22"
+    android:clipToOutline="true">
+
+    <FrameLayout
+        android:id="@+id/rp_open"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/widget_replay_open"
+        android:padding="14dp">
+
+        <LinearLayout
+            android:id="@+id/rp_content"
+            android:visibility="gone"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- The song. -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.7"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/rp_song_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.12"
+                    android:maxLines="1"
+                    android:text="@string/widget_replay_song_label"
+                    android:textAlignment="viewStart"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="10sp" />
+
+                <ImageView
+                    android:id="@+id/rp_dash"
+                    android:layout_width="20dp"
+                    android:layout_height="3dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="5dp"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_spectrum_bar" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/rp_song_art"
+                        android:layout_width="52dp"
+                        android:layout_height="52dp"
+                        android:background="@drawable/widget_art_frame"
+                        android:importantForAccessibility="no"
+                        android:padding="14dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_notification" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/rp_title"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:fontFamily="sans-serif-medium"
+                            android:maxLines="1"
+                            android:textAlignment="viewStart"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/rp_artist"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textAlignment="viewStart"
+                            android:textColor="#BFFFFFFF"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/rp_stat"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textAlignment="viewStart"
+                            android:textColor="#8CFFFFFF"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/rp_divider"
+                android:layout_width="1dp"
+                android:layout_height="64dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:background="#1FFFFFFF" />
+
+            <!-- The artist. -->
+            <LinearLayout
+                android:id="@+id/rp_artist_box"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/rp_artist_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.12"
+                    android:maxLines="1"
+                    android:text="@string/widget_replay_artist_label"
+                    android:textAlignment="viewStart"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="10sp" />
+
+                <!-- The name has the column's whole width (beside the photo "The Weeknd" was cut to "The …"). -->
+                <TextView
+                    android:id="@+id/rp_artist_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:textAlignment="viewStart"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="15sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/rp_artist_photo"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:background="@drawable/widget_avatar_frame"
+                        android:importantForAccessibility="no"
+                        android:padding="7dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_notification" />
+
+                    <TextView
+                        android:id="@+id/rp_artist_time"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textAlignment="viewStart"
+                        android:textColor="#8CFFFFFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/rp_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/rp_mark"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_notification" />
+
+            <TextView
+                android:id="@+id/rp_empty_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:text="@string/widget_replay_empty"
+                android:textColor="#E6FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

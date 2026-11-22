@@ -1,6 +1,6 @@
 package com.vinz.music.data.imports
 
-import com.vinz.music.data.db.ImportSummary
+import com.prism.music.data.db.ImportSummary
 
 /**
  * "Count history from" (1.8.1, the owner's request): every source listed, so the list is never empty at first. Vinz's

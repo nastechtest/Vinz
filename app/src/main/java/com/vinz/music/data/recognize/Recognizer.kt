@@ -18,7 +18,7 @@ import androidx.work.WorkerParameters
 import com.vinz.music.AppContainer
 import com.vinz.music.container
 import com.vinz.music.data.Notifications
-import com.vinz.music.data.db.RecognitionEntity
+import com.prism.music.data.db.RecognitionEntity
 import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.model.SongItem

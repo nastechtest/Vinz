@@ -2,7 +2,7 @@ package com.vinz.music
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.playback.QueueKind
 import com.vinz.music.playback.QueueSource
 import kotlinx.coroutines.runBlocking

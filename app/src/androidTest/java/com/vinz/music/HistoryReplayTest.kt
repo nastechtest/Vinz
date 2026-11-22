@@ -7,8 +7,8 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.vinz.music.data.HistoryPause
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.imports.ImportSource
 import com.vinz.music.data.prefs.ReplayGraph
 import kotlinx.coroutines.runBlocking

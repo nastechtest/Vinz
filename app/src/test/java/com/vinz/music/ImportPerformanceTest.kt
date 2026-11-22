@@ -1,7 +1,7 @@
 package com.vinz.music
 
 import androidx.room.Room
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.PrismDatabase
 import com.vinz.music.data.imports.CountedPlays
 import com.vinz.music.data.imports.HistoryImporter
 import com.vinz.music.data.imports.ImportSource
@@ -52,7 +52,7 @@ class ImportPerformanceTest {
     @Test fun aTenYearHistoryImportsQuicklyInLittleMemory() {
         val file = File.createTempFile("Streaming_History_Audio_2016-2026_0", ".json").also { it.deleteOnExit() }
         write(file)
-        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), VinzDatabase::class.java).allowMainThreadQueries().build()
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), PrismDatabase::class.java).allowMainThreadQueries().build()
         val importer = HistoryImporter(db)
         System.gc(); Thread.sleep(200)
         val base = usedMb()

@@ -84,7 +84,7 @@ private enum class LibTab(val label: String) { PLAYLISTS(tr(R.string.playlists))
 private data class HistoryEntry(val song: com.vinz.music.data.model.Song, val at: Long, val times: Int)
 
 /** Plays on this phone under day headings (Today, Yesterday, the weekday, then the date), repeats in a row folded into one. */
-private fun historyByDay(rows: List<com.vinz.music.data.db.HistoryRow>, now: Long = System.currentTimeMillis()): List<Pair<String, List<HistoryEntry>>> {
+private fun historyByDay(rows: List<com.prism.music.data.db.HistoryRow>, now: Long = System.currentTimeMillis()): List<Pair<String, List<HistoryEntry>>> {
     val entries = mutableListOf<HistoryEntry>()
     for (r in rows) {
         val last = entries.lastOrNull()

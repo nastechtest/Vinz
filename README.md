@@ -155,7 +155,7 @@ YouTube Music feature is implemented.
 | Kotlin namespace | `com.vinz.music` |
 | Language | Kotlin |
 | Build system | Gradle |
-| Version | [`version.properties`](version.properties) — currently `1.7.7.1` (`versionCode` 47) |
+| Version | [`version.properties`](version.properties) — currently `1.8.7.6` (`versionCode` 67) — synced from Prism 1.8.7.6 |
 | License | GNU GPL-3.0-or-later |
 | Upstream attribution | Yigder and original component authors |
 | Repository | [`nastechtest/Vinz`](https://github.com/nastechtest/Vinz) |

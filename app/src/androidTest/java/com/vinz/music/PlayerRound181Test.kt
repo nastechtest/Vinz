@@ -11,7 +11,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.prefs.PlayerLayout
 import com.vinz.music.playback.QueueKind

@@ -1,4 +1,4 @@
-package com.vinz.music.data.db
+package com.prism.music.data.db
 
 import android.content.Context
 import androidx.room.ColumnInfo
@@ -616,7 +616,7 @@ interface RomanizedDao {
     version = 9,
     exportSchema = true,
 )
-abstract class VinzDatabase : RoomDatabase() {
+abstract class PrismDatabase : RoomDatabase() {
     abstract fun songs(): SongDao
     abstract fun plays(): PlayEventDao
     abstract fun lyrics(): LyricsDao
@@ -706,8 +706,8 @@ abstract class VinzDatabase : RoomDatabase() {
             },
         )
 
-        fun build(context: Context): VinzDatabase =
-            Room.databaseBuilder(context, VinzDatabase::class.java, "vinz.db")
+        fun build(context: Context): PrismDatabase =
+            Room.databaseBuilder(context, PrismDatabase::class.java, "vinz.db")
                 .addMigrations(*MIGRATIONS)
                 // Only a downgrade (installing an older Vinz over a newer one) may start the database over.
                 .fallbackToDestructiveMigrationOnDowngrade(true)

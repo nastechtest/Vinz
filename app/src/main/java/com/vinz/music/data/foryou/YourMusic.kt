@@ -3,7 +3,7 @@ package com.vinz.music.data.foryou
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PlayEventEntity
 import com.vinz.music.data.model.Song
 import com.vinz.music.download.PlayLikelihood
 import com.vinz.music.playback.MusicKey

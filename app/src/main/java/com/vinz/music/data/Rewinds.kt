@@ -2,7 +2,7 @@ package com.vinz.music.data
 
 import com.vinz.music.R
 import com.vinz.music.tr
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
@@ -13,7 +13,7 @@ import androidx.work.WorkerParameters
 import com.vinz.music.AppContainer
 import com.vinz.music.BuildConfig
 import com.vinz.music.container
-import com.vinz.music.data.db.SongPlays
+import com.prism.music.data.db.SongPlays
 import com.vinz.music.data.model.AlbumRef
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song

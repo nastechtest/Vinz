@@ -16,7 +16,7 @@ import androidx.work.WorkerParameters
 import com.vinz.music.AppContainer
 import com.vinz.music.container
 import com.vinz.music.data.Notifications
-import com.vinz.music.data.db.ReleaseEntity
+import com.prism.music.data.db.ReleaseEntity
 import com.vinz.music.data.innertube.arr
 import com.vinz.music.data.innertube.str
 import com.vinz.music.data.model.AlbumItem

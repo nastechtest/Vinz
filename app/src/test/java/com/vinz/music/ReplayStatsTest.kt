@@ -1,7 +1,7 @@
 package com.vinz.music
 
 import com.vinz.music.data.ReplayStats
-import com.vinz.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PlayEventEntity
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate

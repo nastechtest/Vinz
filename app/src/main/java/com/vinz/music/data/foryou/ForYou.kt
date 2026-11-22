@@ -5,7 +5,7 @@ import com.vinz.music.tr
 import android.content.Context
 import android.util.Log
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.MixEntity
+import com.prism.music.data.db.MixEntity
 import com.vinz.music.data.model.Song
 import com.vinz.music.download.PlayLikelihood
 import kotlinx.coroutines.Dispatchers
@@ -108,7 +108,7 @@ class ForYou(private val c: AppContainer) {
 
     /** What the mixes are made from: 90 days of plays that count towards taste, the songs, likes, and a play model. */
     private class Listening(
-        val events: List<com.vinz.music.data.db.PlayEventEntity>,
+        val events: List<com.prism.music.data.db.PlayEventEntity>,
         val songs: Map<String, Song>,
         val liked: List<Song>,
         val model: PlayLikelihood,

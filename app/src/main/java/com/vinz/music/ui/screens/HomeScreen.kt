@@ -2,7 +2,7 @@ package com.vinz.music.ui.screens
 
 import com.vinz.music.R
 import com.vinz.music.tr
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import com.vinz.music.ui.theme.lit
 import androidx.compose.foundation.border
 import com.vinz.music.data.model.quickPicks
@@ -1076,7 +1076,7 @@ internal fun HeroRow(items: List<BrowseItem>, open: (BrowseItem) -> Unit) {
  */
 private class YearSoFar(
     val at: Long, val ms: Long, val months: List<Long>,
-    val topSong: com.vinz.music.data.db.SongPlays?, val topArtist: com.vinz.music.data.db.ArtistPlays?,
+    val topSong: com.prism.music.data.db.SongPlays?, val topArtist: com.prism.music.data.db.ArtistPlays?,
     /** What the bars are (#286) and the imported sources counted (1.8.1): read again when either changes. */
     val graph: com.vinz.music.data.prefs.ReplayGraph = com.vinz.music.data.prefs.ReplayGraph.MONTHS,
     val counted: Set<com.vinz.music.data.imports.ImportSource> = emptySet(),

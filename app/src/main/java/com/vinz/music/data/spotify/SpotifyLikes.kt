@@ -1,6 +1,6 @@
 package com.vinz.music.data.spotify
 
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.PrismDatabase
 import com.vinz.music.data.imports.HistoryImporter
 import com.vinz.music.data.imports.ImportKeys
 import com.vinz.music.data.imports.MatchResult
@@ -112,7 +112,7 @@ object LikesPlan {
  */
 class SpotifyLikes(
     private val api: SpotifyApi,
-    private val db: VinzDatabase,
+    private val db: PrismDatabase,
     private val importer: HistoryImporter,
     private val dir: File,
     /** Likes songs here (HistoryImports.likeImported). */

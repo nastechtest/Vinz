@@ -1,19 +1,19 @@
 package com.vinz.music.data.imports
 
-import com.vinz.music.data.db.AlbumPlays
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.CountedPlayDao
-import com.vinz.music.data.db.FirstPlay
-import com.vinz.music.data.db.MonthTotal
-import com.vinz.music.data.db.PlayEventDao
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.SongPlays
-import com.vinz.music.data.db.SourcePlays
+import com.prism.music.data.db.AlbumPlays
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.CountedPlayDao
+import com.prism.music.data.db.FirstPlay
+import com.prism.music.data.db.MonthTotal
+import com.prism.music.data.db.PlayEventDao
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.SongPlays
+import com.prism.music.data.db.SourcePlays
 
 /**
  * What Replay, Rewind and the Replay card count (1.8.1): Vinz's own plays, plus the imported sources the listener
  * counts ("Count history from"). With none of them, [VinzPlays] asks exactly what Replay always asked, so its numbers
- * can't change; with some, [CountedPlays] asks the same questions of [com.vinz.music.data.db.CountedPlay].
+ * can't change; with some, [CountedPlays] asks the same questions of [com.prism.music.data.db.CountedPlay].
  */
 interface PlayStats {
     /** The imported sources counted besides Vinz's own plays (empty: Vinz only). */

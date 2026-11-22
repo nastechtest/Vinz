@@ -14,8 +14,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vinz.music.container
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.model.Song
 import java.util.Calendar
 import java.util.concurrent.TimeUnit

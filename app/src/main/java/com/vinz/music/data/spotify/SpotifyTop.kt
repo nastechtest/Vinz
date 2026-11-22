@@ -1,8 +1,8 @@
 package com.vinz.music.data.spotify
 
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.SongPlays
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.SongPlays
 import com.vinz.music.data.imports.TasteBoost
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -22,7 +22,7 @@ data class TopItems(
  * ([TasteBoost], through [com.vinz.music.data.imports.TasteHistory]): the last four weeks weigh most. Replay never
  * counts it (it isn't plays). The songs go through matching like any import; until one is matched it can't be offered.
  */
-class SpotifyTop(private val api: SpotifyApi, private val db: VinzDatabase, private val dir: File) {
+class SpotifyTop(private val api: SpotifyApi, private val db: PrismDatabase, private val dir: File) {
     private val file = File(dir, "top.json")
     private val json = Json { ignoreUnknownKeys = true }
     @Volatile private var cached: TopItems? = null

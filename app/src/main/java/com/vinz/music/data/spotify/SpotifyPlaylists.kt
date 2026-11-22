@@ -1,6 +1,6 @@
 package com.vinz.music.data.spotify
 
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.PrismDatabase
 import com.vinz.music.data.imports.HistoryImporter
 import com.vinz.music.data.imports.MatchResult
 import com.vinz.music.data.imports.TrackToMatch
@@ -46,7 +46,7 @@ data class PlaylistMirror(
  */
 class SpotifyPlaylists(
     private val api: SpotifyApi,
-    private val db: VinzDatabase,
+    private val db: PrismDatabase,
     private val importer: HistoryImporter,
     private val dir: File,
     private val hands: Hands,

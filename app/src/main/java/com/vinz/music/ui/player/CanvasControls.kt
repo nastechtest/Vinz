@@ -1,0 +1,132 @@
+package com.vinz.music.ui.player
+
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+
+/** 1.8.6 Canvas, Full screen: how long the controls stay after the last touch. */
+internal const val CANVAS_CONTROLS_MS = 4_000L
+
+/**
+ * 1.8.6 Canvas, Full screen: whether the controls may fade away, leaving the title, the artist and a thin progress
+ * line over the picture. Anything that says "someone is using them, or can't get them back by looking" keeps them up:
+ * a paused song, a sheet, the lyrics or the queue, a drag on the volume, a screen reader, Reduce motion (nothing moves
+ * behind them then), and the listener's own "Keep controls showing".
+ */
+internal fun canvasControlsMayFade(
+    fullScreen: Boolean,
+    hasCanvas: Boolean,
+    keepControls: Boolean,
+    playing: Boolean,
+    covered: Boolean,
+    panelOpen: Boolean,
+    dragging: Boolean,
+    screenReader: Boolean,
+    reduceMotion: Boolean,
+): Boolean = fullScreen && hasCanvas && !keepControls && playing && !covered && !panelOpen && !dragging && !screenReader && !reduceMotion
+
+/**
+ * 1.8.7, "Keep lyrics showing": the line being sung is on the picture while the controls may fade ([fades], so only over
+ * a full-screen canvas that is playing) and are not fully up ([controlsUp]): it comes in as they go and leaves with
+ * their return. Off unless the listener asked for it ([wanted]).
+ */
+internal fun canvasLyricShown(fades: Boolean, wanted: Boolean, controlsUp: Boolean): Boolean = fades && wanted && !controlsUp
+
+/** Between the kept lyric line and the kept title under it. */
+internal val CANVAS_LYRIC_GAP = androidx.compose.ui.unit.Dp(18f)
+
+/**
+ * The darkening over a full-screen canvas, top / middle / bottom, for how much of the controls shows ([controls] 0..1)
+ * and whether a list (lyrics, queue) is read over it ([panel] 0..1). Lighter with the controls away, never so light
+ * at the bottom that the kept title can't be read; a music video is busier than an animated cover, so it gets more.
+ */
+internal fun canvasScrim(controls: Float, panel: Float, video: Boolean): FloatArray {
+    val c = controls.coerceIn(0f, 1f); val p = panel.coerceIn(0f, 1f)
+    val more = if (video) 0.08f else 0f
+    val top = 0.12f + (0.13f + more) * c
+    val mid = 0.18f + (0.27f + more) * c
+    val bottom = 0.6f + (0.15f + more) * c
+    return floatArrayOf(top, mid, bottom).map { (it + (1f - it) * 0.45f * p).coerceIn(0f, 0.92f) }.toFloatArray()
+}
+
+/**
+ * Canvas plays behind the whole player: "Full screen" is picked and the player is the upright one playing a song. The
+ * edge-to-edge cover does not stop it (it did until 1.8.6, when Full screen stayed a banner there and the controls
+ * never faded): the banner is the cover while the loop loads, then gives way to it.
+ *
+ * Only a loop from a music video ([loop]) fills the player. An animated cover never does (owner, 2026-11-13: it "should
+ * look only like it used to"): it plays in the cover, or in the edge-to-edge banner, with the controls up.
+ */
+internal fun canvasFullScreen(fills: Boolean, videoMode: Boolean, wide: Boolean, loop: Boolean): Boolean = fills && loop && !videoMode && !wide
+
+/**
+ * Whether a song's canvas is one that fills the player in "Full screen" ([canvasFullScreen]'s `loop`): the loop from its
+ * music video, and since 1.8.7.6 Spotify's canvas (a tall loop made for the whole screen) while Canvas itself is on
+ * ([canvasOn]: "Full screen" is Canvas's own choice, so with Canvas off Spotify's canvas stays in the cover). Owner,
+ * 2026-11-16: with Spotify's canvas first the controls no longer faded, because it played in the cover like an animated
+ * cover. Vinz's animated cover still never fills.
+ */
+internal fun canvasFillsPlayer(art: com.vinz.music.data.canvas.CanvasArtwork?, canvasOn: Boolean): Boolean =
+    art?.clip != null || (art?.spotify == true && canvasOn)
+
+/**
+ * The song's "Animated cover" switch in the ⋯ menu: while Canvas and "Animated covers" are on and the song has an
+ * animated cover, and it stays after it was switched off for the song (the switch is the only way back; a cover switched
+ * off is no longer looked up, so it may not be known).
+ */
+internal fun canvasCoverSwitchShown(canvasOn: Boolean, covers: Boolean, hasCover: Boolean, switchedOff: Boolean): Boolean =
+    canvasOn && covers && (hasCover || switchedOff)
+
+/**
+ * The song's "Canvas" switch (its loop from the music video) in the ⋯ menu: while Canvas and "Use music videos" are on,
+ * for a song (not a file, a podcast…) that has a video, and it stays after it was switched off for the song.
+ */
+internal fun canvasLoopSwitchShown(canvasOn: Boolean, useVideos: Boolean, isSong: Boolean, hasVideo: Boolean, switchedOff: Boolean): Boolean =
+    canvasOn && useVideos && isSong && (hasVideo || switchedOff)
+
+/** 1.8.7.6: the song's "Spotify canvas" switch: while Spotify's canvas is asked, for a song Spotify has one for, and it stays after it was switched off. */
+internal fun canvasSpotifySwitchShown(asked: Boolean, hasCanvas: Boolean, switchedOff: Boolean): Boolean = asked && (hasCanvas || switchedOff)
+
+/** "Use:" is offered for a song that has both an animated cover and a video loop, neither of them switched off. */
+internal fun canvasUseShown(
+    canvasOn: Boolean, covers: Boolean, useVideos: Boolean, hasCover: Boolean, hasVideo: Boolean, coverOff: Boolean, loopOff: Boolean,
+): Boolean = canvasOn && covers && useVideos && hasCover && hasVideo && !coverOff && !loopOff
+
+/** "Pick another video" is offered for a song (not a file, a podcast…) while Canvas is on, uses music videos and its loop isn't off for the song. */
+internal fun canvasVideoPickShown(canvasOn: Boolean, useVideos: Boolean, isSong: Boolean, switchedOff: Boolean): Boolean =
+    canvasOn && useVideos && isSong && !switchedOff
+
+/**
+ * Someone who had Canvas on before 1.8.6 is asked once, with the player open, whether music videos may be used
+ * (a new install comes with them on, see `setOnboarded`). Never while Canvas is off.
+ */
+internal fun canvasAsksOnce(canvasOn: Boolean, answered: Boolean, playerOpen: Boolean): Boolean = canvasOn && !answered && playerOpen
+
+/**
+ * How much of the album cover shows on the player (0..1) while a canvas fills it (owner, 2026-11-13: "when canvas is
+ * showing, the album artwork should not be seen"). It goes as the canvas comes in ([canvasShown] 0..1, so a song whose
+ * canvas is still loading, or that has none, keeps its cover), and returns as the cover shrinks into the header over the
+ * lyrics and the queue ([collapsed] 0..1), where it is the small picture beside the title.
+ */
+internal fun coverOverCanvas(fullScreen: Boolean, canvasShown: Float, collapsed: Float): Float =
+    if (!fullScreen) 1f else 1f - canvasShown.coerceIn(0f, 1f) * (1f - collapsed.coerceIn(0f, 1f))
+
+/** True while a screen reader that explores by touch (TalkBack) is on. */
+@Composable
+internal fun rememberTouchExploration(): State<Boolean> {
+    val context = LocalContext.current
+    val am = remember { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager }
+    val on = remember { mutableStateOf(am?.isTouchExplorationEnabled == true) }
+    DisposableEffect(am) {
+        val l = AccessibilityManager.TouchExplorationStateChangeListener { on.value = it }
+        am?.addTouchExplorationStateChangeListener(l)
+        on.value = am?.isTouchExplorationEnabled == true
+        onDispose { am?.removeTouchExplorationStateChangeListener(l) }
+    }
+    return on
+}

@@ -336,7 +336,7 @@ class Requests181Test {
 
     // ------------------------------------------------ #311 new releases from favorite artists
 
-    private fun release(id: String, artist: String, name: String = artist) = com.vinz.music.data.db.ReleaseEntity(
+    private fun release(id: String, artist: String, name: String = artist) = com.prism.music.data.db.ReleaseEntity(
         id = id, artistId = artist, artistName = name, title = "T$id", kind = "Single", year = 2026,
         releaseDate = null, thumbnail = null, playlistId = null, firstSeenAt = 0, baseline = false, notifiedAt = 0,
     )

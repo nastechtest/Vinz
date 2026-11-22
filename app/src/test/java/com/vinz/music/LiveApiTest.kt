@@ -1,10 +1,10 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.GenreEntity
-import com.vinz.music.data.db.LyricsDao
-import com.vinz.music.data.db.LyricsEntity
-import com.vinz.music.data.db.MetaDao
-import com.vinz.music.data.db.MotionArtEntity
+import com.prism.music.data.db.GenreEntity
+import com.prism.music.data.db.LyricsDao
+import com.prism.music.data.db.LyricsEntity
+import com.prism.music.data.db.MetaDao
+import com.prism.music.data.db.MotionArtEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.innertube.YouTubeMusic

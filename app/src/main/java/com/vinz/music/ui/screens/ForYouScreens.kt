@@ -66,7 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.vinz.music.data.FavoriteArtist
-import com.vinz.music.data.db.ReleaseEntity
+import com.prism.music.data.db.ReleaseEntity
 import com.vinz.music.data.foryou.Excluded
 import com.vinz.music.data.foryou.Mix
 import com.vinz.music.data.foryou.ReleaseRadar

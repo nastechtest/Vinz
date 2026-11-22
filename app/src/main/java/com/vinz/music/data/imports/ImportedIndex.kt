@@ -1,6 +1,6 @@
 package com.vinz.music.data.imports
 
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.PrismDatabase
 import java.util.BitSet
 
 /**
@@ -102,7 +102,7 @@ internal class ImportedIndex private constructor(
         }
 
         /** [source]'s stored plays, read straight off a cursor (a long history is 100,000+ rows). */
-        fun of(db: VinzDatabase, source: ImportSource): ImportedIndex {
+        fun of(db: PrismDatabase, source: ImportSource): ImportedIndex {
             val songs = HashMap<String, Plays>()
             db.query(
                 androidx.sqlite.db.SimpleSQLiteQuery(
