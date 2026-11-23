@@ -2,6 +2,7 @@ package com.vinz.music.ui.screens.settings
 
 import android.content.Context
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,10 +42,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -87,6 +91,7 @@ import com.vinz.music.ui.theme.VinzTokens
 import com.vinz.music.ui.theme.VinzUi
 import com.vinz.music.ui.theme.appTypography
 import com.vinz.music.ui.theme.hairline
+import kotlin.math.roundToInt
 
 /*
  * Settings → Text & icons (1.8.4): what the page's rows draw. The examples are the old Text and Icons & shapes pages'
@@ -157,7 +162,31 @@ internal fun AppIconPicture(icon: AppIcon, size: Dp) {
     Box(Modifier.size(size).clip(RoundedCornerShape(size / 4))) {
         // An adaptive icon's layers are 108 units with the visible 72 in the middle: draw them 1.5× and crop.
         Image(painterResource(icon.background), null, Modifier.fillMaxSize().scale(1.5f))
-        Image(painterResource(icon.foreground), null, Modifier.fillMaxSize().scale(1.5f))
+        if (icon == AppIcon.CLASSIC) {
+            // Classic is a layer-list; painterResource cannot load it. Draw at the adaptive
+            // layer's 108dp size first, so its centered 64dp bitmap scales with the icon.
+            val context = LocalContext.current
+            val configuration = LocalConfiguration.current
+            val foreground = remember(context, configuration, icon.foreground) {
+                requireNotNull(context.getDrawable(icon.foreground))
+            }
+            Canvas(Modifier.fillMaxSize().scale(1.5f)) {
+                val layerSize = 108.dp.toPx().roundToInt().coerceAtLeast(1)
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    val save = native.save()
+                    try {
+                        native.scale(size.width / layerSize, size.height / layerSize)
+                        foreground.setBounds(0, 0, layerSize, layerSize)
+                        foreground.draw(native)
+                    } finally {
+                        native.restoreToCount(save)
+                    }
+                }
+            }
+        } else {
+            Image(painterResource(icon.foreground), null, Modifier.fillMaxSize().scale(1.5f))
+        }
     }
 }
 
