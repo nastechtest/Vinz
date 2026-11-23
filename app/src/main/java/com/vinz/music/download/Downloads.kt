@@ -60,6 +60,7 @@ fun Map<String, DownloadInfo>.forRow(id: String, standIns: Map<String, String>):
  * playlist's id for the same song played the FLAC with no mark. [fromPhone] is asked only while lossless sync has
  * files at all.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun rowDownloaded(song: Song, downloads: Map<String, DownloadInfo>, standIns: Map<String, String>, fromPhone: (Song) -> Boolean): Boolean {
     if (downloads.forRow(song.id, standIns)?.state == Download.STATE_COMPLETED) return true
     return !song.isLocal && !song.isVideo && downloads.values.any { it.lossless } && fromPhone(song)
@@ -844,6 +845,7 @@ class CancelDownloadsReceiver : android.content.BroadcastReceiver() {
 
 private val PREMIUM_ITAGS = com.vinz.music.data.stream.StreamResolver.PREMIUM_ITAGS
 /** A download on its way (or waiting to be): [Downloads.redownload] can start it over. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private val UNFINISHED = setOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_STOPPED, Download.STATE_FAILED)
 /** Below this a download isn't Premium's 256 kbps (normal quality is 128–160). */
 private const val PREMIUM_KBPS = 200
