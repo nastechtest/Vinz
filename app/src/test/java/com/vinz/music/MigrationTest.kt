@@ -124,6 +124,77 @@ class MigrationTest {
         db.close()
     }
 
+    /** The Vinz v9 export is taken verbatim from main. The v12 fixture is the genuine upstream Room export;
+     * its entities and view match the PR's v12 source. Room validates the resulting schema when opened. */
+    @Test
+    fun authenticVinzV9AndUpstreamV12PreserveHistoryAndUserChoices() {
+        val context = RuntimeEnvironment.getApplication()
+        val actualV9 = File(schemaDir.parentFile, "com.vinz.music.data.db.VinzDatabase/9.json")
+        for (from in listOf(9, 12)) {
+            val name = "migrate-real-v$from.db"
+            context.deleteDatabase(name)
+            val file = context.getDatabasePath(name)
+            createAt(file, from, if (from == 9) actualV9 else File(schemaDir, "12.json"))
+            val tables = listOf("songs", "play_events", "imported_plays", "import_matches") +
+                if (from == 12) listOf("song_traits", "song_tags", "canvas_clips") else emptyList()
+            fun rows(cursor: android.database.Cursor): List<List<String?>> = cursor.use {
+                buildList { while (it.moveToNext()) add((0 until it.columnCount).map { n -> it.getString(n) }) }
+            }
+            val before = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { old ->
+                old.execSQL("""INSERT INTO imported_plays (origin,timestamp,playedMs,skipped,estimated,title,artist,album,sourceId,songKey,matchedId)
+                    VALUES ('spotify',5000,60000,0,0,'Imported','Artist','Album','source','imported|artist','song1'),
+                           ('lastfm',6000,5000,1,1,'Short','Artist',NULL,NULL,'short|artist',NULL)""")
+                old.execSQL("""INSERT INTO import_matches (songKey,title,artist,album,durationMs,atLeastMs,sourceId,isrc,youtubeId,status,matchedId,candidates,checkedAt,tries)
+                    VALUES ('imported|artist','Imported','Artist','Album',200000,60000,'source','isrc','youtube','matched','song1',NULL,123,2)""")
+                if (from == 12) {
+                    old.execSQL("INSERT INTO song_tags VALUES ('favorite','song1',123)")
+                    old.execSQL("INSERT INTO song_traits VALUES ('song1',120.0,1,'C','8A',-9.0,0.6,1,123)")
+                    old.execSQL("""INSERT INTO canvas_clips VALUES ('song1','video1','', 'OMV',1080,137,10,20,
+                        0.5,0.0,0.1,0.0,0.1,'10,20',1,1,'old-video','cover',123,'')""")
+                }
+                tables.associateWith { rows(old.rawQuery("SELECT * FROM `$it` ORDER BY rowid", null)) }
+            }
+            val db = Room.databaseBuilder(context, PrismDatabase::class.java, name)
+                .addMigrations(*PrismDatabase.MIGRATIONS).allowMainThreadQueries().build()
+            val migrated = db.openHelper.writableDatabase // Room validates the entire final schema here.
+            assertEquals(13, migrated.version)
+            for (table in tables) assertEquals("v$from $table rows unchanged", before[table], rows(migrated.query("SELECT * FROM `$table` ORDER BY rowid")))
+            runBlocking {
+                assertEquals(2, db.counted().count(listOf("vinz"), 0, Long.MAX_VALUE))
+                assertEquals(200_000L, db.counted().totalMs(listOf("vinz"), 0, Long.MAX_VALUE))
+                assertEquals(3, db.counted().count(listOf("vinz", "spotify", "lastfm"), 0, Long.MAX_VALUE))
+                assertEquals(260_000L, db.counted().totalMs(listOf("vinz", "spotify", "lastfm"), 0, Long.MAX_VALUE))
+            }
+            db.close()
+        }
+    }
+
+    @Test
+    fun unknownDowngradeFailsWithoutDeletingData() {
+        val context = RuntimeEnvironment.getApplication()
+        val name = "migration-unknown-downgrade.db"
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name)
+        createAt(file, 12)
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { it.version = 14 }
+        val db = Room.databaseBuilder(context, PrismDatabase::class.java, name)
+            .addMigrations(*PrismDatabase.MIGRATIONS).allowMainThreadQueries().build()
+        val failure = runCatching { db.openHelper.writableDatabase }.exceptionOrNull()
+        db.close()
+        assertTrue("unsupported downgrade must fail", failure != null)
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY).use { old ->
+            assertEquals(14, old.version)
+            old.rawQuery("SELECT COUNT(*) FROM songs WHERE id = 'song1' AND liked = 1", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(1, it.getInt(0))
+            }
+            old.rawQuery("SELECT COUNT(*) FROM play_events", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(2, it.getInt(0))
+            }
+        }
+    }
+
     /** v10 (1.8.3): what's measured of songs gets its own table, empty until the copy from the prefs fills it. */
     @Test
     fun v10AddsSongTraits() {
@@ -201,11 +272,13 @@ class MigrationTest {
         fresh.close()
         assertEquals(current, versions.last())
         assertEquals("one migration per version step", current - 1, PrismDatabase.MIGRATIONS.size)
+        // The CI test-results artifact carries Room's generated export so it can be checked in verbatim.
+        println("ROOM_SCHEMA_EXPORT_BEGIN\n${File(schemaDir, "$current.json").readText()}\nROOM_SCHEMA_EXPORT_END")
     }
 
     /** Builds the database as version [version] of Vinz created it, from the exported schema. */
-    private fun createAt(file: File, version: Int) {
-        val schema = Json.parseToJsonElement(File(schemaDir, "$version.json").readText()).jsonObject["database"]!!.jsonObject
+    private fun createAt(file: File, version: Int, schemaFile: File = File(schemaDir, "$version.json")) {
+        val schema = Json.parseToJsonElement(schemaFile.readText()).jsonObject["database"]!!.jsonObject
         file.parentFile?.mkdirs()
         val db = SQLiteDatabase.openOrCreateDatabase(file, null)
         for (entity in schema["entities"]!!.jsonArray) {
