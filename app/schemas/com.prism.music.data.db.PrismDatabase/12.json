@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 12,
-    "identityHash": "7f0b444ff86ab06c90efa3ede705cba5",
+    "identityHash": "7d3f70b02671f8c3b40d45ced0797347",
     "entities": [
       {
         "tableName": "songs",
@@ -1071,12 +1071,12 @@
     "views": [
       {
         "viewName": "counted_plays",
-        "createSql": "CREATE VIEW `${VIEW_NAME}` AS "
+        "createSql": "CREATE VIEW `${VIEW_NAME}` AS SELECT 'prism' AS origin, songId, timestamp, playedMs, source, excluded FROM play_events\nUNION ALL\nSELECT origin, matchedId AS songId, timestamp, playedMs, origin AS source, 0 AS excluded FROM imported_plays WHERE playedMs >= 10000 AND (matchedId IS NOT NULL OR estimated = 0)"
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7f0b444ff86ab06c90efa3ede705cba5')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7d3f70b02671f8c3b40d45ced0797347')"
     ]
   }
 }
