@@ -205,6 +205,7 @@ private enum class ArtistSort(val label: String) { LIBRARY(tr(R.string.library_o
 private enum class PlaylistSort(val label: String) { CUSTOM(tr(R.string.your_order)), LIBRARY(tr(R.string.recent_activity)), TITLE(tr(R.string.title)) }
 
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun LibraryScreen(bottomPadding: Dp) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
@@ -1094,6 +1095,7 @@ private fun LibraryOrderSample(playlistsFirst: Boolean) {
 }
 
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun DownloadsSummary() {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
