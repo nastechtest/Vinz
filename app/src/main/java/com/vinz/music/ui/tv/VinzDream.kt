@@ -90,7 +90,7 @@ fun DreamContent() {
     val drift = ambientDrift(clock)
     Box(Modifier.fillMaxSize().tvBackdrop(null, Color(0xFF050507)).testTag(TAG_DREAM), contentAlignment = Alignment.Center) {
         Column(Modifier.offset(drift.x * 3, drift.y * 3), horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.size(160.dp))
+            Image(painterResource(R.drawable.vinz_logo), null, Modifier.size(160.dp))
             Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(clock)), style = MaterialTheme.typography.displayMedium, color = Color(0xFFD8D8DE).copy(alpha = 0.7f))
         }
     }
