@@ -39,6 +39,16 @@ class SingPackageTests(unittest.TestCase):
             root = Path(d); (root / "x").write_bytes(b"wrong")
             with self.assertRaisesRegex(ValueError, "checksum"):
                 p.source_bytes(root, {"filename":"x", "bytes":5, "sha256":"0" * 64})
+    def test_notice_bytes_are_independently_verified(self):
+        raw = io.BytesIO()
+        with zipfile.ZipFile(raw, "w") as z: z.writestr("onnxruntime/LICENSE", b"trusted notice")
+        contents = p.zip_entries(raw.getvalue(), {"onnxruntime/LICENSE"})
+        spec = {"filename": "LICENSE", "bytes": 14, "sha256": hashlib.sha256(b"trusted notice").hexdigest()}
+        self.assertEqual(p.verify_source(contents["onnxruntime/LICENSE"], spec), b"trusted notice")
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            p.verify_source(b"altered notice", spec)
+        with self.assertRaisesRegex(ValueError, "missing"):
+            p.zip_entries(raw.getvalue(), {"onnxruntime/ThirdPartyNotices.txt"})
     def test_modelstore_enum_consistency(self):
         package = {"filename":"x.zip", "sha256":"a" * 64, "download_bytes":12, "unpacked_bytes":34}
         with tempfile.TemporaryDirectory() as d:
