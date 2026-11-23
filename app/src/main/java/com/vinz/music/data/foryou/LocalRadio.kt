@@ -62,7 +62,7 @@ object LocalRadio {
     const val TEMPO_APART = 1.2
 
     class Pool(
-        val songs: List<Song>,
+        songs: List<Song>,
         val coListen: Map<String, Map<String, Double>>,
         val affinity: (Song) -> Double,
         val genreOf: (String) -> String?,
@@ -70,7 +70,11 @@ object LocalRadio {
         val keyFit: (String, String) -> Double = { _, _ -> 0.0 },
         /** A song's measured tempo (DJ mode's scan), null when it hasn't been measured. */
         val bpmOf: (String) -> Double? = { null },
-    )
+        /** Filter candidates before scoring and the pick cap. */
+        allowed: (Song) -> Boolean = { true },
+    ) {
+        val songs = songs.filter(allowed)
+    }
 
     /**
      * How close a pick is to the seeds, for playing beside YouTube's radio ([besideYouTube]):

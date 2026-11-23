@@ -76,7 +76,7 @@ class YourMusic(private val c: AppContainer) {
      * Vinz's radio: up to [count] songs from your own music to follow [seedIds] (the newest last), none of [inQueue],
      * nothing played in the last two hours. [offlineOnly]: only songs that play without a connection.
      */
-    suspend fun radio(seedIds: List<String>, inQueue: Set<String>, count: Int, offlineOnly: Boolean): List<LocalRadio.Pick> {
+    suspend fun radio(seedIds: List<String>, inQueue: Set<String>, count: Int, offlineOnly: Boolean, allowed: (Song) -> Boolean = { true }): List<LocalRadio.Pick> {
         val s = snapshot()
         val seeds = seedIds.mapNotNull { id -> s.songs[id] ?: c.db.songs().get(id)?.toSong() }
         if (seeds.isEmpty()) return emptyList()
@@ -94,6 +94,7 @@ class YourMusic(private val c: AppContainer) {
             genreOf = { s.genres[it] ?: seedGenres[it] },
             keyFit = { a, b -> keyFit(a, b) },
             bpmOf = { c.mixTempo.djBpm(it) },
+            allowed = allowed,
         )
         val day = LocalDate.now().toString()
         return LocalRadio.pick(seeds, pool, inQueue + recent, count) { id -> 0.9 + 0.2 * (((id + day + seedIds.last()).hashCode().toLong() and 0xffff) / 65535.0) }
