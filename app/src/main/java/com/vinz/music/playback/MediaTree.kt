@@ -102,6 +102,7 @@ class MediaTree(private val c: AppContainer) {
     private val grid get() = c.settings.current.autoGrid
 
     /** A folder whose contents show as cover tiles ([androidx.media3.session.MediaConstants]), when the grid's on. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun styled(browsableGrid: Boolean, playableGrid: Boolean): android.os.Bundle? = if (!grid) null else android.os.Bundle().apply {
         putInt(androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
             if (browsableGrid) androidx.media3.session.MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM else androidx.media3.session.MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
@@ -110,6 +111,7 @@ class MediaTree(private val c: AppContainer) {
     }
 
     /** An item listed under a heading ([title]) inside its folder, as Home's sections are. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun grouped(title: String) = android.os.Bundle().apply {
         putString(androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE, title)
     }
