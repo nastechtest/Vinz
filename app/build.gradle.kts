@@ -206,7 +206,7 @@ androidComponents {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.11.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -247,7 +247,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
     implementation("com.squareup.okhttp3:okhttp:5.5.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.11.0")
 
@@ -260,15 +260,15 @@ dependencies {
     implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
     // Sing's vocal separation (Spleeter) runs on ONNX Runtime (MIT). Its native libraries (13+ MB per CPU type) aren't
     // packed into the APK (see packaging below): they're downloaded with Sing's model on first use (ModelStore).
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.32.0")
     // Blend: QR codes made and read (ZXing core, Apache-2.0), the camera for scanning one (CameraX, Apache-2.0).
     implementation("com.google.zxing:core:3.5.4")
-    val camerax = "1.4.2"
+    val camerax = "1.7.0"
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
     // On the PC, tests run the same models with ONNX Runtime's desktop build.
-    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.31.1")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.32.0")
 
     implementation("dev.chrisbanes.haze:haze:2.1.0")
     implementation("dev.chrisbanes.haze:haze-blur:2.1.0")
@@ -283,7 +283,7 @@ dependencies {
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Renders the backgrounds to PNGs on the PC (BackdropRenderTest), with Robolectric's real graphics.
-    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("org.robolectric:robolectric:4.18.1")
 
     // In-app tests (1.7.9, release-check PLAN.md): Compose UI tests on a device, all Apache-2.0, test-only.
     androidTestImplementation(composeBom)
