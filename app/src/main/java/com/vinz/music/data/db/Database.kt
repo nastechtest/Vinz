@@ -765,7 +765,7 @@ interface RomanizedDao {
         RomanizedEntity::class, ReleaseEntity::class, MixEntity::class, BlendEntity::class, RecognitionEntity::class,
         ImportedPlayEntity::class, ImportMatchEntity::class, SongTraitsEntity::class, SongTagEntity::class, CanvasClipEntity::class],
     views = [CountedPlay::class],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class PrismDatabase : RoomDatabase() {
@@ -885,13 +885,19 @@ abstract class PrismDatabase : RoomDatabase() {
                     db.execSQL("CREATE TABLE IF NOT EXISTS `canvas_clips` (`songId` TEXT NOT NULL, `videoId` TEXT, `why` TEXT NOT NULL, `videoType` TEXT, `height` INTEGER NOT NULL, `itag` INTEGER NOT NULL, `startMs` INTEGER NOT NULL, `endMs` INTEGER NOT NULL, `cropX` REAL NOT NULL, `barLeft` REAL NOT NULL, `barTop` REAL NOT NULL, `barRight` REAL NOT NULL, `barBottom` REAL NOT NULL, `windows` TEXT NOT NULL, `refined` INTEGER NOT NULL, `picked` INTEGER NOT NULL, `rejectedVideos` TEXT NOT NULL, `prefer` TEXT, `checkedAt` INTEGER NOT NULL, `crops` TEXT NOT NULL, PRIMARY KEY(`songId`))")
                 }
             },
+            // Both authentic Vinz v9 databases and PR v12 databases must converge on the Vinz origin.
+            // Views contain no data; do not modify the history tables.
+            object : Migration(12, 13) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("DROP VIEW IF EXISTS `counted_plays`")
+                    db.execSQL("CREATE VIEW `counted_plays` AS $COUNTED_PLAYS_SQL")
+                }
+            },
         )
 
         fun build(context: Context): PrismDatabase =
             Room.databaseBuilder(context, PrismDatabase::class.java, "vinz.db")
                 .addMigrations(*MIGRATIONS)
-                // Only a downgrade (installing an older Vinz over a newer one) may start the database over.
-                .fallbackToDestructiveMigrationOnDowngrade(true)
                 .build()
     }
 }
