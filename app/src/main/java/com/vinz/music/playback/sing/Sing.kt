@@ -35,6 +35,7 @@ import java.util.concurrent.Executors
  * Songs are separated one at a time, the playing one first, then the next; the vocals are written as they're worked
  * out, so a song can be sung along to a few seconds after Sing starts on it.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class Sing(private val c: AppContainer) : VocalStemProcessor.Source {
     override val store = StemStore(c.app.filesDir)
 
