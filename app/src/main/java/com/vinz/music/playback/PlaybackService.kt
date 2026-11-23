@@ -3237,6 +3237,7 @@ private const val AUTOPLAY_WAIT_MS = 15_000L
  * app's codecs when another one needs them (1.7.9's night check). Unreadable bytes are a [androidx.media3.common.ParserException],
  * handled on their own; a format this phone can't decode has its own error codes and isn't retried.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun stuckPlaying(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
     it is androidx.media3.common.util.StuckPlayerException && it.stuckType == androidx.media3.common.util.StuckPlayerException.STUCK_PLAYING_NO_PROGRESS
 }
@@ -3244,6 +3245,7 @@ internal fun stuckPlaying(error: Throwable): Boolean = generateSequence(error) {
 /** How many times a song whose position stopped moving is tried again ([stuckPlaying]) before it counts as failed. */
 private const val STUCK_TRIES = 2
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun decoderLost(error: PlaybackException): Boolean =
     (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED || error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) &&
         generateSequence(error as Throwable) { it.cause }.none { it is androidx.media3.common.ParserException }
