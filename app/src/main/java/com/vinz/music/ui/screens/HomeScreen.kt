@@ -754,7 +754,8 @@ private fun HomeTopRow(greeting: String, today: String, showGreeting: Boolean) {
             com.vinz.music.ui.components.Eyebrow(today)
             Text(greeting, style = com.vinz.music.ui.components.pageTitleStyle(), maxLines = 2)
             val profile by LocalContainer.current.account.profile.collectAsState()
-            val name = profile?.name ?: settings.accountName
+            val cloudIdentity = com.vinz.music.ui.screens.account.ExistingCloudAccountGateway(LocalContainer.current.vinzCloudAccount).identity
+            val name = profile?.name ?: cloudIdentity?.email?.substringBefore('@') ?: settings.accountName
             if (settings.greetingShowName && name.isNotBlank()) Text(
                 name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -72,6 +72,7 @@ fun ProfilePicture(modifier: Modifier = Modifier, description: String = tr(R.str
     val s = LocalAppSettings.current
     val profile by c.account.profile.collectAsState()
     val p = profile
+    val cloudIdentity = com.vinz.music.ui.screens.account.ExistingCloudAccountGateway(c.vinzCloudAccount).identity
     BoxWithConstraints(
         modifier.clip(CircleShape).background(com.vinz.music.ui.components.glassFill(1.4f))
             .border(if (p != null) 1.5.dp else 1.dp, if (p != null) VinzTokens.spectrumRing() else com.vinz.music.ui.components.glassEdge(), CircleShape),
@@ -90,6 +91,11 @@ fun ProfilePicture(modifier: Modifier = Modifier, description: String = tr(R.str
             }
             p != null -> Text(
                 p.name.trim().take(1).uppercase(), Modifier.clearAndSetSemantics { contentDescription = description },
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = (side.value * 0.42f).sp, fontWeight = FontWeight.Light),
+            )
+            cloudIdentity != null && cloudIdentity.email.isNotBlank() -> Text(
+                cloudIdentity.email.trim().take(1).uppercase(), Modifier.clearAndSetSemantics { contentDescription = description },
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium.copy(fontSize = (side.value * 0.42f).sp, fontWeight = FontWeight.Light),
             )
@@ -149,7 +155,7 @@ private fun AvatarPicker(selected: String?, photoChosen: Boolean, onPhotos: () -
  * it's the account's own page: change it, copy a YouTube Music library into Vinz, or remove it (the music stays).
  */
 @Composable
-fun VinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit) {
+fun LocalVinzAccountScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit) {
     val c = LocalContainer.current
     val s = LocalAppSettings.current
     val context = LocalContext.current

@@ -455,17 +455,17 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
             Feature(VinzIcons.Recognize, tr(R.string.name_the_song_playing_around_you))
             Feature(VinzIcons.Replay, tr(R.string.rewind_your_year_in_music))
             Spacer(Modifier.height(32.dp))
-            // A Vinz Account first: it's all on this phone, no sign-in anywhere. Google's for the YouTube Music library.
+            // Cloud identity is optional; YouTube playback can still be connected from Settings.
             VinzButton(onClick = onAccount, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
                 Text(tr(R.string.make_a_vinz_account), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             Text(
-                tr(R.string.kept_on_this_phone_no_email),
+                tr(R.string.cloud_account_intro),
                 color = Color.White.copy(alpha = 0.62f), style = MaterialTheme.typography.bodySmall,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
             com.vinz.music.ui.components.VinzOutlinedButton(onClick = onSignIn, Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp), shape = RoundedCornerShape(18.dp)) {
-                Text(tr(R.string.sign_in_with_google), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(tr(R.string.cloud_account_sign_in_cta), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             VinzTextButton(onClick = onSkip, Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 Text(tr(R.string.skip_for_now), color = Color.White.copy(alpha = 0.8f))

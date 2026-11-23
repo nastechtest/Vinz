@@ -299,9 +299,24 @@ internal fun AccountCard() {
         dismissButton = { VinzTextButton({ confirmSignOut = false; signOut() }) { Text(tr(R.string.just_sign_out)) } },
     )
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
-    // The Vinz Account: who the listener is in Vinz, on this phone.
+    // Cloud identity is independent of the upstream local profile and YouTube playback session.
     Row(
         Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(VinzIcons.Person, null, Modifier.size(56.dp), tint = ink)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.titleMedium, color = ink)
+            Text(com.vinz.music.ui.screens.account.ExistingCloudAccountGateway(c.vinzCloudAccount).identity?.email
+                ?: tr(R.string.cloud_account_summary), style = MaterialTheme.typography.bodySmall,
+                color = ink.copy(alpha = 0.75f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Icon(VinzIcons.ChevronRight, null, tint = ink)
+    }
+    // Retain Prism's local profile editor and its library-copy behavior separately.
+    Row(
+        Modifier.fillMaxWidth().clickable { nav.go(Routes.LOCAL_ACCOUNT) }.padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (profile != null || s.isLoggedIn) com.vinz.music.ui.screens.ProfilePicture(Modifier.size(56.dp))
