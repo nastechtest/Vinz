@@ -65,6 +65,7 @@ import kotlinx.coroutines.launch
  * lyrics and queue buttons, previous / next…) shows under Playing, so hiding a part never takes a feature away.
  */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun PlayerOptionsSheet(
     song: Song,
     hasCanvas: Boolean,
