@@ -10,7 +10,6 @@ import com.vinz.music.data.lyrics.roman.Cyrillic
 import com.vinz.music.data.lyrics.roman.Greek
 import com.vinz.music.data.lyrics.roman.Hangul
 import com.vinz.music.data.lyrics.roman.Japanese
-import com.vinz.music.data.lyrics.roman.JapaneseKanji
 import com.vinz.music.data.lyrics.roman.Kana
 import com.vinz.music.data.lyrics.roman.Script
 import com.vinz.music.data.lyrics.roman.plainLatin
@@ -59,8 +58,7 @@ class Romanizer(
     )
 
     /**
-     * Songs the listener said are Japanese (true) or not (false), whatever their letters suggest (6.3): kept, so the
-     * choice sticks over every later look-up and lyric source.
+     * Preserved Japanese classification choices. Lyrics romanization follows main and does not consult these choices.
      */
     private val readAs = HashMap<String, Boolean>().apply {
         songPrefs?.all?.forEach { (k, v) -> if (k.startsWith(READ_AS_PREFIX) && v is Boolean) put(k.removePrefix(READ_AS_PREFIX), v) }
@@ -138,18 +136,12 @@ class Romanizer(
     /**
      * [lines] in Latin letters, line for line (null where a line needs none: it's already Latin, or in one of [skip],
      * the scripts the listener reads). Word-timed lines come back word-timed. [network] allows Google's romanization.
-     *
-     * Whether it's Japanese is decided for the whole song ([isJapanese]): the listener's word, else any kana in its
-     * lyrics, [title], [artist] or [album]. A line of only kanji looks Chinese on its own (#370).
      */
-    suspend fun romanize(
-        songId: String, lines: List<LyricLine>, skip: Set<Script>, network: Boolean = true,
-        title: String = "", artist: String = "", album: String = "",
-    ): List<LyricLine?> =
+    suspend fun romanize(songId: String, lines: List<LyricLine>, skip: Set<Script>, network: Boolean = true): List<LyricLine?> =
         withContext(Dispatchers.Default) {
-            val japaneseSong = isJapanese(songId, lines, title, artist, album)
+            val japaneseSong = lines.any { Script.KANA in Script.foreignIn(it.text) }
             val jaReady = japaneseForTests != null || models.ready(ModelStore.Model.JAPANESE)
-            val key = "$songId|$VERSION|${if (jaReady) "ja" else "-"}|${if (japaneseSong) "j" else ""}|${skip.sorted().joinToString(",")}|" +
+            val key = "$songId|$VERSION|${if (jaReady) "ja" else "-"}|${skip.sorted().joinToString(",")}|" +
                 lines.joinToString("\n") { it.text + "|" + it.backgroundLine?.text.orEmpty() }.hashCode()
             synchronized(memory) { memory[key] }?.let { return@withContext it }
             runCatching { dao.get(key) }.getOrNull()?.let { saved ->
@@ -187,7 +179,7 @@ class Romanizer(
 
             if (online.isNotEmpty()) {
                 val texts = online.flatMap { i -> listOf(lines[i].text, lines[i].backgroundLine?.text.orEmpty()) }
-                val fromGoogle = if (network) runCatching { google(texts, japaneseSong) }.onFailure {
+                val fromGoogle = if (network) runCatching { google(texts) }.onFailure {
                     android.util.Log.w("VinzRoman", "Google's romanization failed: $it")
                 }.getOrNull() else null
                 // Android's own transliterator for what Google didn't spell out, but never in a Japanese song: it reads kanji
@@ -237,11 +229,9 @@ class Romanizer(
             else -> null
         }
         engine ?: return null
-        // A Japanese song's kanji in their Chinese forms (#370) are read as the Japanese ones.
-        fun read(text: String) = engine(if (japaneseSong) JapaneseKanji.fromChinese(text) else text)
-        if (line.words.isEmpty()) return read(line.text).joinToString("").trim().squeeze() to null
+        if (line.words.isEmpty()) return engine(line.text).joinToString("").trim().squeeze() to null
         val joined = line.words.joinToString("") { it.text }
-        val pieces = read(joined)
+        val pieces = engine(joined)
         val words = ArrayList<String>(line.words.size)
         var at = 0
         for (w in line.words) {
@@ -271,43 +261,35 @@ class Romanizer(
         return line.copy(text = s.t, words = words, background = bgWords)
     }
 
-    /**
-     * Google's romanization of [texts] (blank ones stay blank), in as few requests as it takes. In a [japaneseSong] the
-     * kana and kanji lines go together as Japanese: left to itself, Google takes a line of only kanji for Chinese (#370).
-     */
-    private suspend fun google(texts: List<String>, japaneseSong: Boolean): List<String> = withContext(Dispatchers.IO) {
+    /** Google's romanization of [texts] (blank ones stay blank), in as few requests as it takes. */
+    private suspend fun google(texts: List<String>): List<String> = withContext(Dispatchers.IO) {
         val out = Array(texts.size) { "" }
         // One request per script: Google detects one language per request, and a Hindi line sent with Chinese ones
         // came back in a scholarly spelling.
-        val groups = texts.withIndex().filter { it.value.isNotBlank() }.groupBy { v ->
-            Script.foreignIn(v.value).minOrNull().let { if (japaneseSong && it == Script.HAN) Script.KANA else it }
-        }
+        val groups = texts.withIndex().filter { it.value.isNotBlank() }.groupBy { Script.foreignIn(it.value).minOrNull() }
         var single = 0
-        for ((script, wanted) in groups) {
-            val japanese = japaneseSong && script == Script.KANA
-            val asked = wanted.map { (if (japanese) JapaneseKanji.fromChinese(it.value) else it.value).trim() }
-            val language = if (japanese) "ja" else "auto"
-            val batched = runCatching { request(asked, language) }.getOrNull()
+        for ((_, wanted) in groups) {
+            val batched = runCatching { request(wanted.map { it.value.trim() }) }.getOrNull()
             if (batched != null && batched.size == wanted.size) {
                 wanted.forEachIndexed { k, v -> out[v.index] = clean(v.value, batched[k]) }
             } else {
                 // The lines came back run together (Google does that with some languages): one at a time instead.
-                for ((k, v) in wanted.withIndex()) {
+                for (v in wanted) {
                     if (single++ >= MAX_SINGLE) break
                     // One line refused (Google resting after many requests, or no romanization in its answer) no longer
                     // sinks the whole song (#256): that line is left for next time.
-                    out[v.index] = runCatching { clean(v.value, request(listOf(asked[k]), language).joinToString(" ")) }.getOrDefault("")
+                    out[v.index] = runCatching { clean(v.value, request(listOf(v.value.trim())).joinToString(" ")) }.getOrDefault("")
                 }
             }
         }
         out.toList()
     }
 
-    private fun request(texts: List<String>, language: String): List<String> {
+    private fun request(texts: List<String>): List<String> {
         val req = Request.Builder()
             // With a translation asked for too, Google spells Hindi and the like the everyday way ("mere sapnon ki
             // rani"); asked for the romanization alone, it gives the scholarly one ("mērē sapanōṁ kī rānī").
-            .url("https://translate.googleapis.com/translate_a/single?client=gtx&sl=$language&tl=en&dt=t&dt=rm")
+            .url("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&dt=rm")
             .post(FormBody.Builder().add("q", texts.joinToString("\n")).build())
             .build()
         http.newCall(req).execute().use { resp ->
@@ -346,7 +328,8 @@ class Romanizer(
         /** Bumped when an engine changes, so songs romanized the old way are romanized again. */
         // 3 (1.7.9.1, #256): Japanese songs spelled by Android's transliterator as Chinese are spelled again.
         // 4 (1.8.2.1, #370): Japanese songs with kanji read as Chinese are spelled again.
-        private const val VERSION = 4
+        // 5: restore main-branch lyrics behavior without reusing prior cached spellings.
+        private const val VERSION = 5
         private const val RELEASE_AFTER_MS = 3 * 60_000L
         /** [songPrefs] keys for the listener's "this song is Japanese" word (beside the plain song-id romanize switches). */
         private const val READ_AS_PREFIX = "ja-read:"
