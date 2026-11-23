@@ -70,7 +70,8 @@ object AudioDiagnostics {
         if (!enabled) return
         // The release check's night hunt reads these from logcat (a release build's files can't be read over adb):
         // only when it sets `adb shell setprop log.tag.VinzDiag DEBUG`, never otherwise.
-        if (android.util.Log.isLoggable("VinzDiag", android.util.Log.DEBUG)) android.util.Log.d("VinzDiag", "[$kind] $message")
+        val logTag = "VinzDiag"
+        if (android.util.Log.isLoggable(logTag, android.util.Log.DEBUG)) android.util.Log.d(logTag, "[$kind] $message")
         val line = "${synchronized(stamp) { stamp.format(Date()) }} [$kind] $message\n"
         writer.execute { append(line) }
     }
