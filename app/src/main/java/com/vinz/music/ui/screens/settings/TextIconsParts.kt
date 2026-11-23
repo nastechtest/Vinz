@@ -176,7 +176,7 @@ internal fun AppIconPicture(icon: AppIcon, size: Dp) {
                     val native = canvas.nativeCanvas
                     val save = native.save()
                     try {
-                        native.scale(size.width / layerSize, size.height / layerSize)
+                        native.scale(this.size.width / layerSize, this.size.height / layerSize)
                         foreground.setBounds(0, 0, layerSize, layerSize)
                         foreground.draw(native)
                     } finally {
