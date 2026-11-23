@@ -569,6 +569,8 @@ class AppContainer(val app: Application) {
     }
     /** The listener's Vinz Account: a name and picture kept on this phone ([com.vinz.music.data.VinzAccount]). */
     val account by lazy { com.vinz.music.data.VinzAccount(this) }
+    /** Cloud identity is separate from the local profile and YouTube playback cookies. */
+    val vinzCloudAccount by lazy { com.vinz.music.data.VinzCloudAccount(app, http) }
 
     /**
      * What Vinz calls the listener: their Vinz Account's name, else their YouTube Music account's, else "".
