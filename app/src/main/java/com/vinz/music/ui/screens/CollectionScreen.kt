@@ -329,6 +329,7 @@ class LiveCollection(
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun CollectionContent(type: CollectionType, live: LiveCollection, initialGenre: String?, bottomPadding: Dp, reload: () -> Unit) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
@@ -1402,6 +1403,7 @@ private fun HeroHeader(type: CollectionType, page: CollectionPage, art: String?,
  * cards follow the songs' order by title, artist or age.
  */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun DownloadedCollections(visible: List<Song>, sort: SortMode, query: String, filtered: Boolean) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
@@ -1788,6 +1790,7 @@ private fun sizeText(bytes: Long): String =
 
 /** Under the Downloads header: space used, saved lyrics, and anything still downloading. */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun DownloadsInfo(songs: List<Song>, ask: (String, () -> Unit) -> Unit) {
     val c = LocalContainer.current
     val scheme = MaterialTheme.colorScheme
@@ -1855,6 +1858,7 @@ fun downloadStateText(d: com.vinz.music.download.DownloadInfo, waitingForNetwork
  * data, and failed ones can be tried again (they're also retried by themselves when the phone is back online).
  */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun DownloadQueueStatus(unfinished: Collection<com.vinz.music.download.DownloadInfo>) {
     val c = LocalContainer.current
     val scheme = MaterialTheme.colorScheme
@@ -1881,6 +1885,7 @@ fun DownloadQueueStatus(unfinished: Collection<com.vinz.music.download.DownloadI
  * before Vinz kept the reason say so.
  */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun FailedDownloadsSheet(onDismiss: () -> Unit) {
     val c = LocalContainer.current
     val scheme = MaterialTheme.colorScheme
@@ -1934,6 +1939,7 @@ private const val MAX_FAILED_ROWS = 60
 
 /** Downloads' ⋯ menu entries: lyrics and bulk deletes. */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun downloadsSheetItems(ask: (String, () -> Unit) -> Unit): List<SheetItem> {
     val c = LocalContainer.current
     val all by c.downloadState.collectAsState()
