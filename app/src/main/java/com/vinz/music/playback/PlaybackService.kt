@@ -1578,7 +1578,12 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val session = c.sessionHeard
             // With no repeats on, a wider draw: most of Vinz's best picks for a song may well have played by now.
             suspend fun ownRadio(): List<com.vinz.music.data.foryou.LocalRadio.Pick> = runCatching {
-                withContext(Dispatchers.IO) { c.yourMusic.radio(seeds, existing, if (noRepeats) 60 else 15, offlineOnly = offline) }
+                withContext(Dispatchers.IO) {
+                    c.yourMusic.radio(seeds, existing, if (noRepeats) 60 else 15, offlineOnly = offline) {
+                        // Apply before the local pick cap; explicitly started song radios remain unrestricted.
+                        radio || com.vinz.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes)
+                    }
+                }
             }.onFailure { android.util.Log.w("VinzRadio", "Vinz radio failed", it) }.getOrNull().orEmpty()
                 .let { picks -> if (noRepeats) picks.filter { !session.has(it.song) }.take(15) else picks }
             val ownPicks = if (!useYours) emptyList() else ownRadio()
