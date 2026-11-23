@@ -154,7 +154,8 @@ class TitleSpellings(
     }
 
     companion object {
-        const val VERSION = 1
+        // Title spelling behavior changed; retain old rows but do not reuse them.
+        const val VERSION = 2
         const val BATCH = 40
         const val PAUSE_MS = 30L
     }
