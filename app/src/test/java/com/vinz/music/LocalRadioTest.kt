@@ -1,6 +1,6 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import com.vinz.music.data.foryou.LocalRadio
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
@@ -98,7 +98,7 @@ class LocalRadioTest {
     @Test
     fun replayMergesUploadsOfOneSong() {
         fun sp(id: String, title: String, artist: String, plays: Int, min: Long) =
-            com.vinz.music.data.db.SongPlays(id, plays, min * 60_000, title, artist, null, null, 200, null, artist)
+            com.prism.music.data.db.SongPlays(id, plays, min * 60_000, title, artist, null, null, 200, null, artist)
         val merged = listOf(
             sp("a", "Beat It", "Michael Jackson", 17, 58), sp("b", "Choosin' Texas", "Ella Langley", 8, 29),
             sp("c", "Beat It (Single Version)", "Michael Jackson", 6, 21), sp("d", "Beat It", "Fall Out Boy", 2, 6),

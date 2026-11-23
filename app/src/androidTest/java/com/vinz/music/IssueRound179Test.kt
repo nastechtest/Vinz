@@ -69,8 +69,7 @@ class IssueRound179Test {
         ui.grantRuntimePermission(Fixture.context.packageName, perm)
         tone = addTone("Vinz search tone")
         Fixture.launch()
-        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Library") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasText("Library") and hasClickAction()).onFirst().performClick()
+        compose.tapTab("Library")
         compose.clickWhenFound(hasText("Local files") and hasClickAction(), 15_000)
         compose.waitUntil(30_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasSetTextAction()).performTextInput("search tone")
@@ -82,7 +81,8 @@ class IssueRound179Test {
 
     /**
      * #227: the screen fades can be turned off from Settings. Since 1.8.0 that's "Changing screens" → None (fades and
-     * #208's slide are one choice, on the Customize Vinz page); searching "fades" still finds it.
+     * #208's slide are one choice; on Theme & colors since 1.8.4, it was on the Customize Vinz page); searching "fades"
+     * still finds it.
      */
     @Test fun screenFadesCanBeTurnedOff() {
         Fixture.ready()
@@ -92,7 +92,8 @@ class IssueRound179Test {
         compose.clickWhenFound(hasText("Changing screens") and hasClickAction())
         compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty() }
         assertTrue(Fixture.container.settings.current.behavior.screenFades)
-        compose.clickWhenFound(hasText("None") and hasClickAction())
+        // 1.8.4: Theme & colors → Theme and motion, the "Changing screens" row's chips.
+        compose.clickWhenFound(settingsChip("None", row = "Changing screens"))
         compose.waitUntil(5_000) { !Fixture.container.settings.current.behavior.screenFades }
     }
 

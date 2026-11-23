@@ -10,8 +10,9 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 
 /**
- * "Hey Google, play … on Vinz" from the phone (Assistant / Gemini send `MEDIA_PLAY_FROM_SEARCH` to an
- * activity, and only list apps that declare it as music sources). No screen: the query and the voice extras
+ * "Hey Google, play … on Vinz" from the phone (Assistant sends `MEDIA_PLAY_FROM_SEARCH` to an activity, and only lists
+ * apps that declare it as music sources; Gemini plays from its own list of linked services, #362, so it can't reach
+ * Vinz whatever's declared here). No screen: the query and the voice extras
  * (what kind of thing was asked for, the artist, album or playlist made out: [VoiceSearch]) go to the playback
  * service as a search request, and this closes at once. In the car, Android Auto asks the session directly
  * (the same request, through its play-from-search). It may be started with the phone locked, as it is in the car:

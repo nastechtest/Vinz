@@ -14,7 +14,9 @@ import com.vinz.music.ui.theme.Backdrop
 import com.vinz.music.ui.theme.BackdropGroup
 import com.vinz.music.ui.theme.BackdropKind
 import com.vinz.music.ui.theme.drawDesign
+import androidx.compose.ui.graphics.toArgb
 import com.vinz.music.ui.theme.drawPattern
+import com.vinz.music.ui.theme.drawSolid
 import com.vinz.music.ui.theme.schemeFromSeed
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,6 +85,49 @@ class BackdropRenderTest {
         sheet("dark", dark = true, accent = blue)
         sheet("light", dark = false, accent = blue)
         sheet("light-white-accent", dark = false, accent = Color.White)
+    }
+
+    /**
+     * #413 (1.8.4), Solid color: the eight sample colors as the screens draw them (the color flat, with no wash), each
+     * with the mock rows in the text colors picked for it and a glass card, onto solid.png. Every pixel of the
+     * background itself is the color, to the bit.
+     */
+    @Test
+    fun solidColors() {
+        val samples = listOf(0xFF000000, 0xFFFFFFFF, 0xFF808080, 0xFFFF0000, 0xFFFFFF00, 0xFF000080, 0xFFFFD1DC, 0xFF39FF14, 0xFF1A2B3C).map { Color(it) }
+        val out = Bitmap.createBitmap(samples.size * (w + 8), 2 * (h + 8), Bitmap.Config.ARGB_8888)
+        val sheet = android.graphics.Canvas(out)
+        sheet.drawColor(0xFF606060.toInt())
+        // Under a dark theme and under a light one: the color decides the text, not the theme.
+        listOf(true, false).forEachIndexed { row, dark ->
+            val base = schemeFromSeed(Color(0xFF3A86FF), dark, pureBlack = false)
+            samples.forEachIndexed { i, color ->
+                val plain = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                CanvasDrawScope().draw(Density(density), LayoutDirection.Ltr, Canvas(plain.asImageBitmap()), Size(w.toFloat(), h.toFloat())) {
+                    // As saved and read back ("COLOR|#RRGGBB").
+                    drawSolid(Backdrop.solidColor(Backdrop.parse(Backdrop.colorValue(color.toArgb())).second)!!)
+                }
+                val pixels = IntArray(w * h).also { plain.getPixels(it, 0, w, 0, 0, w, h) }
+                org.junit.Assert.assertTrue("#%06X: every pixel is the color".format(color.toArgb() and 0xFFFFFF), pixels.all { it == color.toArgb() })
+
+                val scheme = com.vinz.music.ui.theme.solidScheme(base, color)
+                val glass = Color.White.copy(alpha = if (com.vinz.music.ui.theme.solidIsDark(color)) 0.10f else 0.55f)
+                CanvasDrawScope().draw(Density(density), LayoutDirection.Ltr, Canvas(plain.asImageBitmap()), Size(w.toFloat(), h.toFloat())) {
+                    drawRect(scheme.onSurface, Offset(16f * density, 40f * density), Size(150f * density, 14f * density))
+                    drawRect(glass, Offset(12f * density, 76f * density), Size(size.width - 24f * density, 112f * density))
+                    for (r in 0 until 9) {
+                        val y = (90f + r * 52f) * density
+                        drawRect(scheme.primary, Offset(16f * density, y), Size(34f * density, 34f * density))
+                        drawRect(scheme.onSurface, Offset(60f * density, y + 6f * density), Size(140f * density, 8f * density))
+                        drawRect(scheme.onSurfaceVariant, Offset(60f * density, y + 20f * density), Size(90f * density, 6f * density))
+                    }
+                }
+                sheet.drawBitmap(plain, i * (w + 8f), row * (h + 8f), null)
+            }
+        }
+        val dir = File("build/backdrop-previews").apply { mkdirs() }
+        File(dir, "solid.png").outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        println("wrote ${File(dir, "solid.png").absolutePath}")
     }
 
     @Test

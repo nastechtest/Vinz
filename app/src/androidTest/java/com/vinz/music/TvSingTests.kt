@@ -79,7 +79,7 @@ class TvSingTests {
             val song = c.localMusic.tracks.value.first { it.song.title == "Vinz TV sing tone" }.song
             // Lyrics saved for it (as if found earlier): no network needed.
             val lrc = (0 until 10).joinToString("\n") { i -> "[00:%02d.00]Line number ${i + 1} of the tone".format(i * 8) }
-            runBlocking { c.db.lyrics().put(com.vinz.music.data.db.LyricsEntity(song.id, "LRCLIB", true, lrc, System.currentTimeMillis())) }
+            runBlocking { c.db.lyrics().put(com.prism.music.data.db.LyricsEntity(song.id, "LRCLIB", true, lrc, System.currentTimeMillis())) }
             instrumentation.runOnMainSync { c.player.playQueue(listOf(song), 0, com.vinz.music.playback.QueueSource(com.vinz.music.playback.QueueKind.OTHER, "TV sing test")) }
             val end0 = System.currentTimeMillis() + 20_000
             while (!c.player.isPlaying.value && System.currentTimeMillis() < end0) Thread.sleep(100)

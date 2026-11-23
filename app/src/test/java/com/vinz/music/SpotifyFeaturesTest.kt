@@ -5,10 +5,10 @@ import androidx.room.Room
 import com.vinz.music.SpotifyFixtures.antiHero
 import com.vinz.music.SpotifyFixtures.blinding
 import com.vinz.music.SpotifyFixtures.creep
-import com.vinz.music.data.db.ArtistPlays
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.SongPlays
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.ArtistPlays
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.SongPlays
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.imports.HistoryImporter
 import com.vinz.music.data.imports.ImportKeys
 import com.vinz.music.data.imports.ImportSource
@@ -53,7 +53,7 @@ import java.time.Instant
 @Config(sdk = [34], application = android.app.Application::class)
 class SpotifyFeaturesTest {
     private val app = RuntimeEnvironment.getApplication()
-    private val db = Room.inMemoryDatabaseBuilder(app, VinzDatabase::class.java).allowMainThreadQueries().build()
+    private val db = Room.inMemoryDatabaseBuilder(app, PrismDatabase::class.java).allowMainThreadQueries().build()
     private val importer = HistoryImporter(db)
     private val auth = app.getSharedPreferences(SpotifyStore.AUTH_PREFS, Context.MODE_PRIVATE)
     private val prefs = app.getSharedPreferences(SpotifyStore.PREFS, Context.MODE_PRIVATE)

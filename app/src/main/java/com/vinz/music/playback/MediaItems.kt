@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import android.net.Uri
@@ -17,6 +16,7 @@ const val EXTRA_VIDEO = "vinz.video"
  * Live streams are vinz://live/<id>, resolved to their HLS manifest, which carries the picture too: their video mode
  * keeps the same URI (so switching doesn't reload the stream) and only turns the video track on.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun Song.toMediaItem(videoId: String? = null): MediaItem {
     val uri = if (isLive) Uri.Builder().scheme("vinz").authority("live").appendPath(id).build()
     else Uri.Builder().scheme("vinz").authority("audio").appendPath(id).apply {
@@ -39,9 +39,11 @@ fun Song.toMediaItem(videoId: String? = null): MediaItem {
                 .setTitle(shown.title)
                 .setArtist(shown.artistText)
                 .setAlbumTitle(shown.album?.title)
-                // The cover picked for the song or its album (#305), through the artwork provider so a car can show it too.
+                // The cover picked for the song or its album (#305), or a file's own (#350), through the artwork provider:
+                // a car or a watch can't open Vinz's files, nor Android's album art without its own permission.
                 .setArtworkUri(com.vinz.music.data.PlaylistCovers.artOf(this@toMediaItem).let { art ->
-                    if (art != null && art.startsWith("file:")) ArtworkProvider.contentUri(art) else hiRes(art, 544)?.let(Uri::parse)
+                    if (art != null && (art.startsWith("file:") || art.startsWith(ArtworkProvider.LOCAL_ALBUM_ART))) ArtworkProvider.contentUri(art)
+                    else hiRes(art, 544)?.let(Uri::parse)
                 })
                 .setIsPlayable(true)
                 .setIsBrowsable(false)

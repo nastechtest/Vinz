@@ -14,7 +14,7 @@ Ten original, code-only Looks are credited to **Nastech Research**. Their editab
   modes use black; no moving background or glass layer is requested.
 - **Black-base / glass:** Noctilucent uses subdued drifting midnight fields over a black base; Crystal Tide uses
   clear liquid glass over ocean light fields; Glacier Frost is a still, frosted mist-blue Look.
-- **Water / polished motion:** Ripple Lagoon, Pelagic Flow, Opal Silk and Ember Prism use Vinz's existing animated
+- **Water / polished motion:** Ripple Lagoon, Pelagic Flow, Opal Silk and Ember Vinz use Vinz's existing animated
   ripples, waves, silk ribbons and light fields. They do not add a separate animation engine.
 
 The six moving Looks honor **Reduce motion** and **Performance mode**. Applying, importing or resetting a Look

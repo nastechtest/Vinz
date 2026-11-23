@@ -27,7 +27,7 @@ enum class ImportSource(val key: String, private val name_: String) {
     }
 }
 
-/** How far a song's match got ([com.vinz.music.data.db.ImportMatchEntity.status]). */
+/** How far a song's match got ([com.prism.music.data.db.ImportMatchEntity.status]). */
 enum class MatchStatus {
     /** Not looked up yet. */
     PENDING,
@@ -51,7 +51,7 @@ enum class MatchStatus {
 
 /**
  * One play read from a file, before it's stored. [endMs]-style or start-style times as the source has them (see
- * [com.vinz.music.data.db.ImportedPlayEntity.timestamp]). [fullPlay]: it ran to the song's end, so [playedMs] is the
+ * [com.prism.music.data.db.ImportedPlayEntity.timestamp]). [fullPlay]: it ran to the song's end, so [playedMs] is the
  * song's length (Spotify's "trackdone").
  */
 data class ParsedPlay(

@@ -38,13 +38,23 @@
       "purpose": "Full sherpa-onnx Apache-2.0 notice pinned to v1.12.17."
     },
     {
+      "id": "onnxruntime_notice_wheel",
+      "filename": "onnxruntime-1.31.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/a6/72/6c57163b63b5343853d7f0619c4f424a6e53ee762d7263667ff004bfede1/onnxruntime-1.31.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+      "bytes": 23753636,
+      "sha256": "d4092b78fc5bab77ce6522393098cdb2535423045ecdcff15cc0d022162d6b66",
+      "download_if_missing": true,
+      "purpose": "Official ONNX Runtime 1.31.0 PyPI wheel; only its independently pinned notices are used."
+    },
+    {
       "id": "onnxruntime_mit",
       "filename": "onnxruntime-MIT.txt",
       "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/LICENSE",
       "bytes": 1073,
       "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
-      "download_if_missing": true,
-      "purpose": "Full Microsoft ONNX Runtime MIT notice pinned to v1.31.0."
+      "archive_source": "onnxruntime_notice_wheel",
+      "archive_member": "onnxruntime/LICENSE",
+      "purpose": "Full Microsoft ONNX Runtime MIT notice pinned to v1.31.0; original source URL retained for provenance."
     },
     {
       "id": "onnxruntime_third_party",
@@ -52,7 +62,8 @@
       "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/ThirdPartyNotices.txt",
       "bytes": 338088,
       "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
-      "download_if_missing": true
+      "archive_source": "onnxruntime_notice_wheel",
+      "archive_member": "onnxruntime/ThirdPartyNotices.txt"
     }
   ]
 }

@@ -35,9 +35,9 @@ class UpdatesTest {
         compose.onNode(hasSetTextAction()).performTextInput("check for updates")
         compose.clickWhenFound(hasText("Check for updates") and hasClickAction())
         compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty() }
-        // Its page: tap it, and the update shows under it, ready to install (not tapped: that would leave for Android's
-        // "Install unknown apps" page).
-        compose.clickWhenFound(hasText("Check for updates") and hasClickAction())
+        // Its page (Backup & about → About & updates): tap the row, and the update shows under it, ready to install (not
+        // tapped: that would leave for Android's "Install unknown apps" page).
+        compose.clickWhenFound(settingsRow("Check for updates"))
         compose.waitForText("Vinz 9.9.9 is out")
         compose.waitForText("Vinz 9.9.9 is available")
         compose.onAllNodes(hasText("Tap to update") and hasClickAction(), useUnmergedTree = false).fetchSemanticsNodes().let {

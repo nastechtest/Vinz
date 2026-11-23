@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.LyricsDao
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsDao
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.LyricsPlusFormat
@@ -9,6 +9,7 @@ import com.vinz.music.data.lyrics.LyricsRepository
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.prefs.AppSettings
+import com.vinz.music.data.prefs.LyricsPrefs
 import com.vinz.music.data.prefs.LyricsSource
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -31,7 +32,7 @@ class BogusTimingTest {
             override suspend fun clearMisses() {}
             override suspend fun allFor(songId: String) = rows.filter { it.songId == songId }
         }
-        val settings = AppSettings(lyricsOrder = order, preferSynced = true)
+        val settings = AppSettings(preferSynced = true, lyrics = LyricsPrefs(order = order))
         return LyricsRepository(OkHttpClient(), dao, YouTubeMusic(InnerTube(OkHttpClient(), { settings })), { settings })
     }
 

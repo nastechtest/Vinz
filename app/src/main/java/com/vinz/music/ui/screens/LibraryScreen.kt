@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.ui.screens
 
 import com.vinz.music.R
@@ -14,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import com.vinz.music.ui.components.pane
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -68,6 +69,8 @@ import com.vinz.music.ui.LocalNavigator
 import com.vinz.music.ui.Routes
 import com.vinz.music.ui.components.EmptyState
 import com.vinz.music.ui.components.ItemCard
+import com.vinz.music.ui.components.LocatePlayingRow
+import com.vinz.music.ui.components.locatePulse
 import com.vinz.music.ui.components.PagerChips
 import com.vinz.music.ui.components.SortBar
 import com.vinz.music.ui.components.SongRow
@@ -76,20 +79,25 @@ import com.vinz.music.ui.components.featurePane
 import com.vinz.music.ui.theme.LocalAppSettings
 import com.vinz.music.ui.theme.LocalContainer
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 
 // The phone's own music files have their own page (Local files, from Playlists), with Songs, Artists and Albums.
-private enum class LibTab(val label: String) { PLAYLISTS(tr(R.string.playlists)), SONGS(tr(R.string.songs)), ALBUMS(tr(R.string.albums)), ARTISTS(tr(R.string.artists)), HISTORY(tr(R.string.history)), DOWNLOADS(tr(R.string.downloads)) }
+// Tags (1.8.3) last, and only once there's a tag: the other tabs keep their places.
+private enum class LibTab(val label: String) { PLAYLISTS(tr(R.string.playlists)), SONGS(tr(R.string.songs)), ALBUMS(tr(R.string.albums)), ARTISTS(tr(R.string.artists)), HISTORY(tr(R.string.history)), DOWNLOADS(tr(R.string.downloads)), TAGS(tr(R.string.tags)) }
 
 /** One row of History (#118): a play, or a run of plays of the same song one after another. */
-private data class HistoryEntry(val song: com.vinz.music.data.model.Song, val at: Long, val times: Int)
+private data class HistoryEntry(val song: com.vinz.music.data.model.Song, val at: Long, val times: Int, val ids: List<Long> = emptyList())
 
 /** Plays on this phone under day headings (Today, Yesterday, the weekday, then the date), repeats in a row folded into one. */
-private fun historyByDay(rows: List<com.vinz.music.data.db.HistoryRow>, now: Long = System.currentTimeMillis()): List<Pair<String, List<HistoryEntry>>> {
+private fun historyByDay(rows: List<com.prism.music.data.db.HistoryRow>, now: Long = System.currentTimeMillis()): List<Pair<String, List<HistoryEntry>>> {
     val entries = mutableListOf<HistoryEntry>()
     for (r in rows) {
         val last = entries.lastOrNull()
-        if (last != null && last.song.id == r.song.id && dayStart(last.at) == dayStart(r.playedAt)) entries[entries.lastIndex] = last.copy(times = last.times + 1)
-        else entries += HistoryEntry(r.song.toSong(), r.playedAt, 1)
+        if (last != null && last.song.id == r.song.id && dayStart(last.at) == dayStart(r.playedAt)) entries[entries.lastIndex] = last.copy(times = last.times + 1, ids = last.ids + r.eventId)
+        else entries += HistoryEntry(r.song.toSong(), r.playedAt, 1, listOf(r.eventId))
     }
     val today = dayStart(now)
     val dayMs = 86_400_000L
@@ -111,6 +119,47 @@ private fun dayStart(at: Long): Long = java.util.Calendar.getInstance().apply {
     set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
 }.timeInMillis
 
+/**
+ * "Removed from history" with Undo (#469), as the look's Undo bar shows it (the same bar, glass or plain), for five
+ * seconds (or the longer time to act the listener set in Android's accessibility settings): Undo puts the same plays
+ * back. TalkBack reads it out when it comes.
+ */
+@Composable
+internal fun HistoryUndoBar(
+    removed: com.vinz.music.data.HistoryRemoval.Removed?, modifier: Modifier, onGone: () -> Unit,
+    onUndo: (com.vinz.music.data.HistoryRemoval.Removed) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var shown by remember { mutableStateOf(removed) }
+    if (removed != null) shown = removed
+    LaunchedEffect(removed) { if (removed != null) { kotlinx.coroutines.delay(com.vinz.music.ui.components.undoBarMillis(context)); onGone() } }
+    androidx.compose.animation.AnimatedVisibility(
+        removed != null, modifier,
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { it / 2 }, exit = androidx.compose.animation.fadeOut(),
+    ) {
+        val r = shown ?: return@AnimatedVisibility
+        val glass = LocalAppSettings.current.glassEverywhere
+        val (ink, action) = com.vinz.music.ui.components.barInk(glass)
+        com.vinz.music.ui.components.BarSurface(glass, androidx.compose.foundation.shape.RoundedCornerShape(50), Modifier.widthIn(max = 520.dp)) {
+            Row(
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag(HISTORY_UNDO_TAG)
+                    .padding(start = 18.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(tr(R.string.removed_from_history), Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink, maxLines = 1)
+                Spacer(Modifier.width(8.dp))
+                VinzTextButton({ onUndo(r) }) {
+                    androidx.compose.material3.Icon(VinzIcons.Undo, null, Modifier.size(16.dp), tint = action)
+                    Spacer(Modifier.width(6.dp))
+                    Text(tr(R.string.undo), color = action)
+                }
+            }
+        }
+    }
+}
+
+internal const val HISTORY_UNDO_TAG = "library.history.undo"
+
 @Composable
 private fun HistoryHeading(title: String) {
     Text(
@@ -131,12 +180,32 @@ private enum class AlbumKind {
     }
 }
 
-private enum class AlbumSort(val label: String) { LIBRARY(tr(R.string.library_order)), DOWNLOADED(tr(R.string.downloaded_first)), MOST(tr(R.string.most_songs)), TITLE(tr(R.string.title)), ARTIST(tr(R.string.artist)) }
+/**
+ * Saved by name ("library:albums" in [com.vinz.music.data.LibraryRepository.sortOf]): new ones are added at the end and
+ * none is renamed. ADDED (1.8.4, D56): newest in the library first, by [com.vinz.music.data.AlbumFirstSeen].
+ */
+internal enum class AlbumSort(val label: String) {
+    LIBRARY(tr(R.string.library_order)), DOWNLOADED(tr(R.string.downloaded_first)), MOST(tr(R.string.most_songs)), TITLE(tr(R.string.title)), ARTIST(tr(R.string.artist)),
+    ADDED(tr(R.string.recently_added));
+
+    companion object {
+        /** The sort a saved name stands for; Library order for none, or for one this version doesn't know. */
+        fun of(stored: String?): AlbumSort = entries.firstOrNull { it.name == stored } ?: LIBRARY
+    }
+}
+
+/**
+ * Library → Albums by "Recently added": albums saved on the phone by when they were saved ([saved]), the account's by
+ * when Vinz first saw them ([seen]), newest first; the rest (and ties) in library order.
+ */
+internal fun <T : com.vinz.music.data.model.BrowseItem> albumsRecentlyAdded(albums: List<T>, saved: Map<String, Long>, seen: Map<String, Long>): List<T> =
+    com.vinz.music.data.AlbumFirstSeen.newestFirst(albums) { saved[it.id] ?: seen[it.id] }
 private enum class ArtistSort(val label: String) { LIBRARY(tr(R.string.library_order)), MOST(tr(R.string.most_songs)), NAME(tr(R.string.name)) }
 /** Saved by name ([com.vinz.music.data.LibraryRepository.playlistSort]); CUSTOM is the listener's own order. */
 private enum class PlaylistSort(val label: String) { CUSTOM(tr(R.string.your_order)), LIBRARY(tr(R.string.recent_activity)), TITLE(tr(R.string.title)) }
 
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun LibraryScreen(bottomPadding: Dp) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
@@ -154,17 +223,21 @@ fun LibraryScreen(bottomPadding: Dp) {
     val savedAlbums by c.vinzLibrary.albums.collectAsState()
     val scope = rememberCoroutineScope()
     var creating by remember { mutableStateOf(false) }
-    val startPage = remember { LibTab.entries.indexOfFirst { it.name == settings.libraryStartTab }.coerceAtLeast(0) }
-    val pager = rememberPagerState(initialPage = startPage) { LibTab.entries.size }
+    var newSmart by remember { mutableStateOf(false) }
+    if (newSmart) com.vinz.music.ui.components.SmartEditorSheet(null) { newSmart = false }
+    val tagList by c.tags.summaries.collectAsState()
+    val tabs = if (tagList.isEmpty()) LibTab.entries - LibTab.TAGS else LibTab.entries
+    val startPage = remember { LibTab.entries.indexOfFirst { it.name == settings.library.startTab }.coerceAtLeast(0).coerceAtMost(LibTab.DOWNLOADS.ordinal) }
+    val pager = rememberPagerState(initialPage = startPage) { tabs.size }
     // Each of Playlists, Albums and Artists can be a list or a grid of its own (1.7.6).
-    fun listFor(tab: LibTab) = (settings.libraryViews[tab.name] ?: settings.libraryView) == com.vinz.music.data.prefs.LibraryView.LIST
+    fun listFor(tab: LibTab) = (settings.library.views[tab.name] ?: settings.library.view) == com.vinz.music.data.prefs.LibraryView.LIST
     val viewTab = LibTab.entries[pager.currentPage].takeIf { it == LibTab.PLAYLISTS || it == LibTab.ALBUMS || it == LibTab.ARTISTS }
     val asList = listFor(viewTab ?: LibTab.PLAYLISTS)
     val pinned by c.library.pinned.collectAsState()
     val folders by c.vinzLibrary.folders.collectAsState()
     // Without the details (1.7.6): titles only under Library's covers and rows.
     fun shown(item: com.vinz.music.data.model.BrowseItem): com.vinz.music.data.model.BrowseItem =
-        if (settings.librarySubtitles) item else when (item) {
+        if (settings.library.subtitles) item else when (item) {
             is com.vinz.music.data.model.PlaylistItem -> item.copy(subtitle = "")
             is com.vinz.music.data.model.AlbumItem -> item.copy(subtitle = "")
             is ArtistItem -> item.copy(subtitle = "")
@@ -189,6 +262,17 @@ fun LibraryScreen(bottomPadding: Dp) {
     val menu = com.vinz.music.ui.components.rememberPlayMenu()
     var editingTiles by remember { mutableStateOf(false) }
     if (editingTiles) LibraryTilesSheet { editingTiles = false }
+    // History's "Remove from history" (#469): the plays taken out, until Undo or the bar goes.
+    var historyUndo by remember { mutableStateOf<com.vinz.music.data.HistoryRemoval.Removed?>(null) }
+    fun removePlays(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        scope.launch {
+            val removed = runCatching { com.vinz.music.data.HistoryRemoval.remove(c.db, ids) }.getOrNull() ?: return@launch
+            // Home's Replay card keeps its year a few minutes: read again. (A finished year's kept Rewind stays as it was.)
+            forgetYearSoFar()
+            historyUndo = removed
+        }
+    }
 
     // The account's saved albums / artists first, then the ones your liked and downloaded songs come from.
     val mine = remember(liked, dls) {
@@ -215,15 +299,37 @@ fun LibraryScreen(bottomPadding: Dp) {
     // ---- Sorting (each tab remembers its own, kept between visits)
     var songSort by remember { mutableStateOf(SongSort.entries.firstOrNull { it.name == c.library.sortOf("library:songs") } ?: SongSort.RECENT) }
     var songQuery by rememberSaveable { mutableStateOf("") }
-    var albumSort by remember { mutableStateOf(AlbumSort.entries.firstOrNull { it.name == c.library.sortOf("library:albums") } ?: AlbumSort.LIBRARY) }
+    // What's typed in each tab's search (#357), as the Songs tab has had since #184.
+    var playlistQuery by rememberSaveable { mutableStateOf("") }
+    var albumQuery by rememberSaveable { mutableStateOf("") }
+    var artistQuery by rememberSaveable { mutableStateOf("") }
+    var albumSort by remember { mutableStateOf(AlbumSort.of(c.library.sortOf("library:albums"))) }
+    val albumsSeen by c.library.albumsSeen.times.collectAsState()
     var artistSort by remember { mutableStateOf(ArtistSort.entries.firstOrNull { it.name == c.library.sortOf("library:artists") } ?: ArtistSort.LIBRARY) }
-    val sortedSongs = remember(liked, songSort) {
-        when (songSort) {
-            SongSort.RECENT -> liked
-            SongSort.TITLE -> liked.sortedBy { it.title.lowercase() }
-            SongSort.ARTIST -> liked.sortedWith(compareBy<com.vinz.music.data.model.Song> { it.primaryArtist.lowercase() }.thenBy { it.album?.title?.lowercase() ?: "" })
-            SongSort.ALBUM -> liked.sortedWith(compareBy<com.vinz.music.data.model.Song> { it.album?.title?.lowercase() ?: "\uFFFF" }.thenBy { it.title.lowercase() })
+    // Songs "From" (1.8.3, #382): liked songs and the songs of playlists the listener picks, once each. Vinz's own
+    // lists are read as they are now; YouTube's are loaded whole once per session.
+    var songsFrom by remember { mutableStateOf(com.vinz.music.data.SongsFrom.decode(c.library.sortOf(com.vinz.music.data.SongsFrom.KEY))) }
+    val fromLoaded by androidx.compose.runtime.produceState(emptyMap<String, List<com.vinz.music.data.model.Song>>(), songsFrom.playlists) {
+        songsFrom.playlists.filter { !com.vinz.music.data.VinzLibrary.isVinzList(it) }.forEach { id ->
+            c.playlistSongs.songs(id)?.let { value = value + (id to it) }
         }
+    }
+    val fromLoading = songsFrom.playlists.any { !com.vinz.music.data.VinzLibrary.isVinzList(it) && it !in fromLoaded }
+    val songsBase = remember(liked, songsFrom, vinzLists, fromLoaded) {
+        if (songsFrom.isDefault) liked
+        else com.vinz.music.data.SongsFrom.merge(liked, songsFrom.playlists.map { id -> vinzLists.firstOrNull { it.id == id }?.songs ?: fromLoaded[id].orEmpty() }, songsFrom)
+    }
+    var choosingFrom by remember { mutableStateOf(false) }
+    val sortedSongs = remember(songsBase, songSort) {
+        when (songSort) {
+            SongSort.RECENT -> songsBase
+            SongSort.TITLE -> songsBase.sortedBy { it.title.lowercase() }
+            SongSort.ARTIST -> songsBase.sortedWith(compareBy<com.vinz.music.data.model.Song> { it.primaryArtist.lowercase() }.thenBy { it.album?.title?.lowercase() ?: "" })
+            SongSort.ALBUM -> songsBase.sortedWith(compareBy<com.vinz.music.data.model.Song> { it.album?.title?.lowercase() ?: "\uFFFF" }.thenBy { it.title.lowercase() })
+        }
+    }
+    val shownSongs = remember(sortedSongs, songQuery) {
+        if (songQuery.isBlank()) sortedSongs else sortedSongs.filter { s -> libraryMatches(songQuery, s.title, s.artistText, s.album?.title.orEmpty()) }
     }
     val albumSongs = remember(mine) { mine.filter { it.album?.id != null }.groupBy { it.album!!.id!! } }
     // Downloaded songs per album: by the album's id, and by its title for albums YouTube lists under another edition's id.
@@ -232,8 +338,8 @@ fun LibraryScreen(bottomPadding: Dp) {
         done.mapNotNull { s -> s.album?.id?.let { it to s } }.groupingBy { it.first }.eachCount() to
             done.mapNotNull { s -> s.album?.title?.lowercase()?.let { it to s } }.groupingBy { it.first }.eachCount()
     }
-    val sortedAlbums = remember(albums, albumSort, albumSongs, downloadedPerAlbum) {
-        fun artistOf(a: com.vinz.music.data.model.BrowseItem) = albumSongs[a.id]?.first()?.primaryArtist ?: a.subtitle.split(" • ").firstOrNull { it != "Album" && it != "Single" && it != "EP" } ?: ""
+    fun artistOf(a: com.vinz.music.data.model.BrowseItem) = albumSongs[a.id]?.first()?.primaryArtist ?: a.subtitle.split(" • ").firstOrNull { it != "Album" && it != "Single" && it != "EP" } ?: ""
+    val sortedAlbums = remember(albums, albumSort, albumSongs, downloadedPerAlbum, albumsSeen, savedAlbums) {
         fun downloaded(a: com.vinz.music.data.model.BrowseItem) = downloadedPerAlbum.first[a.id] ?: downloadedPerAlbum.second[a.title.lowercase()] ?: 0
         when (albumSort) {
             AlbumSort.LIBRARY -> albums
@@ -241,10 +347,15 @@ fun LibraryScreen(bottomPadding: Dp) {
             AlbumSort.MOST -> albums.sortedByDescending { albumSongs[it.id]?.size ?: 0 }
             AlbumSort.TITLE -> albums.sortedBy { it.title.lowercase() }
             AlbumSort.ARTIST -> albums.sortedWith(compareBy<com.vinz.music.data.model.BrowseItem> { artistOf(it).lowercase() }.thenBy { it.title.lowercase() })
+            AlbumSort.ADDED -> albumsRecentlyAdded(albums, savedAlbums.associate { it.id to it.savedAt }, albumsSeen)
         }
     }
     var albumKind by remember { mutableStateOf(AlbumKind.entries.firstOrNull { it.name == c.library.sortOf("library:albums:kind") } ?: AlbumKind.ALL) }
     val albumKinds = remember(albums) { albums.map { AlbumKind.ALBUMS.shows(it) }.toSet() }
+    val shownAlbums = remember(sortedAlbums, albumKind, albumQuery, pinned) {
+        val single = tr(R.string.single)
+        pinnedFirst(sortedAlbums.filter { a -> albumKind.shows(a) && (albumQuery.isBlank() || libraryMatches(albumQuery, a.title, *albumNames(a.subtitle, single).toTypedArray())) })
+    }
     val artistSongs = remember(mine) { mine.flatMap { s -> s.artists.mapNotNull { it.id } }.groupingBy { it }.eachCount() }
     val sortedArtists = remember(artists, artistSort, artistSongs, favorites) {
         val fav = favorites.map { it.id }.toSet()
@@ -254,6 +365,9 @@ fun LibraryScreen(bottomPadding: Dp) {
             ArtistSort.NAME -> artists.sortedWith(compareByDescending<com.vinz.music.data.model.BrowseItem> { it.id in fav }.thenBy { it.title.lowercase().removePrefix("the ") })
         }
     }
+    val shownArtists = remember(sortedArtists, artistQuery, pinned) {
+        pinnedFirst(if (artistQuery.isBlank()) sortedArtists else sortedArtists.filter { libraryMatches(artistQuery, it.title) })
+    }
     // Playlists: YouTube Music's order, by title, or the listener's own (arranged in Rearrange mode).
     val playlistOrder by c.library.playlistOrder.collectAsState()
     val playlistSortName by c.library.playlistSort.collectAsState()
@@ -261,12 +375,28 @@ fun LibraryScreen(bottomPadding: Dp) {
         ?: if (playlistOrder.isEmpty()) PlaylistSort.LIBRARY else PlaylistSort.CUSTOM
     // Signed out, YouTube playlists saved on the phone (H7) sit with Vinz's own.
     val savedPlaylists by c.vinzLibrary.playlists.collectAsState()
-    val myPlaylists = remember(playlists, vinzLists, savedPlaylists, settings.isLoggedIn) {
-        // A Spotify playlist (1.8.1) says so where Vinz's own say "Vinz playlist".
-        vinzLists.map { l -> l.item().let { if (c.spotify.isSpotifyPlaylist(l.id)) it.copy(subtitle = tr(R.string.spot_playlist_subtitle, com.vinz.music.data.model.songCount(l.songs.size))) else it } } + (if (settings.isLoggedIn) emptyList() else savedPlaylists.map { it.item() }) + playlists.filter { it.id != "LM" }
+    // Which playlists are Spotify's and which are still being matched: Library follows both by itself (no refresh).
+    val spotifyMirrored by c.spotify.mirroredPlaylists.collectAsState()
+    val spotifyFilling by c.spotify.playlistFilling.collectAsState()
+    val spotifyBringing by c.spotify.followedBringing.collectAsState()
+    val myPlaylists = remember(playlists, vinzLists, savedPlaylists, settings.isLoggedIn, spotifyMirrored, spotifyFilling) {
+        // A Spotify playlist (1.8.1) says so where Vinz's own say "Vinz playlist"; one still being matched says how far.
+        vinzLists.map { l -> l.item().let {
+            if (!c.spotify.isSpotifyPlaylist(l.id)) it
+            else it.copy(subtitle = spotifyFilling[l.id]?.let { f -> tr(R.string.spot_playlist_syncing, f.done, f.total) }
+                ?: tr(R.string.spot_playlist_subtitle, com.vinz.music.data.model.songCount(l.songs.size)))
+        } } + (if (settings.isLoggedIn) emptyList() else savedPlaylists.map { it.item() }) + playlists.filter { it.id != "LM" }
+    }
+    if (choosingFrom) SongsFromSheet(songsFrom, myPlaylists, { choosingFrom = false }) { chosen ->
+        // Opened again: a YouTube playlist picked anew is read afresh.
+        chosen.playlists.filter { it !in songsFrom.playlists }.forEach { c.playlistSongs.refresh(it) }
+        songsFrom = chosen
+        c.library.setSort(com.vinz.music.data.SongsFrom.KEY, if (chosen.isDefault) null else chosen.encode())
     }
     // Spotify playlists the listener follows or saved (1.8.1): named after the playlists, greyed, their songs not shared.
     val spotifyFollowed by c.spotify.followedShown.collectAsState()
+    // Songs matched since the last look are in their Spotify playlists (and liked) by the time Library shows.
+    androidx.compose.runtime.LaunchedEffect(Unit) { c.spotify.placeMatched() }
     var followedOpen by remember { mutableStateOf<com.vinz.music.data.spotify.SpotifyPlaylist?>(null) }
     followedOpen?.let { p -> SpotifyFollowedSheet(p) { followedOpen = null } }
     var openingLink by remember { mutableStateOf(false) }
@@ -281,6 +411,17 @@ fun LibraryScreen(bottomPadding: Dp) {
         }).filterNot { it.id.removePrefix("VL") in inFolders }
     }
     var rearranging by rememberSaveable { mutableStateOf(false) }
+    // A search goes through every playlist, the ones in folders too, and the folders by name.
+    val searchingPlaylists = playlistQuery.isNotBlank() && !rearranging
+    val foundFolders = remember(folders, playlistQuery) { if (playlistQuery.isBlank()) folders else folders.filter { libraryMatches(playlistQuery, it.name) } }
+    val foundPlaylists = remember(myPlaylists, sortedPlaylists, playlistQuery, pinned) {
+        if (playlistQuery.isBlank()) sortedPlaylists
+        else {
+            val inList = sortedPlaylists.map { it.id }.toSet()
+            pinnedFirst(sortedPlaylists + myPlaylists.filter { it.id !in inList }).filter { libraryMatches(playlistQuery, it.title) }
+        }
+    }
+    val foundFollowed = remember(spotifyFollowed, playlistQuery) { if (playlistQuery.isBlank()) spotifyFollowed else spotifyFollowed.filter { libraryMatches(playlistQuery, it.name) } }
     // Moving one (or starting to) saves the whole order as shown, and switches to it.
     fun saveOrder(list: List<com.vinz.music.data.model.BrowseItem>) {
         c.library.setPlaylistOrder(list.map { it.id })
@@ -296,9 +437,14 @@ fun LibraryScreen(bottomPadding: Dp) {
         // Once per session (Vinz also syncs at launch); the refresh button forces another.
         if (settings.isLoggedIn && (playlists.isEmpty() || sync == SyncState.IDLE)) c.library.sync()
     }
+    // Whether the account has uploads (#332): one request every few hours, whatever comes of it.
+    val hasUploads by c.uploads.has.collectAsState()
+    LaunchedEffect(settings.isLoggedIn, settings.dataSyncId) { c.uploads.check() }
 
     Column(Modifier.fillMaxSize()) {
         com.vinz.music.ui.components.ScreenHeader(tr(R.string.library)) {
+            // All of the library at once, with filters (1.8.3).
+            com.vinz.music.ui.components.RoundAction(VinzIcons.Search, tr(R.string.search_your_library), Modifier.testTag("librarySearch")) { nav.go(Routes.librarySearch()) }
             if (settings.isLoggedIn) {
                 if (sync == SyncState.SYNCING) Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) { com.vinz.music.ui.components.VinzSpinner(Modifier.size(22.dp), stroke = 2.dp) }
                 else com.vinz.music.ui.components.RoundAction(VinzIcons.Sync, tr(R.string.sync_with_youtube_music)) { scope.launch { c.library.sync() } }
@@ -312,20 +458,30 @@ fun LibraryScreen(bottomPadding: Dp) {
             ) { c.settings.setLibraryTabView(viewTab.name, if (asList) com.vinz.music.data.prefs.LibraryView.GRID else com.vinz.music.data.prefs.LibraryView.LIST) }
             if (com.vinz.music.data.prefs.NavTab.SETTINGS !in settings.navTabs) com.vinz.music.ui.components.RoundAction(VinzIcons.SettingsFilled, tr(R.string.settings)) { nav.go(Routes.SETTINGS) }
         }
-        PagerChips(LibTab.entries.map { it.label }, pager)
+        PagerChips(tabs.map { it.label }, pager)
 
         HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
             val tab = LibTab.entries[page]
             @Suppress("NAME_SHADOWING") val asList = listFor(tab)
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
             // Swapping playlists and tiles: back to the top, or the list would stay on the tile it showed and hide what moved above.
-            if (tab == LibTab.PLAYLISTS) LaunchedEffect(settings.libraryPlaylistsFirst) { gridState.scrollToItem(0) }
+            if (tab == LibTab.PLAYLISTS) LaunchedEffect(settings.library.playlistsFirst) { gridState.scrollToItem(0) }
             // History (#118): this phone's plays, or the account's (YouTube Music's own history: the app and the web too).
             var fromAccount by rememberSaveable { mutableStateOf(false) }
             var historyLimit by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(300) }
+            // #469: a search through the whole of it (not only the plays shown so far), a moment after the typing pauses.
+            var historyQuery by rememberSaveable { mutableStateOf("") }
             val phoneHistory = if (tab == LibTab.HISTORY) {
                 val rows by remember(historyLimit) { c.db.plays().historyFlow(historyLimit, 0) /* #263: every kept play (how long one takes is the listener's pick) */ }.collectAsState(null)
-                remember(rows) { rows?.let { it.size to historyByDay(it) } }
+                val searcher = remember { com.vinz.music.data.HistorySearch.Searcher(c.db.plays()) }
+                // Read again as the history changes (the list above emits for a new play or a removal), so a search stays true.
+                val found by androidx.compose.runtime.produceState<List<com.prism.music.data.db.HistoryRow>?>(null, historyQuery, historyLimit, rows) {
+                    if (historyQuery.isBlank()) { value = null; return@produceState }
+                    kotlinx.coroutines.delay(200)
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { searcher.find(historyQuery, historyLimit, rows) }.getOrNull() }
+                }
+                val shownRows = if (historyQuery.isBlank()) rows else found ?: rows
+                remember(shownRows) { shownRows?.let { it.size to historyByDay(it) } }
             } else null
             var accountReload by remember { androidx.compose.runtime.mutableIntStateOf(0) }
             val accountHistory = if (tab == LibTab.HISTORY) {
@@ -335,10 +491,64 @@ fun LibraryScreen(bottomPadding: Dp) {
                 }.value
             } else null
             val fromAccountShown = fromAccount && settings.isLoggedIn
+            // "Go to the playing song" (D54) on Songs: its place among the songs shown (-1: not one of them).
+            val locate = remember { com.vinz.music.ui.components.LocateState() }
+            val playingId = if (tab == LibTab.SONGS) c.player.currentSong.collectAsState().value?.id else null
+            // A music video row played as its song (Songs in radios) counts too: the queue knows the pair.
+            val playingVideo = playingId?.let { c.queue.counterparts[it] }
+            val playingAt = remember(shownSongs, playingId, playingVideo) { com.vinz.music.ui.components.LocatePlaying.indexIn(shownSongs, playingId, playingVideo) }
+            val playingRowId = com.vinz.music.ui.components.LocatePlaying.rowId(shownSongs, playingAt, playingId)
+            /** The search at the top of a tab; once typed in, it stays whatever's left of the list. */
+            fun androidx.compose.foundation.lazy.grid.LazyGridScope.findField(query: String, hint: String, count: Int, onChange: (String) -> Unit) {
+                if (query.isEmpty() && count < LIBRARY_SEARCH_FROM) return
+                item(key = "find", span = { GridItemSpan(maxLineSpan) }) {
+                    com.vinz.music.ui.components.SearchField(query, hint, onChange, Modifier.padding(horizontal = if (asList) 16.dp else 4.dp, vertical = 4.dp))
+                }
+            }
+            fun androidx.compose.foundation.lazy.grid.LazyGridScope.nothingFound(tabName: String, query: String) {
+                item(key = "none", span = { GridItemSpan(maxLineSpan) }) {
+                    EmptyState(VinzIcons.Search, tr(R.string.no_matches), tr(R.string.nothing_in_matches, tabName, query.trim()) + ".")
+                }
+            }
+            // What the slider's bubble says for each row (#376): the letter when the list goes by name, else its place.
+            val rowMarks = remember(tab, shownSongs, shownAlbums, shownArtists, foundPlaylists, songSort, albumSort, artistSort, playlistSort) {
+                lazy {
+                    when (tab) {
+                        LibTab.PLAYLISTS -> scrollMarks(foundPlaylists, { "p" + it.id }) { p -> p.title.takeIf { playlistSort == PlaylistSort.TITLE } }
+                        LibTab.SONGS -> scrollMarks(shownSongs, { "s" + it.id }) { s ->
+                            when (songSort) { SongSort.RECENT -> null; SongSort.TITLE -> s.title; SongSort.ARTIST -> s.primaryArtist; SongSort.ALBUM -> s.album?.title }
+                        }
+                        LibTab.ALBUMS -> scrollMarks(shownAlbums, { "a" + it.id }) { a ->
+                            when (albumSort) { AlbumSort.TITLE -> a.title; AlbumSort.ARTIST -> artistOf(a); else -> null }
+                        }
+                        LibTab.ARTISTS -> scrollMarks(shownArtists, { "r" + it.id }) { a -> a.title.removePrefix("The ").removePrefix("the ").takeIf { artistSort == ArtistSort.NAME } }
+                        else -> emptyMap()
+                    }
+                }
+            }
+            Box(Modifier.fillMaxSize()) {
+            // Select many (1.8.3): the songs shown on Songs or History are what "All" picks; another tab ends the picking.
+            val pickList = remember(tab, shownSongs, fromAccountShown, accountHistory, phoneHistory) {
+                when (tab) {
+                    LibTab.SONGS -> shownSongs
+                    LibTab.HISTORY -> if (fromAccountShown) accountHistory?.getOrNull().orEmpty().flatMap { it.second }.distinctBy { it.id }
+                        else phoneHistory?.second.orEmpty().flatMap { day -> day.second.map { it.song } }.distinctBy { it.id }
+                    else -> emptyList()
+                }
+            }
+            // The page showing, not this page's own tab (fixed for it, and the next page stays composed beside it).
+            // On this phone's History, picked songs' plays shown (the search's, when searching) come out together (#469).
+            val historyRemover = if (tab == LibTab.HISTORY && !fromAccountShown) com.vinz.music.ui.components.SelectionRemover(
+                tr(R.string.history), asks = false, label = tr(R.string.remove_from_history),
+            ) { picked ->
+                val ids = picked.map { it.id }.toSet()
+                removePlays(phoneHistory?.second.orEmpty().flatMap { day -> day.second.filter { it.song.id in ids }.flatMap { it.ids } })
+            } else null
+            com.vinz.music.ui.components.SelectableSongs(pickList, remover = historyRemover, resetKey = pager.settledPage to fromAccountShown) {
             LazyVerticalGrid(
                 when {
                     asList -> GridCells.Fixed(1)
-                    settings.libraryColumns.count > 0 -> GridCells.Fixed(settings.libraryColumns.count)
+                    settings.library.columns.count > 0 -> GridCells.Fixed(settings.library.columns.count)
                     else -> GridCells.Adaptive(160.dp)
                 },
                 Modifier.fillMaxSize(),
@@ -348,7 +558,7 @@ fun LibraryScreen(bottomPadding: Dp) {
                 val empty = when (tab) {
                     LibTab.ALBUMS -> albums.isEmpty()
                     LibTab.ARTISTS -> artists.isEmpty()
-                    LibTab.SONGS -> liked.isEmpty()
+                    LibTab.SONGS -> songsBase.isEmpty() && songsFrom.isDefault
                     else -> false
                 }
                 if (empty) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -370,7 +580,7 @@ fun LibraryScreen(bottomPadding: Dp) {
                     LibTab.PLAYLISTS -> {
                       // The tiles picked and ordered with the edit button at the top (Settings → Library & Replay too).
                       val tilesPart: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
-                        settings.libraryTiles.forEach { t ->
+                        settings.library.tiles.forEach { t ->
                             when (t) {
                                 LibraryTile.LIKED -> item(key = "tile-liked") { ShortcutTile(tr(R.string.liked_songs), com.vinz.music.data.model.songCount(liked.size), VinzIcons.HeartFilled, asList, art = c.covers.custom("liked"), onLongClick = { menu(com.vinz.music.ui.components.Playable.Liked) }) { nav.go(Routes.liked()) } }
                                 LibraryTile.DOWNLOADS -> item(key = "tile-downloads") { ShortcutTile(tr(R.string.downloads), com.vinz.music.data.model.songCount(dls.values.count { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }), VinzIcons.DownloadDone, asList, onLongClick = { menu(com.vinz.music.ui.components.Playable.Downloads) }) { nav.go(Routes.DOWNLOADS) } }
@@ -380,7 +590,7 @@ fun LibraryScreen(bottomPadding: Dp) {
                                         VinzIcons.Phone, asList,
                                     ) { nav.go(Routes.LOCAL) }
                                 }
-                                LibraryTile.REPLAY -> item(key = "tile-replay") { ShortcutTile(tr(R.string.replay_2), tr(R.string.your_listening_recap), if (LibraryTile.HISTORY in settings.libraryTiles) VinzIcons.Replay else VinzIcons.History, asList) { nav.go(Routes.REPLAY) } }
+                                LibraryTile.REPLAY -> item(key = "tile-replay") { ShortcutTile(tr(R.string.replay_2), tr(R.string.your_listening_recap), if (LibraryTile.HISTORY in settings.library.tiles) VinzIcons.Replay else VinzIcons.History, asList) { nav.go(Routes.REPLAY) } }
                                 // Replay keeps its clock unless History's tile is there too, which takes it (Replay gets its chart).
                                 LibraryTile.HISTORY -> item(key = "tile-history") {
                                     ShortcutTile(tr(R.string.history), tr(R.string.everything_you_ve_played), VinzIcons.History, asList) {
@@ -388,14 +598,39 @@ fun LibraryScreen(bottomPadding: Dp) {
                                     }
                                 }
                                 // Home's Podcasts button turned off (#28): Podcasts lives here instead.
-                                LibraryTile.PODCASTS -> if (!settings.homePodcastsButton) item(key = "tile-podcasts") { ShortcutTile(tr(R.string.podcasts), tr(R.string.shows_and_episodes), VinzIcons.Podcasts, asList) { nav.go(Routes.PODCASTS) } }
+                                LibraryTile.PODCASTS -> if (!settings.home.podcastsButton) item(key = "tile-podcasts") { ShortcutTile(tr(R.string.podcasts), tr(R.string.shows_and_episodes), VinzIcons.Podcasts, asList) { nav.go(Routes.PODCASTS) } }
                                 LibraryTile.TOGETHER -> item(key = "tile-together") { ShortcutTile(tr(R.string.listen_together), tr(R.string.with_friends_on_the_same_wi), VinzIcons.Groups, asList) { nav.go(Routes.TOGETHER) } }
                                 LibraryTile.BLEND -> item(key = "tile-blend") { ShortcutTile(tr(R.string.blend), tr(R.string.a_playlist_of_two_tastes), VinzIcons.Blend, asList) { nav.go(Routes.BLENDS) } }
                                 LibraryTile.RECOGNIZED -> item(key = "tile-recognized") { ShortcutTile(tr(R.string.recognized), tr(R.string.songs_found_by_listening), VinzIcons.Recognize, asList) { nav.go(Routes.RECOGNIZED) } }
                                 LibraryTile.NEW_PLAYLIST -> item(key = "tile-new") { ShortcutTile(tr(R.string.new_playlist), if (settings.isLoggedIn) tr(R.string.make_one_on_youtube_music) else tr(R.string.kept_on_this_phone), VinzIcons.Add, asList) { creating = true } }
                                 LibraryTile.IMPORT -> if (settings.isLoggedIn) item(key = "tile-import") { ShortcutTile(tr(R.string.import_playlists), tr(R.string.from_spotify_apple_music), VinzIcons.PlaylistAdd, asList) { nav.go(Routes.IMPORT) } }
+                                // Only for an account with uploads (#332): for anyone else there's nothing behind it.
+                                LibraryTile.UPLOADS -> if (settings.isLoggedIn && hasUploads) item(key = "tile-uploads") { ShortcutTile(tr(R.string.uploads), tr(R.string.uploads_tile_subtitle), VinzIcons.Upload, asList) { nav.go(Routes.UPLOADS) } }
+                                LibraryTile.SAVED -> item(key = "tile-saved") { ShortcutTile(tr(R.string.saved_while_playing), tr(R.string.saved_while_playing_tile), VinzIcons.DownloadDone, asList) { nav.go(Routes.SAVED) } }
                             }
                         }
+                      }
+                      val playlistRows: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
+                            // Folders first (1.7.6), each opening its playlists.
+                            items(foundFolders, key = { "f" + it.id }) { f ->
+                                val first = f.playlists.firstNotNullOfOrNull { id -> myPlaylists.firstOrNull { com.vinz.music.data.VinzLibrary.samePlaylist(it.id, id) } }
+                                ShortcutTile(
+                                    f.name, if (!settings.library.subtitles) "" else trp(R.plurals.folder_n_playlists, f.playlists.size),
+                                    VinzIcons.Folder, asList, art = first?.let { c.covers.art(it) },
+                                ) { nav.go(Routes.folder(f.id)) }
+                            }
+                            items(foundPlaylists, key = { "p" + it.id }) { p ->
+                                LibraryItem(shown(p), asList, onLongClick = { menuFor = p }) { nav.open(p, onSong) }
+                            }
+                            items(foundFollowed, key = { "sf" + it.id }) { p ->
+                                // With the sign-in a followed playlist can be brought in (a tap away), so it isn't dimmed.
+                                val bring = c.spotify.canBringFollowed
+                                val item = com.vinz.music.data.model.PlaylistItem(
+                                    "spotify-followed:${p.id}", p.name,
+                                    tr(when { !bring -> R.string.spot_followed_subtitle; p.id in spotifyBringing -> R.string.spot_session_followed_bringing; else -> R.string.spot_session_followed_subtitle }, p.ownerName.ifBlank { tr(R.string.spotify) }), p.image,
+                                )
+                                Box(Modifier.alpha(if (bring) 1f else 0.6f)) { LibraryItem(item, asList) { followedOpen = p } }
+                            }
                       }
                       val playlistsPart: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
                         // Signed out: playlists made here are kept on the phone; signing in brings YouTube Music's too.
@@ -410,14 +645,18 @@ fun LibraryScreen(bottomPadding: Dp) {
                             // count was squeezed into a column a letter wide.
                             Column(Modifier.padding(end = 8.dp)) {
                             if (rearranging) Text(
-                                tr(R.string.hold_and_drag_or_use_the), style = MaterialTheme.typography.labelLarge,
+                                tr(R.string.hold_and_drag_or_the_grip), style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                             ) else if (myPlaylists.size > 1) SortBar(trp(R.plurals.n_playlists, myPlaylists.size), PlaylistSort.entries, playlistSort, { it.label }) {
                                 c.library.setPlaylistSort(it.name)
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(start = 8.dp, top = 4.dp, bottom = 4.dp)) {
                                 // A playlist from a link (H7), without YouTube's share menu.
                                 if (!rearranging) com.vinz.music.ui.components.VinzChip(false, { openingLink = true }, tr(R.string.open_a_link), icon = VinzIcons.Link)
+                                // A folder with nothing in it yet: until now one could only be made while moving a playlist.
+                                if (!rearranging) com.vinz.music.ui.components.VinzChip(false, { newFolder = true }, tr(R.string.new_folder), icon = VinzIcons.Folder)
+                                // 1.8.3: a playlist made of rules, kept up to date by itself.
+                                if (!rearranging) com.vinz.music.ui.components.VinzChip(false, { newSmart = true }, tr(R.string.smart_playlist), Modifier.testTag("newSmart"), icon = VinzIcons.SmartShuffle)
                                 if (myPlaylists.size > 1) com.vinz.music.ui.components.VinzChip(
                                     rearranging,
                                     {
@@ -432,26 +671,16 @@ fun LibraryScreen(bottomPadding: Dp) {
                         }
                         if (rearranging) item(span = { GridItemSpan(maxLineSpan) }) {
                             RearrangePlaylists(sortedPlaylists, ::saveOrder)
-                        } else {
-                            // Folders first (1.7.6), each opening its playlists.
-                            items(folders, key = { "f" + it.id }) { f ->
-                                val first = f.playlists.firstNotNullOfOrNull { id -> myPlaylists.firstOrNull { com.vinz.music.data.VinzLibrary.samePlaylist(it.id, id) } }
-                                ShortcutTile(
-                                    f.name, if (!settings.librarySubtitles) "" else trp(R.plurals.folder_n_playlists, f.playlists.size),
-                                    VinzIcons.Folder, asList, art = first?.let { c.covers.art(it) },
-                                ) { nav.go(Routes.folder(f.id)) }
-                            }
-                            items(sortedPlaylists, key = { "p" + it.id }) { p ->
-                                LibraryItem(shown(p), asList, onLongClick = { menuFor = p }) { nav.open(p, onSong) }
-                            }
-                            items(spotifyFollowed, key = { "sf" + it.id }) { p ->
-                                val item = com.vinz.music.data.model.PlaylistItem("spotify-followed:${p.id}", p.name, tr(R.string.spot_followed_subtitle, p.ownerName.ifBlank { tr(R.string.spotify) }), p.image)
-                                Box(Modifier.alpha(0.6f)) { LibraryItem(item, asList) { followedOpen = p } }
-                            }
-                        }
+                        } else playlistRows()
                       }
+                      if (!rearranging) findField(playlistQuery, tr(R.string.search_playlists), myPlaylists.size + spotifyFollowed.size + folders.size) { playlistQuery = it }
+                      if (searchingPlaylists) {
+                          // Only what matches: the tiles, the sort and the buttons are back when the search is cleared.
+                          playlistRows()
+                          if (foundFolders.isEmpty() && foundPlaylists.isEmpty() && foundFollowed.isEmpty()) nothingFound(tr(R.string.playlists), playlistQuery)
+                      } else
                       // Playlists above the tiles, or below them as Vinz ships (Edit tiles → "Playlists first").
-                      if (settings.libraryPlaylistsFirst && myPlaylists.isNotEmpty()) {
+                      if (settings.library.playlistsFirst && myPlaylists.isNotEmpty()) {
                           playlistsPart()
                           item(key = "tiles-gap", span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(8.dp)) }
                           tilesPart()
@@ -463,29 +692,49 @@ fun LibraryScreen(bottomPadding: Dp) {
                     LibTab.SONGS -> {
                         // As the Liked songs page has them (#184: the tab had no search, Shuffle or Play): a search through
                         // your liked songs, and Shuffle / Play for what's shown.
-                        val source = com.vinz.music.playback.QueueSource(com.vinz.music.playback.QueueKind.LIBRARY, tr(R.string.liked_songs))
-                        val shownSongs = if (songQuery.isBlank()) sortedSongs else sortedSongs.filter { s ->
-                            listOf(s.title, s.artistText, s.album?.title.orEmpty()).any { it.contains(songQuery.trim(), ignoreCase = true) }
+                        val source = com.vinz.music.playback.QueueSource(com.vinz.music.playback.QueueKind.LIBRARY, if (songsFrom.isDefault) tr(R.string.liked_songs) else tr(R.string.songs))
+                        // Where the songs come from (1.8.3, #382): liked songs, and playlists of the listener's choosing.
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "songsFrom") {
+                            Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                com.vinz.music.ui.components.VinzChip(
+                                    !songsFrom.isDefault, { choosingFrom = true }, songsFromLabel(songsFrom),
+                                    Modifier.testTag("songsFrom"), icon = VinzIcons.QueueMusic,
+                                )
+                                if (fromLoading) {
+                                    Spacer(Modifier.width(10.dp))
+                                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                }
+                            }
                         }
-                        if (liked.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                        if (songsBase.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                com.vinz.music.ui.components.SearchField(songQuery, tr(R.string.search_liked_songs), { q -> songQuery = q }, Modifier.weight(1f))
+                                com.vinz.music.ui.components.SearchField(songQuery, if (songsFrom.isDefault) tr(R.string.search_liked_songs) else tr(R.string.search_these_songs), { q -> songQuery = q }, Modifier.weight(1f))
+                                // D54: the tab has no ⋯ menu, so it's a button here, only while the playing song is one of the songs shown.
+                                locate.go?.let { go ->
+                                    Spacer(Modifier.width(8.dp))
+                                    com.vinz.music.ui.components.RoundAction(VinzIcons.Song, tr(R.string.go_to_the_playing_song)) { go() }
+                                }
                                 Spacer(Modifier.width(8.dp))
                                 com.vinz.music.ui.components.RoundAction(VinzIcons.Shuffle, tr(R.string.shuffle)) { if (shownSongs.isNotEmpty()) c.player.playQueue(shownSongs, 0, source, shuffle = true) }
                                 Spacer(Modifier.width(8.dp))
                                 com.vinz.music.ui.components.RoundAction(VinzIcons.Play, tr(R.string.widget_play)) { if (shownSongs.isNotEmpty()) c.player.playQueue(shownSongs, 0, source) }
                             }
                         }
-                        if (liked.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                            SortBar(com.vinz.music.data.model.songCount(shownSongs.size), SongSort.entries, songSort, { it.label }) { songSort = it; c.library.setSort("library:songs", it.name) }
+                        if (songsBase.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                            // With playlists' songs too, the first order is liked songs, then each playlist's own order.
+                            SortBar(com.vinz.music.data.model.songCount(shownSongs.size), SongSort.entries, songSort, {
+                                if (it == SongSort.RECENT && !songsFrom.isDefault) tr(R.string.original_order) else it.label
+                            }) { songSort = it; c.library.setSort("library:songs", it.name) }
                         }
                         items(shownSongs, key = { "s" + it.id }, span = { GridItemSpan(maxLineSpan) }) { s ->
-                            SongRow(s) { c.player.playQueue(shownSongs, shownSongs.indexOf(s), source) }
+                            SongRow(s, Modifier.locatePulse(locate, s.id)) { c.player.playQueue(shownSongs, shownSongs.indexOf(s), source) }
                         }
+                        if (songsBase.isNotEmpty() && shownSongs.isEmpty() && songQuery.isNotBlank()) nothingFound(tr(R.string.songs), songQuery)
                     }
                     LibTab.ALBUMS -> {
+                        findField(albumQuery, tr(R.string.search_albums), albums.size) { albumQuery = it }
                         if (albums.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                            SortBar(trp(R.plurals.n_albums, albums.size), AlbumSort.entries, albumSort, { it.label }) { albumSort = it; c.library.setSort("library:albums", it.name) }
+                            SortBar(trp(R.plurals.n_albums, if (albumQuery.isBlank()) albums.size else shownAlbums.size), AlbumSort.entries, albumSort, { it.label }) { albumSort = it; c.library.setSort("library:albums", it.name) }
                         }
                         // Albums or singles and EPs (Reddit, 1.7.9.1: YouTube's library fills with singles), when there are both.
                         if (albumKinds.size > 1) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -495,13 +744,16 @@ fun LibraryScreen(bottomPadding: Dp) {
                                 }
                             }
                         }
-                        items(pinnedFirst(sortedAlbums.filter { albumKind.shows(it) }), key = { "a" + it.id }) { a -> LibraryItem(shown(a), asList, onLongClick = { itemMenu = a }) { nav.open(a, onSong) } }
+                        items(shownAlbums, key = { "a" + it.id }) { a -> LibraryItem(shown(a), asList, onLongClick = { itemMenu = a }) { nav.open(a, onSong) } }
+                        if (albums.isNotEmpty() && shownAlbums.isEmpty() && albumQuery.isNotBlank()) nothingFound(tr(R.string.albums), albumQuery)
                     }
                     LibTab.ARTISTS -> {
+                        findField(artistQuery, tr(R.string.search_artists), artists.size) { artistQuery = it }
                         if (artists.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                            SortBar(trp(R.plurals.n_artists, artists.size), ArtistSort.entries, artistSort, { it.label }) { artistSort = it; c.library.setSort("library:artists", it.name) }
+                            SortBar(trp(R.plurals.n_artists, if (artistQuery.isBlank()) artists.size else shownArtists.size), ArtistSort.entries, artistSort, { it.label }) { artistSort = it; c.library.setSort("library:artists", it.name) }
                         }
-                        items(pinnedFirst(sortedArtists), key = { "r" + it.id }) { a -> LibraryItem(shown(a), asList, onLongClick = { itemMenu = a }) { nav.open(a, onSong) } }
+                        items(shownArtists, key = { "r" + it.id }) { a -> LibraryItem(shown(a), asList, onLongClick = { itemMenu = a }) { nav.open(a, onSong) } }
+                        if (artists.isNotEmpty() && shownArtists.isEmpty() && artistQuery.isNotBlank()) nothingFound(tr(R.string.artists), artistQuery)
                     }
                     LibTab.HISTORY -> {
                         if (settings.isLoggedIn) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -510,10 +762,17 @@ fun LibraryScreen(bottomPadding: Dp) {
                                 com.vinz.music.ui.components.VinzChip(fromAccount, { fromAccount = true }, tr(R.string.your_account), icon = VinzIcons.Person)
                             }
                         }
+                        // #469: the same search for both; the account's is only what's been read of it (no more requests).
+                        val historyCount = if (fromAccountShown) accountHistory?.getOrNull().orEmpty().sumOf { it.second.size } else phoneHistory?.first ?: 0
+                        findField(historyQuery, tr(R.string.search_history), historyCount) { historyQuery = it }
                         if (fromAccountShown) {
                             val result = accountHistory
-                            val sections = result?.getOrNull()
+                            val sections = result?.getOrNull()?.let { all ->
+                                if (historyQuery.isBlank()) all
+                                else all.map { (t, songs) -> t to songs.filter { s -> libraryMatches(historyQuery, s.title, s.artistText, s.album?.title.orEmpty()) } }.filter { it.second.isNotEmpty() }
+                            }
                             when {
+                                sections != null && sections.isEmpty() && historyQuery.isNotBlank() -> nothingFound(tr(R.string.history), historyQuery)
                                 result == null -> item(span = { GridItemSpan(maxLineSpan) }) {
                                     Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { com.vinz.music.ui.components.VinzSpinner(Modifier.size(28.dp)) }
                                 }
@@ -535,16 +794,23 @@ fun LibraryScreen(bottomPadding: Dp) {
                             }
                         } else {
                             val (count, days) = phoneHistory ?: (0 to emptyList())
-                            if (phoneHistory != null && days.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                            if (phoneHistory != null && days.isEmpty() && historyQuery.isNotBlank()) nothingFound(tr(R.string.history), historyQuery)
+                            else if (phoneHistory != null && days.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                                 EmptyState(VinzIcons.History, tr(R.string.nothing_played_yet), tr(R.string.songs_you_play_in_vinz_show))
                             }
                             val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
                             days.forEachIndexed { di, (title, entries) ->
                                 item(key = "ph$di", span = { GridItemSpan(maxLineSpan) }) { HistoryHeading(title) }
-                                items(entries.size, key = { "p$di-${entries[it].at}" }, span = { GridItemSpan(maxLineSpan) }) { i ->
+                                // Plays brought in from elsewhere (an import, by the second) can share a time.
+                                val keys = com.vinz.music.ui.components.rowKeys(entries) { "p$di-${it.at}" }
+                                items(entries.size, key = { keys[it] }, span = { GridItemSpan(maxLineSpan) }) { i ->
                                     val e = entries[i]
                                     val at = time.format(java.util.Date(e.at))
-                                    SongRow(e.song, trailingInfo = if (e.times > 1) "$at · ${e.times}×" else at) { c.player.playSingle(e.song) }
+                                    // #469: the row's own plays out (a run of the same song is one row), not the song's others.
+                                    SongRow(
+                                        e.song, trailingInfo = if (e.times > 1) "$at · ${e.times}×" else at,
+                                        extraActions = listOf(com.vinz.music.ui.components.SheetItem(VinzIcons.Delete, tr(R.string.remove_from_history)) { removePlays(e.ids) }),
+                                    ) { c.player.playSingle(e.song) }
                                 }
                             }
                             if (count >= historyLimit) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -555,7 +821,40 @@ fun LibraryScreen(bottomPadding: Dp) {
                         }
                     }
                     LibTab.DOWNLOADS -> item(span = { GridItemSpan(maxLineSpan) }) { DownloadsSummary() }
+                    // 1.8.3: the listener's tags, each opening its songs (to play, shuffle, rename or delete).
+                    LibTab.TAGS -> {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(
+                                trp(R.plurals.n_tags, tagList.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = if (asList) 16.dp else 8.dp, top = 4.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(tagList, key = { "t" + it.tag }) { t ->
+                            ShortcutTile(
+                                t.tag, if (settings.library.subtitles) com.vinz.music.data.model.songCount(t.songs) else "", VinzIcons.Tag, asList, art = t.thumbnail,
+                            ) { nav.go(Routes.tag(t.tag)) }
+                        }
+                    }
                 }
+            }
+            }
+            // #376: a thumb a finger can hold on Library's long lists. Only its own grip takes touches, and only while it's
+            // showing, so it needs no switch: the rows along the edge and the swipes between tabs are all still there.
+            if (tab != LibTab.HISTORY && tab != LibTab.DOWNLOADS && !rearranging) com.vinz.music.ui.components.FastScroller(
+                gridState, Modifier.align(Alignment.CenterEnd).padding(bottom = bottomPadding),
+                description = tr(R.string.scroll_through_the_list), thumbOnly = true,
+            ) { _ -> gridState.layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { rowMarks.value[it.key as? String] } }
+            // D54. Above the songs: where they're from, then (with any songs) the search and the sort.
+            if (tab == LibTab.SONGS) LocatePlayingRow(locate, gridState, inList = playingAt >= 0, songId = playingRowId, bottomPadding = bottomPadding) {
+                playingAt + 1 + (if (songsBase.isNotEmpty()) 2 else 0)
+            }
+            if (tab == LibTab.HISTORY) HistoryUndoBar(
+                historyUndo, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = bottomPadding + 8.dp),
+                onGone = { historyUndo = null },
+            ) { removed ->
+                historyUndo = null
+                scope.launch { runCatching { com.vinz.music.data.HistoryRemoval.restore(c.db, removed) }; forgetYearSoFar() }
+            }
             }
         }
     }
@@ -569,7 +868,7 @@ fun LibraryScreen(bottomPadding: Dp) {
                 val id = runCatching { c.ytm.createPlaylist(name, emptyList(), privacy = privacy) }.getOrNull()
                 if (id == null) android.widget.Toast.makeText(context, tr(R.string.couldn_t_make_the_playlist), android.widget.Toast.LENGTH_SHORT).show()
                 else {
-                    c.library.refreshCollections()
+                    c.library.created(id, name)
                     nav.go(Routes.playlist(id))
                 }
             }
@@ -625,20 +924,18 @@ fun LibraryScreen(bottomPadding: Dp) {
         )
     }
 }
-/** The playlists as a list to put in order: hold and drag a row, or nudge it with its arrows. */
+/**
+ * The playlists as a list to put in order: hold and drag a row, or drag its grip (which also carries TalkBack's moves and
+ * the D-pad / keyboard's; 1.8.4: the up / down arrows went).
+ */
 @Composable
 private fun RearrangePlaylists(playlists: List<com.vinz.music.data.model.BrowseItem>, onReorder: (List<com.vinz.music.data.model.BrowseItem>) -> Unit) {
     val c = LocalContainer.current
     val ui = com.vinz.music.ui.theme.LocalUi.current
-    val scheme = MaterialTheme.colorScheme
-    fun move(from: Int, to: Int) {
-        if (to !in playlists.indices) return
-        onReorder(playlists.toMutableList().apply { add(to, removeAt(from)) })
-    }
     com.vinz.music.ui.components.ReorderList(
         playlists, { it.id }, onReorder,
         Modifier.padding(horizontal = 8.dp).pane(ui.card).padding(vertical = 6.dp),
-    ) { p, i, held, drag ->
+    ) { p, _, _, drag ->
         Row(
             drag.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -652,10 +949,6 @@ private fun RearrangePlaylists(playlists: List<com.vinz.music.data.model.BrowseI
                 p.title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
-            if (!held) {
-                IconButton(onClick = { move(i, i - 1) }, enabled = i > 0) { Icon(VinzIcons.ChevronUp, tr(R.string.move_up_2, p.title)) }
-                IconButton(onClick = { move(i, i + 1) }, enabled = i < playlists.lastIndex) { Icon(VinzIcons.ChevronDown, tr(R.string.move_down_2, p.title)) }
-            } else Spacer(Modifier.width(96.dp))
             // The grip moves the playlist at once; the rest of the row after a hold.
             com.vinz.music.ui.components.DragGrip(Modifier.dragHandle().padding(end = 8.dp), tr(R.string.drag, p.title))
         }
@@ -676,6 +969,7 @@ private fun shortcutHue(icon: ImageVector): Int = when (icon) {
     VinzIcons.Groups -> 3
     VinzIcons.Blend -> 4
     VinzIcons.Recognize -> 5
+    VinzIcons.Upload -> 1
     else -> 6
 }
 
@@ -726,7 +1020,8 @@ private fun ShortcutTile(title: String, subtitle: String, icon: ImageVector, asL
 fun LibraryTilesSheet(onDismiss: () -> Unit) {
     val s = com.vinz.music.ui.theme.LocalAppSettings.current
     val prefs = LocalContainer.current.settings
-    val tiles = s.libraryTiles
+    val tiles = s.library.tiles
+    val offered = LibraryTile.offered(LocalContainer.current.uploads.has.collectAsState().value)
     com.vinz.music.ui.components.VinzSheet(onDismiss) { _ ->
         Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 24.dp)) {
             Text(tr(R.string.library_tiles), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp))
@@ -736,7 +1031,8 @@ fun LibraryTilesSheet(onDismiss: () -> Unit) {
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
             )
             @Composable
-            fun TileRow(t: LibraryTile, i: Int, modifier: Modifier, grip: Modifier?, held: Boolean) {
+            // The grip moves a shown tile (drag, TalkBack's moves, D-pad / keyboard; 1.8.4: the up / down arrows went).
+            fun TileRow(t: LibraryTile, modifier: Modifier, grip: Modifier?) {
                 val on = t in tiles
                 Row(modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     VinzCheck(on, label = t.label) { v -> prefs.setLibraryTiles(if (v) tiles + t else tiles - t) }
@@ -744,26 +1040,18 @@ fun LibraryTilesSheet(onDismiss: () -> Unit) {
                         t.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
                         color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (on && !held) {
-                        androidx.compose.material3.IconButton(onClick = { prefs.setLibraryTiles(tiles.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = i > 0) {
-                            Icon(VinzIcons.ChevronUp, tr(R.string.move_up_2, t.label))
-                        }
-                        androidx.compose.material3.IconButton(onClick = { prefs.setLibraryTiles(tiles.toMutableList().apply { add(i + 1, removeAt(i)) }) }, enabled = i < tiles.lastIndex) {
-                            Icon(VinzIcons.ChevronDown, tr(R.string.move_down_2, t.label))
-                        }
-                    }
                     if (grip != null) com.vinz.music.ui.components.DragGrip(grip.padding(horizontal = 4.dp), tr(R.string.drag, t.label))
                 }
             }
-            com.vinz.music.ui.components.ReorderList(tiles, { it }, { prefs.setLibraryTiles(it) }) { t, i, held, mod -> TileRow(t, i, mod, Modifier.dragHandle(), held) }
-            LibraryTile.entries.filter { it !in tiles }.forEach { t -> TileRow(t, -1, Modifier, null, false) }
-            VinzTextButton({ prefs.setLibraryTiles(LibraryTile.entries) }, Modifier.padding(start = 12.dp, top = 8.dp)) { Text(tr(R.string.show_all_in_vinz_s_order)) }
+            com.vinz.music.ui.components.ReorderList(tiles, { it }, { prefs.setLibraryTiles(it) }) { t, _, _, mod -> TileRow(t, mod, Modifier.dragHandle()) }
+            offered.filter { it !in tiles }.forEach { t -> TileRow(t, Modifier, null) }
+            VinzTextButton({ prefs.setLibraryTiles(offered) }, Modifier.padding(start = 12.dp, top = 8.dp)) { Text(tr(R.string.show_all_in_vinz_s_order)) }
             Text(
                 tr(R.string.where_your_playlists_go), style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp),
             )
             ChoiceCards(
-                listOf(false, true), s.libraryPlaylistsFirst,
+                listOf(false, true), s.library.playlistsFirst,
                 title = { if (it) tr(R.string.playlists_first) else tr(R.string.tiles_first) },
                 detail = { if (it) tr(R.string.your_playlists_at_the_top_the) else tr(R.string.the_tiles_at_the_top_your) },
                 onSelect = { prefs.setLibraryPlaylistsFirst(it) },
@@ -807,6 +1095,7 @@ private fun LibraryOrderSample(playlistsFirst: Boolean) {
 }
 
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun DownloadsSummary() {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
@@ -874,4 +1163,53 @@ private fun OpenPlaylistLinkDialog(onDismiss: () -> Unit, onOpen: (String) -> Un
         confirmButton = { VinzTextButton(onClick = { id?.let(onOpen) }, enabled = id != null) { Text(tr(R.string.open)) } },
         dismissButton = { VinzTextButton(onClick = onDismiss) { Text(tr(R.string.cancel)) } },
     )
+}
+
+/** Songs' "From" chip: "Liked songs", "Liked songs + 2 playlists", "3 playlists". */
+internal fun songsFromLabel(from: com.vinz.music.data.SongsFrom): String = listOfNotNull(
+    tr(R.string.liked_songs).takeIf { from.liked },
+    from.playlists.size.takeIf { it > 0 }?.let { trp(R.plurals.n_playlists, it) },
+).joinToString(" + ")
+
+/** Library → Songs → From (1.8.3, #382): liked songs and any of the listener's playlists, ticked. Only a view. */
+@Composable
+private fun SongsFromSheet(
+    current: com.vinz.music.data.SongsFrom,
+    playlists: List<com.vinz.music.data.model.BrowseItem>,
+    onDismiss: () -> Unit,
+    onDone: (com.vinz.music.data.SongsFrom) -> Unit,
+) {
+    var liked by remember { mutableStateOf(current.liked) }
+    val picked = remember { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(current.playlists) } }
+    @Composable
+    fun Tick(label: String, sub: String?, on: Boolean, tag: String, toggle: () -> Unit) = Row(
+        Modifier.fillMaxWidth().clickable(onClick = toggle).padding(horizontal = 12.dp, vertical = 6.dp).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Checkbox(on, { toggle() })
+        Column(Modifier.weight(1f).padding(start = 6.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (!sub.isNullOrBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+    }
+    com.vinz.music.ui.components.VinzSheet(onDismiss = onDismiss) {
+        Column(Modifier.padding(bottom = 16.dp).testTag("songsFromSheet")) {
+            Text(tr(R.string.songs_from), style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, modifier = Modifier.padding(horizontal = 20.dp))
+            Text(tr(R.string.your_likes_stay_as_they_are), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 8.dp))
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f, fill = false)) {
+                item { Tick(tr(R.string.liked_songs), null, liked, "from:liked") { liked = !liked } }
+                items(playlists.size, key = { playlists[it].id }) { i ->
+                    val p = playlists[i]
+                    Tick(p.title, p.subtitle, p.id in picked, "from:${p.id}") { if (p.id in picked) picked.remove(p.id) else picked.add(p.id) }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
+                VinzTextButton(onClick = onDismiss) { Text(tr(R.string.cancel)) }
+                // Nothing ticked would be an empty tab: it needs one or the other.
+                VinzTextButton(onClick = { onDone(com.vinz.music.data.SongsFrom(liked, picked.toList())); onDismiss() }, enabled = liked || picked.isNotEmpty(), modifier = Modifier.testTag("fromDone")) {
+                    Text(tr(R.string.done))
+                }
+            }
+        }
+    }
 }

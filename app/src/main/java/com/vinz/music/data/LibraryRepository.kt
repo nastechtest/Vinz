@@ -3,10 +3,11 @@ package com.vinz.music.data
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.model.AlbumItem
 import com.vinz.music.data.model.ArtistItem
 import com.vinz.music.data.model.BrowseItem
+import com.vinz.music.data.model.PlaylistItem
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,7 +83,15 @@ class LibraryRepository(private val c: AppContainer) {
 
     private val keptLoad: kotlinx.coroutines.Job
 
+    /**
+     * When each library album was first seen here (1.8.4, D56: Albums by "Recently added"). Kept in "library_order"
+     * with the sorts; lazy, since the collector below can run before the rest of this class is set up.
+     */
+    val albumsSeen: AlbumFirstSeen by lazy { AlbumFirstSeen(c.app.getSharedPreferences("library_order", android.content.Context.MODE_PRIVATE)) }
+
     init {
+        // Every list of library albums that lands (the kept copy, a sync, after a save) marks its new ones as seen now.
+        c.scope.launch(Dispatchers.IO) { albums.collect { list -> if (list.isNotEmpty()) albumsSeen.note(list.map { it.id }) } }
         // The library as last synced, so it's all there offline (#55) and before the first sync of a launch finishes.
         // A restored copy signs out right after start ([forgetAccount] stops this, so the old account's lists don't
         // land after they were cleared).
@@ -101,6 +110,7 @@ class LibraryRepository(private val c: AppContainer) {
     /** Signed out: the account's lists, and its playlists and albums kept for offline, are gone from the phone. */
     fun forgetAccount() {
         synchronized(this) { keptLoad.cancel() }
+        synchronized(pending) { pending.clear(); followUps?.cancel() }
         playlists.value = emptyList(); albums.value = emptyList(); artists.value = emptyList()
         c.scope.launch(Dispatchers.IO) { c.offline.clear(); c.homeCache.clear() }
     }
@@ -169,7 +179,7 @@ class LibraryRepository(private val c: AppContainer) {
         if (disliked && isLiked(song.id)) setLiked(song, false)
         c.scope.launch(Dispatchers.IO) {
             if (disliked && c.downloads.downloads.value.containsKey(song.id) && songs.get(song.id)?.smartDownload == true) {
-                c.downloads.remove(song.id)
+                c.downloads.remove(song.id, byListener = false)
             }
             // Tells YouTube Music too, so its recommendations learn from it.
             if (c.settings.current.isLoggedIn) runCatching { c.ytm.dislike(song.id, disliked) }
@@ -181,21 +191,37 @@ class LibraryRepository(private val c: AppContainer) {
     fun toggleLike(song: Song) = setLiked(song, !isLiked(song.id))
 
     fun setLiked(song: Song, liked: Boolean) {
-        c.scope.launch(Dispatchers.IO) {
-            val existing = songs.get(song.id)
-            songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
-            // "Love on Last.fm when I like a song" (#133), local files included.
-            c.lastFm.liked(song, liked)
-            // A file on the phone is liked in Vinz only: there's nothing to download or tell YouTube.
-            if (song.isLocal) return@launch
-            if (liked && c.settings.current.downloadLikes) c.downloads.download(song)
-            if (c.settings.current.isLoggedIn) {
-                runCatching { c.ytm.like(song.id, liked) }.onFailure { lastError.value = tr(R.string.couldn_t_sync_like, it.friendlyMessage()) }
-            }
+        // An episode from a feed: nothing Liked songs, the account or a Replay list could do anything with.
+        if (song.isRss) return
+        c.scope.launch(Dispatchers.IO) { likeNow(song, liked) }
+    }
+
+    /**
+     * Select many (1.8.3): several songs liked or unliked, one after another rather than all at once (a whole playlist
+     * picked was hundreds of calls to YouTube Music side by side).
+     */
+    fun setLiked(many: List<Song>, liked: Boolean) {
+        val likable = many.filter { !it.isRss }
+        if (likable.isEmpty()) return
+        c.scope.launch(Dispatchers.IO) { likable.forEach { runCatching { likeNow(it, liked) } } }
+    }
+
+    private suspend fun likeNow(song: Song, liked: Boolean) {
+        val existing = songs.get(song.id)
+        songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
+        // "Love on Last.fm when I like a song" (#133), local files included.
+        c.lastFm.liked(song, liked)
+        // A file on the phone is liked in Vinz only: there's nothing to download or tell YouTube.
+        if (song.isLocal) return
+        if (liked && c.settings.current.downloadLikes) c.downloads.download(song)
+        if (c.settings.current.isLoggedIn) {
+            runCatching { c.ytm.like(song.id, liked) }.onFailure { lastError.value = tr(R.string.couldn_t_sync_like, it.friendlyMessage()) }
         }
     }
 
     suspend fun recordPlayed(song: Song) {
+        // The song list doesn't keep what makes one an episode: a feed's would come back as a song, with no way to play.
+        if (song.isRss) return
         val existing = songs.get(song.id)
         songs.upsert(song.toEntity(existing).copy(lastPlayed = System.currentTimeMillis()))
     }
@@ -224,7 +250,7 @@ class LibraryRepository(private val c: AppContainer) {
             if (c.settings.current.downloadLikes && before.isNotEmpty()) {
                 remote.filter { it.id !in before }.forEach { c.downloads.download(it) }
             }
-            runCatching { playlists.value = c.ytm.libraryPlaylists() }
+            reloadPlaylists()
             runCatching { albums.value = c.ytm.libraryAlbums() }
             runCatching { artists.value = c.ytm.libraryArtists() }
             runCatching {
@@ -236,6 +262,8 @@ class LibraryRepository(private val c: AppContainer) {
             lastError.value = null
             // Likes from YouTube Music are in: bring the Liked songs playlist (if there is one) in line.
             c.likedPlaylist.syncInBackground(full = true)
+            // New songs in playlists kept downloaded (#298).
+            if (c.settings.current.behavior.keptPlaylists.isNotEmpty()) c.scope.launch(Dispatchers.IO) { runCatching { c.keptPlaylists.syncAll() } }
         } catch (e: Exception) {
             lastError.value = e.friendlyMessage()
             syncState.value = SyncState.ERROR
@@ -327,14 +355,19 @@ class LibraryRepository(private val c: AppContainer) {
     suspend fun deletePlaylist(item: BrowseItem): Result<Unit> = withContext(Dispatchers.IO) {
         val before = playlists.value
         playlists.value = before.filterNot { it.id == item.id }
+        // One just made here (#414) isn't put back by the next refresh.
+        val wasPending = synchronized(pending) { pending.remove(item.id.removePrefix("VL")) }
         runCatching { c.ytm.deletePlaylist(item.id) }
             .recoverCatching { c.ytm.unsavePlaylist(item.id) }
             .onSuccess {
                 if (c.likedPlaylist.playlistId.value == item.id) c.likedPlaylist.forget()
-                val pins = c.settings.current.homePlaylists
+                val pins = c.settings.current.home.playlists
                 if (pins.any { it.id == item.id }) c.settings.setHomePlaylists(pins.filterNot { it.id == item.id })
             }
-            .onFailure { playlists.value = before }
+            .onFailure {
+                playlists.value = before
+                if (wasPending != null) synchronized(pending) { pending[item.id.removePrefix("VL")] = wasPending }
+            }
     }
 
     private val orderPrefs = c.app.getSharedPreferences("library_order", android.content.Context.MODE_PRIVATE)
@@ -415,6 +448,7 @@ class LibraryRepository(private val c: AppContainer) {
         if (!ok) return@withContext false
         val fresh = runCatching { c.ytm.libraryAlbums() }.getOrNull()
         if (fresh != null) { albums.value = fresh; persist() }
+        if (fresh?.none { it.id == albumId } != false) albumsSeen.forget(albumId) // saved again later, it's "recently added" again
         fresh?.none { it.id == albumId } ?: true
     }
 
@@ -436,13 +470,80 @@ class LibraryRepository(private val c: AppContainer) {
     fun refreshCollections() {
         if (!c.settings.current.isLoggedIn) return
         c.scope.launch(Dispatchers.IO) {
-            runCatching { playlists.value = c.ytm.libraryPlaylists() }
+            reloadPlaylists()
             runCatching { albums.value = c.ytm.libraryAlbums() }
             persist()
         }
     }
 
+    /** Where the library's playlists are read from (a test hands in its own). */
+    internal var fetchPlaylists: suspend () -> List<BrowseItem> = { c.ytm.libraryPlaylists() }
+
+    /** The library's playlists from YouTube, with the ones just made here that it doesn't list yet ([created]). */
+    internal suspend fun reloadPlaylists() {
+        runCatching { playlists.value = withPending(fetchPlaylists()) }
+    }
+
+    /**
+     * Playlists made from Vinz that YouTube's library list may not show yet (#414), by id without "VL". YouTube took
+     * about two minutes to list a new one, and every refresh until then put back a list without it.
+     */
+    private val pending = HashMap<String, PendingPlaylist>()
+    private var followUps: kotlinx.coroutines.Job? = null
+
+    private fun withPending(fetched: List<BrowseItem>): List<BrowseItem> = synchronized(pending) {
+        val merged = mergePending(fetched, pending, System.currentTimeMillis())
+        pending.keys.retainAll(merged.still.keys)
+        merged.list
+    }
+
+    /**
+     * A playlist was just made on YouTube Music ([id], named [name], with [songs] songs): it's in Library at once, kept
+     * there through refreshes until YouTube lists it (or [PENDING_MS] pass), and the list is asked for again a few times
+     * in the next minute so YouTube's own entry (cover, count) takes over as soon as it's there.
+     */
+    fun created(id: String, name: String, songs: Int = 0) {
+        val key = id.removePrefix("VL")
+        val item = PlaylistItem(key, name, com.vinz.music.data.model.songCount(songs), null)
+        synchronized(pending) { pending[key] = PendingPlaylist(item, System.currentTimeMillis()) }
+        playlists.value = listOf(item) + playlists.value.filterNot { it.id.removePrefix("VL") == key }
+        refreshCollections()
+        synchronized(pending) {
+            followUps?.cancel()
+            followUps = c.scope.launch(Dispatchers.IO) {
+                var waited = 0L
+                for (at in FOLLOW_UPS_MS) {
+                    kotlinx.coroutines.delay(at - waited)
+                    waited = at
+                    if (synchronized(pending) { pending.isEmpty() } || !c.settings.current.isLoggedIn) break
+                    reloadPlaylists()
+                    persist()
+                }
+            }
+        }
+    }
+
     companion object {
+        /** How long a playlist made here is kept in Library without YouTube listing it. */
+        internal const val PENDING_MS = 10 * 60_000L
+
+        /** When Library's playlists are asked for again after one is made (YouTube is slow to list it). */
+        private val FOLLOW_UPS_MS = longArrayOf(5_000, 20_000, 60_000)
+
+        internal data class PendingPlaylist(val item: PlaylistItem, val at: Long)
+        internal data class PendingMerge(val list: List<BrowseItem>, val still: Map<String, PendingPlaylist>)
+
+        /**
+         * [fetched] (the library's playlists as YouTube lists them) with the [pending] ones it doesn't list yet on top,
+         * newest first; [PendingMerge.still] is what stays pending: not listed, and made less than [PENDING_MS] ago.
+         */
+        internal fun mergePending(fetched: List<BrowseItem>, pending: Map<String, PendingPlaylist>, now: Long): PendingMerge {
+            val listed = fetched.mapTo(HashSet()) { it.id.removePrefix("VL") }
+            val still = pending.filter { (id, p) -> id !in listed && now - p.at <= PENDING_MS }
+            val missing = still.values.sortedByDescending { it.at }.map { it.item }
+            return PendingMerge(missing + fetched, still)
+        }
+
         /**
          * The likes a sync takes away: liked here before, no longer in the account's liked list, and not Vinz's own
          * (local files' likes, and imported likes kept off the account: [kept]).

@@ -113,14 +113,14 @@ private fun TvLyricsStyleExample(style: LyricsStyle, modifier: Modifier) {
     val settings = LocalAppSettings.current
     val prefs = remember(settings.lyricsLook, style) { settings.copy(lyricsLook = settings.lyricsLook.startFrom(style)) }
     val look = rememberLyricsLook(prefs, null)
-    val axis = remember(settings.lyricsFont, settings.fontChoice) { tvLyricsAxisChoice(settings)?.let(AppFonts::axis) }
+    val axis = remember(settings.lyrics.font, settings.fontChoice) { tvLyricsAxisChoice(settings)?.let(AppFonts::axis) }
     val clock = remember { mutableLongStateOf(EXAMPLE_HELD_MS) }
     // Only while the panel is open (this leaves the composition with it); still with Reduce motion on.
     if (!settings.reduceMotion) LaunchedEffect(Unit) {
         val start = withFrameMillis { it }
         while (true) withFrameMillis { t -> clock.longValue = (t - start) % EXAMPLE_LOOP_MS }
     }
-    val centred = settings.lyricsAlign == LyricsAlign.CENTER
+    val centred = settings.lyrics.align == LyricsAlign.CENTER
     val base = TextStyle(
         fontSize = 30.sp * look.sizeScale, lineHeight = 38.sp * look.sizeScale, fontWeight = FontWeight(look.weight),
         fontFamily = LocalLyricsFont.current ?: MaterialTheme.typography.bodyLarge.fontFamily,

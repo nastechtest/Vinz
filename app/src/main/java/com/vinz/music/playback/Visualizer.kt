@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import android.os.SystemClock
@@ -23,6 +22,7 @@ import kotlin.math.sqrt
  * It costs nothing while no visualizer is on screen: [handleBuffer] returns at once unless one is [listen]ing, and the
  * analysis ([Spectrum]) runs on the screen's frames, only while the player that shows it is drawn.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object VisualizerTap : TeeAudioProcessor.AudioBufferSink {
     private val listeners = AtomicInteger(0)
     /** Mono samples, newest at [written] - 1 (wrapping). */
@@ -45,7 +45,14 @@ object VisualizerTap : TeeAudioProcessor.AudioBufferSink {
         this.encoding = encoding
     }
 
+    /**
+     * For the in-app tests only (GaplessAppTest): every buffer as it leaves Vinz's chain, with its encoding and channel
+     * count. Null otherwise, which costs nothing.
+     */
+    @Volatile var testTap: ((ByteBuffer, Int, Int) -> Unit)? = null
+
     override fun handleBuffer(buffer: ByteBuffer) {
+        testTap?.invoke(buffer.duplicate().order(ByteOrder.nativeOrder()), encoding, channels)
         if (listeners.get() <= 0) return
         val b = buffer.duplicate().order(ByteOrder.nativeOrder())
         val ch = channels

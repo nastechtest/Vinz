@@ -111,7 +111,7 @@ fun tvHolidayRow(
 const val TV_HOLIDAY = TV_PLAY + "holiday:"
 
 /** New from your artists: the releases (newest first, as the store has them) as album cards. */
-fun tvReleaseRow(title: String, releases: List<com.vinz.music.data.db.ReleaseEntity>): TvOwnRow? =
+fun tvReleaseRow(title: String, releases: List<com.prism.music.data.db.ReleaseEntity>): TvOwnRow? =
     releases.take(15).map { r -> AlbumItem(r.id, r.title, "${r.kind} · ${r.artistName}", r.thumbnail, r.playlistId) }
         .takeIf { it.isNotEmpty() }?.let { TvOwnRow(TvHomeRow(HomeSections.NEW_RELEASES, title, it)) }
 

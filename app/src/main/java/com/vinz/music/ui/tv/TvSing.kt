@@ -122,6 +122,11 @@ object TvSing {
 @Composable
 fun TvSingPage(nav: TvNav) {
     val c = LocalContainer.current
+    // GitHub #342: with Sing let go of the song (its watchdog on a slow TV) and its page still open, the ambient screen
+    // was free to come, cover and all, in the lyrics' place. Lyrics are what this page is for, Sing on or off. And Back
+    // out of it after a long song with the remote put down (Back isn't an input Vinz hears on a newer TV) brought the
+    // ambient screen up as Sing went off, not the player; the quiet starts over as the page closes.
+    HoldsAmbient()
     val song by c.player.currentSong.collectAsState()
     val now = rememberTvNow(c)
     val semitones by c.sing.semitones.collectAsState()

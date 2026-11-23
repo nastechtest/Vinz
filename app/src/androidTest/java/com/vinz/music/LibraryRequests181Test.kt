@@ -20,6 +20,7 @@ import com.vinz.music.data.prefs.ExplicitContent
 import com.vinz.music.data.prefs.PlayerBackground
 import com.vinz.music.playback.QueueKind
 import com.vinz.music.playback.QueueSource
+import com.vinz.music.ui.screens.settings.SettingsPageId
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -60,8 +61,7 @@ class LibraryRequests181Test {
     }
 
     private fun openLibraryPlaylist(title: String, first: String) {
-        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Library") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasText("Library") and hasClickAction()).onFirst().performClick()
+        compose.tapTab("Library")
         // Library keeps the page it was on (an earlier test leaves it on Downloads or History): its own "Library" page,
         // the topmost "Library" that can be tapped (the tab bar's is at the bottom), holds the playlists.
         // Library keeps the page it was on (an earlier test leaves it on Downloads): its first page, left of Songs, holds
@@ -95,7 +95,12 @@ class LibraryRequests181Test {
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Test Artist · Polar")).fetchSemanticsNodes().isEmpty() }
         val shown = compose.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes()
             .mapNotNull { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString() }
-        assertTrue("no row reads just Test Artist; on screen: ${shown.joinToString(" | ").take(1500)}", compose.onAllNodes(hasText("Test Artist")).fetchSemanticsNodes().isNotEmpty())
+        // (Once the songs' genre is known, it follows the artist: "Test Artist · Pop". The album stays out either way.)
+        assertTrue(
+            "no row with the artist and no album; on screen: ${shown.joinToString(" | ").take(1500)}",
+            compose.onAllNodes(hasText("Test Artist", substring = true)).fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodes(hasText("Polar", substring = true)).fetchSemanticsNodes().isEmpty(),
+        )
     }
 
     /** #246: Add to playlist marks the playlist that has the song already, and not the one without it. */
@@ -198,10 +203,9 @@ class LibraryRequests181Test {
             c.settings.setPlayerBackdropShow(com.vinz.music.ui.player.BACKDROP_SHOW_MIN)
         }
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText("Customize Vinz") and hasClickAction())
-        compose.clickWhenFound(hasText(tr(R.string.player)) and hasClickAction())
-        scrollTo(tr(R.string.show_background))
+        // 1.8.4: Settings → Player → Layout, under the Background row while it's the blurred cover.
+        compose.openSettingsPage(SettingsPageId.PLAYER)
+        compose.scrollSettingsTo(hasText(tr(R.string.show_background)))
         compose.waitForText("${tr(R.string.dark)} · 0%")
     }
 
@@ -209,7 +213,7 @@ class LibraryRequests181Test {
     @Test fun newReleasesCanKeepToFavoriteArtists() {
         Fixture.ready()
         val now = System.currentTimeMillis()
-        fun release(id: String, artist: String, name: String, title: String) = com.vinz.music.data.db.ReleaseEntity(
+        fun release(id: String, artist: String, name: String, title: String) = com.prism.music.data.db.ReleaseEntity(
             id = id, artistId = artist, artistName = name, title = title, kind = "Single", year = java.time.LocalDate.now().year,
             releaseDate = java.time.LocalDate.now().toString(), thumbnail = null, playlistId = null, firstSeenAt = now, baseline = false, notifiedAt = now,
         )
@@ -228,11 +232,10 @@ class LibraryRequests181Test {
         if (android.os.Build.VERSION.SDK_INT < 29) return
         Fixture.ready()
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText("Customize Vinz") and hasClickAction())
-        compose.clickWhenFound(hasText(tr(R.string.text)) and hasClickAction())
-        scrollTo(tr(R.string.installed_fonts))
-        compose.clickWhenFound(hasText(tr(R.string.installed_fonts)) and hasClickAction())
+        // 1.8.4: Settings → Text & icons → Text → Font, whose sheet holds the fonts and, under them, the phone's own.
+        compose.openSettingsPage(SettingsPageId.TEXT_ICONS)
+        compose.openSettingsSheet(tr(R.string.font))
+        compose.clickWhenFound(settingsRow(tr(R.string.installed_fonts)))
         compose.waitUntil(20_000) { compose.onAllNodes(hasTestTag("installedFont")).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(hasTestTag("installedFont")).onFirst().performClick()
         compose.waitUntil(10_000) { c.settings.current.fontChoice == com.vinz.music.data.prefs.FontChoice.CUSTOM }
@@ -244,10 +247,9 @@ class LibraryRequests181Test {
         Fixture.ready()
         runBlocking { c.settings.setBackdrops(mapOf("HOME" to "ARTWORK")) }
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText("Customize Vinz") and hasClickAction())
-        compose.clickWhenFound(hasText(tr(R.string.glass_backgrounds)) and hasClickAction())
-        compose.clickWhenFound(hasText(tr(R.string.screen_backgrounds)) and hasClickAction())
+        // 1.8.4: Settings → Theme & colors → Pages → Screen backgrounds (the Backgrounds screen itself is as it was).
+        compose.openSettingsPage(SettingsPageId.THEME_COLORS)
+        compose.clickWhenFound(settingsRow(tr(R.string.screen_backgrounds)))
         scrollTo(tr(R.string.now_playing_background_fades))
         assertTrue("off until turned on", !c.settings.current.view.backdropFade)
         compose.clickWhenFound(hasTestTag("backdropFade"))

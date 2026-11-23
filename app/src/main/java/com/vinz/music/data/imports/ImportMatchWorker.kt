@@ -21,6 +21,17 @@ import com.vinz.music.data.Notifications
 import com.vinz.music.tr
 import java.util.concurrent.TimeUnit
 
+/** Says when another [every] songs have been done since it last said so (the count may start anywhere, or start over). */
+class PlaceSteps(private val every: Int) {
+    private var last = -1
+    fun due(done: Int): Boolean {
+        if (last < 0 || done < last) { last = done; return false }
+        if (done - last < every) return false
+        last = done
+        return true
+    }
+}
+
 /**
  * Matches imported songs to YouTube Music in the background (1.8.1): on Wi-Fi unless the listener allows mobile data,
  * a few minutes at a time (it carries on where it stopped, after a restart too), a quiet notification saying how far
@@ -30,13 +41,23 @@ class ImportMatchWorker(context: Context, params: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         val c = applicationContext.container
         val until = System.currentTimeMillis() + RUN_MS
+        // What is matched goes where it belongs as the run goes, not only at its end: Spotify's mirrored playlists and
+        // waiting likes fill while the listener is anywhere in the app or out of it (only when Spotify is connected;
+        // read from its sign-in preferences without building it).
+        val spotifyOn = runCatching {
+            val auth = applicationContext.getSharedPreferences(com.vinz.music.data.spotify.SpotifyStore.AUTH_PREFS, Context.MODE_PRIVATE)
+            com.vinz.music.data.spotify.SpotifyStore.connectedIn(auth)
+        }.getOrDefault(false)
+        val steps = PlaceSteps(PLACE_EVERY)
         val finished = runCatching {
             c.imports.matchSome(until, { isStopped }) { done, total ->
                 setProgress(workDataOf(DONE to done, TOTAL to total))
                 notify(done, total)
+                if (spotifyOn && steps.due(done)) runCatching { c.spotify.placeMatched() }
             }
         }.getOrDefault(false)
         cancelNotice()
+        if (spotifyOn) runCatching { c.spotify.placeMatched() }
         // More to do (the time ran out, or the network went): WorkManager runs it again shortly.
         return if (finished) Result.success() else Result.retry()
     }
@@ -69,6 +90,8 @@ class ImportMatchWorker(context: Context, params: WorkerParameters) : CoroutineW
         private const val NOTICE_ID = 4_901
         /** One run's share of time; WorkManager stops a run at 10 minutes. */
         private const val RUN_MS = 8 * 60_000L
+        /** Matched songs are placed (Spotify playlists, likes) every this many songs of a run. */
+        const val PLACE_EVERY = 20
         const val DONE = "done"
         const val TOTAL = "total"
 

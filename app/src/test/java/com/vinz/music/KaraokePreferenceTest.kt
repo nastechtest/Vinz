@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.LyricsDao
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsDao
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.LyricsRepository
@@ -9,6 +9,7 @@ import com.vinz.music.data.lyrics.WordFormat
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.prefs.AppSettings
+import com.vinz.music.data.prefs.LyricsPrefs
 import com.vinz.music.data.prefs.LyricsSource
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -28,7 +29,7 @@ class KaraokePreferenceTest {
             // What the phone has kept: the karaoke source hasn't been asked yet.
             override suspend fun allFor(songId: String) = rows.filter { it.songId == songId && LyricsSource.valueOf(it.source) in savedSources }
         }
-        val settings = AppSettings(lyricsOrder = order, preferSynced = true)
+        val settings = AppSettings(preferSynced = true, lyrics = LyricsPrefs(order = order))
         return LyricsRepository(OkHttpClient(), dao, YouTubeMusic(InnerTube(OkHttpClient(), { settings })), { settings })
     }
 

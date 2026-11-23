@@ -31,7 +31,20 @@ object SearchRank {
     class Taste(artists: List<KnownArtist>, val songs: Map<String, Double>) {
         val artists: Map<String, KnownArtist> = artists.groupBy { norm(it.name) }.mapValues { (_, l) -> l.maxBy { it.familiarity } }
         fun artist(name: String): Double = artists[norm(name)]?.familiarity ?: 0.0
+
+        /** The artists best known first, each name read once: [predict] goes through all of them for every letter typed. */
+        internal val names: List<ArtistName> by lazy {
+            this.artists.entries.sortedByDescending { it.value.familiarity }
+                .map { (n, a) -> ArtistName(a.name, n, n.split(" "), initialsOf(a.name)) }
+        }
+
         companion object { val NONE = Taste(emptyList(), emptyMap()) }
+    }
+
+    /** An artist's name as [predict] compares it: normalized, in words, and its initials (null for a single word). */
+    internal class ArtistName(val name: String, val norm: String, val words: List<String>, val initials: String?) {
+        fun fits(q: String): Boolean = norm != q && (norm.startsWith(q) || (q.length >= 3 && words.any { it.startsWith(q) }) ||
+            (q.length >= 2 && !q.contains(' ') && initials?.startsWith(q) == true))
     }
 
     /** How far a result the listener knows well can climb past a closer match they don't. */
@@ -57,14 +70,41 @@ object SearchRank {
         SearchFilter.PLAYLISTS to 8, SearchFilter.VIDEOS to 6,
     )
 
-    fun norm(s: String): String = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD)
-        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
-        .replace("&", " and ")
-        .replace(Regex("[^\\p{L}\\p{N} ]"), "")
-        .replace(Regex("\\s+"), " ").trim()
+    /**
+     * Lower case, no accents or punctuation, "&" as "and", single spaces. It walks the string by hand (#355): it used to
+     * compile three Regexes per call, and on a Galaxy A16 those compiles were two thirds of the main thread's time while
+     * typing, since both search boxes called this hundreds of times for each letter.
+     */
+    fun norm(s: String): String {
+        val d = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD)
+        val out = StringBuilder(d.length)
+        var space = false
+        var i = 0
+        while (i < d.length) {
+            val cp = d.codePointAt(i)
+            i += Character.charCount(cp)
+            when {
+                cp == ' '.code -> space = true
+                cp == '&'.code -> { if (out.isNotEmpty()) out.append(' '); out.append("and"); space = true }
+                isWordPart(cp) -> { if (space && out.isNotEmpty()) out.append(' '); space = false; out.appendCodePoint(cp) }
+                // Anything else goes, without leaving a gap: "AC/DC" is "acdc". That includes every combining mark.
+            }
+        }
+        return out.toString()
+    }
+
+    /** A letter or a number of any script. */
+    private fun isWordPart(cp: Int): Boolean = when (Character.getType(cp).toByte()) {
+        Character.UPPERCASE_LETTER, Character.LOWERCASE_LETTER, Character.TITLECASE_LETTER, Character.MODIFIER_LETTER, Character.OTHER_LETTER,
+        Character.DECIMAL_DIGIT_NUMBER, Character.LETTER_NUMBER, Character.OTHER_NUMBER -> true
+        else -> false
+    }
+
+    private val bracketed = Regex("\\s*[(\\[].*?[)\\]]")
+    private val dashTail = Regex("\\s+-\\s+.*$")
 
     /** "1989 (Taylor's Version)" and "Song - Remastered 2011" match "1989" and "Song". */
-    private fun core(title: String) = norm(title.replace(Regex("\\s*[(\\[].*?[)\\]]"), "").replace(Regex("\\s+-\\s+.*$"), ""))
+    private fun core(title: String) = norm(title.replace(bracketed, "").replace(dashTail, ""))
 
     /** 0..1: how well [title] (with [extra], e.g. the artist) matches the query. */
     fun match(query: String, title: String, extra: String = ""): Double {
@@ -93,9 +133,11 @@ object SearchRank {
         "\\b(instrumental|karaoke|cover|tribute|sped up|slowed|nightcore|8d|lofi|lo fi|piano version|made famous|flip|remix|mashup|bootleg)\\b",
     )
 
+    private val titleTails = Regex("[(\\[]([^)\\]]*)[)\\]]|\\s-\\s(.*)$")
+
     /** Such words in [title]'s brackets or " - …" tail that the query [q] (normalised) doesn't ask for. */
     internal fun knockoffMarks(title: String, q: String): List<String> {
-        val tails = Regex("[(\\[]([^)\\]]*)[)\\]]|\\s-\\s(.*)$").findAll(title).map { norm(it.value) }.joinToString(" ")
+        val tails = titleTails.findAll(title).map { norm(it.value) }.joinToString(" ")
         val asked = q.split(" ").toSet()
         return knockoff.findAll(tails).map { it.value }.filter { m -> m.split(" ").any { it !in asked } }.toList()
     }
@@ -195,14 +237,9 @@ object SearchRank {
     fun predict(query: String, taste: Taste, recents: List<String>, limit: Int = 3): List<String> {
         val q = norm(query)
         if (q.isEmpty()) return emptyList()
-        fun fits(name: String): Boolean {
-            val n = norm(name)
-            return n != q && (n.startsWith(q) || n.split(" ").any { it.startsWith(q) && q.length >= 3 } ||
-                (q.length >= 2 && !q.contains(' ') && initialsOf(name)?.startsWith(q) == true))
-        }
-        val fromRecents = recents.filter { norm(it).startsWith(q) && norm(it) != q }
-        val fromArtists = taste.artists.values.filter { fits(it.name) }.sortedByDescending { it.familiarity }.map { it.name }
-        return (fromRecents + fromArtists).distinctBy { norm(it) }.take(limit)
+        val fromRecents = recents.asSequence().map { it to norm(it) }.filter { (_, n) -> n.startsWith(q) && n != q }
+        val fromArtists = taste.names.asSequence().filter { it.fits(q) }.map { it.name to it.norm }
+        return (fromRecents + fromArtists).distinctBy { it.second }.take(limit).map { it.first }.toList()
     }
 
     /** [song] is its album's title track and the query names exactly that ("after hours" → After Hours). */

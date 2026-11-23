@@ -13,9 +13,9 @@ enum class TopButtons(val label: String) {
 /** Home & Library's merged choices, over the settings Vinz already keeps (homePodcastsButton, homeCustomizeTopButton). */
 object HomeChoices {
     fun topButtons(s: AppSettings): TopButtons = when {
-        s.homePodcastsButton && s.homeCustomizeTopButton -> TopButtons.BOTH
-        s.homePodcastsButton -> TopButtons.PODCASTS
-        s.homeCustomizeTopButton -> TopButtons.CUSTOMIZE
+        s.home.podcastsButton && s.home.customizeTopButton -> TopButtons.BOTH
+        s.home.podcastsButton -> TopButtons.PODCASTS
+        s.home.customizeTopButton -> TopButtons.CUSTOMIZE
         else -> TopButtons.NONE
     }
 

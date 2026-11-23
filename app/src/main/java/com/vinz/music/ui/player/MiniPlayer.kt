@@ -16,7 +16,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,10 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,9 +71,6 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     /** No surface of its own: it sits in the tab bar's glass ("Joined to the tab bar", 1.7.6). */
     bare: Boolean = false,
-    /** 0 is the familiar full row; 1 is Vinz's centred 64 dp split-chrome control. */
-    compactFraction: Float = 0f,
-    compactWidth: androidx.compose.ui.unit.Dp? = null,
     onOpen: () -> Unit,
 ) {
     val pc = LocalContainer.current.player
@@ -122,11 +114,6 @@ fun MiniPlayer(
     // Card: the full-width piece of glass over the tab bar, its progress line along the bottom.
     val bar = style == MiniPlayerStyle.CARD
     val height = when (style) { MiniPlayerStyle.CARD -> 64.dp; MiniPlayerStyle.SLIM -> 54.dp; MiniPlayerStyle.PILL -> 56.dp }
-    val compact = compactFraction.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
-    // Retire skip controls early, before the continuously narrowing player can crowd its contents.
-    val compactMode = compactWidth != null && compact >= 0.25f
-    // The compact target never makes the required play/pause target shorter than 48 dp.
-    val visualHeight = androidx.compose.ui.unit.lerp(height, 48.dp, compact)
     val shape = when (style) {
         MiniPlayerStyle.CARD -> ui.card
         MiniPlayerStyle.SLIM -> ui.shape(16.dp)
@@ -149,22 +136,22 @@ fun MiniPlayer(
     surface(
         modifier
             .fillMaxWidth()
-            .height(visualHeight)
+            .height(height)
             .testTag("miniPlayer")
             .offset { IntOffset(drag.value.roundToInt(), pull.value.roundToInt()) }
             .graphicsLayer { alpha = 1f - (pull.value / (height.toPx() * 1.6f)).coerceIn(0f, 0.85f) }
             .pointerInput(Unit) {
-                val stopAt = visualHeight.toPx() * 0.9f
+                val stopAt = height.toPx() * 0.9f
                 // Up (#149, 1.7.7): the card lifts a little against the finger (a third of the drag, at most a third of its
                 // height) and opens the player, or does what's set, once lifted past [upAt].
-                val upAt = -visualHeight.toPx() * 0.22f
-                val upMost = -visualHeight.toPx() * 0.34f
+                val upAt = -height.toPx() * 0.22f
+                val upMost = -height.toPx() * 0.34f
                 var raw = 0f
                 detectVerticalDragGestures(
                     onDragStart = { raw = pull.value },
                     onDragEnd = {
                         scope.launch {
-                            val up = container.settings.current.miniSwipeUp
+                            val up = container.settings.current.gestures.miniSwipeUp
                             if (pull.value <= upAt && up != PlayerGesture.NONE) {
                                 haptics.gestureEnd()
                                 runMiniGesture(up)
@@ -172,11 +159,11 @@ fun MiniPlayer(
                                 return@launch
                             }
                             // Pulled down: stop (#59) or whatever's set in Settings → Player → Gestures (1.7.4).
-                            val down = container.settings.current.miniSwipeDown
+                            val down = container.settings.current.gestures.miniSwipeDown
                             if (pull.value > stopAt && down != PlayerGesture.NONE) {
                                 haptics.gestureEnd()
                                 if (down == PlayerGesture.STOP) {
-                                    pull.animateTo(visualHeight.toPx() * 1.6f)
+                                    pull.animateTo(height.toPx() * 1.6f)
                                     pc.stop()
                                     pull.snapTo(0f)
                                 } else {
@@ -193,8 +180,8 @@ fun MiniPlayer(
                     // #222: a way with no gesture set (Settings → Player → Gestures: Nothing) doesn't move the card at all.
                     val now = container.settings.current
                     val after = when {
-                        raw >= 0f -> if (now.miniSwipeDown == PlayerGesture.NONE) 0f else raw
-                        now.miniSwipeUp == PlayerGesture.NONE -> 0f
+                        raw >= 0f -> if (now.gestures.miniSwipeDown == PlayerGesture.NONE) 0f else raw
+                        now.gestures.miniSwipeUp == PlayerGesture.NONE -> 0f
                         else -> (raw / 3f).coerceAtLeast(upMost)
                     }
                     if ((pull.value < stopAt) != (after < stopAt) || (pull.value > upAt) != (after > upAt)) haptics.threshold()
@@ -209,8 +196,8 @@ fun MiniPlayer(
                         scope.launch {
                             val now = container.settings.current
                             val g = when {
-                                drag.value < -140 -> now.miniSwipeLeft
-                                drag.value > 140 -> now.miniSwipeRight
+                                drag.value < -140 -> now.gestures.miniSwipeLeft
+                                drag.value > 140 -> now.gestures.miniSwipeRight
                                 else -> PlayerGesture.NONE
                             }
                             if (g != PlayerGesture.NONE) { haptics.gestureEnd(); runMiniGesture(g) }
@@ -222,7 +209,7 @@ fun MiniPlayer(
                     rawX += d
                     // #222: nor sideways, toward a swipe set to Nothing.
                     val now = container.settings.current
-                    val after = if ((if (rawX < 0f) now.miniSwipeLeft else now.miniSwipeRight) == PlayerGesture.NONE) 0f else rawX
+                    val after = if ((if (rawX < 0f) now.gestures.miniSwipeLeft else now.gestures.miniSwipeRight) == PlayerGesture.NONE) 0f else rawX
                     if ((kotlin.math.abs(before) < 140f) != (kotlin.math.abs(after) < 140f)) haptics.threshold()
                     scope.launch { drag.snapTo(after) }
                 }
@@ -242,23 +229,13 @@ fun MiniPlayer(
         )
         Row(
             // Holding it brings up the song's actions (like, add to playlist, share…) without opening the player.
-            Modifier.fillMaxSize()
-                .then(
-                    if (compactMode) Modifier.semantics(mergeDescendants = true) {
-                        contentDescription = "${s.title}, ${s.artistText}"
-                        role = Role.Button
-                    } else Modifier,
-                )
-                .combinedClickable(onClick = onOpen, onLongClick = { haptics.click(); menu = true })
-                .padding(start = if (compactMode) 0.dp else if (style == MiniPlayerStyle.PILL) 6.dp else if (bar) 16.dp else 8.dp, end = if (compactMode) 0.dp else if (style == MiniPlayerStyle.PILL) 8.dp else if (bar) 8.dp else 4.dp),
+            Modifier.fillMaxSize().combinedClickable(onClick = onOpen, onLongClick = { haptics.click(); menu = true })
+                .padding(start = if (style == MiniPlayerStyle.PILL) 6.dp else if (bar) 16.dp else 8.dp, end = if (style == MiniPlayerStyle.PILL) 8.dp else if (bar) 8.dp else 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (compactMode) Arrangement.Center else Arrangement.Start,
         ) {
-            if (!compactMode || compact < 0.72f || !settings.view.miniPlayButton) {
-                Artwork(com.vinz.music.data.PlaylistCovers.artOf(s), with(CoverFlight) { Modifier.size(artSize).miniCover() }, artShape, size = 226)
-                Spacer(Modifier.width(12.dp))
-            }
-            if (!compactMode || compact < 0.5f) AnimatedContent(
+            Artwork(com.vinz.music.data.PlaylistCovers.artOf(s), with(CoverFlight) { Modifier.size(artSize).miniCover().graphicsLayer { alpha = if (returning) 0f else 1f } }, artShape, size = 226)
+            Spacer(Modifier.width(12.dp))
+            AnimatedContent(
                 s,
                 transitionSpec = { (slideInHorizontally { it / 3 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 3 } + fadeOut()) },
                 modifier = Modifier.weight(1f),
@@ -274,23 +251,23 @@ fun MiniPlayer(
                     )
                 }
             }
-            if (!compactMode && settings.miniPrevButton) {
+            if (settings.miniPrevButton) {
                 IconButton(onClick = { haptics.click(); pc.previous() }, modifier = Modifier.size(40.dp)) { Icon(VinzIcons.Previous, tr(R.string.widget_previous)) }
             }
             // Play / pause can be left off (Reddit, 1.8.1): a tap still opens the player.
             if (!settings.view.miniPlayButton) {
                 if (!settings.miniSkipButtons) Spacer(Modifier.width(8.dp))
-            } else if (style == MiniPlayerStyle.PILL && !compactMode) {
+            } else if (style == MiniPlayerStyle.PILL) {
                 Box(
                     Modifier.size(40.dp).clip(CircleShape).background(scheme.onSurface).clickable { haptics.click(); pc.togglePlay() },
                     contentAlignment = Alignment.Center,
                 ) { Icon(if (playing) VinzIcons.Pause else VinzIcons.Play, tr(R.string.play_pause), Modifier.size(24.dp), tint = scheme.surface) }
             } else {
-                IconButton(onClick = { haptics.click(); pc.togglePlay() }, modifier = Modifier.size(if (compactMode) 48.dp else 44.dp)) {
+                IconButton(onClick = { haptics.click(); pc.togglePlay() }, modifier = Modifier.size(44.dp)) {
                     Icon(if (playing) VinzIcons.Pause else VinzIcons.Play, tr(R.string.play_pause), Modifier.size(if (style == MiniPlayerStyle.SLIM) 26.dp else 28.dp))
                 }
             }
-            if (!compactMode && settings.miniSkipButtons) {
+            if (settings.miniSkipButtons) {
                 IconButton(onClick = { haptics.click(); pc.next() }, modifier = Modifier.size(40.dp)) { Icon(VinzIcons.Next, tr(R.string.widget_next)) }
             }
         }

@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.download
 
 import android.content.Context
@@ -14,8 +13,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vinz.music.container
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.model.Song
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -88,6 +87,7 @@ class PlayLikelihood(events: List<PlayEventEntity>, songs: Map<String, Song>, pr
  * the space holds the songs you stream ([SmartCacheEvictor]).
  */
 class SmartDownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override suspend fun doWork(): Result {
         val c = applicationContext.container
         val s = c.settings.current
@@ -160,10 +160,10 @@ class SmartDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         smartIds.forEach { id ->
             val st = downloads[id]?.state
             when {
-                c.library.isDisliked(id) -> { c.downloads.remove(id); removed++ }
-                st == Download.STATE_QUEUED && id !in addIds && canAdd -> { c.downloads.remove(id); removed++ }
-                st == Download.STATE_QUEUED && id !in target -> { c.downloads.remove(id); removed++ }
-                st == Download.STATE_COMPLETED && id !in target && rotated < 25 -> { c.downloads.remove(id); rotated++ }
+                c.library.isDisliked(id) -> { c.downloads.remove(id, byListener = false); removed++ }
+                st == Download.STATE_QUEUED && id !in addIds && canAdd -> { c.downloads.remove(id, byListener = false); removed++ }
+                st == Download.STATE_QUEUED && id !in target -> { c.downloads.remove(id, byListener = false); removed++ }
+                st == Download.STATE_COMPLETED && id !in target && rotated < 25 -> { c.downloads.remove(id, byListener = false); rotated++ }
             }
         }
         toAdd.forEach { song ->

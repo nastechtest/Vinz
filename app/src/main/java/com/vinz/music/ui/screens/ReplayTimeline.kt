@@ -53,12 +53,15 @@ internal suspend fun loadTimeline(plays: PlayStats, period: Period, from: Long, 
     return ReplayTimeline(unit, buckets, values, now)
 }
 
-/** Where the graph of [period] ends: today, this week and this month whole; any other stretch where it ends ([to]). */
+/**
+ * Where the graph of [period] ends: today, this week and this month whole (yesterday and last week too: their [to] is
+ * their last millisecond, so the day or week it falls in is theirs); any other stretch where it ends ([to]).
+ */
 internal fun timelineEnd(period: Period, to: Long, zone: ZoneId, firstDay: java.time.DayOfWeek): Long {
     val today = java.time.Instant.ofEpochMilli(to).atZone(zone).toLocalDate()
     val end = when (period.kind) {
-        Period.Kind.TODAY -> today.plusDays(1)
-        Period.Kind.WEEK -> today.with(java.time.temporal.TemporalAdjusters.previousOrSame(firstDay)).plusWeeks(1)
+        Period.Kind.TODAY, Period.Kind.YESTERDAY -> today.plusDays(1)
+        Period.Kind.WEEK, Period.Kind.LAST_WEEK -> today.with(java.time.temporal.TemporalAdjusters.previousOrSame(firstDay)).plusWeeks(1)
         Period.Kind.MONTH -> today.withDayOfMonth(1).plusMonths(1)
         else -> return to
     }

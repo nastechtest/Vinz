@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_account_summary">サインインしてクラウド プロファイルを管理する</string>
-    <string name="cloud_account_intro">クラウド プロファイルは YouTube Music とは別のものです。ローカルの音楽と再生はサインインしなくても機能します。</string>
+    <!-- Summary and intro fall back to the current Vinz Account copy: main's translations predate that copy. -->
     <string name="cloud_account_email">電子メールアドレス</string>
     <string name="cloud_account_password">パスワード</string>
     <string name="cloud_account_username">ユーザー名</string>

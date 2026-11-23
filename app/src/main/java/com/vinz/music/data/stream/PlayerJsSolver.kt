@@ -158,6 +158,9 @@ class PlayerJsSolver(private val context: Context, private val http: OkHttpClien
         throw IOException("Player JS failed: $e", e)
     }
 
+    /** Lets the sandbox go (the self-test's own solver, once it has solved its one signature). */
+    fun close() = synchronized(lock) { reset() }
+
     private fun reset() {
         runCatching { isolate?.close() }
         isolate = null

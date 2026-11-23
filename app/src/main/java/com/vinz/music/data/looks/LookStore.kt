@@ -110,7 +110,7 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
     private val iconsVersion = MutableStateFlow(0)
 
     /** The Look the app is in, when its settings and icons are exactly one's. */
-    val currentId: StateFlow<String?> = combine(settings.flow, _mine, iconsVersion, _other) { s, _, _, _ -> lookNow(s)?.id }
+    val currentId: StateFlow<String?> = combine(settings.prefsNow, _mine, iconsVersion, _other) { p, _, _, _ -> lookNow(p)?.id }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, null)
 
     /** Your own Look last put on or saved, so changes made to it afterwards can be saved into it ([edited], [update]). */
@@ -128,18 +128,42 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
     val edited: StateFlow<Look?> = combine(currentId, basis, _mine) { now, b, mine -> if (b != null && now != b) mine.firstOrNull { it.id == b } else null }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** The Look whose settings and icons [s] are exactly; your own Looks first (one saved from Paper as it is is yours). */
-    private fun lookNow(s: com.vinz.music.data.prefs.AppSettings): Look? {
+    /**
+     * The Look whose settings and icons the store [p] holds exactly; your own Looks first (one saved from Paper as it is is
+     * yours). Both sides as stored, from the one snapshot (1.8.7.6: compared with the settings as Performance mode reads
+     * them, no Look was ever in use while it was on).
+     */
+    private fun lookNow(p: androidx.datastore.preferences.core.Preferences = settings.prefsNow.value): Look? {
         val icons = currentIcons()
-        return (_mine.value + listOfNotNull(_other.value) + BuiltInLooks.all).firstOrNull { l -> l.icons == icons && settings.previewLook(resolved(l)) == s }
+        val s = settings.storedOf(p)
+        return (_mine.value + listOfNotNull(_other.value) + BuiltInLooks.all).firstOrNull { l -> l.icons == icons && settings.previewLook(p, resolved(l)) == s }
     }
 
     // ---------------------------------------------------------------- Keeping Looks
 
     private fun loadMine(): List<Look> = (dir.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name.startsWith("my-") } ?: emptyArray())
-        .mapNotNull { f -> runCatching { json.decodeFromString(Look.serializer(), f.readText()) }.getOrNull() }
+        .mapNotNull { f -> runCatching { json.decodeFromString(Look.serializer(), f.readText()).let { photosRepaired(it, f) } }.getOrNull() }
         .map { LookCode.sanitized(it, settings.lookKinds).copy(builtIn = false) }
         .sortedBy { it.created }
+
+    /**
+     * #378: a Look saved in one of the 8 languages holds its photo as "FOTO|/…/all-1.jpg", which wasn't seen as a photo, so
+     * it wasn't kept with the Look and [LookCode.sanitized] would leave it out. Kept with it now, and saved, if the file's
+     * still there.
+     */
+    private fun photosRepaired(look: Look, file: File): Look {
+        val tagged = look.values[Look.BACKDROPS] ?: return look
+        val saved = Backgrounds.parse(tagged)
+        val fixed = saved.mapNotNull { (screen, v) ->
+            val right = Backgrounds.photoKeyFixed(v)
+            if (right == v) screen to v
+            else keep(File(right.substringAfter('|')))?.let { h -> screen to "PHOTO|${Backgrounds.ASSET}$h" }
+        }.toMap()
+        if (fixed == saved) return look
+        val repaired = look.copy(values = if (fixed.isEmpty()) look.values - Look.BACKDROPS else look.values + (Look.BACKDROPS to Backgrounds.tag(fixed)))
+        runCatching { file.writeText(json.encodeToString(Look.serializer(), repaired)) }
+        return repaired
+    }
 
     private fun write(look: Look) {
         dir.mkdirs()
@@ -280,7 +304,7 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
      * later: History only goes back ten.
      */
     suspend fun apply(look: Look, label: String = tr(R.string.look_2, look.name), scheduled: Boolean = false) = withContext(Dispatchers.IO) {
-        val from = lookNow(settings.current)
+        val from = lookNow(settings.prefsLatest())
         // A seasonal Look remembers the Look the listener had, to go back to when its month ends ([endSeasons]).
         if (Seasons.of(look.id) != null && Seasons.of(from?.id) == null) prefs.edit().putString(SEASON_FROM, from?.id ?: BEFORE_ID).apply()
         if (look.id != BEFORE_ID && from == null) runCatching {
@@ -440,6 +464,7 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
     }
     @Volatile private var expect: Expect? = null
 
+
     private val _steps = MutableStateFlow(loadSteps())
     /** The last [MAX_STEPS] changes to the look, newest first. */
     val steps: StateFlow<List<LookStep>> = _steps.asStateFlow()
@@ -470,7 +495,9 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
         if (e?.silent == true || e?.undo == true) return
         val keys = changedKeys(before, now)
         if (keys.isEmpty()) return
-        val label = e?.label ?: LookLabels.change(before, now, order) ?: return
+        val reset = resetRows?.takeIf { System.currentTimeMillis() < it.second }?.first
+        resetRows = null
+        val label = e?.label ?: LookLabels.change(before, now, order, rows = reset) ?: return
         val steps = _steps.value
         val top = steps.firstOrNull()
         val at = System.currentTimeMillis()
@@ -584,7 +611,28 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
         }
     }
 
+    /**
+     * Once (1.8.7.6): the first run of 1.8.6 to 1.8.7.5 left a step in History nobody made ("Animated cover fills the
+     * player → On and 4 more": exactly a new install's own defaults that are in a Look, none of them set before, not a
+     * Look's switch). It goes, and the settings get the marker that makes those defaults Vinz's own Look on this phone
+     * ([SettingsRepository.repairNewInstallLook]). A missing or unreadable History is left as it is.
+     */
+    private fun repairFirstRun() {
+        runCatching {
+            if (!settings.newInstallLookRepairDue) return
+            val names = settings.newInstallLookNames.takeIf { it.isNotEmpty() } ?: return
+            val steps = _steps.value
+            val firstRun = steps.filter { s -> !s.look && s.keys.toSet() == names && s.before.keys.none { it in names } }
+            if (firstRun.isNotEmpty()) saveSteps(steps.filterNot { it in firstRun })
+            settings.repairNewInstallLook(firstRunSeen = firstRun.isNotEmpty())
+        }.onFailure { android.util.Log.w("VinzLooks", "the first run's repair failed", it) }
+    }
+
     init {
+        // The first run's own defaults (SettingsRepository.setOnboarded) aren't a change of the listener's: told inside
+        // that write, before the change can reach the collector below.
+        settings.onFirstRunLook = { target -> expect = Expect(target, silent = true) }
+        repairFirstRun()
         runSeasons()
         scope.launch {
             var last = settings.lookValues.value
@@ -598,6 +646,15 @@ class LookStore(private val app: Context, private val settings: SettingsReposito
     }
 
     companion object {
+        /** Rows a "Reset this page" listed, until when: its Undo bar counts those, not the stored values under them (1.8.5). */
+        @Volatile private var resetRows: Pair<Int, Long>? = null
+
+        /**
+         * A settings page is about to reset the [rows] its confirm listed: the next change's Undo bar counts them. Not
+         * the store's own: the settings kit's dialog is drawn where there is no container at hand (its tests).
+         */
+        fun pageReset(rows: Int) { resetRows = rows to System.currentTimeMillis() + 5_000 }
+
         const val MAX_STEPS = 10
         /** The one "Before <Look>" kept by [apply]. */
         const val BEFORE_ID = "my-before"

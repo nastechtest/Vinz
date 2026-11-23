@@ -3,7 +3,7 @@ package com.vinz.music.data
 import com.vinz.music.R
 import com.vinz.music.tr
 import com.vinz.music.trp
-import com.vinz.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PlayEventEntity
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId

@@ -286,7 +286,7 @@ fun BlendsScreen(bottomPadding: Dp) {
  * the corner. [small] drops the words for list-sized covers.
  */
 @Composable
-fun BlendCover(e: com.vinz.music.data.db.BlendEntity, modifier: Modifier = Modifier, small: Boolean = false) {
+fun BlendCover(e: com.prism.music.data.db.BlendEntity, modifier: Modifier = Modifier, small: Boolean = false) {
     val c = LocalContainer.current
     val stamp by c.blends.coverStamp.collectAsState()
     val custom = remember(e.friendWho, stamp) { c.blends.coverFile(e.friendWho).takeIf { it.exists() } }
@@ -364,7 +364,7 @@ fun BlendScreen(who: String, bottomPadding: Dp) {
     val nav = LocalNavigator.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val entity by produceState<com.vinz.music.data.db.BlendEntity?>(null, who) { value = c.blends.get(who) }
+    val entity by produceState<com.prism.music.data.db.BlendEntity?>(null, who) { value = c.blends.get(who) }
     val e = entity ?: return
     val blend = remember(e) { c.blends.blendOf(e) } ?: return
     val myWho = c.blends.myWho
@@ -411,9 +411,10 @@ fun BlendScreen(who: String, bottomPadding: Dp) {
                     if (c.settings.current.isLoggedIn) DropdownMenuItem({ Text(tr(R.string.save_to_youtube_music)) }, {
                         menu = false
                         scope.launch {
-                            val id = runCatching { withContext(Dispatchers.IO) { c.ytm.createPlaylist(tr(R.string.blend_2, title), songs.map { it.id }, privacy = "PRIVATE") } }.getOrNull()
+                            val name = tr(R.string.blend_2, title)
+                            val id = runCatching { withContext(Dispatchers.IO) { c.ytm.createPlaylist(name, songs.map { it.id }, privacy = "PRIVATE") } }.getOrNull()
                             Toast.makeText(context, if (id != null) tr(R.string.saved_as_a_private_playlist) else tr(R.string.couldn_t_save_the_blend), Toast.LENGTH_SHORT).show()
-                            if (id != null) c.library.refreshCollections()
+                            if (id != null) c.library.created(id, name, songs.size)
                         }
                     }, leadingIcon = { Icon(VinzIcons.PlaylistAdd, null) })
                     DropdownMenuItem({ Text(tr(R.string.remove_this_blend)) }, {

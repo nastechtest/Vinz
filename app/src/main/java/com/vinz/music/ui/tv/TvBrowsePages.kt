@@ -24,23 +24,28 @@ import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.model.SongItem
 import com.vinz.music.data.innertube.TopSearch
 import com.vinz.music.tr
+import com.vinz.music.ui.screens.RecentSearches
 import com.vinz.music.ui.theme.LocalContainer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Searches typed (or said) lately: the phone's own list (one store, as Vinz is one app on both). */
+/**
+ * Searches typed (or said) lately: the phone's own list (one store, as Vinz is one app on both), kept as the phone keeps
+ * it ([RecentSearches.KEEP]: a TV search once cut the phone's 30 to 12). The TV shows the newest [RecentSearches.SHOWN].
+ */
 internal object TvSearchHistory {
-    private const val MAX = 12
     private fun prefs(context: Context) = context.getSharedPreferences("search", Context.MODE_PRIVATE)
 
     fun read(context: Context): List<String> = prefs(context).getString("q", "")!!.split("\n").filter { it.isNotBlank() }
 
+    /** What the TV's Search lists. */
+    fun shown(context: Context): List<String> = read(context).take(RecentSearches.SHOWN)
+
     fun add(context: Context, q: String) {
         val v = q.trim().takeIf { it.isNotBlank() } ?: return
-        val list = (listOf(v) + read(context).filter { it != v }).take(MAX)
-        prefs(context).edit().putString("q", list.joinToString("\n")).apply()
+        prefs(context).edit().putString("q", RecentSearches.add(read(context), v).joinToString("\n")).apply()
     }
 }
 
@@ -62,7 +67,7 @@ fun TvSearchPlace(nav: TvNav) {
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
-    val recent = remember { mutableStateListOf<String>().apply { addAll(TvSearchHistory.read(context)) } }
+    val recent = remember { mutableStateListOf<String>().apply { addAll(TvSearchHistory.shown(context)) } }
     var result by remember { mutableStateOf<TopSearch?>(null) }
     LaunchedEffect(query) {
         if (query.isBlank()) { result = null; return@LaunchedEffect }
@@ -74,7 +79,7 @@ fun TvSearchPlace(nav: TvNav) {
     val submit: (String) -> Unit = { q ->
         query = q; typing = false; submitted++
         TvSearchHistory.add(context, q)
-        recent.clear(); recent.addAll(TvSearchHistory.read(context))
+        recent.clear(); recent.addAll(TvSearchHistory.shown(context))
     }
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let(submit)

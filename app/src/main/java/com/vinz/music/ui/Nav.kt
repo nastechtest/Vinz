@@ -34,6 +34,10 @@ object Routes {
     const val LOGIN_ADD = "login_add"
     /** Signs in to Discord for "Listening to Vinz" on the listener's profile. */
     const val DISCORD_LOGIN = "discord_login"
+    /** "Before you sign in" to Spotify (1.8.7.5): what the unsanctioned sign-in means, then [SPOTIFY_LOGIN]. */
+    const val SPOTIFY_BEFORE = "spotify_before"
+    /** Spotify's own sign-in page (read-only session). */
+    const val SPOTIFY_LOGIN = "spotify_login"
     const val DOWNLOADS = "downloads"
     const val LOCAL = "local"
     const val MOODS = "moods"
@@ -41,14 +45,18 @@ object Routes {
     const val IMPORT = "import"
     const val TOGETHER = "together"
     const val PODCASTS = "podcasts"
+    /** Library → Uploads: the music the listener uploaded to YouTube Music (#332). */
+    const val UPLOADS = "uploads"
+    const val SAVED = "saved_while_playing"
+    const val EXPLORE = "explore"
     /** Release Radar's page: new albums, singles and EPs from the listener's artists. */
     const val NEW_RELEASES = "new_releases"
     /** "Pick artists you like" (after the welcome screen, or Settings → Home screen → Your artists). */
     const val PICK_ARTISTS = "pick_artists"
     /** The Vinz Account: make one (after the welcome screen, or from Settings) or change it. */
     const val ACCOUNT = "vinz_account"
-    /** Cloud-backed Vinz identity, authentication and public/private profile editor. */
     const val VINZ_CLOUD_ACCOUNT = "vinz_cloud_account"
+    const val LOCAL_ACCOUNT = "vinz_local_account"
     const val EXCLUSIONS = "exclusions"
     /** Bring your history (1.8.1): Spotify's data download, Google Takeout, Last.fm. */
     const val BRING_HISTORY = "bring_history"
@@ -65,6 +73,8 @@ object Routes {
     const val RECOGNIZED = "recognized"
     /** Every shared component of the 1.7 redesign (debug builds, from Settings → About). */
     const val DESIGN_GALLERY = "design_gallery"
+    /** 1.8.7.6: the people who supported Vinz (from Settings → Backup & about → About). */
+    const val SUPPORTERS = "supporters"
     /** One of Vinz's own mixes (Daily Mix 1, the time-of-day mix, Release Radar). */
     fun mix(id: String) = "mix/${Uri.encode(id)}"
     fun podcast(id: String) = "podcast/${Uri.encode(id)}"
@@ -74,6 +84,10 @@ object Routes {
     fun playlist(id: String) = "playlist/${Uri.encode(id)}"
     /** A folder of playlists in Library (1.7.6). */
     fun folder(id: String) = "folder/${Uri.encode(id)}"
+    /** One of the listener's tags (1.8.3), by its name. */
+    fun tag(name: String) = "tag/${Uri.encode(name)}"
+    /** Searching your library (1.8.3), with [query] typed in. */
+    fun librarySearch(query: String = "") = "library-search?q=${Uri.encode(query)}"
     fun artist(id: String) = "artist/${Uri.encode(id)}"
     /** An artist's page; one a song names without a link (#78) is looked up by name when it opens. */
     fun artist(ref: com.vinz.music.data.model.ArtistRef) =

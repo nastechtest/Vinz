@@ -105,6 +105,7 @@ class VocalStemProcessor(private val sing: Source) : BaseAudioProcessor() {
     /** The offset the vocals are read at, and the song it was found for (null until they line up). */
     val alignment: Pair<String?, Long> get() = matchedFor to lag
 
+    @Volatile private var alignerParked = false
     private val aligner = Thread({ alignLoop() }, "VinzSingAlign").apply { isDaemon = true; start() }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -224,6 +225,7 @@ class VocalStemProcessor(private val sing: Source) : BaseAudioProcessor() {
             return
         }
         val on = sing.onNow && id != null
+        if (alignerParked) java.util.concurrent.locks.LockSupport.unpark(aligner)
         // The vocals may not exist yet when the song starts (Sing was just switched on), or be started afresh in a new
         // file: while they're missing or short of where the song is, they're looked for again every quarter second.
         // Two sets (1.8.x): the song's own (the full or light way) and the quick way's stand-ins, done first in seconds;
@@ -300,7 +302,17 @@ class VocalStemProcessor(private val sing: Source) : BaseAudioProcessor() {
         while (true) {
             // Till the vocals line up, looked at more often: the first seconds of Sing are the ones that count.
             try { Thread.sleep(if (matchedFor == null) 250 else 400) } catch (_: InterruptedException) { return }
-            if (!sing.onNow) continue
+            // Nothing to line up with Sing off: asleep till it's on, rather than up four times a second all day (with
+            // music paused, this was the busiest thread in Vinz).
+            if (!sing.onNow) {
+                alignerParked = true
+                while (!sing.onNow) {
+                    java.util.concurrent.locks.LockSupport.parkNanos(PARK_NS)
+                    if (Thread.currentThread().isInterrupted) return
+                }
+                alignerParked = false
+                continue
+            }
             val (id, music, end) = synchronized(ringLock) {
                 if (ringSong == null || ringFilled < rate * ALIGN_SECONDS) return@synchronized Triple(null, null, 0L)
                 val n = rate * ALIGN_SECONDS
@@ -379,5 +391,7 @@ class VocalStemProcessor(private val sing: Source) : BaseAudioProcessor() {
         /** How strongly the music must match the vocals to subtract them (the vocals are part of the music). */
         private const val MIN_MATCH = 0.2f
         private const val RECHECK_MS = 20_000L
+        /** With Sing off the aligner sleeps this long at a time; switching Sing on wakes it at once. */
+        private const val PARK_NS = 30_000_000_000L
     }
 }

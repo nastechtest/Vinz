@@ -1,3 +1,28 @@
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+
+// Stream large integration diffs. An unsuccessful producer must fail closed.
+export function scanDiff(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: ["ignore", "pipe", "ignore"] });
+    const urlLines = [];
+    const riskyLines = [];
+    const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+    lines.on("line", (line) => {
+      if (!/^[+-]/.test(line) || /^[+-]{3}/.test(line)) return;
+      // Diff content can contain credentials. Report the change direction, not values.
+      if (/https?:\/\//.test(line)) urlLines.push(line[0] + " [content redacted]");
+      if (/(localhost|127\.0\.0\.1|vercel\.app|workers\.dev|supabase\.co|ALLOWED_ORIGINS|SUPABASE_URL)/i.test(line)) riskyLines.push(line[0] + " [content redacted]");
+    });
+    child.once("error", reject);
+    child.stdout.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code !== 0) reject(new Error(`Diff command failed (${signal || code})`));
+      else resolve({ urlLines, riskyLines });
+    });
+  });
+}
+
 export function parseJsonc(source) {
   return source
     .replace(/^\s*\/\/.*$/gm, "")

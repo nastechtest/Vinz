@@ -229,7 +229,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 if (m.byebye) {
                     val udn = m.usn?.substringBefore("::")
                     if (udn != null && found.remove(udn) != null) publishFound()
-                } else m.location?.let { describe(it) }
+                } else if (Ssdp.speaksForItself(m, p.address)) m.location?.let { describe(it) }
             }
         } finally {
             runCatching { socket.leaveGroup(InetSocketAddress(group, Ssdp.PORT), iface) }
@@ -246,7 +246,11 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
         if (!describing.add(location)) return
         try {
-            val r = Describe.fetch(c.http, location) ?: return
+            val r = Describe.fetch(c.http, location) { why ->
+                Log.w(TAG, why)
+                // Share diagnostics says why a speaker wasn't listed (#239: nothing did, while another app found them).
+                com.vinz.music.playback.AudioDiagnostics.log("connect", why)
+            } ?: return
             locationSeen[location] = now
             found[r.id] = r to now
             publishFound()
@@ -324,7 +328,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var anchorAt = 0L
         var anchored = false
         var lastTransport: TransportInfo? = null
-        var failures = 0
+        val misses = CastMisses(MAX_FAILURES)
+        var lastFailure: String? = null
         var foreign = 0
         var volume: Int? = null
         var volumeSetAt = 0L
@@ -348,6 +353,39 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private var focusOff = false
 
     private suspend fun <T> onWire(block: suspend () -> T): T = wire.withLock { block() }
+
+    // #239 (1.8.3): what keeps a renderer session going with Vinz off screen. Android may hold a background app's
+    // network back ("blocked"); polls failing meanwhile say nothing about the speaker, so they aren't counted. A Wi-Fi lock
+    // keeps the phone's Wi-Fi awake for the speaker fetching songs from it.
+    @Volatile private var netBlocked = false
+    private var netWatch: android.net.ConnectivityManager.NetworkCallback? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
+    private fun holdNetwork() {
+        if (wifiLock == null) wifiLock = runCatching {
+            @Suppress("DEPRECATION") // The low-latency mode only holds while the app is on screen.
+            app.getSystemService(WifiManager::class.java)?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "vinz-cast")
+                ?.apply { setReferenceCounted(false); acquire() }
+        }.getOrNull()
+        if (netWatch != null || android.os.Build.VERSION.SDK_INT < 29) return
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onBlockedStatusChanged(network: android.net.Network, blocked: Boolean) {
+                if (blocked == netBlocked) return
+                netBlocked = blocked
+                com.vinz.music.playback.AudioDiagnostics.log("cast", if (blocked) "Android is holding Vinz's network back" else "network back")
+            }
+        }
+        if (runCatching { cm.registerDefaultNetworkCallback(cb) }.isSuccess) netWatch = cb
+    }
+
+    private fun letGoOfNetwork() {
+        runCatching { wifiLock?.release() }
+        wifiLock = null
+        netWatch?.let { cb -> runCatching { app.getSystemService(android.net.ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
+        netWatch = null
+        netBlocked = false
+    }
 
     /** Sends what's playing to [r] from now on. */
     fun connect(r: Renderer) {
@@ -381,6 +419,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             liveLocal = false
             _state.value = CastState.Casting(r, s.volume)
             Log.i(TAG, "casting to ${r.name} (${r.manufacturer} ${r.model}) from $host:${server.port}, plays ${sink.sorted()}")
+            com.vinz.music.playback.AudioDiagnostics.log("cast", "casting to ${r.manufacturer} ${r.model} from $host:${server.port}, plays ${sink.sorted()}")
+            holdNetwork()
             // Sing is the phone's own sound: switched on while casting, it goes back off.
             singJob = scope.launch {
                 c.sing.on.collect { on -> if (on && session === s) { c.sing.setOn(false); _events.tryEmit(tr(R.string.sing_works_on_this_phone_not)) } }
@@ -506,6 +546,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
         session = null
         casting = false
+        letGoOfNetwork()
+        com.vinz.music.playback.AudioDiagnostics.log("cast", "stopped casting${message?.let { ": $it" } ?: ""}${s.lastFailure?.let { " (last error: $it)" } ?: ""}")
         pollJob?.cancel(); loadJob?.cancel(); nextJob?.cancel(); seekJob?.cancel(); volumeJob?.cancel(); singJob?.cancel()
         loadGen++
         c.scope.launch(NonCancellable) {
@@ -550,8 +592,6 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             runCatching { onWire { s.ctl.setVolume(level) } }
         }
     }
-
-    fun adjustVolume(delta: Int) = setVolume((volume ?: 50) + delta)
 
     private fun publish(s: Session, loading: Boolean? = null) {
         if (session !== s) return
@@ -709,6 +749,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             s.current = loaded
             s.lastCommandAt = loaded.loadedAt
             Log.i(TAG, "sent ${song.id} as ${loaded.format} (${loaded.durationMs} ms), play=$play")
+            com.vinz.music.playback.AudioDiagnostics.log("cast", "sent ${song.id} as ${loaded.format}, play=$play")
             // Paused when it was sent: it starts (and goes to the phone's place) when play is pressed.
             if (!play) publish(s, loading = false)
         }
@@ -763,11 +804,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 val rtt = (SystemClock.elapsedRealtime() - t0) / 2
                 if (session !== s) break
                 r.onSuccess { (ti, pi) ->
-                    s.failures = 0
+                    s.misses.ok()
                     runCatching { onPoll(s, ti, pi, rtt) }.onFailure { Log.w(TAG, "following ${s.renderer.name} failed", it) }
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
-                    if (++s.failures >= MAX_FAILURES) {
+                    s.lastFailure = "${e.javaClass.simpleName}: ${e.message?.take(80)}"
+                    val lost = s.misses.failed(blocked = netBlocked)
+                    com.vinz.music.playback.AudioDiagnostics.log("cast", "no answer (${s.misses.count}/$MAX_FAILURES${if (netBlocked) ", network held back: not counted" else ""}) after ${rtt * 2} ms: ${s.lastFailure}")
+                    if (lost) {
                         disconnect(tr(R.string.lost_the_connection_to, s.renderer.name), keepPlaying = false)
                         return@launch
                     }

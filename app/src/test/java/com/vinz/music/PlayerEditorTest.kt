@@ -108,7 +108,7 @@ class PlayerEditorTest {
                 it[stringPreferencesKey("player_buttons")] = "QUEUE,SLEEP,DJ"
             }
         }
-        val s = settled { !it.playerHandle }
+        val s = settled { !it.player.handle }
         val hidden = PlayerPart.entries.filter { !s.shows(it) }.toSet()
         assertEquals(
             setOf(
@@ -121,7 +121,7 @@ class PlayerEditorTest {
         assertTrue(s.shows(PlayerPart.SHUFFLE_REPEAT))
         assertTrue(s.shows(PlayerPart.VOLUME))
         assertTrue("no new state for anyone yet", s.view.parts == PlayerParts())
-        assertEquals(listOf(PlayerButton.QUEUE, PlayerButton.SLEEP, PlayerButton.DJ), s.playerButtons)
+        assertEquals(listOf(PlayerButton.QUEUE, PlayerButton.SLEEP, PlayerButton.DJ), s.player.buttons)
         // Their row had no lyrics button: the menu offers the lyrics (the video button wasn't on it either).
         assertEquals(listOf(MenuAction.OPEN_LYRICS, MenuAction.VIDEO_SWITCH), s.menuFromPlayer())
     }
@@ -143,10 +143,10 @@ class PlayerEditorTest {
         store.setPartShown(PlayerPart.TIMES, false)
         store.setPartShown(PlayerPart.COVER, false)
         store.setPartShown(PlayerPart.PROGRESS, false)
-        val s = settled { !it.playerHandle && it.playerTimes == PlayerTimes.NONE && it.view.parts.hidden.size == 2 }
+        val s = settled { !it.player.handle && it.player.times == PlayerTimes.NONE && it.view.parts.hidden.size == 2 }
         assertEquals(setOf(PlayerPart.COVER, PlayerPart.PROGRESS), s.view.parts.hidden)
         store.setPartShown(PlayerPart.TIMES, true)
-        assertEquals(PlayerTimes.BOTH, settled { it.playerTimes != PlayerTimes.NONE }.playerTimes)
+        assertEquals(PlayerTimes.BOTH, settled { it.player.times != PlayerTimes.NONE }.player.times)
     }
 
     /** A Look or backup from another Vinz: unknown names are skipped, and parts with their own switch never come from the set. */
@@ -190,7 +190,8 @@ class PlayerEditorTest {
         assertEquals(MenuAction.DEFAULT_TILES, today.tiles)
         assertEquals(listOf(MenuGroup.SONG, MenuGroup.LYRICS, MenuGroup.PLAYING, MenuGroup.HELP), today.groups.map { it.first })
         assertEquals(
-            listOf(MenuAction.ALBUM, MenuAction.ARTIST, MenuAction.CREDITS, MenuAction.VERSION, MenuAction.COVER, MenuAction.NOT_FOR_ME),
+            // 1.8.3: Add a tag, first after the tiles.
+            listOf(MenuAction.TAGS, MenuAction.ALBUM, MenuAction.ARTIST, MenuAction.CREDITS, MenuAction.DETAILS, MenuAction.VERSION, MenuAction.COVER, MenuAction.NOT_FOR_ME),
             today.groups.first { it.first == MenuGroup.SONG }.second,
         )
         assertTrue(today.more.isEmpty())
@@ -213,7 +214,7 @@ class PlayerEditorTest {
     /** Hiding a part never takes a feature away: what it did shows in the menu. */
     @Test fun hiddenPartsBringTheirActionsToTheMenu() {
         val d = AppSettings()
-        val noRow = d.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.BUTTONS, PlayerPart.PREV_NEXT))), playerButtons = listOf(PlayerButton.LYRICS, PlayerButton.DJ, PlayerButton.EQUALIZER))
+        val noRow = d.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.BUTTONS, PlayerPart.PREV_NEXT))), player = d.player.copy(buttons = listOf(PlayerButton.LYRICS, PlayerButton.DJ, PlayerButton.EQUALIZER)))
         assertEquals(
             listOf(MenuAction.OPEN_LYRICS, MenuAction.OPEN_QUEUE, MenuAction.VIDEO_SWITCH, MenuAction.PREVIOUS, MenuAction.NEXT, MenuAction.DJ, MenuAction.EQUALIZER),
             noRow.menuFromPlayer(),
@@ -225,9 +226,9 @@ class PlayerEditorTest {
         assertFalse(noMenu.showsMenuButton())
         val bare = d.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.MENU, PlayerPart.TITLE, PlayerPart.ARTIST))))
         assertTrue(bare.showsMenuButton())
-        assertFalse(bare.copy(coverLongPress = PlayerGesture.MENU).showsMenuButton())
+        assertFalse(bare.copy(gestures = bare.gestures.copy(coverLongPress = PlayerGesture.MENU)).showsMenuButton())
         // The wide player's cover has no gestures but seek and skip: there ⋯ stays even with a gesture set to the menu.
-        assertTrue(bare.copy(coverLongPress = PlayerGesture.MENU).showsMenuButton(wide = true))
+        assertTrue(bare.copy(gestures = bare.gestures.copy(coverLongPress = PlayerGesture.MENU)).showsMenuButton(wide = true))
         assertFalse("hidden on its own, the title still opens it", noMenu.showsMenuButton(wide = true))
         // A hidden cover isn't drawn (no animated cover, no turning record) until it shrinks into the header.
         val noCover = d.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.COVER))))
@@ -294,7 +295,7 @@ class PlayerEditorTest {
         val plain = AppSettings(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT)
         // The second one with Crossfade on, so its mark and blending covers are there to pick.
         val someHidden = plain.copy(
-            playerHandle = false, showQuality = false, playerShuffleRepeat = true, mix = true,
+            player = plain.player.copy(handle = false, shuffleRepeat = true), showQuality = false, mix = plain.mix.copy(on = true),
             view = plain.view.copy(parts = PlayerParts(hidden = setOf(PlayerPart.LIKE, PlayerPart.BUTTONS))),
         )
         val menu = PlayerParts(menuHidden = setOf(MenuAction.STATS, MenuAction.NOT_FOR_ME), menuTiles = listOf(MenuAction.RADIO, MenuAction.SING, MenuAction.OUTPUT))

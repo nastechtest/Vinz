@@ -2,7 +2,7 @@ package com.vinz.music.data
 
 import com.vinz.music.R
 import com.vinz.music.tr
-import com.vinz.music.data.db.mergeUploads
+import com.prism.music.data.db.mergeUploads
 import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
@@ -13,7 +13,7 @@ import androidx.work.WorkerParameters
 import com.vinz.music.AppContainer
 import com.vinz.music.BuildConfig
 import com.vinz.music.container
-import com.vinz.music.data.db.SongPlays
+import com.prism.music.data.db.SongPlays
 import com.vinz.music.data.model.AlbumRef
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
@@ -23,7 +23,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 
@@ -32,9 +31,11 @@ import java.util.concurrent.TimeUnit
  * year is worked out once and kept ([RewindStore]), so it opens at once and stays the way it was.
  */
 class Rewinds(private val c: AppContainer) {
-    val store = RewindStore(File(c.app.filesDir, "rewind"))
+    /** Kept Rewinds, and the rule for when a year is kept or worked out again ([RewindKeeper]). */
+    private val keeper = RewindKeeper(RewindStore(File(c.app.filesDir, "rewind")))
+    val store: RewindStore get() = keeper.store
 
-    /** Debug builds open the current year's Rewind early, for trying it out. */
+    /** Debug builds open the current year's Rewind early, for trying it out. Release builds: 1 December only. */
     val early: Boolean get() = BuildConfig.DEBUG
 
     fun isOpen(year: Int, now: Long = System.currentTimeMillis()) = RewindCalendar.isOpen(year, now, early = early)
@@ -42,23 +43,9 @@ class Rewinds(private val c: AppContainer) {
     /** Years with listening, newest first. */
     suspend fun years(): List<Int> = RewindCalendar.years(c.imports.replay().firstEvent(), System.currentTimeMillis())
 
-    private fun finished(year: Int, now: Long = System.currentTimeMillis()) = now > RewindCalendar.bounds(year).second + FINISHED_AFTER_MS
-
-    /** The year still under way, worked out lately (watching it twice in a row needn't work it out twice). */
-    @Volatile private var recent: RewindSnapshot? = null
-    @Volatile private var recentSources: List<com.vinz.music.data.imports.ImportSource> = emptyList()
-
     /** [year]'s Rewind: as kept, or worked out now (and kept, once the year's over). */
     suspend fun snapshot(year: Int): RewindSnapshot = withContext(Dispatchers.IO) {
-        // Kept Rewinds are Vinz's own plays: with an imported history counted (1.8.1) the year is worked out afresh.
-        val stats = c.imports.replay()
-        val vinzOnly = stats.sources.isEmpty()
-        if (vinzOnly) store.load(year)?.let { return@withContext it }
-        recent?.takeIf { it.year == year && System.currentTimeMillis() - it.frozenAt < RECENT_MS && recentSources == stats.sources }?.let { return@withContext it }
-        val s = build(year, stats)
-        if (vinzOnly && finished(year) && s.plays > 0) runCatching { store.save(s) }.onFailure { Log.w(TAG, "couldn't keep Rewind $year", it) }
-        else { recent = s; recentSources = stats.sources }
-        s
+        keeper.snapshot(year, c.imports.replay()) { y, stats -> build(y, stats) }
     }
 
     /** The year that's just ended, kept on the first launch after it (in the background, after start-up settles). */
@@ -78,86 +65,21 @@ class Rewinds(private val c: AppContainer) {
 
     suspend fun build(year: Int, dao: com.vinz.music.data.imports.PlayStats = c.imports.replay()): RewindSnapshot = withContext(Dispatchers.IO) {
         // The slow, network-bound pieces (a lyric line, the top artist's photo) go first, alongside the counting.
-        val (from0, end0) = RewindCalendar.bounds(year)
-        val topNow = dao.topSongs(from0, minOf(end0, System.currentTimeMillis()), 20).mergeUploads().firstOrNull()
+        val zone = ZoneId.systemDefault()
+        val now = System.currentTimeMillis()
+        val (from0, end0) = RewindCalendar.bounds(year, zone)
+        val topNow = dao.topSongs(from0, minOf(end0, now), 20).mergeUploads().firstOrNull()
         val lyricJob = async { topNow?.let { lyricLine(it) } }
         val imageJob = async {
-            dao.topArtists(from0, minOf(end0, System.currentTimeMillis()), 1).firstOrNull()?.artistId?.let { id ->
+            dao.topArtists(from0, minOf(end0, now), 1).firstOrNull()?.artistId?.let { id ->
                 withTimeoutOrNull(5_000) { runCatching { c.ytm.artist(id).thumbnail }.getOrNull() }
             }
         }
-        val zone = ZoneId.systemDefault()
-        val now = System.currentTimeMillis()
-        val (from, end) = RewindCalendar.bounds(year, zone)
-        val to = minOf(end, now)
-        val songs = dao.topSongs(from, to, 150).mergeUploads().take(100)
-        val artists = dao.topArtists(from, to, 20)
-        val totalMs = dao.totalMs(from, to)
-        val genreMap = c.meta.cachedGenres(songs.map { it.song() })
-        val genres = songs.groupBy { genreMap[it.songId] ?: "" }.filterKeys { it.isNotEmpty() }
-            .mapValues { (_, v) -> v.sumOf { it.ms } }.toList().sortedByDescending { it.second }.take(5)
-        val genreSongs = genres.associate { (g, _) -> g to songs.first { genreMap[it.songId] == g }.songId }
-
-        // Last year over the same stretch (all of it, once this one's over).
-        val prevFrom = RewindCalendar.bounds(year - 1, zone).first
-        val prevTo = minOf(RewindCalendar.bounds(year - 1, zone).second, Instant.ofEpochMilli(to).atZone(zone).minusYears(1).toInstant().toEpochMilli())
-        val previousMs = dao.totalMs(prevFrom, prevTo).takeIf { it > 60 * 60_000L }
-
-        val events = dao.events(from, to)
-        val habits = ReplayStats.habits(events, zone)
-        val artistCount = dao.artistCount(from, to)
-        val newArtists = if (dao.firstEvent()?.let { it >= from } == true) null else dao.newArtists(from, to)
-        val activeDays = dao.activeDays(from, to)
-        val plays = dao.count(from, to)
-        val songCount = dao.songCount(from, to)
-        val top = songs.firstOrNull()
-        val genreTotal = genres.sumOf { it.second }.coerceAtLeast(1)
-
-        val seasons = RewindCalendar.quarters.indices.mapNotNull { q ->
-            val (qa, qb) = RewindCalendar.quarterBounds(year, q, zone)
-            if (qa > to) return@mapNotNull null
-            val qs = dao.topSongs(qa, minOf(qb, to), 60).mergeUploads().take(40)
-            if (qs.isEmpty()) return@mapNotNull null
-            val g = c.meta.cachedGenres(qs.map { it.song() })
-            val genre = qs.groupBy { g[it.songId] ?: "" }.filterKeys { it.isNotEmpty() }.mapValues { (_, v) -> v.sumOf { it.ms } }.maxByOrNull { it.value }?.key
-            SeasonGenre(RewindCalendar.quarters[q].first, genre, qs.sumOf { it.ms }, qs.first().title)
-        }
-
-        val bySource = dao.bySource(from, to).associate { (it.source ?: "") to it.plays }
-        val vinz = VinzYear(
-            sung = bySource["sing"] ?: 0,
-            djSongs = bySource["dj"] ?: 0,
-            smartPicks = bySource["smart"] ?: 0,
-            recognized = dao.recognizedIn(from, to),
-            blends = dao.blendsIn(from, to),
-            radarFinds = dao.releasesFoundIn(from, to),
-        )
-
-        val topLyric = if (top?.songId == topNow?.songId) lyricJob.await() else top?.let { lyricLine(it) }
-        val leadImage = imageJob.await()
-
-        RewindSnapshot(
-            year = year, frozenAt = now, totalMs = totalMs, previousMs = previousMs,
-            previousTopArtist = if (previousMs != null) dao.topArtists(prevFrom, prevTo, 1).firstOrNull()?.artistName else null,
-            previousSongCount = if (previousMs != null) dao.songCount(prevFrom, prevTo) else null,
-            plays = plays, activeDays = activeDays, songCount = songCount, artistCount = artistCount,
-            songs = songs, artists = artists, genres = genres.map { GenreShare(it.first, it.second) }, genreSongs = genreSongs,
-            byHour = habits.byHour.toList(), byWeekday = habits.byWeekday.toList(), longestStreak = habits.longestStreak,
-            biggestDay = habits.biggestDay?.toString(), biggestDayMs = habits.biggestDayMs,
-            newArtists = newArtists,
-            personality = ReplayStats.personality(
-                totalMs = totalMs, topFiveArtistsMs = artists.take(5).sumOf { it.ms }, artistCount = artistCount,
-                newArtistCount = newArtists?.size, plays = plays, songCount = songCount,
-                topSongPlays = top?.plays ?: 0, topSongTitle = top?.title, activeDays = activeDays,
-                topGenreShare = genres.firstOrNull()?.let { it.second.toDouble() / genreTotal }, habits = habits,
-            ),
-            topArtistImage = leadImage,
-            months = dao.monthly(from, to),
-            topAlbum = dao.topAlbums(from, to, 1).firstOrNull(),
-            firstSong = dao.firstPlay(from, to),
-            seasons = seasons,
-            vinz = vinz,
-            topLyric = topLyric,
+        RewindBuild.build(
+            year, dao, now, zone,
+            genresOf = { songs -> c.meta.cachedGenres(songs.map { it.song() }) },
+            lyric = { top -> if (top?.songId == topNow?.songId) lyricJob.await() else top?.let { lyricLine(it) } },
+            image = { imageJob.await() },
         )
     }
 
@@ -173,22 +95,23 @@ class Rewinds(private val c: AppContainer) {
 
     companion object {
         private const val TAG = "VinzRewind"
-        private const val RECENT_MS = 10 * 60_000L
-        /** A little past midnight on 31 December, so the year's last plays have been counted before it's kept. */
-        private const val FINISHED_AFTER_MS = 6 * 60 * 60_000L
 
         /** The "Your Rewind is ready" notification, 1 December at 10:00 this year (or next, once that's passed). */
         fun schedule(context: Context) {
-            val zone = ZoneId.systemDefault()
             val now = System.currentTimeMillis()
-            val year = RewindCalendar.yearOf(now, zone)
-            val at = { y: Int -> RewindCalendar.opensAt(y, zone) + 10 * 60 * 60_000L }
-            val target = if (now < at(year)) year else year + 1
+            val (target, at) = RewindCalendar.nextNotice(now)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "rewind_$target", ExistingWorkPolicy.KEEP,
-                OneTimeWorkRequestBuilder<RewindWorker>().setInitialDelay(at(target) - now, TimeUnit.MILLISECONDS).build(),
+                OneTimeWorkRequestBuilder<RewindWorker>().setInitialDelay(at - now, TimeUnit.MILLISECONDS).build(),
             )
         }
+
+        /**
+         * Whether [year]'s notice goes out: switched on, not told about [year] already ([toldYear], the last year told:
+         * a clock or time zone moved back after the notice lines the same year up again), and a year that's more than a
+         * light one in what Replay counts ([yearMs], imported history included when it's counted).
+         */
+        fun tells(year: Int, on: Boolean, toldYear: Int, yearMs: Long): Boolean = on && toldYear < year && yearMs > StoryParts.LIGHT_MS
     }
 }
 
@@ -198,14 +121,19 @@ class RewindWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val c = applicationContext.container
         val year = RewindCalendar.yearOf(System.currentTimeMillis())
         val (from, to) = RewindCalendar.bounds(year)
-        if (c.settings.current.rewindNotification && c.db.plays().totalMs(from, to) > StoryParts.LIGHT_MS) {
+        val prefs = applicationContext.getSharedPreferences("rewind", Context.MODE_PRIVATE)
+        // What the story counts: Vinz's plays and any imported history counted (an imported-only year has a Rewind too).
+        val yearMs = runCatching { c.imports.replay().totalMs(from, to) }.getOrElse { c.db.plays().totalMs(from, to) }
+        if (Rewinds.tells(year, c.settings.current.rewindNotification, prefs.getInt(TOLD, 0), yearMs)) {
+            prefs.edit().putInt(TOLD, year).apply()
             Notifications.post(
                 applicationContext, Notifications.REWIND, 4800 + year % 100, tr(R.string.your_rewind_is_ready_2, year),
                 tr(R.string.your_year_in_music_your_top), "vinz://rewind/$year",
-                iconRes = R.drawable.ic_notification_rewind,
             )
         }
         Rewinds.schedule(applicationContext)
         return Result.success()
     }
+
+    private companion object { const val TOLD = "told_year" }
 }

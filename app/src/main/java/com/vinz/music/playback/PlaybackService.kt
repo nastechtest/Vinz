@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.playback
 
 import com.vinz.music.tr
@@ -44,8 +43,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.vinz.music.MainActivity
 import com.vinz.music.R
 import com.vinz.music.container
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +53,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
@@ -77,11 +77,40 @@ internal fun blendsAcrossAlbum(from: String?, to: String?, albumPlaying: Boolean
 }
 
 @Serializable
-private data class SavedQueue(
+internal data class SavedQueue(
     val songs: List<Song>, val index: Int, val positionMs: Long, val title: String,
     // Shuffle (with its order) and repeat, so a restart keeps them (#101: shuffle was off again after Vinz restarted).
     val shuffle: Boolean = false, val shuffleOrder: List<Int> = emptyList(), val repeat: Int = Player.REPEAT_MODE_OFF,
 )
+
+/**
+ * queue.json's text from what the player holds: each lined-up item's stored song ([songJson], as [toMediaItem] put it in
+ * the item; null or unreadable ones are left out), where playback is, and shuffle ([order]: the play order by index,
+ * kept only when every item made it into the list) and repeat. 1.8.7: the songs are read and written again here, off the
+ * main thread (with 1,100 songs lined up it held the main thread for up to 200 ms after every song change on the A16).
+ */
+internal fun savedQueueText(
+    songJson: List<String?>, index: Int, positionMs: Long, title: String, shuffle: Boolean, order: List<Int>, repeat: Int,
+): String {
+    val songs = songJson.mapNotNull { s -> s?.let { runCatching { InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull() } }
+    val q = SavedQueue(songs, index, positionMs, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat)
+    return InnerTube.json.encodeToString(SavedQueue.serializer(), q)
+}
+
+/** What a resumed Vinz plays ([resumptionOf]): the saved queue's songs, from [index] at [positionMs]. */
+internal data class Resumption(val songs: List<Song>, val index: Int, val positionMs: Long, val title: String)
+
+/**
+ * What a headset button or the system's resume card starts after Vinz was closed or killed (#388): the saved queue
+ * ([queueText], queue.json) at the kept place ([place], queue-place.json, when newer and its song is still queued), else
+ * at the queue file's own place. Null when nothing was saved or it can't be read.
+ */
+internal fun resumptionOf(queueText: String?, place: QueuePlace?): Resumption? {
+    val q = queueText?.let { runCatching { InnerTube.json.decodeFromString(SavedQueue.serializer(), it) }.getOrNull() } ?: return null
+    if (q.songs.isEmpty()) return null
+    val (index, position) = PlaceKeeper.start(q.songs.map { it.id }, q.index, q.positionMs, place, placeIsNewer = true)
+    return Resumption(q.songs, index.coerceIn(0, q.songs.lastIndex), position.coerceAtLeast(0), q.title)
+}
 
 @OptIn(UnstableApi::class)
 open class PlaybackService : MediaLibraryService(), Player.Listener {
@@ -101,6 +130,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     private val spatial = SpatialAudioProcessor()
     /** "Pause when muted" (#157). */
     private val muteWatch by lazy { MuteWatch(this, player) { c.settings.current.behavior.pauseOnMute } }
+    /** "Pause when face down" (1.8.5): made only while the setting is on ([faceDownSetting]); null otherwise. */
+    private var faceDown: FaceDown? = null
     private val normalizer = NormalizerProcessor()
     private var songLoudness: Float? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -128,11 +159,17 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     /** The tracked play doesn't count towards taste (an excluded song, playlist or artist). */
     private var trackedExcluded = false
     private val retries = HashMap<String, Int>()
+    /** A song whose connection failed is tried again in place, or waited on while offline (1.8.7, plan 4.4). */
+    private val netRetry = NetworkRetry()
+    private var netJob: Job? = null
+    /** Songs that failed on this network: their stream block is lifted when the phone moves to another one. */
+    private val failedHere = FailedOnThisNetwork()
     /** When each music video last got its streams asked for afresh after an error ([videoRetryAllowed]). */
     private val videoRetriedAt = HashMap<String, Long>()
     private var saveJob: Job? = null
     private var extrasJob: Job? = null
 
+    private lateinit var lockScreen: com.vinz.music.ui.lockscreen.LockScreenGate
 
     override fun onCreate() {
         super.onCreate()
@@ -142,6 +179,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             PlaybackServices.taskRemovedForTest = { onTaskRemoved(null) }
         }
         AudioDiagnostics.init(this)
+        AudioDiagnostics.session.reset()
         // Media3's own audio warnings (spurious AudioTrack timestamps, position jumps…) go into the diagnostics too.
         androidx.media3.common.util.Log.setLogger(object : androidx.media3.common.util.Log.Logger {
             private val system = androidx.media3.common.util.Log.Logger.DEFAULT
@@ -157,6 +195,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             }
         })
         effects = AudioEffects(this)
+        // D62: each song's gain from its very first sample, not the last song's until the main thread catches up.
+        normalizer.songGainDb = ::startingGain
         // Lossless mode keeps hi-res files (24-bit FLAC) at full resolution instead of rounding to 16-bit.
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
@@ -223,10 +263,14 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         player.addListener(this)
         player.addAnalyticsListener(StatsListener())
         player.addAnalyticsListener(DiagnosticsListener())
+        if (com.vinz.music.BuildConfig.DEBUG) PlaybackServices.playerForTest = player
         applySkipSilence()
+        lockScreen = com.vinz.music.ui.lockscreen.LockScreenGate(this, c.settings.flow, player, scope).also { it.start() }
 
         sessionPlayer = LyricsOverlayPlayer(player)
         carLyrics = CarLyrics(this, c, player, sessionPlayer, scope)
+        // The lyrics button works the car's switch in a car and the notification's elsewhere (#392).
+        carLyrics.onPlaceChange = { updateButtons() }
         carLyrics.start()
         session = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
             // Covers for the notification, lock screen and car come through Vinz's image loader, so saved ones show offline (#54).
@@ -267,6 +311,12 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         })
 
         effects.attach(player.audioSessionId)
+        // #519: the effects are made once the session has a track on it, never on an empty one (AudioEffects' note).
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) =
+                effects.trackReady()
+        })
+        scope.launch { effects.refused.collect { c.eqRefused.value = it } }
         c.onStreamResolved = { id -> scope.launch { applyStreamStats(id) } }
         // The equalizer as set, or the preset picked for the output playing now (the car's, the earbuds'; A3).
         scope.launch {
@@ -278,6 +328,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         scope.launch { c.settings.flow.map { it.sound.normalizeTarget to it.sound.normalizeAlbums }.distinctUntilChanged().drop(1).collect { applyNormalization() } }
         sessionPlayer.gentle = ::gentle
         scope.launch { c.settings.flow.map { it.behavior.pauseOnMute }.distinctUntilChanged().collect { muteWatch.update() } }
+        scope.launch { c.settings.flow.map { it.behavior.faceDownPause }.distinctUntilChanged().collect { faceDownSetting(it) } }
         scope.launch { c.settings.flow.map { it.audioDiagnostics }.distinctUntilChanged().collect { on -> AudioDiagnostics.setEnabled(on) { AudioDiagnostics.about(c) } } }
         // The buttons beside play follow Settings → Player → Buttons as soon as they're changed.
         scope.launch { c.settings.flow.map { it.sessionButtons }.distinctUntilChanged().drop(1).collect { updateButtons() } }
@@ -290,6 +341,17 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         scope.launch { c.settings.flow.map { it.autoplay }.distinctUntilChanged().drop(1).collect { onAutoplayChanged(it) } }
         // "Keep playing videos" switched off: songs already lined up as their videos go back to songs.
         scope.launch { c.settings.flow.map { it.videoContinues }.distinctUntilChanged().drop(1).collect { if (it) armNextVideo() else disarmVideos() } }
+        // #281: videos off on mobile data. Nothing happens here for anyone who hasn't chosen it: it never changes.
+        scope.launch {
+            kotlinx.coroutines.flow.combine(
+                c.settings.flow.map { it.behavior.noVideoOnData && it.dataSaver }.distinctUntilChanged(), c.network.online, c.network.metered,
+            ) { chosen, online, metered -> VideoOnData.off(chosen, true, online, metered) }
+                .distinctUntilChanged().drop(1)
+                .collectLatest { off ->
+                    if (off) delay(VideoOnData.SETTLE_MS)
+                    onVideosOffChanged(off)
+                }
+        }
         scope.launch { c.settings.flow.map { it.spatial to it.spatialAmount }.distinctUntilChanged().collect { (on, amount) -> spatial.configure(on, amount) } }
         scope.launch { c.settings.flow.map { it.normalize }.distinctUntilChanged().collect { applyNormalization() } }
         // Vinz's own volume (#116), when the player's slider is set to it; full otherwise (the phone's volume rules).
@@ -315,13 +377,25 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // "Get songs ready while Sing is off" switched on: start with the playing song.
         scope.launch { c.settings.flow.map { it.singAlwaysReady }.distinctUntilChanged().collect { if (it) singAhead() } }
         // Smart Shuffle: picks go in when it's turned on, and leave when it's turned off.
-        scope.launch { c.queue.smartShuffle.drop(1).collect { on -> if (on) smartAhead() else dropSmartPicks() } }
+        scope.launch { c.queue.smartOn.collect { on -> if (on) smartAhead() else dropSmartPicks() } }
         // DJ mode: the set is worked out when it's turned on, and again when its energy curve changes.
         scope.launch { c.dj.on.collect { on -> if (on) djAhead() else { djJob?.cancel(); djSoon?.cancel() } } }
         scope.launch { c.dj.rescan.drop(1).collect { if (c.dj.onNow) djAhead() } }
+        scope.launch { c.dj.newSets.drop(1).collect { djNewSet() } }
+        // Another network (or back online): songs that failed on the old one may play now (plan 4.4), and the one coming up
+        // is looked up afresh too (its lookup ahead of time may have failed, and a link can be bound to the old address).
+        scope.launch {
+            c.network.changes.drop(1).collect {
+                val next = player.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET }?.let { player.getMediaItemAt(it).mediaId }
+                val ids = failedHere.take(listOf(next)).filterNot { it.startsWith(Song.LOCAL_PREFIX) || it.startsWith(Song.RSS_PREFIX) }
+                ids.forEach { c.streams.invalidate(it) }
+                c.streams.anotherNetwork()
+                AudioDiagnostics.log("network", "another network: ${ids.size} songs' streams asked for afresh (${ids.take(5).joinToString()})")
+            }
+        }
         scope.launch { c.settings.flow.map { it.djFlow }.distinctUntilChanged().drop(1).collect { resequence() } }
         scope.launch {
-            c.settings.flow.map { Triple(it.carLyrics, it.carLyricsStyle, it.carLyricsOnPhone) }.distinctUntilChanged().collect {
+            c.settings.flow.map { listOf(it.carLyrics, it.carLyricsStyle, it.carLyricsOnPhone, it.behavior.carLyricsLines) }.distinctUntilChanged().collect {
                 carLyrics.refresh(); updateButtons()
             }
         }
@@ -336,11 +410,13 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (tick % 15 == 0 && player.isPlaying) pushWidgets(progressOnly = true)
                 else if (widgetsBehind && screenOn()) pushWidgets()
                 // Diagnostics: every 10 s of playing, how far ahead it's loaded and what Vinz's own processing cost.
-                if (tick % 10 == 0 && player.isPlaying && AudioDiagnostics.enabled) AudioDiagnostics.log(
-                    "tick",
+                // With the sitting's counts (1.8.7), also kept in diagnostics-summary.json for the soak.
+                if (tick % 10 == 0 && player.isPlaying && AudioDiagnostics.enabled) AudioDiagnostics.tick(
                     "at ${player.currentPosition / 1000} s, ${(player.bufferedPosition - player.currentPosition).coerceAtLeast(0) / 1000} s loaded ahead; " +
                         (AudioDiagnostics.summary() ?: "no processing measured"),
                 )
+                // A song tried again after its connection failed: once it has played well past that place, it starts afresh.
+                if (player.isPlaying) player.currentMediaItem?.mediaId?.let { netRetry.playing(it, player.currentPosition) }
                 if (player.mediaItemCount > 0) c.nerdStats.value = c.nerdStats.value.copy(
                     bufferMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0),
                     effects = listOfNotNull(
@@ -355,18 +431,22 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             main = player,
             scope = scope,
             tempo = c.mixTempo,
-            // DJ mode blends every song into the next, beat-matched, at Crossfade's automatic length.
+            // DJ mode blends every song into the next, beat-matched, at Crossfade's automatic length, or at the
+            // listener's own when they set one (#502, [DjBlend]).
             // Not while casting: the renderer plays one song at a time (and the phone's own player is muted).
-            mixMs = { c.settings.current.let { s -> if ((s.mix || c.dj.onNow) && !c.cast.casting) s.mixSeconds * 1000L else null } },
-            auto = { c.settings.current.mixAuto || c.dj.onNow },
-            beatMatch = { c.settings.current.mixBeatMatch || c.dj.onNow },
+            mixMs = { c.settings.current.let { s -> if ((s.mix.on || c.dj.onNow) && !c.cast.casting) s.mix.seconds * 1000L else null } },
+            auto = { c.settings.current.mix.let { m -> DjBlend.automatic(m.on, m.auto, c.dj.onNow) } },
+            beatMatch = { c.settings.current.mix.beatMatch || c.dj.onNow },
             harmonic = { from, to ->
-                if (!c.dj.onNow) null else {
+                val m = c.settings.current.mix
+                if (!DjBlend.keysSetLength(c.dj.onNow, DjBlend.automatic(m.on, m.auto, c.dj.onNow))) null else {
                     val a = c.mixTempo.key(from); val b = c.mixTempo.key(to)
                     if (a?.sure == true && b?.sure == true) MusicKey.clash(a, b) else null
                 }
             },
             allowed = ::mayBlend,
+            // What the songs can't say about a refusal (#493): which of Sing, casting or Listen together it was.
+            whyNot = { from, to -> mixWhyNot(from, to, mixWhyHeld(c.sing.onNow, c.cast.casting, togetherNow())) },
             // Its song's end is waiting for it: no scan makes way for the listener's touches meanwhile (#343).
             scanFromPhone = { id -> scope.launch { MixTempo.urgently { c.mixTempo.measure(id, network = false) } } },
             buildTail = ::buildTailPlayer,
@@ -379,7 +459,6 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         sessionPlayer.remote = object : LyricsOverlayPlayer.Remote {
             override val volume: Int? get() = if (c.cast.casting) c.cast.volume else null
             override fun setVolume(v: Int) = c.cast.setVolume(v)
-            override fun adjust(delta: Int) = c.cast.adjustVolume(delta)
         }
         c.cast.attach(player, object : com.vinz.music.connect.Cast.Hooks {
             override fun beforeCasting() {
@@ -408,6 +487,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     /** The equalizer in use now (as set, or the output's own preset). */
     private var eqNow = com.vinz.music.data.prefs.EqSettings()
 
+    /** Playing along with others: following a host, or in a Listen together session. */
+    private fun togetherNow(): Boolean =
+        c.queue.followingHost || c.together.state.value !is com.vinz.music.playback.together.TogetherState.Idle
+
     /**
      * Whether Mix may blend these two: not an album running into its own next track (albums are made to flow on
      * as they are), not live streams or music videos, and not while playing along with others (Listen Together
@@ -422,16 +505,16 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Singing along: each song plays whole, with its own vocals taken out.
         if (c.sing.onNow) return false
         if (c.cast.casting) return false
-        if (c.queue.followingHost || c.together.state.value !is com.vinz.music.playback.together.TogetherState.Idle) return false
+        if (togetherNow()) return false
         // Only while an album plays through (a radio or playlist that puts two of an album's songs side by side blends).
         // An album played as a DJ set is a set: it blends.
-        return blendsAcrossAlbum(a.album?.id, b.album?.id, c.queue.source.value.kind == QueueKind.ALBUM, c.settings.current.mixKeepAlbums, c.dj.onNow)
+        return blendsAcrossAlbum(a.album?.id, b.album?.id, c.queue.source.value.kind == QueueKind.ALBUM, c.settings.current.mix.keepAlbums, c.dj.onNow)
     }
 
     /**
      * The second player Mix plays a song's ending on while the next one fades in: the same sources, the same
      * effects (spatial audio, the ending song's normalization, and the equalizer through the shared audio
-     * session), and no audio focus of its own.
+     * session), on the same output, and no audio focus of its own.
      */
     private fun buildTailPlayer(shift: ShiftProcessor): ExoPlayer {
         val s = c.settings.current
@@ -439,7 +522,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val tailNormalizer = NormalizerProcessor().apply { setGainDb(normalizeGainDb) }
         // The same headphone correction as the main player, so a blend doesn't change the sound.
         val tailEq = ParametricEqProcessor().apply { c.headphoneEq.active.value.let { configure(it?.profile, it?.strength ?: 1f) } }
-        val renderers = object : DefaultRenderersFactory(this) {
+        // Audio renderers only: it plays a song's ending and nothing else (plan 5.1).
+        val renderers = object : AudioOnlyRenderers(this) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                 DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput || s.lossless)
@@ -465,9 +549,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     liveDsf = c.liveDataSourceFactory(),
                 )
             )
-            // The whole ending (a blend plus its lead-in is under 20 s) is loaded as soon as the tail is made, seconds before
-            // it plays along: with only part of it loaded, a slow connection made the tail stop to load mid-blend.
-            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(60_000, 60_000, 1_500, 1_500).build())
+            // The whole ending (a blend plus its lead-in is at most 35 s, #351) is loaded as soon as the tail is made, seconds
+            // before it plays along: with only part of it loaded, a slow connection made the tail stop to load mid-blend.
+            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(MixEngine.TAIL_BUFFER_MS.toInt(), MixEngine.TAIL_BUFFER_MS.toInt(), 1_500, 1_500).build())
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 false,
@@ -475,6 +559,15 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             .build()
             .also {
                 it.skipSilenceEnabled = false
+                // Where the main player plays: the output picked in the device sheet (plan 5.1).
+                it.playOnPicked(c.player.preferredOutput.value)
+                // #364: the main player's underruns are logged; the ending song's, heard through the blend, too.
+                it.addAnalyticsListener(object : AnalyticsListener {
+                    override fun onAudioUnderrun(eventTime: AnalyticsListener.EventTime, bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
+                        AudioDiagnostics.session.underrun()
+                        AudioDiagnostics.log("underrun", "the ending song's player ran dry: buffer $bufferSizeMs ms, last fed $elapsedSinceLastFeedMs ms before")
+                    }
+                })
                 // The ending song in the key it was playing in (Sing): the blend used to drop back to the original key.
                 pitchNow().takeIf { p -> p != 1f }?.let { p -> it.playbackParameters = androidx.media3.common.PlaybackParameters(1f, p) }
                 // With the equalizer on, the tail gets its own audio session and its own copy of the equalizer (Reddit R3:
@@ -487,6 +580,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     it.setAudioSessionId(session)
                     val tailEffects = AudioEffects(this, announce = false).apply { apply(eq); attach(session) }
                     it.addAnalyticsListener(object : AnalyticsListener {
+                        // Made once the tail's track is (#519: never on a session with nothing on it yet).
+                        override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) =
+                            tailEffects.trackReady()
                         override fun onPlayerReleased(eventTime: AnalyticsListener.EventTime) = tailEffects.shutdown()
                     })
                     AudioDiagnostics.log("mix", "tail on its own session $session with the equalizer (${eq.preset})")
@@ -496,10 +592,22 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
 
+    /**
+     * #239 (1.8.3): while casting, the service stays in the foreground whatever the muted phone player is doing. Out of
+     * it, Android blocks a background app's network a few seconds after it leaves the screen: the speaker could no longer
+     * be reached (or fetch the song from the phone), and casting ended as "lost the connection" ~30 s later.
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) =
+        super.onUpdateNotification(session, startInForegroundRequired || c.castingNow)
+
     /** Whether this service is in the foreground now (only known on Android 10+; below, it says yes). */
     private fun inForeground(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || foregroundServiceType != 0
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // The lock screen player has a task of its own, and Android tells the service when any of Vinz's tasks goes: every
+        // unlock closing it isn't the listener closing Vinz (it stopped the music with "Stop when swiped away" on, and a
+        // paused song's notification with it; 1.8.2's check on a real lock screen).
+        if (rootIntent?.component?.className == com.vinz.music.ui.lockscreen.LockScreenActivity::class.java.name) return
         android.util.Log.i("VinzControl", "swiped away: wants to play ${player.playWhenReady}, ${player.mediaItemCount} songs, stop on swipe ${c.settings.current.stopOnSwipeAway}")
         saveQueue(now = true)
         // Settings → Playback → "Stop when swiped away" (#45): closing Vinz from Recents ends the music too (some
@@ -526,9 +634,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onDestroy() {
+        lockScreen.stop()
         if (PlaybackServices.running == this::class.java) PlaybackServices.running = null
         PlaybackServices.failForTest = null
         PlaybackServices.taskRemovedForTest = null
+        if (PlaybackServices.playerForTest === player) PlaybackServices.playerForTest = null
         flushPlayTime()
         saveEpisodePosition()
         saveQueue(now = true)
@@ -537,11 +647,13 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         }
         mix.release()
         muteWatch.release()
+        faceDown?.release()
         c.cast.detach(player)
         c.player.detach()
         carLyrics.stop()
         // Released on the effects thread, after anything still queued there: a stalled audio server can't hold this up.
         effects.shutdown()
+        c.eqRefused.value = false
         session.release()
         player.release()
         scope.cancel()
@@ -556,7 +668,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     /** Replaces the item at [idx] with another form of the same song, without counting a new play. */
     private fun swapInPlace(idx: Int, item: MediaItem) {
         swappingInPlace = item.mediaId
-        try { player.replaceMediaItem(idx, item) } finally { swappingInPlace = null }
+        try { player.replaceKeepingOrder(idx, item) } finally { swappingInPlace = null }
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -614,6 +726,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             }
         }
         trackedSong = song
+        // For "No repeats this session": heard, however briefly (a quick skip never reaches the history).
+        if (!song.isEpisode) c.sessionHeard.note(song, c.queue.counterparts[song.id] ?: c.plays.videoOf(song.id))
         trackedSource = sourceOf(mediaItem)
         trackedRecommended = picked || mediaItem.mediaId in c.queue.smartPicks.value ||
             c.queue.source.value.originId?.let { com.vinz.music.data.foryou.ForYou.isMixId(it) } == true
@@ -640,7 +754,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         applySkipSilence()
         // Already playing: a seamless move on (gapless, or a Mix blend); nothing to time.
         startedLoading = if (player.isPlaying) null else song.id to SystemClock.elapsedRealtime()
-        retries.remove(song.id)
+        RetryKeys.onSongChange(retries) // every once-only retry, "file:"/"cache:" too (1.8.7)
         // A queued song that's playing now isn't "next in queue" any more.
         if (song.id in c.queue.userQueued.value) c.queue.userQueued.value = c.queue.userQueued.value - song.id
         if (player.isPlaying) playStartedAt = SystemClock.elapsedRealtime()
@@ -659,12 +773,12 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             if (!c.settings.current.showVideoSwitch && player.currentMediaItem?.mediaId == song.id) setVideoMode(false)
         }
         // Every new song starts as the song; the track that just finished goes back to audio too,
-        // so returning to it doesn't land in its video.
+        // so returning to it doesn't land in its video (#455: and Previous still reaches it, shuffled).
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK || !c.settings.current.showVideoSwitch) {
             for (i in 0 until player.mediaItemCount) {
                 if (i == player.currentMediaItemIndex) continue
                 val other = player.getMediaItemAt(i)
-                if (other.videoModeId != null) other.toSong()?.let { player.replaceMediaItem(i, it.toMediaItem(null)) }
+                if (other.videoModeId != null) other.toSong()?.let { player.replaceKeepingOrder(i, it.toMediaItem(null)) }
             }
         }
         continueVideo()
@@ -723,8 +837,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     private fun applySkipSilence() {
         val s = c.settings.current
         edges.enabled = s.skipSilence
-        // 1.8.0's one choice has no "songs only": songs trimmed reads as "Songs and podcasts" (SoundChoices), so it is.
-        val on = player.currentMediaItem?.toSong()?.isEpisode == true && (s.sound.skipSilenceEpisodes || s.skipSilence)
+        // #325: "Songs only" leaves episodes alone ([EdgeSilenceProcessor.trims] never touches them).
+        val on = EdgeSilenceProcessor.pausesSkipped(player.currentMediaItem?.toSong()?.isEpisode == true, s.sound.skipSilenceEpisodes)
         if (player.skipSilenceEnabled != on) player.skipSilenceEnabled = on
     }
 
@@ -826,6 +940,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         }
         if (!isPlaying) saveEpisodePosition()
         pushWidgets()
+        // #388: the place in the song is kept every 10 s while playing, for a restart after a crash.
+        placeJob?.cancel()
+        placeJob = if (isPlaying) scope.launch { while (true) { delay(PlaceKeeper.EVERY_MS); placeKeeper.tick(currentPlace()) } } else null
         if (isPlaying) playStartedAt = now
         else if (playStartedAt > 0) {
             accumulatedMs += now - playStartedAt
@@ -885,6 +1002,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         val now = SystemClock.elapsedRealtime()
+        // The sitting's counts (1.8.7): a wait for data while playing, till it plays again or stops.
+        if (playbackState == Player.STATE_BUFFERING && player.playWhenReady && startedLoading == null) AudioDiagnostics.session.bufferingStarted()
+        else if (playbackState != Player.STATE_BUFFERING) AudioDiagnostics.session.bufferingEnded()
         if (playbackState == Player.STATE_BUFFERING && player.playWhenReady && startedLoading == null) stalledAt = now
         else if (playbackState == Player.STATE_READY && stalledAt > 0) {
             android.util.Log.i("VinzStream", "${player.currentMediaItem?.mediaId} stalled ${now - stalledAt} ms at ${player.currentPosition} ms")
@@ -917,10 +1037,15 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+        // #374: Shuffle in DJ mode (from the notification, the car, anywhere) deals a new DJ set; DJ mode stays on and
+        // its order stays the order, so Media3's shuffle goes back off (the player's button never turns it on).
+        if (shuffleModeEnabled && c.dj.onNow) {
+            player.shuffleModeEnabled = false
+            c.dj.newSet()
+            return
+        }
         vocals.shuffle = shuffleModeEnabled
         edges.shuffle = shuffleModeEnabled
-        // Shuffle and DJ mode both decide the order: the listener's shuffle wins.
-        if (shuffleModeEnabled && c.dj.onNow) c.dj.setOn(false)
         // Shuffle off (from anywhere: the notification, the car) is Smart Shuffle off too.
         if (!shuffleModeEnabled && c.queue.smartShuffle.value) c.queue.smartShuffle.value = false
         updateButtons()
@@ -940,8 +1065,49 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         effects.attach(audioSessionId)
     }
 
+    /**
+     * Next, Previous, a song picked or the scrubber moved while the player stands stopped on an error: Media3 moves the
+     * place but stays stopped, so the new song sat at 0:00 and every button seemed dead (Reddit, Vinz TV, 1.8.1). Whoever
+     * did the moving (the remote, the notification, a car), the song there starts loading.
+     */
+    override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+        if (reason == Player.DISCONTINUITY_REASON_SEEK && player.playbackState == Player.STATE_IDLE && player.playerError != null) player.prepare()
+    }
+
     override fun onPlayerError(error: PlaybackException) {
+        AudioDiagnostics.session.error(
+            error.errorCodeName,
+            generateSequence(error as Throwable) { it.cause }.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode,
+        )
         val id = player.currentMediaItem?.mediaId ?: return
+        // The next song couldn't be had, found as the playing one's last sound is read: the player reports that as the
+        // playing song's failure, which would then have its music video looked up and be retried for what isn't its fault.
+        // On to the song it's about, whose failure this then is.
+        val failedSong = generateSequence(error as Throwable) { it.cause }.filterIsInstance<com.vinz.music.data.stream.SongStreamException>().firstOrNull()?.songId
+        val nextItem = player.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET }?.let { player.getMediaItemAt(it) }
+        if (readAheadFailed(failedSong, setOfNotNull(id, player.currentMediaItem?.videoModeId), setOfNotNull(nextItem?.mediaId, nextItem?.videoModeId))) {
+            AudioDiagnostics.log("song", "$failedSong couldn't be had as $id ends (${(error.cause ?: error).message?.take(80)}): on to it")
+            player.seekToNextMediaItem()
+            player.prepare()
+            player.play()
+            return
+        }
+        // Media3 gives up on a "playing" song whose position hasn't moved for 10 s (Reddit, 1.8.1.1: stuck at 0:00 over
+        // Bluetooth, with its English message). The song isn't at fault: the sound isn't getting out, or the decoder stopped.
+        // It plays on from there with a new decoder and audio track, twice at most, before it counts as a failed song.
+        val stuckKey = "stuck:$id"
+        val stuckTries = retries[stuckKey] ?: 0
+        if (stuckPlaying(error) && stuckTries < STUCK_TRIES) {
+            retries[stuckKey] = stuckTries + 1
+            val pos = player.currentPosition
+            val index = player.currentMediaItemIndex
+            AudioDiagnostics.log("song", "$id: no progress for 10 s at ${pos / 1000} s on ${AudioEffects.outputDevice(this)} (${player.audioFormat?.sampleMimeType}): trying it again")
+            scope.launch {
+                delay(300)
+                playOnFrom(index, id, pos)
+            }
+            return
+        }
         // An Apple Lossless file this phone has no decoder for (#135): the lossless add-on's file is set aside and the
         // song's stream plays; a file of your own says so and stays put rather than being skipped.
         val format = (error as? androidx.media3.exoplayer.ExoPlaybackException)?.takeIf { it.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER }?.rendererFormat
@@ -953,9 +1119,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 return
             }
             // Only once per file: one that can't be told apart (or was already set aside) fails as usual, never loops.
-            val file = c.localLossless.matched[id]?.uri
-            if (file == null || !c.localLossless.unplayable.add(file)) { failAndSkip(error); return }
+            // Set aside, the song is noted, and Stats for nerds says on it why the stream plays (1.8.4.1).
+            if (!c.localLossless.setAside(id)) { failAndSkip(error); return }
             AudioDiagnostics.log("error", "$id's ALAC file won't decode here: its stream plays instead")
+            c.nerdStats.value = c.nerdStats.value.copy(undecodedFile = c.localLossless.streamInstead[id].orEmpty())
             player.seekToDefaultPosition(idx)
             player.prepare()
             player.play()
@@ -987,16 +1154,32 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             // into the video) sent it back to the song for good.
             val network = error.errorCode in PlaybackException.ERROR_CODE_IO_UNSPECIFIED..PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
             val at = SystemClock.elapsedRealtime()
-            if (videoRetryAllowed(videoRetriedAt[videoId], at) && (httpCode == 403 || httpCode == 410 || parse || network)) {
+            // #411: which part failed (the picture or the sound) and what it was read from, and what the picture streams as.
+            val about = "${VideoLegs.lastFor(videoId, at)?.describe() ?: "which part failed isn't known"}; picture ${c.streams.pictureOf(videoId) ?: "not looked up"}" +
+                (runCatching { c.downloadCache.getCachedBytes("video:$videoId", 0, Long.MAX_VALUE) }.getOrDefault(0L).takeIf { it > 0 }?.let { "; Downloads hold $it bytes of it" } ?: "")
+            val retry = videoRetry(httpCode, parse, network, videoRetriedAt[videoId], at)
+            if (retry != null) {
                 videoRetriedAt[videoId] = at
-                AudioDiagnostics.log("video", "video $videoId failed (${httpCode ?: if (parse) "unreadable" else error.errorCodeName}): trying its streams afresh")
-                c.streams.invalidate(videoId, refused = true)
+                AudioDiagnostics.log("video", "video $videoId failed (${httpCode ?: if (parse) "unreadable" else error.errorCodeName}; $about): trying its streams afresh")
+                // #514: a server answering 5xx isn't a refused link: another way first, not the same one over IPv4 only.
+                c.streams.invalidate(videoId, refused = !retry.serverBusy, unavailable = retry.serverBusy)
+                AudioDiagnostics.session.reResolve()
                 val pos = player.currentPosition
+                if (retry.forgetCachedSound) {
+                    // Its sound's cached part goes too, as a song's does (below): asked afresh, the same bytes were read again.
+                    val index = player.currentMediaItemIndex
+                    scope.launch {
+                        withContext(Dispatchers.IO) { c.forgetCachedAudio(videoId) }
+                        playOnFrom(index, id, pos)
+                    }
+                    return
+                }
                 player.prepare()
                 player.seekTo(pos)
                 player.play()
                 return
             }
+            AudioDiagnostics.log("video", "video $videoId failed (${httpCode ?: error.errorCodeName}: ${(error.cause ?: error).message?.take(80)}; $about): back to the song")
             scope.launch { revertVideo(id) }
             return
         }
@@ -1013,14 +1196,13 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             retries["file:$id"] = 1
             AudioDiagnostics.log("song", "$id: its download can't be read (${(error.cause ?: error).message?.take(80)}); downloading it again and streaming it now")
             val pos = player.currentPosition
+            val index = player.currentMediaItemIndex
             scope.launch {
                 // The download's removal lands on the download manager's thread first, so the player reads from the
                 // network. A fixed 0.6 s wasn't always enough (the owner's phone, 1.7.9's check): the broken file was
                 // read again and the song skipped.
                 withTimeoutOrNull(8_000) { while (withContext(Dispatchers.IO) { c.downloadedWhole(id) }) delay(100) }
-                player.prepare()
-                player.seekTo(pos)
-                player.play()
+                playOnFrom(index, id, pos)
             }
             return
         }
@@ -1031,12 +1213,12 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             retries["cache:$id"] = 1
             AudioDiagnostics.log("song", "$id: its cached part can't be read (${(error.cause ?: error).message?.take(80)}); playing it afresh")
             val pos = player.currentPosition
+            val index = player.currentMediaItemIndex
             scope.launch {
                 withContext(Dispatchers.IO) { c.forgetCachedAudio(id) }
                 c.streams.invalidate(id)
-                player.prepare()
-                player.seekTo(pos)
-                player.play()
+                AudioDiagnostics.session.reResolve()
+                playOnFrom(index, id, pos)
             }
             return
         }
@@ -1049,19 +1231,54 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             retries[codecKey] = codecTries + 1
             AudioDiagnostics.log("song", "$id: the phone released its decoder (${error.errorCodeName}); playing on from ${player.currentPosition / 1000} s")
             val pos = player.currentPosition
+            val index = player.currentMediaItemIndex
             scope.launch {
                 delay(300)
-                player.prepare()
-                player.seekTo(pos)
-                player.play()
+                playOnFrom(index, id, pos)
             }
             return
         }
-        if (attempts < 2 && (httpCode == 403 || httpCode == 410 || error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
-        ) {
+        // 1.8.7 (plan 4.4): the connection failed (a timeout mid-song, a dropped or refused connection), not the song. It
+        // plays on from where it stopped after a short wait, three times at most ([NetworkRetry]); offline, it waits for
+        // the network to come back without using up a try. Only then is it skipped, with the reason. Before, a timeout
+        // skipped the song at once, and a failed connection had two immediate tries.
+        if (httpCode == null && !id.startsWith(Song.LOCAL_PREFIX) && networkFailure(error.errorCode, error)) {
+            val pos = player.currentPosition
+            val index = player.currentMediaItemIndex
+            val what = error.errorCodeName
+            netJob?.cancel()
+            when (val step = netRetry.failed(id, pos, c.network.isOnline(), what)) {
+                is NetworkRetry.Step.Retry -> {
+                    AudioDiagnostics.log("song", "$id: $what at ${pos / 1000} s (${(error.cause ?: error).message?.take(80)}): trying it again in place in ${step.afterMs} ms (${step.attempt} of ${NetworkRetry.BACKOFF_MS.size})")
+                    netJob = scope.launch {
+                        delay(step.afterMs)
+                        // The last try asks for the stream afresh too: its link may have gone stale while the connection was down.
+                        if (step.last) { c.streams.invalidate(id); AudioDiagnostics.session.reResolve() }
+                        playOnFrom(index, id, step.positionMs)
+                    }
+                }
+                is NetworkRetry.Step.WaitForNetwork -> {
+                    AudioDiagnostics.log("song", "$id: $what at ${pos / 1000} s while offline: waiting for the network (${step.wait} of ${NetworkRetry.MAX_WAITS})")
+                    if (step.wait == 1) c.player.reportError(tr(R.string.you_re_offline_check_your_connection))
+                    netJob = scope.launch {
+                        awaitOnline(c.network.online, { c.network.isOnline() })
+                        delay(NetworkRetry.BACK_ONLINE_MS)
+                        AudioDiagnostics.log("song", "$id: back online: playing on from ${step.positionMs / 1000} s")
+                        playOnFrom(index, id, step.positionMs)
+                    }
+                }
+                is NetworkRetry.Step.Skip -> {
+                    AudioDiagnostics.log("error", "$id: skipped: ${step.reason}")
+                    failAndSkip(error)
+                }
+            }
+            return
+        }
+        if (attempts < 3 && (httpCode == 403 || httpCode == 410 || error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)) {
             retries[id] = attempts + 1
-            c.streams.invalidate(id, refused = httpCode == 403)
+            // #514: a 5xx after the stream's own quick retries: looked up again another way first (and played on from here).
+            c.streams.invalidate(id, refused = httpCode == 403, unavailable = com.vinz.music.data.stream.serverBusy(httpCode))
+            AudioDiagnostics.session.reResolve()
             val pos = player.currentPosition
             player.prepare()
             player.seekTo(pos)
@@ -1079,7 +1296,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val video = videoIdFor(song).id?.takeIf { it != id }
                 // Only a video of the same length: one with a long intro or a second song in it (Reddit R1, "Death &
                 // Romance" as its 8-minute video) would play something else under this song's title and lyrics.
-                val videoSec = video?.let { v -> withContext(Dispatchers.IO) { runCatching { c.streams.durationSec(v) }.getOrDefault(0L) } } ?: 0L
+                val videoSec = video?.let { v -> withContext(Dispatchers.IO) { runCatching { c.streams.durationSec(v, video = true) }.getOrDefault(0L) } } ?: 0L
                 // The video must resolve too (offline or blocked, it wouldn't play either, and it'd stay swapped in).
                 val fits = videoSec > 0 && (song.durationSec <= 0 || kotlin.math.abs(videoSec - song.durationSec) <= SOUND_FROM_SLACK_SEC)
                 if (player.currentMediaItemIndex != idx || player.currentMediaItem?.mediaId != id) return@launch
@@ -1097,16 +1314,59 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         failAndSkip(error)
     }
 
-    /** Says why a song didn't play, and moves on to the next one. */
+    /**
+     * After a moment's wait, a song that failed plays on from [pos]: unless the listener has gone somewhere else meanwhile,
+     * and a song they skipped to would be sent to the old one's place.
+     */
+    private fun playOnFrom(index: Int, id: String, pos: Long) {
+        if (player.playbackState != Player.STATE_IDLE || player.currentMediaItemIndex != index || player.currentMediaItem?.mediaId != id) return
+        // Paused by the listener while it waited: it's made ready where it stopped, and stays paused.
+        val paused = !player.playWhenReady
+        player.prepare()
+        player.seekTo(pos)
+        if (!paused) player.play()
+    }
+
+    /** The move to the next song after one that wouldn't play, while it's waiting. */
+    private var skipJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Says why a song didn't play, and moves on to the next one (Reddit, Vinz TV, 1.8.1: the player sat at 0:00 with
+     * YouTube's "Video unavailable"). With nothing queued after it, Autoplay's songs are waited for; with none of those
+     * either it says so and stops. If the listener has gone somewhere else meanwhile, that stands.
+     */
     private fun failAndSkip(error: PlaybackException) {
-        c.player.reportError((error.cause ?: error).friendlyMessage(tr(R.string.playback_failed)))
-        if (player.hasNextMediaItem()) {
-            scope.launch {
-                delay(1500)
-                player.seekToNextMediaItem()
-                player.prepare()
-                player.play()
+        val index = player.currentMediaItemIndex
+        val item = player.currentMediaItem
+        val id = item?.mediaId
+        val song = item?.toSong()
+        val title = song?.title.orEmpty()
+        val cause = error.cause ?: error
+        val why = (com.vinz.music.data.podcast.episodeFailureText(song, error) ?: cause.friendlyMessage(tr(R.string.playback_failed))).trimEnd('.', ' ')
+        AudioDiagnostics.log("error", "$id won't play (${error.errorCodeName}: ${cause.message?.take(120)})")
+        AudioDiagnostics.session.skippedByError()
+        id?.let { failedHere.failed(it) }
+        fun stillThere() = player.playbackState == Player.STATE_IDLE && player.currentMediaItemIndex == index && player.currentMediaItem?.mediaId == id
+        skipJob?.cancel()
+        if (player.hasNextMediaItem()) c.player.reportError(tr(R.string.moving_on_after_refusal, title, why))
+        else {
+            maybeAutoplay()
+            if (c.queue.autoplayLoading) c.player.reportError(why)
+        }
+        skipJob = scope.launch {
+            if (player.hasNextMediaItem()) delay(SKIP_AFTER_FAILURE_MS)
+            else {
+                val until = SystemClock.elapsedRealtime() + AUTOPLAY_WAIT_MS
+                while (!player.hasNextMediaItem() && c.queue.autoplayLoading && SystemClock.elapsedRealtime() < until) delay(200)
             }
+            if (!stillThere()) return@launch
+            if (!player.hasNextMediaItem()) {
+                c.player.reportError(tr(R.string.stopped_after_refusal, title, why))
+                return@launch
+            }
+            player.seekToNextMediaItem()
+            player.prepare()
+            player.play()
         }
     }
 
@@ -1130,10 +1390,14 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      * "Albums as they are" (A2): while an album plays through, every song gets the same gain, set by the loudest of its
      * songs measured so far, so a quiet interlude stays quiet next to the single. Null otherwise.
      */
-    private fun albumLoudness(): Pair<Float, Float?>? {
+    private fun albumLoudness(): Pair<Float, Float?>? =
+        albumLoudness(trackedSong, (0 until player.mediaItemCount).map { player.getMediaItemAt(it) })
+
+    /** [albumLoudness] for [song] among [queue] (the player's items, or its timeline's on the audio thread). Any thread. */
+    private fun albumLoudness(song: Song?, queue: List<MediaItem>): Pair<Float, Float?>? {
         if (!c.settings.current.sound.normalizeAlbums || c.queue.source.value.kind != QueueKind.ALBUM) return null
-        val album = trackedSong?.album?.id ?: return null
-        val songs = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }.filter { it.toSong()?.album?.id == album }
+        val album = song?.album?.id ?: return null
+        val songs = queue.filter { it.toSong()?.album?.id == album }
             .filter { c.mixTempo.loudness(it.mediaId) != null }
         val loudest = songs.maxOfOrNull { c.mixTempo.loudness(it.mediaId)!! } ?: return null
         // The album's highest peak bounds how far all of it can be lifted (unknown while any song's is).
@@ -1141,27 +1405,45 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         return loudest to (if (null in peaks) null else peaks.maxOf { it!! })
     }
 
-    private fun applyNormalization() {
+    /**
+     * The gain (dB) for the song [id], from its measured loudness, else YouTube's figure [yt], with "Albums as they are"
+     * the [album]'s. Reads only settings and stored figures, so the audio thread can ask it too (D62,
+     * [NormalizerProcessor.songGainDb]) and gets what [applyNormalization] sets a moment later.
+     */
+    private fun normalizationGain(id: String?, yt: Float?, album: Pair<Float, Float?>?): Float {
         // The song's own measured loudness (integrated LUFS, from [MixTempo]'s scan) is the real figure. YouTube's
         // loudnessDb hardly differs between a loud master and a quiet one, so it only stands in until the song is
         // measured.
-        val measured = trackedSong?.id?.let { c.mixTempo.loudness(it) }
-        val yt = songLoudness
+        val measured = id?.let { c.mixTempo.loudness(it) }
         // The level picked (A2; -14 LUFS unless changed), and with "Albums as they are" one level for a whole album.
         val target = c.settings.current.sound.normalizeTarget.toFloat()
-        val album = albumLoudness()
-        val gain = when {
+        return when {
             !c.settings.current.normalize -> 0f
             album != null -> NormalizerProcessor.gainFor(target, album.first, album.second)
-            measured != null -> NormalizerProcessor.gainFor(target, measured, trackedSong?.id?.let { c.mixTempo.peak(it) })
+            measured != null -> NormalizerProcessor.gainFor(target, measured, id.let { c.mixTempo.peak(it) })
             yt != null -> NormalizerProcessor.gainFor(target, TARGET_LUFS + yt)
             else -> 0f
         }
+    }
+
+    /** [normalizationGain] for a song about to start, on the audio thread: its remembered YouTube figure, as [loadExtras] reads it. */
+    private fun startingGain(item: MediaItem, timeline: androidx.media3.common.Timeline): Float? {
+        val song = item.toSong() ?: return null
+        val queue = if (!c.settings.current.sound.normalizeAlbums) emptyList()
+            else (0 until timeline.windowCount).map { timeline.getWindow(it, androidx.media3.common.Timeline.Window()).mediaItem }
+        return normalizationGain(song.id, c.loudness.getFloat(song.id, Float.NaN).takeIf { !it.isNaN() }, albumLoudness(song, queue))
+    }
+
+    private fun applyNormalization() {
+        val measured = trackedSong?.id?.let { c.mixTempo.loudness(it) }
+        val yt = songLoudness
+        val gain = normalizationGain(trackedSong?.id, yt, albumLoudness())
         // Once the song is under way, a better figure eases in over two seconds, and a small one isn't worth a change
         // heard mid-song; before its sound starts, the right level is set at once.
         val underWay = player.isPlaying && player.currentPosition > 400
         if (underWay && kotlin.math.abs(gain - normalizeGainDb) < MIN_MIDSONG_CHANGE_DB) return
-        normalizer.setGainDb(gain, if (underWay) 2f else 0.1f)
+        // For this song only: a figure landing as it ended, after the audio moved on to the next, isn't put on that one.
+        normalizer.setGainDb(gain, if (underWay) 2f else 0.1f, trackedSong?.id)
         if (gain != normalizeGainDb) AudioDiagnostics.log("normalize", "gain %.1f dB (%s) at %d s".format(gain, if (measured != null) "measured" else if (yt != null) "YouTube's figure" else "none", player.currentPosition / 1000))
         normalizeGainDb = gain
         c.nerdStats.value = c.nerdStats.value.copy(
@@ -1186,13 +1468,16 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val s = c.settings.current
         // The waveform progress bar is drawn from the scan too (1.7.4).
         val wave = s.scrubberStyle == com.vinz.music.data.prefs.ScrubberStyle.WAVE
-        if (!s.mix && !s.normalize && !wave) return
-        val network = s.mixTempoOnCellular || getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == false
-        val songs = items.mapNotNull { it?.toSong() }.filter { !it.isLive && !it.isEpisode }.distinctBy { it.id }
+        // A radio tuned calm or energetic goes by what's been scanned, so songs heard are scanned for it too.
+        if (!s.mix.on && !s.normalize && !wave && s.behavior.radioTune.energy == 0f) return
+        val network = s.mix.tempoOnCellular || getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == false
+        val playing = player.currentMediaItem?.mediaId
+        val all = items.mapNotNull { it?.toSong() }.filter { !it.isLive && !it.isEpisode }.distinctBy { it.id }
+        val worth = MixTempo.worthScanning(all.map { it.id }, playing, c.visible.value, s.mix.on || wave, QUEUE_AHEAD)
+        val songs = all.filter { it.id in worth }
         if (songs.isEmpty()) return
         // Songs scanned before fade-outs and intros were measured are scanned again only for Crossfade's automatic length.
-        val edges = s.mix && s.mixAuto
-        val playing = player.currentMediaItem?.mediaId
+        val edges = s.mix.on && s.mix.auto
         scanJob?.cancel()
         scanJob = scope.launch {
             if (playing != null) untilUnderWay(playing, UNDER_WAY_MS)
@@ -1207,6 +1492,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             // Crossfade needs it, near its end).
             // With the waveform bar, the playing song goes first: its bar is waiting for it.
             for (song in songs.sortedBy { if (wave) it.id != playing else it.id == playing }) {
+                // Asked again for each: the listener may have left since these were lined up.
+                if (song.id !in MixTempo.worthScanning(all.map { it.id }, playing, c.visible.value, s.mix.on || wave, QUEUE_AHEAD)) continue
                 c.mixTempo.measure(song.id, network, edges, wave = wave, peak = s.normalize)
                 // Measured while it's just begun: its own figure takes over (later in the song, a jump would be heard).
                 if (trackedSong?.id == song.id && settling()) applyNormalization()
@@ -1219,10 +1506,15 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Remembered loudness applies straight away (and offline); the network refreshes it.
         songLoudness = c.loudness.getFloat(song.id, Float.NaN).takeIf { !it.isNaN() }
         applyNormalization()
-        // A file on the phone has nothing on YouTube to fetch or report.
-        if (song.isLocal) return
+        // A file on the phone (or an episode from its own feed) has nothing on YouTube to fetch or report.
+        if (song.isLocal || song.isRss) return
         extrasJob = scope.launch {
-            val ex = runCatching { withContext(Dispatchers.IO) { c.ytm.playerExtras(song.id, c.streams.signatureTimestamp()) } }.getOrNull()
+            val asked = runCatching { withContext(Dispatchers.IO) { c.ytm.playerExtras(song.id, c.streams.signatureTimestamp()) } }
+            val ex = asked.getOrNull()
+            // #377: where a play's way to the account's history ends, for a diagnostics log.
+            if (ex == null && c.settings.current.isLoggedIn && asked.exceptionOrNull() !is kotlinx.coroutines.CancellationException) {
+                AudioDiagnostics.log("history", "${song.id}: not sent: couldn't ask YouTube (${asked.exceptionOrNull()?.message?.take(120)})")
+            }
             ex?.loudnessDb?.toFloat()?.let { loud ->
                 c.loudness.edit().putFloat(song.id, loud).apply()
                 // Only while the song is just starting: later, the volume jumping mid-song is worse than a figure
@@ -1235,9 +1527,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val after = com.vinz.music.data.PlayCount.accountAfterMs(c.settings.current.behavior)
                 if (after > 0) while (trackedSong?.id == song.id && heardMs() < after) delay(500)
                 // #296: nothing goes to the account's history while history is paused.
+                if (com.vinz.music.data.HistoryPause.paused(c.settings.current.behavior)) AudioDiagnostics.log("history", "${song.id}: not sent: history is paused in Vinz")
                 if (trackedSong?.id == song.id && !com.vinz.music.data.HistoryPause.paused(c.settings.current.behavior)) {
                     withContext(Dispatchers.IO) {
-                        val sent = runCatching { c.ytm.registerPlayback(ex) }.getOrDefault(false)
+                        val sent = runCatching { c.ytm.registerPlayback(ex, song.id) }.getOrDefault(false)
                         // YouTube Music (live) then knows this one at the top of the account's history as Vinz's own
                         // (only when YouTube took it: else a play elsewhere would be taken for Vinz's).
                         if (sent) runCatching { com.vinz.music.data.imports.YouTubeLive.noteSent(c.app, song.id, com.vinz.music.data.imports.YouTubeLive.keyOf(song)) }
@@ -1254,66 +1547,127 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      */
     fun maybeAutoplay() {
         val src = c.queue.source.value
+        // Still looking for a queue that's been replaced, whoever replaced it (a car, a watch, a spoken request).
+        if (autoplayJob != null && autoplayFor !== src) dropAutoplay()
         // A song's radio (Quick picks, "Radio" in a song's menu) keeps going whether or not Autoplay is on: that's what it is.
         val radio = src.isSongRadio
-        if ((!c.settings.current.autoplay && !radio) || player.mediaItemCount == 0 || c.queue.followingHost) return
+        if ((!c.settings.current.autoplay && !radio) || player.mediaItemCount == 0 || c.queue.followingHost || c.queue.filling) return
         // No music radio after a podcast episode.
         if (player.currentMediaItem?.toSong()?.isEpisode == true) return
         if (src.kind != QueueKind.SINGLE && !radio && player.repeatMode != Player.REPEAT_MODE_OFF) return
         if (player.mediaItemCount - player.currentMediaItemIndex > 3 || c.queue.autoplayLoading) return
-        val seed = src.seedId ?: player.getMediaItemAt(player.mediaItemCount - 1).mediaId.takeIf { it.isNotBlank() } ?: return
+        // A radio that ran dry may have moved on to another song's radio (No repeats this session).
+        val seed = c.queue.reseededFor(src) ?: src.seedId ?: player.getMediaItemAt(player.mediaItemCount - 1).mediaId.takeIf { it.isNotBlank() } ?: return
+        val behavior = c.settings.current.behavior
+        val noRepeats = behavior.autoplayNoRepeats
+        val tune = behavior.radioTune
         // Where the songs come from (Settings → Playback & sound → Autoplay from): your own music (Vinz's radio, made on
         // the phone from your plays, likes, downloads and files), YouTube Music's radio, or both. A song's radio (Quick
         // picks, "Radio") is YouTube's; with no connection, or after a file on the phone, only your own music can follow.
         val offline = !c.network.isOnline()
         val mode = c.settings.current.autoplaySource
         val seedLocal = seed.startsWith(Song.LOCAL_PREFIX)
-        val useYours = offline || seedLocal || (!radio && mode != com.vinz.music.data.prefs.AutoplaySource.YOUTUBE)
+        // Tuned towards the familiar, a song's radio takes in your own music too.
+        val useYours = offline || seedLocal || (!radio && mode != com.vinz.music.data.prefs.AutoplaySource.YOUTUBE) || tune.newness < 0f
         val useYouTube = !offline && !seedLocal && (radio || mode != com.vinz.music.data.prefs.AutoplaySource.YOURS)
         val seeds = (maxOf(0, player.mediaItemCount - 3) until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.filter { it.isNotBlank() }
         c.queue.autoplayLoading = true
-        scope.launch {
+        autoplayFor = src
+        val job = scope.launch {
             val existing = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-            val mine = if (!useYours) emptyList() else runCatching {
-                withContext(Dispatchers.IO) { c.yourMusic.radio(seeds, existing, 15, offlineOnly = offline) }
+            val session = c.sessionHeard
+            // With no repeats on, a wider draw: most of Vinz's best picks for a song may well have played by now.
+            suspend fun ownRadio(): List<com.vinz.music.data.foryou.LocalRadio.Pick> = runCatching {
+                withContext(Dispatchers.IO) {
+                    c.yourMusic.radio(seeds, existing, if (noRepeats) 60 else 15, offlineOnly = offline) {
+                        // Apply before the local pick cap; explicitly started song radios remain unrestricted.
+                        radio || com.vinz.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes)
+                    }
+                }
             }.onFailure { android.util.Log.w("VinzRadio", "Vinz radio failed", it) }.getOrNull().orEmpty()
-                .let { com.vinz.music.data.foryou.LocalRadio.besideYouTube(it, onlyYours = !useYouTube || mode == com.vinz.music.data.prefs.AutoplaySource.YOURS) }
-                .map { it.song }
+                .let { picks -> if (noRepeats) picks.filter { !session.has(it.song) }.take(15) else picks }
+            val ownPicks = if (!useYours) emptyList() else ownRadio()
             // "Your music": YouTube only fills in when your own music has too little to follow with.
-            val wantYouTube = useYouTube && (radio || mode != com.vinz.music.data.prefs.AutoplaySource.YOURS || mine.size < 5)
-            val r = if (!wantYouTube) null else runCatching {
-                withContext(Dispatchers.IO) { c.radio(seed, "RDAMVM$seed", continuation = c.queue.autoplayContinuation) }
+            val wantYouTube = useYouTube && (radio || mode != com.vinz.music.data.prefs.AutoplaySource.YOURS || ownPicks.size < 5)
+            suspend fun askRadio(from: String, token: String?) = runCatching {
+                withContext(Dispatchers.IO) { c.radio(from, "RDAMVM$from", continuation = token) }
             }.getOrNull()
-            c.queue.autoplayLoading = false
-            // Dropped if the queue was replaced, or Autoplay was switched off, while loading.
-            if ((r == null && mine.isEmpty()) || c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
-            if (r != null) c.queue.autoplayContinuation = r.continuation
-            // Not what was heard in the last few hours, nor what the listener turned down (skipped at once when a
-            // suggestion): YouTube's radio for a favourite brings the same songs back day after day otherwise.
+            val r = if (!wantYouTube) null else askRadio(seed, c.queue.autoplayContinuation)
+            // #461: beside YouTube's radio, only your songs close to the seed (or by artists on that radio).
+            val mine = com.vinz.music.data.foryou.LocalRadio.besideYouTube(
+                ownPicks, onlyYours = !useYouTube || mode == com.vinz.music.data.prefs.AutoplaySource.YOURS, radio = r?.songs.orEmpty(),
+            ).map { it.song }
+            // Dropped if the queue was replaced, or Autoplay was switched off, while loading. (With no repeats on, having
+            // nothing from either isn't the end yet: [RadioTopUp.next] looks further.)
+            if ((!noRepeats && r == null && mine.isEmpty()) || c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
             val heardLately = withContext(Dispatchers.IO) {
                 runCatching { c.db.plays().eventsSince(System.currentTimeMillis() - RADIO_REST_MS).map { it.songId }.toSet() }.getOrDefault(emptySet())
             }
             val fb = c.recFeedback
-            val theirs = r?.songs.orEmpty().filter { it.id !in heardLately && !fb.turnedDown(it.id, known = false) }
-            val freshShare = when {
-                radio || mine.isEmpty() -> 1.0
-                theirs.isEmpty() -> 0.0
-                // Both: YouTube's radio leads, your own songs that belong with it in between (about two in five).
-                else -> 0.6
+            val explicit = behavior.explicitContent
+            val rules = com.vinz.music.data.foryou.RadioTopUp.Rules(
+                existing, heardLately, turnedDown = { fb.turnedDown(it.id, known = false) },
+                allowed = {
+                    !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.vinz.music.data.ExplicitFilter.plays(explicit, it) &&
+                        // #299: Autoplay's own songs only: a radio the listener started is left as it is.
+                        (radio || com.vinz.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes))
+                },
+            )
+            val first = r?.let { com.vinz.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
+            val signals = if (tune.neutral) com.vinz.music.data.foryou.RadioSignals()
+                else withContext(Dispatchers.IO) { c.discover.radioSignals(mine + r?.songs.orEmpty(), tune) }
+            val askPage: suspend (String, String?) -> com.vinz.music.data.foryou.RadioTopUp.Page? = { from, token ->
+                askRadio(from, token)?.let { com.vinz.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
             }
-            // An artist a few times a batch at most, never twice running.
-            val songs = com.vinz.music.data.foryou.Variety.arrange(mine, theirs, 25, freshShare, perArtist = 3) { it.primaryArtist.lowercase() }
-            android.util.Log.i("VinzRadio", "autoplay after $seed: ${mine.size} of yours, ${theirs.size} from YouTube ($mode${if (offline) ", offline" else ""})")
-            val explicit = c.settings.current.behavior.explicitContent
-            val add = songs.distinctBy { it.id }.filter {
-                it.id !in existing && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.vinz.music.data.ExplicitFilter.plays(explicit, it)
-            }
-            if (add.isNotEmpty()) {
+            val answer = com.vinz.music.data.foryou.RadioTopUp.next(
+                first, seed, c.queue.autoplayContinuation, mine, radio, rules, tune, signals, seed.hashCode().toLong() + player.mediaItemCount,
+                noRepeats = if (!noRepeats) null else com.vinz.music.data.foryou.RadioTopUp.NoRepeats(
+                    heard = session::has,
+                    otherSeeds = com.vinz.music.data.foryou.RadioTopUp.otherSeeds(session.oldestFirst(), player.currentMediaItem?.toSong()),
+                    ask = askPage.takeIf { wantYouTube },
+                    ownRadio = { ownRadio().map { it.song } },
+                    // The queue's songs behind the one playing, and the session's; what's still to come would only repeat sooner.
+                    again = {
+                        val ahead = (player.currentMediaItemIndex until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                        ((0 until player.currentMediaItemIndex).mapNotNull { player.getMediaItemAt(it).toSong() } + session.oldestFirst())
+                            .filter { it.id !in ahead && (!offline || c.availableOffline(it.id)) && !it.isLive && !it.isEpisode }
+                    },
+                    heardAt = session::heardAt,
+                ),
+            )
+            // Replaced or switched off while it looked further. (Its asks swallow a cancellation, so that's checked too.)
+            if (!isActive || c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
+            c.queue.autoplayContinuation = answer.continuation
+            if (answer.seed != seed) c.queue.reseed(src, answer.seed)
+            android.util.Log.i("VinzRadio", "autoplay after ${answer.seed}: ${mine.size} of yours, ${r?.songs?.size ?: 0} from YouTube, adding ${answer.add.size} ($mode${if (offline) ", offline" else ""}${if (noRepeats) ", no repeats" else ""}${if (answer.cameRound) ", coming round" else ""})")
+            if (answer.add.isNotEmpty()) {
                 if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
-                player.addMediaItems(add.map { it.toMediaItem() })
-                fb.served(add.map { it.id })
+                player.addMediaItems(answer.add.map { it.toMediaItem() })
+                fb.served(answer.add.map { it.id })
+                if (answer.cameRound) c.player.reportError(tr(R.string.no_repeats_ran_out))
             }
         }
+        autoplayJob = job
+        // Loading until the songs are in, or it's known none are coming (a song that wouldn't play waits on this). A job
+        // dropped for a new queue may end long after the new queue's own started (it's in a network request): that isn't this.
+        job.invokeOnCompletion {
+            if (autoplayJob === job) {
+                autoplayJob = null
+                c.queue.autoplayLoading = false
+            }
+        }
+    }
+
+    /** Autoplay's look for more songs, while it's out, and the queue it's for. */
+    @Volatile private var autoplayJob: kotlinx.coroutines.Job? = null
+    private var autoplayFor: QueueSource? = null
+
+    /** The queue is being replaced: what's being found for this one won't join the next, or hold back the next's own. */
+    fun dropAutoplay() {
+        val job = autoplayJob
+        autoplayJob = null
+        job?.cancel()
+        c.queue.autoplayLoading = false
     }
 
     /** Switching Autoplay off takes its suggestions back out of the queue; on, fetches them. */
@@ -1334,6 +1688,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      * couldn't be reached (worth trying again); otherwise there simply isn't one.
      */
     suspend fun videoIdFor(song: Song): VideoLookup {
+        // An episode from a feed is only sound.
+        if (song.isRss) return VideoLookup(null)
         // An episode is a YouTube video already: its video is itself.
         if (song.isVideo || song.isEpisode) return VideoLookup(song.id)
         // A file on the phone has no music video, and neither has the listener's own upload (#101: the lookup found the
@@ -1357,13 +1713,16 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      */
     fun prefetchVideo(song: Song, videoId: String) {
         if (song.isLocal || videoId in prefetched) return
+        // Nobody taps Video on a screen that isn't showing, unless videos are what they watch.
+        val watches = videoWanted || c.videoSync.watchesVideos()
+        if (!watches && !c.visible.value) return
         prefetched += videoId
         scope.launch(Dispatchers.IO) {
             // Not alongside the song's own start: it was one of the resolves slowing that down.
             c.yieldToPlaying(null)
             runCatching { c.streams.resolve(videoId, withVideo = true) }.onFailure { prefetched -= videoId }
             val metered = getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered != false
-            if (metered || videoId == song.id || c.videoSync.cached(song.id, videoId) != null) return@launch
+            if (!watches || metered || videoId == song.id || c.videoSync.cached(song.id, videoId) != null) return@launch
             // Measured once the song is under way: a long video ("Alright" runs three minutes past its song) means
             // minutes of audio to fetch and analyse, which slowed the song's own start when it ran at once.
             withContext(Dispatchers.Main) { untilUnderWay(song.id) }
@@ -1405,6 +1764,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      * skipping ahead or moving on starts straight away. Downloaded songs don't need it.
      */
     private fun prefetchNext() {
+        // 1.8.6 Canvas: the next two songs' loops, on Wi-Fi, once this one has played a few seconds (a newer queue cancels).
+        // (One lined up as its video shows the video, not a canvas.)
+        c.canvasAhead.ahead(upcoming(com.vinz.music.data.canvas.CanvasAhead.AHEAD).mapNotNull { if (it.videoModeId == null) it.toSong() else null })
         val i = player.nextMediaItemIndex
         if (i == C.INDEX_UNSET) return
         songForNextVideo(player.getMediaItemAt(i))
@@ -1424,7 +1786,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 for (id in ids) withContext(Dispatchers.IO) { c.warmUp(id, whole = true, cellular = c.settings.current.preloadCellular) }
             }
         }
-        if (next.startsWith(Song.LOCAL_PREFIX)) return
+        if (next.startsWith(Song.LOCAL_PREFIX) || next.startsWith(Song.RSS_PREFIX)) return
         // Its "Most replayed" curve (for the best part), ready before it plays, and the one after's (a double skip).
         val coming = listOfNotNull(player.getMediaItemAt(i).toSong(), upcoming(2).getOrNull(1)?.toSong())
         scope.launch { coming.forEach { s -> c.bestParts.prefetch(s) } }
@@ -1432,7 +1794,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // The song after it is resolved too (no audio fetched): skipping twice used to land on one that wasn't, which
         // took ~2 s to start. Each song is resolved once either way, only earlier.
         val afterNext = upcoming(2).getOrNull(1)?.mediaId
-            ?.takeIf { it.isNotBlank() && !it.startsWith(Song.LOCAL_PREFIX) && !c.downloads.isDownloaded(it) }
+            ?.takeIf { it.isNotBlank() && !it.startsWith(Song.LOCAL_PREFIX) && !it.startsWith(Song.RSS_PREFIX) && !c.downloads.isDownloaded(it) }
         scope.launch(Dispatchers.IO) {
             c.warmUp(next, cellular = c.settings.current.preloadCellular)
             afterNext?.let { c.streams.prefetch(it) }
@@ -1441,7 +1803,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val at = (0 until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == next && it != player.currentMediaItemIndex }
                 val song = at?.let { player.getMediaItemAt(it).toSong() }
                 if (at != null && song != null && !song.isLive) {
-                    player.replaceMediaItem(at, song.copy(isLive = true).toMediaItem(player.getMediaItemAt(at).videoModeId?.let { song.id }))
+                    player.replaceKeepingOrder(at, song.copy(isLive = true).toMediaItem(player.getMediaItemAt(at).videoModeId?.let { song.id }))
                 }
             }
         }
@@ -1469,6 +1831,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         }
         if (!c.player.songsEverywhere() && !fromRadio) return
         val video = item.toSong()?.takeIf { it.isVideo && !it.isLive && !it.isEpisode && !it.isLocal } ?: return
+        // A version the listener picked for the video plays in its place, and shows as that one already (#328, 1.8.7 §3.2).
+        if (c.plays.picked(video.id)) return
         if (!findingSongs.add(video.id)) return
         scope.launch {
             try {
@@ -1478,17 +1842,16 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val song = c.player.songFor(video) ?: run {
                     // #328: no song of its length, so its own sound plays; its song's cover and album are there from
                     // the start, not seconds after it begins ([songCoverForVideo]). Same address: nothing reloads.
-                    if (c.versions.of(video.id) != null) return@launch
-                    val found = runCatching { withContext(Dispatchers.IO) { c.ytm.songForVideo(video, anyLength = true) } }.getOrNull() ?: return@launch
+                    val found = coverSongFor(video) ?: return@launch
                     val cover = found.thumbnail?.takeIf { it != video.thumbnail } ?: return@launch
                     val at = queued() ?: return@launch
                     val now = player.getMediaItemAt(at).toSong() ?: return@launch
-                    player.replaceMediaItem(at, VideoCover.withSong(now, found, cover).toMediaItem())
+                    player.replaceKeepingOrder(at, VideoCover.withSong(now, found, cover).toMediaItem())
                     return@launch
                 }
                 if (!c.network.online.value && !c.availableOffline(song.id)) return@launch
                 val at = queued() ?: return@launch
-                player.replaceMediaItem(at, song.toMediaItem())
+                player.replaceKeepingOrder(at, song.toMediaItem())
             } finally {
                 findingSongs.remove(video.id)
             }
@@ -1507,6 +1870,30 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
 
     private fun keepVideos() = videoWanted && c.settings.current.videoContinues && c.settings.current.showVideoSwitch
 
+    /** #281: whether [song]'s video can't play now: videos are off on mobile data, and it isn't downloaded. */
+    private fun videoOffFor(song: Song) = VideoOnData.stops(VideoOnData.off(c), c.downloads.downloadedVideoId(song.id) != null)
+
+    /**
+     * #281: the phone moved onto mobile data, or off it. On it, a video playing carries on as audio, keeping what the
+     * listener asked for ([videoWanted]): the next song on Wi-Fi is a video again. The song playing stays as it is when
+     * Wi-Fi comes back, as jumping into the video by itself would be a surprise.
+     */
+    private fun onVideosOffChanged(off: Boolean) {
+        if (off) {
+            val song = player.currentMediaItem?.takeIf { it.videoModeId != null }?.toSong()
+            if (song != null && videoOffFor(song)) scope.launch {
+                setVideoMode(false)
+                c.player.reportError(tr(R.string.video_stopped_on_mobile_data))
+            }
+            for (i in 0 until player.mediaItemCount) {
+                if (i == player.currentMediaItemIndex) continue
+                val other = player.getMediaItemAt(i)
+                if (other.videoModeId != null) other.toSong()?.takeIf { videoOffFor(it) }?.let { player.replaceKeepingOrder(i, it.toMediaItem(null)) }
+            }
+        } else armNextVideo()
+        c.player.recheckVideo()
+    }
+
     /**
      * A new song started while videos are wanted. The next song is usually lined up as its video
      * already ([armNextVideo]); if it wasn't ready (a quick skip), it switches here. Songs without a
@@ -1517,6 +1904,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val item = player.currentMediaItem ?: return
         val song = item.toSong() ?: return
         if (item.videoModeId != null) { watchVideo(song.id); return }
+        if (videoOffFor(song)) return
         scope.launch { setVideoMode(true) }
     }
 
@@ -1528,14 +1916,15 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val item = player.getMediaItemAt(i)
         if (item.videoModeId != null) return
         val song = item.toSong() ?: return
+        if (videoOffFor(song)) return
         scope.launch {
             val vid = if (song.isLive) song.id else videoIdFor(song).id ?: return@launch
             val at = player.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: return@launch
             val next = player.getMediaItemAt(at)
-            if (!keepVideos() || next.mediaId != song.id || next.videoModeId != null) return@launch
+            if (!keepVideos() || next.mediaId != song.id || next.videoModeId != null || videoOffFor(song)) return@launch
             val nextSong = next.toSong() ?: return@launch
             if (failedVideos.remove(vid)) c.streams.invalidate(vid)
-            player.replaceMediaItem(at, nextSong.toMediaItem(if (nextSong.isLive) nextSong.id else vid))
+            player.replaceKeepingOrder(at, nextSong.toMediaItem(if (nextSong.isLive) nextSong.id else vid))
             if (!nextSong.isLive) prefetchVideo(nextSong, vid)
         }
     }
@@ -1545,7 +1934,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         for (i in 0 until player.mediaItemCount) {
             if (i == player.currentMediaItemIndex) continue
             val other = player.getMediaItemAt(i)
-            if (other.videoModeId != null) other.toSong()?.let { player.replaceMediaItem(i, it.toMediaItem(null)) }
+            if (other.videoModeId != null) other.toSong()?.let { player.replaceKeepingOrder(i, it.toMediaItem(null)) }
         }
     }
 
@@ -1559,6 +1948,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val item = player.currentMediaItem ?: return null
         val song = item.toSong() ?: return null
         if (enabled == (item.videoModeId != null)) return null
+        if (enabled && videoOffFor(song)) return tr(R.string.videos_are_off_on_mobile_data)
         if (song.isLive) {
             // The picture is already in the stream: same item, video track on (or off), no seeking about.
             swapInPlace(idx, song.toMediaItem(if (enabled) song.id else null))
@@ -1593,6 +1983,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         videoWatchdog?.cancel()
         if (vid != null) {
+            c.videoSync.noteWatched()
             val switchedAt = android.os.SystemClock.elapsedRealtime()
             if (known == null && vid != song.id && now > 1_500) scope.launch {
                 val lag = c.videoSync.lagMs(song.id, vid) ?: return@launch
@@ -1647,18 +2038,26 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         }
     }
 
+    /**
+     * The song whose cover and album a music video playing as itself shows: one known already (1.8.7 §3.2), else the
+     * same title by the same artist at any length, kept as a cover-only pairing ([com.vinz.music.data.meta.PairSource.COVER]).
+     */
+    private suspend fun coverSongFor(video: Song): Song? =
+        c.plays.coverSong(video.id) ?: runCatching { withContext(Dispatchers.IO) { c.ytm.songForVideo(video, anyLength = true) } }.getOrNull()
+            ?.also { c.plays.learn(video.id, it, com.vinz.music.data.meta.PairSource.COVER) }
+
     private fun songCoverForVideo(song: Song) {
         if (!song.isVideo || song.isLive || song.isLocal || song.isEpisode || song.isUpload) return
         // A version picked to play in its place shows as that one already (#328).
-        if (c.versions.of(song.id) != null) return
+        if (c.plays.picked(song.id)) return
         val item = player.currentMediaItem ?: return
         // A video found as a song's video already shows its song's cover; a video with no song found when it was
         // tapped (PlayerConnection.playQueue waits 4 s for it) is the item itself, shown as its video or, after Song, as its sound.
         if (item.videoModeId != null && item.videoModeId != song.id) return
         scope.launch {
-            // Its song if one was found to play (the session's), else the same title by the same artist at any length:
-            // only for the cover, so it's never kept as the song to play in its place.
-            val found = c.player.songFor(song) ?: runCatching { withContext(Dispatchers.IO) { c.ytm.songForVideo(song, anyLength = true) } }.getOrNull()
+            // Its song if one was found to play, else the same title by the same artist at any length: only for the
+            // cover, so it's never kept as the song to play in its place ([coverSongFor]).
+            val found = c.player.songFor(song) ?: coverSongFor(song)
             android.util.Log.i("VinzVideo", "cover for video ${song.id} \"${song.title}\": song ${found?.id} ${found?.thumbnail}")
             if (found == null) return@launch
             val cover = found.thumbnail?.takeIf { it != song.thumbnail } ?: return@launch
@@ -1712,6 +2111,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         videoWatchdog?.cancel()
         val idx = player.currentMediaItemIndex
         val current = player.currentMediaItem ?: return
+        // The listener has moved on from the song whose video failed (from PR #240, CodeWormer): this one's left as it is.
+        if (current.mediaId != songId) return
         val song = current.toSong() ?: return
         if (song.isLive) {
             swapInPlace(idx, song.toMediaItem(null))
@@ -1772,6 +2173,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (song != null && com.vinz.music.data.HistoryPause.keepsPlay(c.settings.current.behavior, ms, song.isEpisode)) {
             scope.launch(Dispatchers.IO) {
                 c.db.plays().insert(PlayEventEntity(songId = song.id, timestamp = System.currentTimeMillis(), playedMs = ms, source = source, excluded = excluded))
+                c.milestones.afterPlay()
             }
         }
     }
@@ -1900,7 +2302,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (player.shuffleModeEnabled) player.shuffleModeEnabled = false
         djJob = scope.launch {
             val s = c.settings.current
-            val network = c.dj.dataAllowed || s.mixTempoOnCellular ||
+            val network = c.dj.dataAllowed || s.mix.tempoOnCellular ||
                 getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == false
             resequence()
             val cur = player.currentMediaItemIndex
@@ -1951,12 +2353,16 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val queued = c.queue.userQueued.value
         var base = cur + 2
         while (base < player.mediaItemCount && player.getMediaItemAt(base).mediaId in queued) base++
+        // A new set's first song (#374) stays first after the listener's queued songs.
+        if (base < player.mediaItemCount && player.getMediaItemAt(base).mediaId == djLead) base++
         // Within the queue's own songs, or within autoplay's, so neither list in the queue gets the other's songs.
         val autoplay = c.queue.autoplayStart.value.takeIf { it > 0 } ?: Int.MAX_VALUE
         val limit = if (base < autoplay) minOf(autoplay, player.mediaItemCount) else player.mediaItemCount
         val end = minOf(limit, base + DJ_WINDOW)
         if (end - base < 2) return
-        val anchor = djTrack(player.getMediaItemAt(cur + 1)) ?: return
+        // The set follows on from the song just before it: the next one, or the last song the listener queued (#374:
+        // so a new set dealt after those isn't put back in the old order).
+        val anchor = djTrack(player.getMediaItemAt(base - 1)) ?: return
         val items = (base until end).map { player.getMediaItemAt(it) }
         val tracks = items.mapIndexed { i, item -> if (c.mixTempo.keyed(item.mediaId)) djTrack(item, id = i.toString()) else null }
         val known = tracks.filterNotNull()
@@ -1976,6 +2382,72 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         } finally {
             djMoving = false
         }
+    }
+
+    /**
+     * #374: Shuffle with DJ mode on. The songs after the playing one (after those the listener queued with "Play next",
+     * which keep their place) are dealt as a new DJ set: another song next, picked at random among those that blend
+     * well, and the rest in the order that follows on from it ([DjSequencer.newSet]). The same window [resequence]
+     * orders, so its next pass keeps the new set. Only moves songs.
+     */
+    /** The song a new set put first ([djNewSet]); [resequence] leaves it there. */
+    private var djLead: String? = null
+
+    private fun djNewSet() {
+        if (!c.dj.onNow || player.shuffleModeEnabled) return
+        val cur = player.currentMediaItemIndex
+        if (cur == C.INDEX_UNSET) return
+        val queued = c.queue.userQueued.value
+        var base = cur + 1
+        while (base < player.mediaItemCount && player.getMediaItemAt(base).mediaId in queued) base++
+        val autoplay = c.queue.autoplayStart.value.takeIf { it > 0 } ?: Int.MAX_VALUE
+        val limit = if (base < autoplay) minOf(autoplay, player.mediaItemCount) else player.mediaItemCount
+        val end = minOf(limit, base + 1 + DJ_WINDOW)
+        if (end - base < 2) return
+        val items = (base until end).map { player.getMediaItemAt(it) }
+        val window = items.mapIndexed { i, item -> if (c.mixTempo.keyed(item.mediaId)) djTrack(item, id = i.toString()) else null }
+        val start = djTrack(player.getMediaItemAt(base - 1))
+        val desired = DjSequencer.newSet(start, window, c.settings.current.djFlow, java.util.Random()) ?: return
+        if (desired == items.indices.toList()) return
+        android.util.Log.d("VinzDj", "new set: ${items[desired.first()].mediaId} next (was ${items.first().mediaId})")
+        djLead = items[desired.first()].mediaId
+        djMoving = true
+        try {
+            player.replaceMediaItems(base, end, desired.map { items[it] })
+        } finally {
+            djMoving = false
+        }
+        // Shuffling picks a different next song.
+        prefetchNext()
+        scheduleSave()
+    }
+
+    /**
+     * "Pause when face down" switched on or off (and at start): on, a [FaceDown] listens to the player and takes the
+     * accelerometer while music plays; off, it's let go and nothing of it is left (no listener, no sensor).
+     */
+    private fun faceDownSetting(on: Boolean) {
+        if (!on) {
+            faceDown?.let { player.removeListener(it); it.release() }
+            faceDown = null
+            return
+        }
+        val f = faceDown ?: FaceDown(FaceDown.Accelerometer(this), { c.settings.current.behavior.faceDownPause }, object : FaceDown.Controls {
+            override val playing get() = player.playWhenReady && (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
+            // Not while the music goes to another device (Cast, Vinz Connect), the car (Android Auto), or in a call.
+            override val blocked get() = c.cast.casting || carControllers.isNotEmpty() || inCall()
+            override fun pause() = player.pause()
+            override fun play() = player.play()
+        }).also { faceDown = it; player.addListener(it) }
+        f.update()
+    }
+
+    private val audioManager by lazy { getSystemService(android.media.AudioManager::class.java) }
+
+    /** A phone or voice call (ringing, or on one). */
+    private fun inCall(): Boolean = when (runCatching { audioManager?.mode }.getOrNull()) {
+        android.media.AudioManager.MODE_IN_CALL, android.media.AudioManager.MODE_IN_COMMUNICATION, android.media.AudioManager.MODE_RINGTONE -> true
+        else -> false
     }
 
     private var resequenceJob: kotlinx.coroutines.Job? = null
@@ -2014,7 +2486,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     Player.REPEAT_MODE_ONE -> button(CommandButton.ICON_REPEAT_ONE, tr(R.string.repeat_off), repeatCommand)
                     else -> button(CommandButton.ICON_REPEAT_OFF, tr(R.string.repeat), repeatCommand)
                 }
-                SessionButton.CAR_LYRICS -> if (c.settings.current.carLyrics) button(CommandButton.ICON_SUBTITLES, tr(R.string.hide_lyrics), lyricsCommand)
+                SessionButton.CAR_LYRICS -> if (carLyrics.button.showing) button(CommandButton.ICON_SUBTITLES, tr(R.string.hide_lyrics), lyricsCommand)
                     else button(CommandButton.ICON_SUBTITLES_OFF, tr(R.string.show_lyrics), lyricsCommand)
                 SessionButton.RADIO -> button(CommandButton.ICON_RADIO, tr(R.string.start_radio), radioCommand)
                 SessionButton.DISLIKE -> button(CommandButton.ICON_THUMB_DOWN_UNFILLED, tr(R.string.not_for_me), dislikeCommand)
@@ -2077,7 +2549,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val r = runCatching { withContext(Dispatchers.IO) { c.radio(song.id, "RDAMVM${song.id}") } }.getOrNull() ?: return@launch
             if (player.currentMediaItem?.mediaId != song.id) return@launch
             val explicit = c.settings.current.behavior.explicitContent
-            val add = r.songs.filter { it.id != song.id && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.vinz.music.data.ExplicitFilter.plays(explicit, it) }
+            val all = r.songs.filter { it.id != song.id && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.vinz.music.data.ExplicitFilter.plays(explicit, it) }
+            // No repeats this session; with nothing else in this answer, the radio still starts.
+            val add = if (c.settings.current.behavior.autoplayNoRepeats) all.filter { !c.sessionHeard.has(it) }.ifEmpty { all } else all
             if (add.isEmpty()) return@launch
             val idx = player.currentMediaItemIndex
             if (idx + 1 < player.mediaItemCount) player.removeMediaItems(idx + 1, player.mediaItemCount)
@@ -2111,6 +2585,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             streamBitrateKbps = s?.bitrate ?: savedKbps.takeIf { it > 0 } ?: c.nerdStats.value.streamBitrateKbps,
             contentLength = s?.contentLength ?: savedBytes,
             client = s?.client ?: "",
+            undecodedFile = c.localLossless.streamInstead[id].orEmpty(),
         )
     }
 
@@ -2133,6 +2608,17 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             scope.launch { applyStreamStats(item.mediaId) }
             return uri
         }
+        // A file on the phone picked as this song's version (1.8.3, #243): played from the file, whatever the lossless
+        // switches say. A file that's gone plays the song as usual.
+        c.versions.fileOf(item.mediaId)?.let { file ->
+            // Once the phone's files have been read, only one that's still there (before that, its MediaStore address).
+            (c.localMusic.track(file)?.uri ?: c.localMusic.uriFor(file).takeIf { !c.localMusic.scanned.value })?.let { uri ->
+                val format = c.localMusic.track(file)?.mime?.let(::fileFormatName)
+                c.streamDetails[item.mediaId] = "Your file on this phone" + (format?.let { " · $it" } ?: "") to null
+                scope.launch { applyStreamStats(item.mediaId) }
+                return uri
+            }
+        }
         // Lossless files need lossless playback, as in 1.8.0; your own MP3/AAC/Ogg files (#314) need only their switch,
         // and give way to a lossless file of the same song ([com.vinz.music.data.local.PlaySourceRule]).
         val kinds = com.vinz.music.data.local.OwnFiles.kinds(c.settings.current)
@@ -2153,6 +2639,26 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     // ------------------------------------------------------------ Queue persistence
 
     private val queueFile get() = File(filesDir, "queue.json")
+    private val placeFile get() = File(filesDir, "queue-place.json")
+    private var placeJob: Job? = null
+    private val placeKeeper = PlaceKeeper { p ->
+        val text = InnerTube.json.encodeToString(QueuePlace.serializer(), p)
+        // Whole or not at all (1.8.7): a write cut short by a kill left a broken place file, and the place from before.
+        scope.launch(queueWriter) { runCatching { writeAtomically(placeFile, text) } }
+    }
+
+    private fun currentPlace(): QueuePlace? {
+        if (!::player.isInitialized) return null
+        val id = player.currentMediaItem?.mediaId ?: return null
+        return QueuePlace(id, player.currentMediaItemIndex, player.currentPosition)
+    }
+
+    /** The kept place, when it was written after queue.json (else the queue file's own place is the newer one). */
+    private fun keptPlace(): QueuePlace? = runCatching {
+        val f = placeFile
+        if (!f.exists() || f.lastModified() < queueFile.lastModified()) null
+        else InnerTube.json.decodeFromString(QueuePlace.serializer(), f.readText())
+    }.getOrNull()
 
     private fun scheduleSave() {
         saveJob?.cancel()
@@ -2167,28 +2673,26 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      */
     private fun saveQueue(now: Boolean = false) {
         if (!::player.isInitialized) return
-        val songs = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
-        // The play order while shuffled, walked from its first song (only when every item made it into the list).
-        val order = if (player.shuffleModeEnabled && songs.size == player.mediaItemCount) player.shuffleOrder.let { so ->
+        // On this thread only what the player has to be asked for: each item's stored song as it is (not read), the
+        // place, and the play order while shuffled, walked from its first song. The file is put together by the writer.
+        val count = player.mediaItemCount
+        val songJson = List(count) { player.getMediaItemAt(it).mediaMetadata.extras?.getString(EXTRA_SONG) }
+        val shuffle = player.shuffleModeEnabled
+        val order = if (shuffle) player.shuffleOrder.let { so ->
             generateSequence(so.firstIndex.takeIf { it != androidx.media3.common.C.INDEX_UNSET }) { i -> so.getNextIndex(i).takeIf { it != androidx.media3.common.C.INDEX_UNSET } }
-                .take(songs.size).toList()
+                .take(count).toList()
         } else emptyList()
-        val q = SavedQueue(
-            songs, player.currentMediaItemIndex, player.currentPosition, c.queue.source.value.title,
-            shuffle = player.shuffleModeEnabled, shuffleOrder = order, repeat = player.repeatMode,
-        )
-        val text = InnerTube.json.encodeToString(SavedQueue.serializer(), q)
-        if (now) writeQueue(text) else scope.launch(queueWriter) { writeQueue(text) }
+        val index = player.currentMediaItemIndex; val position = player.currentPosition
+        val title = c.queue.source.value.title; val repeat = player.repeatMode
+        val text = { savedQueueText(songJson, index, position, title, shuffle, order, repeat) }
+        placeKeeper.saved(currentPlace())
+        if (now) writeQueue(text()) else scope.launch(queueWriter) { writeQueue(text()) }
     }
 
     private val queueWriter = Dispatchers.IO.limitedParallelism(1)
 
     @Synchronized private fun writeQueue(text: String) {
-        runCatching {
-            val tmp = File(filesDir, "queue.json.tmp")
-            tmp.writeText(text)
-            if (!tmp.renameTo(queueFile)) { queueFile.writeText(text); tmp.delete() }
-        }
+        runCatching { writeAtomically(queueFile, text) }
     }
 
     private fun restoreQueue() {
@@ -2201,7 +2705,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             return
         }
         c.queue.source.value = QueueSource(QueueKind.OTHER, q.title)
-        player.setMediaItems(q.songs.map { it.toMediaItem() }, q.index.coerceIn(0, q.songs.lastIndex), q.positionMs)
+        val (index, position) = PlaceKeeper.start(q.songs.map { it.id }, q.index, q.positionMs, keptPlace(), placeIsNewer = true)
+        player.setMediaItems(q.songs.map { it.toMediaItem() }, index.coerceIn(0, q.songs.lastIndex), position)
         // Shuffle and repeat as they were, in the same order.
         if (q.shuffle) {
             if (q.shuffleOrder.size == q.songs.size && q.shuffleOrder.sorted() == q.songs.indices.toList()) {
@@ -2303,7 +2808,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                     else -> Player.REPEAT_MODE_OFF
                 }
-                lyricsCommand.customAction -> c.settings.setCarLyrics(!c.settings.current.carLyrics)
+                lyricsCommand.customAction -> carLyrics.toggle()
                 radioCommand.customAction -> startRadio()
                 dislikeCommand.customAction -> player.currentMediaItem?.toSong()?.let { song ->
                     c.library.setDisliked(song, true)
@@ -2415,6 +2920,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 tree.shuffleSongs(single.mediaId)?.takeIf { it.second.isNotEmpty() }?.let { (title, list) ->
                     c.queue.source.value = QueueSource(QueueKind.PLAYLIST, title)
                     c.queue.autoplayStart.value = -1
+                    // A new queue, shuffled: DJ mode ends with the old one (Shuffle in DJ mode would deal a DJ set, #374).
+                    c.dj.setOn(false)
                     player.shuffleModeEnabled = true
                     // Shuffled here too, so each "Shuffle play" is a new order rather than the player's last one.
                     return@future MediaSession.MediaItemsWithStartPosition(list.shuffled().map { it.toMediaItem() }, 0, C.TIME_UNSET)
@@ -2499,6 +3006,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.source.value = QueueSource(QueueKind.PLAYLIST, pick.title)
             // Asked to shuffle: shuffled here too, so it's a new order each time (as the car's "Shuffle play" is);
             // otherwise in order, whatever shuffle was left on.
+            // A new queue asked shuffled: DJ mode ends with the old one (Shuffle in DJ mode would deal a DJ set, #374).
+            if (request.shuffle && pick.songs.size > 1) c.dj.setOn(false)
             player.shuffleModeEnabled = request.shuffle && pick.songs.size > 1
             val list = if (player.shuffleModeEnabled) pick.songs.shuffled() else pick.songs
             return MediaSession.MediaItemsWithStartPosition(list.map { it.toMediaItem() }, pick.start.coerceIn(0, list.lastIndex), C.TIME_UNSET)
@@ -2510,14 +3019,13 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             controller: MediaSession.ControllerInfo,
             isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
-            val q = withContext(Dispatchers.IO) {
-                runCatching { InnerTube.json.decodeFromString(SavedQueue.serializer(), queueFile.readText()) }.getOrNull()
-            }
-            if (q == null || q.songs.isEmpty()) {
+            val r = withContext(Dispatchers.IO) { resumptionOf(runCatching { queueFile.readText() }.getOrNull(), keptPlace()) }
+            AudioDiagnostics.log("control", "resume asked by ${controller.packageName}: " + (r?.let { "${it.songs[it.index].id} at ${it.positionMs / 1000} s" } ?: "nothing saved"))
+            if (r == null) {
                 MediaSession.MediaItemsWithStartPosition(emptyList(), 0, C.TIME_UNSET)
             } else {
-                c.queue.source.value = QueueSource(QueueKind.OTHER, q.title)
-                MediaSession.MediaItemsWithStartPosition(q.songs.map { it.toMediaItem() }, q.index.coerceIn(0, q.songs.lastIndex), q.positionMs)
+                c.queue.source.value = QueueSource(QueueKind.OTHER, r.title)
+                MediaSession.MediaItemsWithStartPosition(r.songs.map { it.toMediaItem() }, r.index, r.positionMs)
             }
         }
     }
@@ -2605,6 +3113,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             // Background scans back off while the sound is running dry (MixTempo.ease).
             MixTempo.lastUnderrunAt = SystemClock.elapsedRealtime()
             update { copy(underruns = underruns + 1) }
+            AudioDiagnostics.session.underrun()
         }
     }
 
@@ -2717,10 +3226,31 @@ internal fun wontPlayHere(error: Throwable, refused: Boolean = false): Boolean {
 }
 
 /**
+ * Whether a failure the player reports as the current song's is really about the next one: [failedSong]'s stream, the id
+ * the failed lookup was for, read ahead for as the current one ends. [current] and [next]: each song's id and its video's.
+ */
+internal fun readAheadFailed(failedSong: String?, current: Set<String>, next: Set<String>): Boolean =
+    failedSong != null && failedSong !in current && failedSong in next
+
+/** How long a song that wouldn't play is shown, with its reason, before the next one starts. */
+private const val SKIP_AFTER_FAILURE_MS = 1_500L
+/** How long Autoplay's songs are waited for after a last song that wouldn't play. */
+private const val AUTOPLAY_WAIT_MS = 15_000L
+
+/**
  * Whether [error] is the audio decoder failing or going away rather than the song's bytes: Android releases a background
  * app's codecs when another one needs them (1.7.9's night check). Unreadable bytes are a [androidx.media3.common.ParserException],
  * handled on their own; a format this phone can't decode has its own error codes and isn't retried.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+internal fun stuckPlaying(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
+    it is androidx.media3.common.util.StuckPlayerException && it.stuckType == androidx.media3.common.util.StuckPlayerException.STUCK_PLAYING_NO_PROGRESS
+}
+
+/** How many times a song whose position stopped moving is tried again ([stuckPlaying]) before it counts as failed. */
+private const val STUCK_TRIES = 2
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun decoderLost(error: PlaybackException): Boolean =
     (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED || error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) &&
         generateSequence(error as Throwable) { it.cause }.none { it is androidx.media3.common.ParserException }

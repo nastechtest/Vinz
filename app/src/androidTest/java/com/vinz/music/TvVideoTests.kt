@@ -76,7 +76,7 @@ class TvVideoTests {
         val songs = titles.map { t -> local.tracks.value.first { it.song.title == t }.song }
         if (withLyrics) {
             val lrc = (0 until 10).joinToString("\n") { i -> "[00:%02d.00]Line number ${i + 1} of the tone".format(i * 8) }
-            runBlocking { Fixture.container.db.lyrics().put(com.vinz.music.data.db.LyricsEntity(songs[0].id, "LRCLIB", true, lrc, System.currentTimeMillis())) }
+            runBlocking { Fixture.container.db.lyrics().put(com.prism.music.data.db.LyricsEntity(songs[0].id, "LRCLIB", true, lrc, System.currentTimeMillis())) }
         }
         instrumentation.runOnMainSync { player.playQueue(songs, 0, QueueSource(QueueKind.OTHER, "TV video test")) }
         waitFor(20_000) { player.currentIndex.value == 0 && player.isPlaying.value }

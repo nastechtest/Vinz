@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vinz.music.data.prefs.EqPresetStore
@@ -80,6 +81,7 @@ fun EqualizerScreen(bottomPadding: Dp) {
             item { HeadphoneCorrection() }
             item {
                 Group(tr(R.string.t_10_band_equalizer, EqPresets.label(eq.preset))) {
+                    EqRefusedLine(eq.enabled)
                     EqGraph(eq, Modifier.fillMaxWidth().height(240.dp).padding(horizontal = 8.dp)) { band, db ->
                         update(eq.copy(enabled = true, preset = tr(R.string.custom), bands = eq.bands.toMutableList().also { it[band] = db }))
                     }
@@ -194,6 +196,25 @@ private fun YourEqPresets(eq: EqSettings, onApply: (EqSettings) -> Unit) {
             dismissButton = { com.vinz.music.ui.components.VinzTextButton({ naming = false }) { Text(tr(R.string.cancel)) } },
         )
     }
+}
+
+/** Test tag of [EqRefusedLine]. */
+internal const val EQ_REFUSED_TAG = "eq_refused"
+
+/**
+ * #519: while Android refuses the effects the equalizer asks for (its register of effects full), one line says so above
+ * the sliders, which would otherwise move and change nothing. Only with the equalizer on.
+ */
+@Composable
+internal fun EqRefusedLine(enabled: Boolean) {
+    val refused by LocalContainer.current.eqRefused.collectAsState()
+    if (!enabled || !refused) return
+    Text(
+        tr(R.string.eq_refused),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).testTag(EQ_REFUSED_TAG),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error,
+    )
 }
 
 @Composable

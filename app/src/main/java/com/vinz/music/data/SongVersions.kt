@@ -37,6 +37,15 @@ class SongVersions(private val prefs: SharedPreferences) {
     /** The recording that plays for [songId], or null for its own. */
     fun of(songId: String): String? = _picks.value[songId]?.id
 
+    /** A file on this phone picked for [songId] (1.8.3, #243): its local id. It plays from the file. */
+    fun fileOf(songId: String): String? = of(songId)?.takeIf { it.startsWith(Song.LOCAL_PREFIX) }
+
+    /**
+     * The recording to fetch from YouTube for [songId]: its pick, unless that's a file on the phone, which is never
+     * streamed (casting, downloads and scans then use the song's own).
+     */
+    fun streamedOf(songId: String): String? = of(songId)?.takeUnless { it.startsWith(Song.LOCAL_PREFIX) }
+
     /** Plays [pick] for [songId] from now on; null goes back to the song's own. */
     fun set(songId: String, pick: Pick?) {
         val ed = prefs.edit()
@@ -54,15 +63,7 @@ class SongVersions(private val prefs: SharedPreferences) {
     fun shown(song: Song): Song {
         val picks = shownPicks.value
         if (picks.isEmpty()) return song
-        val v = picks[song.id]?.song ?: return song
-        return song.copy(
-            title = v.title.ifBlank { song.title },
-            artists = v.artists.ifEmpty { song.artists },
-            album = v.album,
-            durationSec = v.durationSec.takeIf { it > 0 } ?: song.durationSec,
-            thumbnail = v.thumbnail ?: song.thumbnail,
-            explicit = v.explicit,
-        )
+        return shownAs(song, picks[song.id]?.song)
     }
 
     /** The picked version's cover for song [songId], if it has one (#328). */
@@ -86,6 +87,19 @@ class SongVersions(private val prefs: SharedPreferences) {
 
         /** [shown] for [song], or [song] itself before the picks have been read. */
         fun shownOf(song: Song): Song = shared?.shown(song) ?: song
+
+        /** [song] as it shows when [version] plays in its place ([shown]); [song] itself with none. */
+        fun shownAs(song: Song, version: Song?): Song {
+            val v = version ?: return song
+            return song.copy(
+                title = v.title.ifBlank { song.title },
+                artists = v.artists.ifEmpty { song.artists },
+                album = v.album,
+                durationSec = v.durationSec.takeIf { it > 0 } ?: song.durationSec,
+                thumbnail = v.thumbnail ?: song.thumbnail,
+                explicit = v.explicit,
+            )
+        }
 
         private val BRACKETS = Regex("\\s*[(\\[][^)\\]]*[)\\]]")
         private val DASH = Regex("\\s+[-–—]\\s+.*$")

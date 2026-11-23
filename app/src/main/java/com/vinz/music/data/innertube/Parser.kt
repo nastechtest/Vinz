@@ -35,6 +35,15 @@ object Parser {
      * which are songs too (#101: as "videos", "Songs, not videos" swapped an upload for YouTube's own, shorter, recording).
      */
     fun isVideoType(vt: String?): Boolean = vt != null && vt != "MUSIC_VIDEO_TYPE_ATV" && vt != UPLOAD
+
+    /**
+     * #383 (1.8.3): YouTube files some songs' videos as podcast episodes (Telugu film songs in a playlist: "Episode will
+     * play next", no show, the singer linked as an artist). Read as episodes they had no artist, played with the episode
+     * controls (15 s / 30 s) and were never swapped for their songs. A real episode names its show (linked); one that
+     * names none is a song's video (its singer linked or not: "Mukesh" came as plain text).
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun songMarkedEpisode(show: JsonObject?, runs: List<JsonObject>): Boolean = show == null
     private val typeLabels = setOf(
         "Song", "Video", "Album", "Single", "EP", "Artist", "Playlist", "Episode", "Podcast", "Profile", "Station",
     )
@@ -145,8 +154,9 @@ object Parser {
         val browse = r.obj("navigationEndpoint")
 
         // A podcast episode (search's Episodes): "Sep 30 • The Show", the show linked.
-        if (videoId != null && videoType(watch) == EPISODE_VIDEO) {
-            val show = restRuns.firstOrNull { pageType(it["navigationEndpoint"]) == PODCAST }
+        val episodeShow = restRuns.firstOrNull { pageType(it["navigationEndpoint"]) == PODCAST }
+        if (videoId != null && videoType(watch) == EPISODE_VIDEO && !songMarkedEpisode(episodeShow, restRuns)) {
+            val show = episodeShow
             return SongItem(
                 Song(
                     id = videoId, title = title,
@@ -160,6 +170,7 @@ object Parser {
             val duration = r.arr("fixedColumns")?.firstOrNull()
                 ?.obj("musicResponsiveListItemFixedColumnRenderer", "text").text()
                 ?: restRuns.map { it.str("text") ?: "" }.lastOrNull { durationRegex.matches(it.trim()) }
+            // #383: a song YouTube files as an "episode" counts as the video it is ([isVideoType]), so it can be swapped.
             val vt = videoType(watch)
             val explicit = r.arr("badges")?.any {
                 it.str("musicInlineBadgeRenderer", "icon", "iconType") == "MUSIC_EXPLICIT_BADGE"
@@ -283,9 +294,10 @@ object Parser {
                 return PlaylistItem(pid, title, subtitle, thumb, isMix = true, seedVideoId = id, params = w.str("params"))
             }
             id ?: return null
+            val show = subtitleRuns.firstOrNull { pageType(it["navigationEndpoint"]) == PODCAST }
+            val episode = videoType(w) == EPISODE_VIDEO && !songMarkedEpisode(show, subtitleRuns)
             val vt = videoType(w)
-            if (vt == EPISODE_VIDEO) {
-                val show = subtitleRuns.firstOrNull { pageType(it["navigationEndpoint"]) == PODCAST }
+            if (episode) {
                 return SongItem(
                     Song(
                         id = id, title = title, artists = listOfNotNull(show?.str("text")?.let { ArtistRef(it) }),
@@ -357,6 +369,7 @@ object Parser {
                     // column (numItemsPerColumn), but as cards, and were taken for Quick picks.
                     rows = s.arr("contents")?.firstOrNull().obj("musicResponsiveListItemRenderer") != null,
                     stacked = (s.str("numItemsPerColumn")?.toIntOrNull() ?: 1) > 1,
+                    startsRadios = startsRadios(s.arr("contents")),
                 )
             }
             node.obj("musicShelfRenderer")?.let { s ->
@@ -381,8 +394,174 @@ object Parser {
         return out
     }
 
+    /**
+     * Song rows whose play buttons each start that song's radio (its "RDAMVM" + id list), most of them: how YouTube
+     * Music's Quick picks play, whatever the language its title is in. Other shelves of song rows ("Trending songs for
+     * you" in the recorded Home) play the song alone.
+     */
+    internal fun startsRadios(contents: List<JsonElement>?): Boolean {
+        val rows = contents.orEmpty().mapNotNull { it.obj("musicResponsiveListItemRenderer") }
+        if (rows.isEmpty()) return false
+        val radios = rows.count { r ->
+            val w = r.obj("overlay", "musicItemThumbnailOverlayRenderer", "content", "musicPlayButtonRenderer", "playNavigationEndpoint", "watchEndpoint")
+            val id = w.str("videoId")
+            id != null && w.str("playlistId") == "RDAMVM$id"
+        }
+        return radios * 2 > rows.size
+    }
+
     fun continuation(root: JsonElement?): String? =
         root.findFirst("nextContinuationData").str("continuation")
             ?: root.findFirst("nextRadioContinuationData").str("continuation")
             ?: root.findFirst("continuationCommand").str("token")
+
+    // ---------------------------------------------------------------- The listener's uploads (#332, #101)
+    //
+    // Written from ytmusicapi's own reading of these answers (sigma67/ytmusicapi at 488dbf3: mixins/uploads.py,
+    // parsers/uploads.py, parsers/library.py, parsers/albums.py; MIT): NOT from an answer seen by Vinz. No account with
+    // uploads was at hand when this was built, so anything unexpected gives nothing rather than a wrong item, and
+    // [YouTubeMusic]'s callers log what they saw.
+
+    /** An uploaded artist's page: "FEmusic_library_privately_owned_artist_detail…". */
+    fun isUploadArtist(id: String?) = id != null && id.contains("privately_owned_artist")
+
+    /** An uploaded album's page: "FEmusic_library_privately_owned_release_detail…". */
+    fun isUploadAlbum(id: String?) = id != null && id.contains("privately_owned_release")
+
+    private fun flexColumn(r: JsonObject, i: Int): List<JsonObject> =
+        r.arr("flexColumns")?.getOrNull(i).obj("musicResponsiveListItemFlexColumnRenderer", "text").runs()
+
+    /**
+     * An uploaded song's row. Its id is where ytmusicapi reads it, the row's "Add to queue" (the rows don't always say
+     * it anywhere else), with the usual places as a fallback. A row with no menu isn't a song: the "Shuffle all" that can
+     * head the list.
+     */
+    fun uploadSong(r: JsonObject, album: AlbumRef? = null): Song? {
+        val menu = r.arr("menu", "menuRenderer", "items") ?: return null
+        val id = menu.firstNotNullOfOrNull { it.str("menuServiceItemRenderer", "serviceEndpoint", "queueAddEndpoint", "queueTarget", "videoId") }
+            ?: r.str("playlistItemData", "videoId")
+            ?: r.str("overlay", "musicItemThumbnailOverlayRenderer", "content", "musicPlayButtonRenderer", "playNavigationEndpoint", "watchEndpoint", "videoId")
+            ?: return null
+        val title = flexColumn(r, 0).joinToString("") { it.str("text") ?: "" }.takeIf { it.isNotBlank() } ?: return null
+        val artists = flexColumn(r, 1).mapNotNull { run ->
+            val name = run.str("text")?.trim().orEmpty()
+            if (isSeparator(name)) null else ArtistRef(name, run.str("navigationEndpoint", "browseEndpoint", "browseId"))
+        }
+        val albumRun = flexColumn(r, 2).firstOrNull()
+        return Song(
+            id = id,
+            title = title,
+            artists = artists,
+            album = albumRun?.str("text")?.takeIf { it.isNotBlank() }?.let { AlbumRef(it, albumRun.str("navigationEndpoint", "browseEndpoint", "browseId")) } ?: album,
+            durationSec = parseDuration(r.arr("fixedColumns")?.firstOrNull().obj("musicResponsiveListItemFixedColumnRenderer", "text").text()),
+            thumbnail = r.obj("thumbnail").bestThumbnail(),
+            explicit = r.arr("badges")?.any { it.str("musicInlineBadgeRenderer", "icon", "iconType") == "MUSIC_EXPLICIT_BADGE" } == true,
+            isUpload = true,
+        )
+    }
+
+    /** An uploaded album's card ("Album • Coldplay • 2014"); its page id is on its title. */
+    fun uploadAlbum(r: JsonObject): AlbumItem? {
+        val id = r.obj("title").runs().firstOrNull().str("navigationEndpoint", "browseEndpoint", "browseId")
+            ?: r.str("navigationEndpoint", "browseEndpoint", "browseId") ?: return null
+        val title = r.obj("title").text()?.takeIf { it.isNotBlank() } ?: return null
+        val playlist = r.arr("menu", "menuRenderer", "items")?.firstNotNullOfOrNull {
+            it.str("menuNavigationItemRenderer", "navigationEndpoint", "watchPlaylistEndpoint", "playlistId")
+        }
+        return AlbumItem(id, title, canonical(r.obj("subtitle").text() ?: ""), r.obj("thumbnailRenderer").bestThumbnail(), playlist)
+    }
+
+    /** An uploaded artist's row ("12 songs" under the name). */
+    fun uploadArtist(r: JsonObject): ArtistItem? {
+        val id = r.str("navigationEndpoint", "browseEndpoint", "browseId") ?: return null
+        val name = flexColumn(r, 0).joinToString("") { it.str("text") ?: "" }.takeIf { it.isNotBlank() } ?: return null
+        return ArtistItem(id, name, flexColumn(r, 1).joinToString("") { it.str("text") ?: "" }, r.obj("thumbnail").bestThumbnail())
+    }
+
+    /**
+     * One page of uploaded songs. [rows]: how many rows the answer had, so a shape Vinz can't read tells from an empty list.
+     * [entities]: each song's id to delete it by (1.8.3, D49), where its row's menu had one.
+     */
+    class UploadRows<T>(val items: List<T>, val rows: Int, val next: String?, val entities: Map<String, String> = emptyMap())
+
+    /**
+     * What an uploaded song is deleted by (1.8.3, D49): the entity id in its row's "Delete" confirm, where ytmusicapi
+     * reads it (parsers/uploads.py: the menu's last item, confirmDialogEndpoint → musicDeletePrivatelyOwnedEntityCommand).
+     */
+    fun uploadEntityId(r: JsonObject): String? =
+        r.arr("menu", "menuRenderer", "items")?.firstNotNullOfOrNull { it.findFirst("musicDeletePrivatelyOwnedEntityCommand").str("entityId") }
+
+    fun uploadSongRows(root: JsonElement, album: AlbumRef? = null): UploadRows<Song> {
+        val rows = root.findAll("musicResponsiveListItemRenderer")
+        val entities = HashMap<String, String>()
+        val songs = rows.mapNotNull { r -> uploadSong(r, album)?.also { s -> uploadEntityId(r)?.let { entities[s.id] = it } } }.distinctBy { it.id }
+        return UploadRows(songs, rows.size, continuation(root), entities)
+    }
+
+    fun uploadAlbumCards(root: JsonElement): UploadRows<AlbumItem> {
+        val rows = root.findAll("musicTwoRowItemRenderer")
+        return UploadRows(rows.mapNotNull(::uploadAlbum), rows.size, continuation(root))
+    }
+
+    fun uploadArtistRows(root: JsonElement): UploadRows<ArtistItem> {
+        val rows = root.findAll("musicResponsiveListItemRenderer")
+        return UploadRows(rows.mapNotNull(::uploadArtist), rows.size, continuation(root))
+    }
+
+    private val uploadYear = Regex("^(19|20)\\d{2}$")
+
+    /** An uploaded album's page as ytmusicapi reads it: `musicDetailHeaderRenderer`, or the newer responsive header. */
+    fun uploadAlbumPage(browseId: String, root: JsonElement): com.vinz.music.data.model.CollectionPage {
+        val header = root.findFirst("musicDetailHeaderRenderer") ?: root.findFirst("musicResponsiveHeaderRenderer")
+        val title = header.obj("title").text()?.takeIf { it.isNotBlank() }
+        val runs = header.obj("subtitle").runs()
+        // "Album • Coldplay • 2014": the kind first, then every other run an artist or the year.
+        val named = runs.drop(1).mapNotNull { run -> run.str("text")?.trim()?.takeIf { !isSeparator(it) }?.let { it to run } }
+        val year = named.firstOrNull { (t, _) -> uploadYear.matches(t) }?.first
+        val artists = named.filter { (t, _) -> !uploadYear.matches(t) && !durationRegex.matches(t) }
+            .map { (t, run) -> ArtistRef(t, run.str("navigationEndpoint", "browseEndpoint", "browseId")) }
+            .ifEmpty { artistsFromRuns(header.obj("straplineTextOne").runs()) }
+        val ref = title?.let { AlbumRef(it, browseId) }
+        val rows = uploadSongRows(root, ref)
+        val kind = canonical(runs.firstOrNull().str("text")?.trim().orEmpty()).ifBlank { "Album" }
+        val thumb = header.obj("thumbnail").bestThumbnail()
+        return com.vinz.music.data.model.CollectionPage(
+            id = browseId,
+            kind = com.vinz.music.data.model.CollectionKind.ALBUM,
+            title = title ?: rows.items.firstNotNullOfOrNull { it.album?.title } ?: "Album",
+            subtitle = artists.joinToString(", ") { it.name },
+            secondSubtitle = listOfNotNull(kind, year).joinToString(" • "),
+            thumbnail = thumb,
+            songs = rows.items.map { s -> s.copy(thumbnail = s.thumbnail ?: thumb, artists = s.artists.ifEmpty { artists }) },
+            continuation = rows.next,
+            playlistId = header.findFirst("watchPlaylistEndpoint").str("playlistId") ?: header.findFirst("watchEndpoint").str("playlistId"),
+            artists = artists,
+        )
+    }
+
+    /** An uploaded artist's page: YouTube sends only their songs, so their albums are read from those. */
+    fun uploadArtistPage(browseId: String, root: JsonElement, songs: List<Song>): com.vinz.music.data.model.ArtistPage {
+        val header = root.findFirst("musicImmersiveHeaderRenderer") ?: root.findFirst("musicVisualHeaderRenderer")
+            ?: root.findFirst("musicDetailHeaderRenderer") ?: root.findFirst("musicResponsiveHeaderRenderer")
+        val name = header.obj("title").text()?.takeIf { it.isNotBlank() }
+            ?: songs.firstNotNullOfOrNull { s -> s.artists.firstOrNull { it.id == browseId }?.name }
+            ?: songs.firstOrNull()?.primaryArtist?.takeIf { it.isNotBlank() }
+            ?: "Artist"
+        val albums = songs.filter { it.album?.id != null }.groupBy { it.album!!.id!! }.map { (id, list) ->
+            AlbumItem(id, list.first().album!!.title, name, list.first().thumbnail)
+        }
+        return com.vinz.music.data.model.ArtistPage(
+            id = browseId,
+            name = name,
+            thumbnail = header.obj("thumbnail").bestThumbnail() ?: header.obj("foregroundThumbnail").bestThumbnail() ?: songs.firstNotNullOfOrNull { it.thumbnail },
+            description = null,
+            subscribers = null,
+            shelves = listOfNotNull(
+                Shelf("Songs", items = songs.map(::SongItem)).takeIf { songs.isNotEmpty() },
+                Shelf("Albums", items = albums).takeIf { albums.isNotEmpty() },
+            ),
+            radioPlaylistId = null,
+            shufflePlaylistId = null,
+        )
+    }
 }

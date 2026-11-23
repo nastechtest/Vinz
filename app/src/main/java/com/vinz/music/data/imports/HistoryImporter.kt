@@ -1,10 +1,10 @@
 package com.vinz.music.data.imports
 
 import androidx.room.withTransaction
-import com.vinz.music.data.db.ImportMatchEntity
-import com.vinz.music.data.db.ImportedPlayEntity
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.ImportMatchEntity
+import com.prism.music.data.db.ImportedPlayEntity
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.model.Song
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -16,7 +16,7 @@ import kotlinx.serialization.builtins.ListSerializer
  * A newer download of the same source adds only what's new ([ImportedIndex]): a play already brought in by an earlier
  * import is passed over, and only songs never seen before are lined up for matching.
  */
-class HistoryImporter(private val db: VinzDatabase) {
+class HistoryImporter(private val db: PrismDatabase) {
     /**
      * [songs]: the songs of the plays stored (or upgraded) now; [upgraded]: account-data plays an extended download's
      * same plays took the place of (counted in [alreadyThere]); [library]: what the download's library added
@@ -296,7 +296,7 @@ internal class VinzIndex private constructor(
         const val BEFORE_MS = 3 * 60_000L
         const val AFTER_MS = 15 * 60_000L
 
-        suspend fun of(db: VinzDatabase): VinzIndex {
+        suspend fun of(db: PrismDatabase): VinzIndex {
             val byId = HashMap<String, MutableList<Long>>()
             val byKey = HashMap<String, MutableList<Long>>()
             db.imports().vinzPlays(0, Long.MAX_VALUE).forEach { r ->

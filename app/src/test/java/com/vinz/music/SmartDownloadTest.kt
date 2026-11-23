@@ -1,6 +1,6 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PlayEventEntity
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import com.vinz.music.download.PlayLikelihood

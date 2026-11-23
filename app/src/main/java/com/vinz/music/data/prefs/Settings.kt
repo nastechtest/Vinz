@@ -56,7 +56,7 @@ enum class CarLyricsStyle(val label: String, val detail: String) {
 enum class LyricsSource(val label: String, val detail: String) {
     APPLE(tr(R.string.better_lyrics), tr(R.string.apple_music_s_lyrics_word_by)),
     LYRICSPLUS(tr(R.string.lyricsplus), tr(R.string.apple_music_musixmatch_and_spotify_s)),
-    BINI(tr(R.string.bini), tr(R.string.apple_music_s_lyrics_word_by)),
+    BINI(tr(R.string.bini), tr(R.string.bini_detail)),
     QQ(tr(R.string.qq_portato), tr(R.string.qq_music_word_by_word_the)),
     LRCLIB("LRCLIB", tr(R.string.open_lyrics_database_line_by_line)),
     NETEASE(tr(R.string.netease), tr(R.string.netease_cloud_music_word_by_word)),
@@ -64,6 +64,8 @@ enum class LyricsSource(val label: String, val detail: String) {
     UNISON(tr(R.string.unison), tr(R.string.lyrics_listeners_submit_few_songs_so)),
     YTMUSIC(tr(R.string.vinz_music), tr(R.string.lyricfind_lines_or_plain)),
     GENIUS(tr(R.string.genius), tr(R.string.plain_text_also_fills_in_starred)),
+    /** #344 (1.8.2): the lyrics in the song's own file's tags. Off until asked for ([AppSettings.lyricsSourceOn]). Keep it last. */
+    EMBEDDED(tr(R.string.your_music_files), tr(R.string.the_lyrics_saved_inside_the_song_s_file)),
 }
 
 /** Tiles in Home's greeting section. */
@@ -93,7 +95,7 @@ enum class SectionStyle(val label: String) { CAROUSEL(tr(R.string.carousel)), GR
  * looks the same on every phone; [face] is the typeface's own name. SERIF and MONO keep their stored names.
  */
 enum class FontChoice(val label: String, val face: String? = null) {
-    VINZ(tr(R.string.app_name), tr(R.string.outfit)), CLEAN(tr(R.string.clean), tr(R.string.manrope)), GEOMETRIC(tr(R.string.geometric), tr(R.string.plus_jakarta_sans)), AIRY(tr(R.string.airy), tr(R.string.urbanist)),
+    VINZ(tr(R.string.vinz_s_own), tr(R.string.outfit)), CLEAN(tr(R.string.clean), tr(R.string.manrope)), GEOMETRIC(tr(R.string.geometric), tr(R.string.plus_jakarta_sans)), AIRY(tr(R.string.airy), tr(R.string.urbanist)),
     ROUNDED(tr(R.string.rounded), tr(R.string.nunito)), SERIF(tr(R.string.editorial), tr(R.string.fraunces)), MONO(tr(R.string.mono), tr(R.string.geist_mono)),
     /** Made to be told apart at a glance: low vision (1.7.7). */
     LEGIBLE(tr(R.string.legible), tr(R.string.atkinson_hyperlegible)),
@@ -119,7 +121,7 @@ enum class CoverShape(val label: String) {
     ROUNDED(tr(R.string.rounded)), SQUARE(tr(R.string.square)), CIRCLE(tr(R.string.circle)), SQUIRCLE(tr(R.string.squircle)), FLOWER(tr(R.string.flower)), COOKIE(tr(R.string.cookie)), ARCH(tr(R.string.arch)), SLANTED(tr(R.string.slanted)),
 }
 /** Vinz's buttons (Play, Shuffle, dialogs' buttons), 1.7.7. */
-enum class ButtonShape(val label: String) { PILL(tr(R.string.pill)), ROUNDED(tr(R.string.rounded)), SQUARE(tr(R.string.square)) }
+enum class ButtonShape(val label: String) { PILL(tr(R.string.button_shape_fully_round)),ROUNDED(tr(R.string.rounded)), SQUARE(tr(R.string.square)) }
 
 /** Lyrics, your way (1.7.5). Every default draws the lyrics as 1.7.4 did. Nested since 1.7.7 (see [ShapeLook]). */
 data class LyricsLookPrefs(
@@ -272,7 +274,7 @@ data class ShapeLook(
 )
 
 /** The current tab's icon color (1.7.7). */
-enum class TabTint(val label: String) { INK(tr(R.string.ink)), ACCENT(tr(R.string.accent)), LIGHT(tr(R.string.the_light)) }
+enum class TabTint(val label: String) { INK(tr(R.string.ink)), ACCENT(tr(R.string.accent)), LIGHT(tr(R.string.tab_tint_light)) }
 
 /**
  * How Vinz behaves, added in 1.7.8 (not part of a Look). Nested (see [ShapeLook]). Every default keeps 1.7.7's way.
@@ -297,6 +299,12 @@ data class BehaviorPrefs(
     val scrollShowsControls: Boolean = true,
     /** Playlists' genre chips, each song's genre and Group by genre (1.7.9, Reddit); off, a playlist is just its songs in order. */
     val playlistGenres: Boolean = true,
+    /** Artist pages (1.8.2): a short Wikipedia bio. Off, nothing is ever asked of Wikipedia. */
+    val artistBio: Boolean = false,
+    /** Artist pages (1.8.2): "You and this artist", from the plays on this phone. */
+    val artistYou: Boolean = false,
+    /** Artist pages (1.8.2): their top songs moved by what the listener plays. */
+    val artistEssentials: Boolean = false,
     /** Pages fade into each other (#227: off, a page swaps at once, so a tap can't land on the one fading out). */
     val screenFades: Boolean = true,
     /** #259 (1.7.9.2): the cover's swipes, double tap and long press work around the controls too. */
@@ -316,9 +324,379 @@ data class BehaviorPrefs(
     val playCountSeconds: Int = 10,
     /** #263: YouTube Music's history waits for the same; off, it's told as a song starts (as before). */
     val playCountOnAccount: Boolean = false,
-    /** Explicit opt-in; Looks must never enable experimental navigation. */
-    val experimentalSplitNavigation: Boolean = false,
+    /**
+     * 1.8.2: Vinz's own lock screen while something plays. Off by default, and not part of a Look: turning it on asks
+     * for a permission. See [com.vinz.music.ui.lockscreen.LockScreenGate].
+     */
+    val lockScreen: Boolean = false,
+    /** Which of the four layouts. Performance mode always uses [LockLayout.QUIET]. */
+    val lockScreenLayout: LockLayout = LockLayout.COVER,
+    val lockScreenVolume: Boolean = true,
+    val lockScreenLike: Boolean = true,
+    val lockScreenOutput: Boolean = true,
+    /** 1.8.3 (D47, Reddit): a repeat button beside the controls. Off by default. */
+    val lockScreenRepeat: Boolean = false,
+    /** 1.8.3 (D47): the next three songs, to read only (the lock screen only controls what's playing). Off by default. */
+    val lockScreenUpNext: Boolean = false,
+    /** How long it stays once the music is paused, before Android's own lock screen takes over. */
+    val lockScreenPaused: LockPaused = LockPaused.TEN_MINUTES,
+    /** No title, artist, cover or lyrics while locked: someone picking the phone up only sees that music is playing. */
+    val lockScreenHideSong: Boolean = false,
+    /** #349 (1.8.2): Home's Quick picks as Vinz makes them around your artists (as before), or YouTube Music's own. */
+    val quickPicksSource: QuickPicksSource = QuickPicksSource.VINZ,
+    /** #372: Speed dial's tiles from your own plays first, which change as you listen; off, YouTube's own come first, as before. */
+    val speedDialYoursFirst: Boolean = false,
+    /** When this sign-in's cookies were saved (0: before 1.8.2.1), for the diagnostics: Vinz never renews them. */
+    val accountSavedAt: Long = 0,
+    /**
+     * #159 (1.8.2): autoplay and radios leave out what's played this session ([com.vinz.music.playback.SessionHeard]).
+     * Off, as before: only what's in the queue and what was heard in the last hours is left out.
+     */
+    val autoplayNoRepeats: Boolean = false,
+    /** 1.8.2: how radios and autoplay are tuned ([com.vinz.music.data.foryou.RadioTune]); all at 0, as before. */
+    val radioTune: com.vinz.music.data.foryou.RadioTune = com.vinz.music.data.foryou.RadioTune(),
+    /** #299 (1.8.2): Autoplay leaves out songs longer than this many minutes (0: no limit, as before). */
+    val autoplayMaxMinutes: Int = 0,
+    /** #281 (1.8.2): with Data saver on, no music videos on mobile data ([com.vinz.music.playback.VideoOnData]). */
+    val noVideoOnData: Boolean = false,
+    /** #282 (1.8.2): the cover's gestures work on the controls below the lyrics too, never on the lyrics themselves. */
+    val gesturesUnderLyrics: Boolean = false,
+    /** #280 (1.8.2): the player opens on the page it was closed on: the cover, the lyrics or the queue. */
+    val playerRemembersPage: Boolean = false,
+    /**
+     * #280 (1.8.2): the lyrics' controls take a longer swipe to come and go, and after you've scrolled the lyrics go back to
+     * the sung line sooner the nearer it is.
+     */
+    val lyricsSteady: Boolean = false,
+    /** #344 (1.8.2): lyrics stored in the song's own file are a lyrics source, in its place in the listener's order. */
+    val embeddedLyrics: Boolean = false,
+    /** #207, #249 (1.8.2): folders Local files leaves out ([com.vinz.music.data.local.LocalMusic.folderOf]). The files stay as they are. */
+    val localSkipFolders: Set<String> = emptySet(),
+    /** #298 (1.8.2): playlists whose new songs download by themselves, by [com.vinz.music.download.PlaylistDownloads.keepKey]. */
+    val keptPlaylists: Set<String> = emptySet(),
+    /** #406 (1.8.4): swiping a song row adds it to the queue (as before); off, a row is just a row. */
+    val rowSwipes: Boolean = true,
+    /**
+     * #404 (1.8.4): every song's lyrics this many ms earlier (positive) or later (negative), on top of each song's own
+     * nudge; within [LYRICS_OFFSET_MS].
+     */
+    val lyricsOffsetMs: Int = 0,
+    /** #416 (1.8.4): with the last queue shuffled, the next list a song is tapped in plays shuffled too. */
+    val keepShuffle: Boolean = false,
+    /** D57 (1.8.4): what the Shuffle button steps through. */
+    val shuffleButton: ShuffleButton = ShuffleButton.SHUFFLE_AND_SMART,
+    /** PR #400 (1.8.4): a lyric line too long for the car's title. */
+    val carLyricsLines: CarLyricsLines = CarLyricsLines.ONE_LINE,
+    /** D54 (1.8.4): a button above the mini player that scrolls a list to the playing song while it's off screen. */
+    val locatePlaying: Boolean = false,
+    /** 1.8.5: a notice on the 1st that last month's recap is ready (the Home card shows either way). */
+    val recapNotify: Boolean = false,
+    /** 1.8.5: a notice when a milestone is reached (the Milestones list shows them either way). */
+    val milestoneNotify: Boolean = false,
+    /** 1.8.5: "Finish the lyric", a small game from your top songs' saved lyrics, on Replay. */
+    val finishLyric: Boolean = false,
+    /** 1.8.5: laying the phone screen-down pauses; picking it up within a few minutes plays on. */
+    val faceDownPause: Boolean = false,
+    /** #464 (1.8.5): with the lyrics open, a tap on the small cover plays or pauses and a long press closes them; off, a tap closes them. */
+    val lyricsCoverPlays: Boolean = false,
+    /**
+     * #336 (1.8.7): "Smoother scrolling", the phone's activity asks the screen for its fastest refresh rate at the current
+     * resolution ([com.vinz.music.ui.FastDisplayMode]). Off by default (it costs battery); Performance mode reads it as off.
+     */
+    val smoothScrolling: Boolean = false,
+    /**
+     * 1.8.7.6: "I've supported Vinz". On, every support ask is off for good ([com.vinz.music.ui.support.SupportAsks]).
+     * Nothing checks it: it is the listener's word. Off by default, never part of a Look.
+     */
+    val supported: Boolean = false,
+    /** 1.8.6: Canvas's choices beyond Off / On the cover / Full screen ([CanvasPrefs.enabled], [CanvasPrefs.fillsBackground]). */
+    val canvas: CanvasPrefs = CanvasPrefs(),
+    /**
+     * 1.8.7.6: this phone's first run wrote a new install's own defaults ([NewInstall]): those in a Look are part of how
+     * Vinz comes here (Vinz's own Look holds them). Not a setting anyone changes; read here so that Looks sees the
+     * moment it is set.
+     */
+    val newInstallLook: Boolean = false,
+) {
+    companion object {
+        /** #404: how far [lyricsOffsetMs] goes either way. */
+        val LYRICS_OFFSET_MS = -500..500
+    }
+}
+
+/**
+ * 1.8.6 Canvas (plan-canvas §3.1, §3.6, §3.7, §11a R1): how a song's canvas is chosen and shown. Nested in
+ * [BehaviorPrefs] (`behavior.canvas`); all off by default, and none of it is part of a Look. Whether Canvas is on, and on
+ * the cover or full screen, is [enabled] and [fillsBackground] here.
+ */
+data class CanvasPrefs(
+    /**
+     * A song's animated cover (Apple/Tidal motion art) plays. On by default, as before; apart from [useVideos], so Canvas
+     * can be the animated covers alone, the loops from videos alone, or both.
+     */
+    val covers: Boolean = true,
+    /** A song without an animated cover may show a short silent loop cut from its music video. */
+    val useVideos: Boolean = false,
+    /** When a song has both: false, the animated cover first (as before); true, the music video's loop first. */
+    val videoFirst: Boolean = false,
+    /** Full screen only: the controls stay up (by default they fade after a few seconds and come back on a tap). */
+    val keepControls: Boolean = false,
+    /** 1.8.7, Full screen only: the line being sung stays over the picture while the controls are away. */
+    val lyrics: Boolean = false,
+    /** Loops from videos at 480p, in place of 1080p full screen and 720p on the cover. */
+    val lighter: Boolean = false,
+    /** Loops from videos may be fetched over mobile data ("Use mobile data for" → "Canvas from videos"). */
+    val videosOnCellular: Boolean = false,
+    /** Animated cover art (motion artwork / video covers) over the sleeve; Canvas's Off / On the cover / Full screen are this and [fillsBackground]. */
+    val enabled: Boolean = true,
+    /** An animated cover fills the whole player behind everything, not only the cover. */
+    val fillsBackground: Boolean = false,
+    val onCellular: Boolean = true,
+    /** Downloaded songs save their animated cover too. */
+    val withDownloads: Boolean = true,
+    /** ...on mobile data as well (off: they're saved once on Wi-Fi). */
+    val withDownloadsCellular: Boolean = false,
+    /**
+     * 1.8.7.6, "Spotify's canvas first": signed in to Spotify with the web-player session, a song's canvas is asked of
+     * Spotify before Vinz's animated covers ([com.vinz.music.data.canvas.SpotifyCanvasSource]). Off by default, not
+     * part of a Look; unofficial.
+     */
+    val spotifyFirst: Boolean = false,
+    /** The one-time offer of [spotifyFirst] (after a session sign-in) was answered, or the switch was set by hand. */
+    val spotifyOffered: Boolean = false,
 )
+
+/** Gestures on the player's cover and on the mini player (1.8.7: moved out of [AppSettings] into a group of their own). */
+data class GesturePrefs(
+    val coverSwipeLeft: PlayerGesture = PlayerGesture.NEXT,
+    val coverSwipeRight: PlayerGesture = PlayerGesture.PREVIOUS,
+    val coverSwipeUp: PlayerGesture = PlayerGesture.QUEUE,
+    val coverDoubleTap: PlayerGesture = PlayerGesture.SEEK_SIDES,
+    val coverLongPress: PlayerGesture = PlayerGesture.NONE,
+    val miniSwipeLeft: PlayerGesture = PlayerGesture.NEXT,
+    val miniSwipeRight: PlayerGesture = PlayerGesture.PREVIOUS,
+    val miniSwipeDown: PlayerGesture = PlayerGesture.STOP,
+    /** Swiping the mini player up (#149, 1.7.7): it did nothing before, so opening the player changes no habit. */
+    val miniSwipeUp: PlayerGesture = PlayerGesture.OPEN,
+)
+
+/** Crossfade (1.8.7: moved out of [AppSettings] into a group of their own). */
+data class MixPrefs(
+    /** Crossfade: songs fade into each other when one runs into the next (after Spotify's), instead of stopping and starting. */
+    val on: Boolean = false,
+    /** How long a crossfade lasts, in seconds, when it isn't [auto]. */
+    val seconds: Int = 6,
+    /** Crossfade works out the best length for each pair of songs, from how one ends and the next begins. */
+    val auto: Boolean = true,
+    /** DJ-style: lines up the songs' beats and plays the incoming song at the outgoing one's tempo during the crossfade. */
+    val beatMatch: Boolean = false,
+    /**
+     * An album's songs never cross into each other, wherever they sit side by side (#247; an album playing through
+     * already didn't). Off as before: a playlist or shuffle putting two of an album's songs together blends them.
+     */
+    val keepAlbums: Boolean = false,
+    /** Tempo analysis (a 1–4 MB download per song) may use mobile data, not only Wi-Fi. */
+    val tempoOnCellular: Boolean = false,
+)
+
+/** Home: its sections, header, greeting tiles and buttons (1.8.7: moved out of [AppSettings] into a group of their own). */
+data class HomePrefs(
+    val layout: List<HomeSectionConfig> = HomeSections.initial,
+    val header: HomeHeader = HomeHeader.GREETING,
+    val headerHeight: HomeHeaderHeight = HomeHeaderHeight.MEDIUM,
+    /** The picture behind a PICTURE header: a background design's name, or "PHOTO|<file>" (as backgrounds keep theirs). */
+    val headerPicture: String = "AURORA",
+    /** Kinds of YouTube Music's sections left off Home ([HomeSections.KIND_VIDEOS], [HomeSections.KIND_PODCASTS]; 1.7.6). */
+    val hideKinds: Set<String> = emptySet(),
+    val shortcuts: List<HomeShortcut> = listOf(HomeShortcut.LIKED, HomeShortcut.DOWNLOADS, HomeShortcut.REPLAY),
+    /** Recently played albums added after the shortcuts. */
+    val recentTiles: Int = 3,
+    /** Playlists shown as tiles after the shortcuts. */
+    val playlists: List<PinnedPlaylist> = emptyList(),
+    val customizeButton: Boolean = true,
+    /** Settings, Home screen, Continue line: the Continue line under Home's greeting. */
+    val continueLine: Boolean = true,
+    /** The round Customize button at the top of Home (beside Podcasts); separate from the one at the bottom. */
+    val customizeTopButton: Boolean = true,
+    /** The Podcasts button at the top of Home. Off, Podcasts opens from a Library tile instead (#28). */
+    val podcastsButton: Boolean = true,
+)
+
+/** Library's views, columns, tabs and tiles (1.8.7: moved out of [AppSettings] into a group of their own). */
+data class LibraryPrefs(
+    val view: LibraryView = LibraryView.LIST,
+    /** Library tabs shown their own way (1.7.6: "PLAYLISTS", "ALBUMS", "ARTISTS"); the rest as [view]. */
+    val views: Map<String, LibraryView> = emptyMap(),
+    /** How many covers across Library's grid (1.7.6). */
+    val columns: LibraryColumns = LibraryColumns.AUTO,
+    /** Song counts, owners and years under Library's playlists, albums and artists (1.7.6). */
+    val subtitles: Boolean = true,
+    val startTab: String = "PLAYLISTS",
+    /** Library's tiles that show, in order (the rest are hidden). */
+    val tiles: List<LibraryTile> = LibraryTile.initial,
+    /** Library → Playlists shows your playlists above the tiles (Liked songs, Downloads…) instead of below them. */
+    val playlistsFirst: Boolean = false,
+)
+
+/**
+ * Lyrics: where they come from, how they're shown and saved (1.8.7: moved out of [AppSettings] into a group of their own;
+ * the look of the lines is [AppSettings.lyricsLook]).
+ */
+data class LyricsPrefs(
+    val onPlayer: Boolean = true,
+    val order: List<LyricsSource> = defaultLyricsOrder,
+    /** Lyric sources the listener turned off: never asked (#51). */
+    val off: Set<LyricsSource> = emptySet(),
+    /** A translation under each lyric line (machine translation, asked of Google Translate), when the song isn't in it. */
+    val translate: Boolean = false,
+    /** Language code to translate lyrics into; blank means the phone's language. */
+    val translateTo: String = "",
+    /** Lyrics saved into music files keep each word's timing, as enhanced LRC (Reddit, 1.7.9.2; off: lines, as before). */
+    val fileWords: Boolean = false,
+    /** Lyrics saved into music files carry the translation under each line (Reddit, 1.7.9.2). */
+    val fileTranslation: Boolean = false,
+    val blur: Boolean = true,
+    /** The thin line of split light under the line being sung (lyrics page and immersive). */
+    val progressLine: Boolean = true,
+    /** A glass button beside Sing under the open lyrics: where they come from; a tap picks another source (1.7.9). */
+    val sourceButton: Boolean = false,
+    val scale: Float = 1f,
+    /** Lyrics are looked up on mobile data as each song starts; off, only once the lyrics are opened (#95). */
+    val onMobileData: Boolean = true,
+    val align: LyricsAlign = LyricsAlign.START,
+    /** The current-lyric line on the player (#121): where it sits, and whether a long line may take two lines. */
+    val stripAlign: LyricsAlign = LyricsAlign.START,
+    val stripTwoLines: Boolean = false,
+    /** The lyrics' font: "" = the app's, else a [FontChoice] name (CUSTOM = its own imported file, [fontName]). */
+    val font: String = "",
+    val fontName: String = "",
+)
+
+/** The player's layout, background, title, times, buttons and handle (1.8.7: moved out of [AppSettings] into a group of their own). */
+data class PlayerPrefs(
+    /** Shuffle and repeat buttons either side of the player's transport, always (not only with the queue up). */
+    val shuffleRepeat: Boolean = false,
+    val background: PlayerBackground = PlayerBackground.MESH,
+    /**
+     * 0..1: how much of the player's background shows through its darkening (blurred cover and your background); below
+     * 0, down to [com.vinz.music.ui.player.BACKDROP_SHOW_MIN], it darkens on to black (#309, 1.8.1).
+     */
+    val backdropShow: Float = 0.35f,
+    val artCorners: Int = 20,
+    val layout: PlayerLayout = PlayerLayout.STANDARD,
+    /** The parts under the title, in this order (what's switched off elsewhere still hides). */
+    val deck: List<DeckPart> = DeckPart.entries,
+    val buttons: List<PlayerButton> = PlayerButton.DEFAULT,
+    val titleAlign: PlayerTitleAlign = PlayerTitleAlign.START,
+    val titleSize: PlayerTitleSize = PlayerTitleSize.MEDIUM,
+    /** A title too long for the line scrolls across (off: it's cut short with "…"). */
+    val titleScroll: Boolean = true,
+    val times: PlayerTimes = PlayerTimes.BOTH,
+    /** How soft the blurred cover is (0.5 … 1.5; 1 as before). */
+    val blur: Float = 1f,
+    /** The grey handle at the player's top (Reddit, 1.7.9.1); a swipe down closes the player with or without it. */
+    val handle: Boolean = true,
+    /** The dark band behind three-button navigation on the player (#250, 1.7.9.1); off, the player shows through it. */
+    val navBand: Boolean = true,
+)
+/**
+ * What a new install comes with on (owner, 2026-11-13), by stored name: written once at the first run
+ * (`SettingsRepository.setOnboarded`), each only where nothing was ever stored, so people updating keep what they have
+ * and the data classes' defaults stay as they are.
+ */
+object NewInstall {
+    /** Canvas full screen, fade on pause and play, "You and this artist", Replay's "Finish the lyric", the album pages' full-width picture, and (1.8.7, owner 2026-11-14) Canvas's "Keep lyrics showing". */
+    val on: List<String> = listOf("canvas_fills_background", "pause_fade", "artist_you", "finish_lyric", "album_hero_cover", "canvas_lyrics")
+
+    /**
+     * Motion kept apart: the mini player's cover flying into the player and back, and the player's background fading into
+     * the next cover. These may be dropped after a smoothness check on a budget phone.
+     */
+    val motion: List<String> = listOf("cover_flight", "cover_flight_back", "backdrop_fade")
+
+    /** How Vinz comes on a phone without [BehaviorPrefs.newInstallLook]: the data classes' defaults. */
+    internal val comes: AppSettings by lazy { AppSettings() }
+
+    /**
+     * How Vinz comes on a phone whose first run wrote these (1.8.7.6): the five that are in a Look on (`NewInstallLookTest`
+     * checks this against what the store reads as with only the marker).
+     */
+    internal val lookComes: AppSettings by lazy {
+        val d = AppSettings()
+        d.copy(
+            view = d.view.copy(coverFlight = true, coverFlightBack = true, backdropFade = true, albumHeroCover = true),
+            behavior = d.behavior.copy(canvas = d.behavior.canvas.copy(fillsBackground = true), newInstallLook = true),
+        )
+    }
+}
+
+/**
+ * How Vinz comes on this phone (1.8.7.6): the data classes' defaults, with a new install's own defaults that are in a
+ * Look on where this phone's first run wrote them ([BehaviorPrefs.newInstallLook]). What Settings' changed dots, reset
+ * lines and setter resets compare with, as Reset look and "Reset this page" put back.
+ */
+fun AppSettings.asItComes(): AppSettings = if (behavior.newInstallLook) NewInstall.lookComes else NewInstall.comes
+
+/** The three stored flags behind Settings' two Canvas switches ([CanvasKinds]), as they are stored. */
+data class CanvasStored(val enabled: Boolean, val covers: Boolean, val videos: Boolean)
+
+/**
+ * Settings → Player's two switches (owner, 2026-11-13: "keep these options separate"): "Animated covers" and "Canvas"
+ * (the loops from music videos), over the three flags stored as always: [CanvasPrefs.enabled] (what the rest of
+ * Vinz reads), [CanvasPrefs.covers] and [CanvasPrefs.useVideos]. The rule: enabled == (covers || videos), so nobody's
+ * stored choice changes meaning. Written in one go by `SettingsRepository.setCanvasKinds`.
+ */
+data class CanvasKinds(val covers: Boolean, val videos: Boolean) {
+    val any: Boolean get() = covers || videos
+
+    /** What is stored for this pair, from what is stored now ([was]). Both off: Canvas off, the two flags kept as they are. */
+    fun toStored(was: CanvasStored): CanvasStored = if (any) CanvasStored(true, covers, videos) else was.copy(enabled = false)
+
+    companion object {
+        /** What the two switches show for what is stored: each is on only while Canvas as a whole is on. */
+        fun shown(stored: CanvasStored): CanvasKinds = CanvasKinds(stored.enabled && stored.covers, stored.enabled && stored.videos)
+        fun shown(s: AppSettings): CanvasKinds = shown(CanvasStored(s.behavior.canvas.enabled, s.behavior.canvas.covers, s.behavior.canvas.useVideos))
+    }
+}
+
+/** D57 (1.8.4): the Shuffle button goes off → shuffle → Smart Shuffle → off (as before), or only on and off. */
+enum class ShuffleButton(val label: String) {
+    SHUFFLE_AND_SMART(tr(R.string.shuffle_button_both)), SHUFFLE_ONLY(tr(R.string.shuffle_button_only)),
+}
+
+/** PR #400 (1.8.4): a long lyric line on the car's player stays on one line (as before), or wraps onto a second. */
+enum class CarLyricsLines(val label: String) { ONE_LINE(tr(R.string.car_lines_one)), WRAP_TWO(tr(R.string.car_lines_wrap_two)) }
+
+/**
+ * D55 (1.8.4): which pages have their picture across the whole width. Kept as two switches ([AppSettings.playlistHeroCover],
+ * as always, and [ViewLook.albumHeroCover]), so what was stored before 1.8.4 reads as it did: on is [PLAYLISTS].
+ */
+enum class FullWidthPictures(val label: String) {
+    OFF(tr(R.string.off)), PLAYLISTS(tr(R.string.playlists)), ALBUMS_AND_PLAYLISTS(tr(R.string.full_width_albums_and_playlists));
+
+    companion object {
+        /** Albums only come with playlists: there's no "albums only". */
+        fun of(playlists: Boolean, albums: Boolean) = when { !playlists -> OFF; albums -> ALBUMS_AND_PLAYLISTS; else -> PLAYLISTS }
+    }
+}
+
+/** The lock screen's layouts (1.8.2). */
+enum class LockLayout(val label: String, val detail: String) {
+    COVER(tr(R.string.lock_screen_layout_cover), tr(R.string.lock_screen_layout_cover_detail)),
+    FULL(tr(R.string.lock_screen_layout_full), tr(R.string.lock_screen_layout_full_detail)),
+    LYRICS(tr(R.string.lock_screen_layout_lyrics), tr(R.string.lock_screen_layout_lyrics_detail)),
+    QUIET(tr(R.string.lock_screen_layout_quiet), tr(R.string.lock_screen_layout_quiet_detail)),
+}
+
+/** How long the lock screen stays once the music is paused (1.8.2). */
+enum class LockPaused(val label: String) {
+    OFF(tr(R.string.lock_screen_paused_off)),
+    TEN_MINUTES(tr(R.string.lock_screen_paused_ten)),
+    UNTIL_SLEEP(tr(R.string.lock_screen_paused_sleep)),
+}
+
+/** Whose Quick picks Home shows (#349). */
+enum class QuickPicksSource(val label: String) { VINZ(tr(R.string.quick_picks_from_vinz)), YOUTUBE(tr(R.string.quick_picks_from_youtube)) }
 
 /**
  * Explicit songs (#216, 1.8.1): YouTube Music marks them "E". [SHOW] is as before; [SKIP] leaves them out of what plays
@@ -423,7 +801,45 @@ data class ViewLook(
     val replayGraph: ReplayGraph = ReplayGraph.MONTHS,
     /** #287 (1.8.1): Replay and Rewind stories in your app font, instead of Vinz's poster type. */
     val replayStoryFont: Boolean = false,
+    /** #223 (1.8.2): with [coverFlight], closing the player the cover flies back into the mini player. */
+    val coverFlightBack: Boolean = false,
+    /** #293 (1.8.2): the buttons on a music video (fit, full-bleed, picture-in-picture, full screen) wait for a tap on it. */
+    val videoButtonsHide: Boolean = false,
+    /** #293 (1.8.2): over a full-bleed cover or video, smaller controls, the picture reaching further down and fading later. */
+    val bleedRoomy: Boolean = false,
+    /** #331 (1.8.2): each song's length in the queue. */
+    val queueLengths: Boolean = false,
+    /** #294, #331 (1.8.2): songs already played can be dragged among themselves too. */
+    val queuePlayedMoves: Boolean = false,
+    /** #294 (1.8.2): no × on each song (swipe it away, or its ⋯) and no Queue button in the bottom row while the queue's open. */
+    val queueTidy: Boolean = false,
+    /** #252, #326 (1.8.2): how the glass looks, and where else it goes. */
+    val glass: GlassLook = GlassLook(),
+    /** #338 (1.8.2): how dark [PlayerBackground.GRADIENT] gets toward the bottom (0 nearly the same color all the way, 1 black). */
+    val gradientDepth: Float = 0.7f,
+    /** D53 (1.8.4): Vinz's lock screen takes the player's background, progress bar and accent. */
+    val lockScreenPlayerLook: Boolean = false,
+    /** D55 (1.8.4): album pages have their picture across the whole width too ([AppSettings.fullWidthPictures]). */
+    val albumHeroCover: Boolean = false,
 )
+
+/**
+ * #252, #326 (1.8.2). [blur] and [frost] are multiples of what Vinz draws, so at their defaults (1) the glass is what it
+ * was in 1.8.1; [more] is off. All of it needs Android 12's blur, except that [more]'s cards and chips use no blur at all.
+ */
+data class GlassLook(
+    /** How strongly Frosted Glass and Liquid Glass · Regular blur what's behind them. Clear's blur is fixed. */
+    val blur: Float = 1f,
+    /** How much of the glass's own milky or dark veil is laid over what's behind it (0 none). */
+    val frost: Float = 1f,
+    /** #326: the look on cards, chips, round buttons and the Undo bars too. */
+    val more: Boolean = false,
+) {
+    companion object {
+        val BLUR_RANGE = 0.3f..2f
+        val FROST_RANGE = 0f..2f
+    }
+}
 
 /** The Replay card's bars (#286): one for each month of this year so far, each of the last 12 weeks, or the last 14 days. */
 enum class ReplayGraph(val label: String, val count: Int) {
@@ -463,8 +879,14 @@ enum class MenuGroup(val label: String) { SONG(tr(R.string.this_song)), LYRICS(t
  * a [foldable] one of them can still go under "More" while the player has another way to it ([menuFolds]).
  */
 enum class MenuAction(val group: MenuGroup, val fromPlayer: Boolean = false, val foldable: Boolean = !fromPlayer) {
-    ADD_TO_PLAYLIST(MenuGroup.SONG), RADIO(MenuGroup.SONG), DOWNLOAD(MenuGroup.SONG), ALBUM(MenuGroup.SONG), ARTIST(MenuGroup.SONG),
-    CREDITS(MenuGroup.SONG), VERSION(MenuGroup.SONG),
+    ADD_TO_PLAYLIST(MenuGroup.SONG),
+    /** 1.8.3: the listener's own tags on the song. */
+    TAGS(MenuGroup.SONG),
+    RADIO(MenuGroup.SONG), DOWNLOAD(MenuGroup.SONG), ALBUM(MenuGroup.SONG), ARTIST(MenuGroup.SONG),
+    CREDITS(MenuGroup.SONG),
+    /** #211 (1.8.2): its plays and dates. */
+    DETAILS(MenuGroup.SONG),
+    VERSION(MenuGroup.SONG),
     /** #305 (1.8.1): a cover of the listener's choosing for the song. */
     COVER(MenuGroup.SONG),
     NOT_FOR_ME(MenuGroup.SONG),
@@ -475,7 +897,18 @@ enum class MenuAction(val group: MenuGroup, val fromPlayer: Boolean = false, val
     PREVIOUS(MenuGroup.PLAYING, true), NEXT(MenuGroup.PLAYING, true), DJ(MenuGroup.PLAYING, true), EQUALIZER(MenuGroup.PLAYING, true),
     SLEEP(MenuGroup.PLAYING), SPEED_PITCH(MenuGroup.PLAYING), OUTPUT(MenuGroup.PLAYING), IMMERSIVE(MenuGroup.PLAYING),
     VIDEO_DOWNLOAD(MenuGroup.PLAYING), LISTEN_TOGETHER(MenuGroup.PLAYING), BEST_PART(MenuGroup.PLAYING),
-    ANIMATED_COVER(MenuGroup.PLAYING), SAVE_ANIMATED_COVER(MenuGroup.PLAYING),
+    /** 1.8.7.6: "Spotify canvas" for this song, on or off: Spotify's own loop, apart from the animated cover and Vinz Canvas. */
+    SPOTIFY_CANVAS(MenuGroup.PLAYING),
+    /** "Animated cover" for this song, on or off (names are stored). */
+    ANIMATED_COVER(MenuGroup.PLAYING),
+    /** 1.8.6: "Canvas" for this song, on or off: its loop from the music video, apart from its animated cover. */
+    CANVAS(MenuGroup.PLAYING),
+    /** 1.8.6 Canvas, for one song: another part of its video's loop, which source it uses, and "Not this video". */
+    CANVAS_PART(MenuGroup.PLAYING),
+    /** Which video the song's loop is cut from, picked by the listener (owner, 2026-11-13: as a song has "Play a different version"). */
+    CANVAS_VIDEO(MenuGroup.PLAYING),
+    CANVAS_USE(MenuGroup.PLAYING), CANVAS_NOT_THIS_VIDEO(MenuGroup.PLAYING),
+    SAVE_ANIMATED_COVER(MenuGroup.PLAYING),
     STATS(MenuGroup.HELP), MARK_STUTTER(MenuGroup.HELP);
 
     companion object {
@@ -500,18 +933,18 @@ data class PlayerParts(
 
 /** Whether [part] is on the player (each part that had its own switch still reads it). */
 fun AppSettings.shows(part: PlayerPart): Boolean = when (part) {
-    PlayerPart.HANDLE -> playerHandle
+    PlayerPart.HANDLE -> player.handle
     PlayerPart.FROM_ALBUM -> showPlayingFrom
-    PlayerPart.LYRIC_LINE -> lyricsOnPlayer
-    PlayerPart.TIMES -> playerTimes != PlayerTimes.NONE
+    PlayerPart.LYRIC_LINE -> lyrics.onPlayer
+    PlayerPart.TIMES -> player.times != PlayerTimes.NONE
     PlayerPart.QUALITY -> showQuality
     PlayerPart.BEST_PART -> bestPartButton
-    PlayerPart.SHUFFLE_REPEAT -> playerShuffleRepeat
+    PlayerPart.SHUFFLE_REPEAT -> player.shuffleRepeat
     // With Vinz's own volume the slider is the only way to change it: shown whatever a Look says (a Look applied
     // after picking it could hide it, and then it couldn't be brought back: canHide below).
     PlayerPart.VOLUME -> !hideVolumeBar || volumeControl == VolumeControl.VINZ
     PlayerPart.OUTPUT -> showOutputDevice
-    PlayerPart.NAV_BAND -> playerNavBand
+    PlayerPart.NAV_BAND -> player.navBand
     PlayerPart.CROSSFADE_MARK -> view.crossfadeMark
     PlayerPart.BLEND_COVERS -> view.blendCovers
     else -> part !in view.parts.hidden
@@ -527,7 +960,7 @@ fun AppSettings.canHide(part: PlayerPart): Boolean = !(part == PlayerPart.VOLUME
 fun AppSettings.showsMenuButton(wide: Boolean = false): Boolean = shows(PlayerPart.MENU) ||
     (!shows(PlayerPart.TITLE) && !shows(PlayerPart.ARTIST) &&
         // The wide player's cover (a tablet, a phone on its side) only seeks and skips: no gesture opens the menu there.
-        (wide || PlayerGesture.MENU !in listOf(coverSwipeLeft, coverSwipeRight, coverSwipeUp, coverDoubleTap, coverLongPress)))
+        (wide || PlayerGesture.MENU !in listOf(gestures.coverSwipeLeft, gestures.coverSwipeRight, gestures.coverSwipeUp, gestures.coverDoubleTap, gestures.coverLongPress)))
 
 /** The player's cover is drawn: shown, or (hidden) once it's shrinking into the header over the lyrics or the queue. */
 fun AppSettings.drawsCover(collapsedPastHalf: Boolean): Boolean = shows(PlayerPart.COVER) || collapsedPastHalf
@@ -540,7 +973,7 @@ fun AppSettings.episodeMenuFromPlayer(): List<MenuAction> = listOfNotNull(MenuAc
 
 /** The bottom row's buttons as they show on the player (none while the row is hidden). */
 fun AppSettings.rowButtons(): List<PlayerButton> =
-    if (!shows(PlayerPart.BUTTONS)) emptyList() else playerButtons.filter { it != PlayerButton.VIDEO || showVideoSwitch }
+    if (!shows(PlayerPart.BUTTONS)) emptyList() else player.buttons.filter { it != PlayerButton.VIDEO || showVideoSwitch }
 
 /**
  * The ⋯ menu's [MenuAction.fromPlayer] actions: what the player no longer shows, so hiding never takes a feature away.
@@ -554,8 +987,8 @@ fun AppSettings.menuFromPlayer(): List<MenuAction> {
         MenuAction.VIDEO_SWITCH.takeIf { PlayerButton.VIDEO !in row && showVideoSwitch },
         MenuAction.PREVIOUS.takeIf { !shows(PlayerPart.PREV_NEXT) },
         MenuAction.NEXT.takeIf { !shows(PlayerPart.PREV_NEXT) },
-        MenuAction.DJ.takeIf { PlayerButton.DJ in playerButtons && PlayerButton.DJ !in row },
-        MenuAction.EQUALIZER.takeIf { PlayerButton.EQUALIZER in playerButtons && PlayerButton.EQUALIZER !in row },
+        MenuAction.DJ.takeIf { PlayerButton.DJ in player.buttons && PlayerButton.DJ !in row },
+        MenuAction.EQUALIZER.takeIf { PlayerButton.EQUALIZER in player.buttons && PlayerButton.EQUALIZER !in row },
     )
 }
 
@@ -565,7 +998,7 @@ fun AppSettings.menuFromPlayer(): List<MenuAction> {
  */
 fun AppSettings.lyricsElsewhere(): Boolean = shows(PlayerPart.LYRIC_LINE) || behavior.panelSwipes ||
     ((shows(PlayerPart.COVER) || behavior.gesturesEverywhere) &&
-        PlayerGesture.LYRICS in listOf(coverSwipeLeft, coverSwipeRight, coverSwipeUp, coverDoubleTap, coverLongPress))
+        PlayerGesture.LYRICS in listOf(gestures.coverSwipeLeft, gestures.coverSwipeRight, gestures.coverSwipeUp, gestures.coverDoubleTap, gestures.coverLongPress))
 
 /**
  * The [MenuAction.fromPlayer] actions the listener may fold under "More" now (#345): "Show lyrics" while the lyrics are
@@ -621,6 +1054,9 @@ data class SoundPrefs(
      */
     val ownLossyFiles: Boolean = false,
 )
+
+/** The longest fixed crossfade, in seconds (#351; it was 12). [com.vinz.music.playback.MixEngine] and its tail player are good for it. */
+const val MAX_CROSSFADE_SECONDS = 30
 
 /** How a crossfade's two volumes cross (1.7.8, A1). */
 enum class CrossfadeCurve(val label: String, val detail: String) {
@@ -717,8 +1153,13 @@ enum class PlayerBackground(val label: String) {
      * dark blurred cover). Only when picked.
      */
     WHITE(tr(R.string.white)),
+    /**
+     * #232, #338 (1.8.2): the cover's own colors as a solid gradient, nothing blurred, deepening down the screen
+     * ([ViewLook.gradientDepth]). Only when picked.
+     */
+    GRADIENT(tr(R.string.cover_gradient)),
 }
-enum class TransportStyle(val label: String) { GLYPHS(tr(R.string.classic)), BUTTON(tr(R.string.play_button)), OUTLINE(tr(R.string.rings)) }
+enum class TransportStyle(val label: String) { GLYPHS(tr(R.string.classic)), BUTTON(tr(R.string.transport_filled_play)), OUTLINE(tr(R.string.rings)) }
 /** How wide the player's cover is: [extra] is how far it reaches into each side margin. */
 enum class CoverSize(val label: String, val extra: Float) { STANDARD(tr(R.string.standard), 0f), LARGE(tr(R.string.large), 18f), FULL(tr(R.string.full_width), 30f) }
 /** Immersive mode's cover: [zoom] 1 fills the screen (its sides cut off), 0 shows all of it across the width. */
@@ -782,7 +1223,7 @@ enum class PlayerButton(val label: String) {
  * show the first two, Android Auto and other controllers show them all.
  */
 enum class SessionButton(val label: String) {
-    LIKE(tr(R.string.widget_like)), SHUFFLE(tr(R.string.shuffle)), REPEAT(tr(R.string.repeat)), CAR_LYRICS(tr(R.string.lyrics_in_the_car)), RADIO(tr(R.string.start_radio)),
+    LIKE(tr(R.string.widget_like)), SHUFFLE(tr(R.string.shuffle)), REPEAT(tr(R.string.repeat)), CAR_LYRICS(tr(R.string.lyrics)), RADIO(tr(R.string.start_radio)),
     DISLIKE(tr(R.string.not_for_me)), BACK_10(tr(R.string.back_10_s)), AHEAD_30(tr(R.string.ahead_30_s));
 
     companion object {
@@ -798,7 +1239,7 @@ enum class ScrubberColor(val label: String) { SPECTRUM(tr(R.string.your_light)),
 
 /** How the line being sung is drawn. [VINZ] is the lyrics as 1.7 drew them. */
 enum class LyricsStyle(val label: String, val note: String) {
-    VINZ(tr(R.string.app_name), tr(R.string.each_word_grows_bolder_as_it)),
+    VINZ(tr(R.string.vinz_s_own), tr(R.string.each_word_grows_bolder_as_it)),
     KARAOKE(tr(R.string.classic_karaoke), tr(R.string.color_fills_the_words_as_they)),
     CARD(tr(R.string.bold_card), tr(R.string.big_bold_lines_on_the_cover)),
     GLOW(tr(R.string.glow), tr(R.string.the_sung_words_glow)),
@@ -843,7 +1284,7 @@ enum class LyricsBackground(val label: String, val note: String) {
 enum class PlayerTitleAlign(val label: String) { START(tr(R.string.left)), CENTER(tr(R.string.centered)) }
 enum class PlayerTitleSize(val label: String, val scale: Float) { SMALL(tr(R.string.small), 0.82f), MEDIUM(tr(R.string.medium), 1f), LARGE(tr(R.string.large), 1.2f) }
 /** The times under the progress bar. */
-enum class PlayerTimes(val label: String) { BOTH(tr(R.string.both)), ELAPSED(tr(R.string.elapsed)), LEFT(tr(R.string.time_left)), NONE(tr(R.string.none)) }
+enum class PlayerTimes(val label: String) { BOTH(tr(R.string.player_times_both)),ELAPSED(tr(R.string.elapsed)), LEFT(tr(R.string.time_left)), NONE(tr(R.string.none)) }
 
 /** What a gesture on the player's cover (or the mini player) does. */
 enum class PlayerGesture(val label: String) {
@@ -885,7 +1326,9 @@ enum class HomeHeaderHeight(val label: String, val dp: Int) { SHORT(tr(R.string.
 enum class SearchSection(val label: String) {
     // The shortcut tiles (Recognize, Find by lyrics, Podcasts, Your files) went before release: the search box has
     // Recognize, a line of lyrics finds its song, and podcasts and your files are searched with everything else.
-    RECENT(tr(R.string.recent)), ARTISTS(tr(R.string.your_artists)), MOODS(tr(R.string.moods_genres));
+    RECENT(tr(R.string.recent)), ARTISTS(tr(R.string.your_artists)), MOODS(tr(R.string.moods_genres)),
+    /** One line leading to the Explore page (1.8.2). A list arranged before it came doesn't have it; Arrange offers it. */
+    EXPLORE(tr(R.string.explore));
 
     companion object {
         fun parse(v: String?): List<SearchSection> =
@@ -906,11 +1349,25 @@ enum class LibraryTile(val label: String) {
     LIKED(tr(R.string.liked_songs)), DOWNLOADS(tr(R.string.downloads)), LOCAL(tr(R.string.local_files)), REPLAY(tr(R.string.replay_2)),
     /** Library's own History tab as a tile (#136, 1.7.7); not shown until ticked. */
     HISTORY(tr(R.string.history)), PODCASTS(tr(R.string.podcasts)),
-    TOGETHER(tr(R.string.listen_together)), BLEND(tr(R.string.blend)), RECOGNIZED(tr(R.string.recognized)), NEW_PLAYLIST(tr(R.string.new_playlist)), IMPORT(tr(R.string.import_playlists));
+    TOGETHER(tr(R.string.listen_together)), BLEND(tr(R.string.blend)), RECOGNIZED(tr(R.string.recognized)), NEW_PLAYLIST(tr(R.string.new_playlist)), IMPORT(tr(R.string.import_playlists)),
+    /** The account's uploads (#332, 1.8.2): only for an account that has some, added once when Vinz finds them ([withUploads]). */
+    UPLOADS(tr(R.string.uploads)),
+    /** Songs in the song cache whole (#159, 1.8.2); not shown until ticked. */
+    SAVED(tr(R.string.saved_while_playing));
 
     companion object {
         /** A new install's tiles: all but those added later, so nobody's Library changes on its own. */
-        val initial = entries - HISTORY
+        val initial = entries - HISTORY - UPLOADS - SAVED
+
+        /** What the tile editor offers: Uploads only to an account that has some. */
+        fun offered(hasUploads: Boolean) = if (hasUploads) entries else entries - UPLOADS
+
+        /** [tiles] with Uploads, after Local files (or Downloads, or Liked songs) when those are shown; last otherwise. */
+        fun withUploads(tiles: List<LibraryTile>): List<LibraryTile> {
+            if (UPLOADS in tiles) return tiles
+            val after = listOf(LOCAL, DOWNLOADS, LIKED).firstOrNull { it in tiles } ?: return tiles + UPLOADS
+            return tiles.toMutableList().apply { add(indexOf(after) + 1, UPLOADS) }
+        }
     }
 }
 
@@ -924,6 +1381,8 @@ data class HomeSectionConfig(
     val name: String? = null,
     /** A pinned album's, playlist's or artist's picture (1.7.6), for Customize Home's list. */
     val art: String? = null,
+    /** A pinned album or playlist as one tile (cover, name, play) in place of its songs (1.8.3, D48). Off by default. */
+    val tile: Boolean = false,
 ) {
     /** What Home calls it: the listener's name for it, else [default] (or its own title). */
     fun titled(default: String = title) = name ?: default
@@ -967,6 +1426,13 @@ object HomeSections {
      * at all outside them ([inSeason]). Moved, renamed or hidden like any other section.
      */
     const val SEASONAL = "local:holiday"
+    /**
+     * Discover (1.8.2): songs never played, new each Monday; songs never played by artists you love; what you played a
+     * year ago today. Not on anyone's Home until added from Customize Home, so an existing or new Home stays as it was.
+     */
+    const val NEW_TO_YOU = "local:new_to_you"
+    const val DEEP_CUTS = "local:deep_cuts"
+    const val ON_THIS_DAY = "local:on_this_day"
     /** A holiday mix pinned on its own: "pin:holiday:<mix key>". */
     const val HOLIDAY_PIN = "holiday"
     const val YT_PREFIX = "yt:shelf:"
@@ -998,6 +1464,9 @@ object HomeSections {
             REPEAT_REWIND -> com.vinz.music.R.string.section_repeat_rewind
             FORGOTTEN -> com.vinz.music.R.string.section_forgotten_favorites
             SEASONAL -> com.vinz.music.R.string.section_holiday_music
+            NEW_TO_YOU -> com.vinz.music.R.string.section_new_to_you
+            DEEP_CUTS -> com.vinz.music.R.string.section_deep_cuts
+            ON_THIS_DAY -> com.vinz.music.R.string.section_on_this_day
             else -> return s
         }
         return s.copy(title = com.vinz.music.tr(id))
@@ -1033,6 +1502,9 @@ object HomeSections {
         HomeSectionConfig(REPEAT_REWIND, "Repeat rewind"),
         HomeSectionConfig(FORGOTTEN, "Forgotten favorites"),
         HomeSectionConfig(SEASONAL, "Holiday music"),
+        HomeSectionConfig(NEW_TO_YOU, "New to you"),
+        HomeSectionConfig(DEEP_CUTS, "Deep cuts"),
+        HomeSectionConfig(ON_THIS_DAY, "On this day"),
     )
 
     /** What a fresh install's Home shows (and what Reset goes back to). */
@@ -1100,7 +1572,7 @@ object HomeSections {
 /** The order lyric sources are tried in on a fresh install. */
 val defaultLyricsOrder = listOf(
     LyricsSource.KUGOU, LyricsSource.QQ, LyricsSource.APPLE, LyricsSource.LYRICSPLUS, LyricsSource.BINI, LyricsSource.YTMUSIC,
-    LyricsSource.NETEASE, LyricsSource.LRCLIB, LyricsSource.UNISON, LyricsSource.GENIUS,
+    LyricsSource.NETEASE, LyricsSource.LRCLIB, LyricsSource.UNISON, LyricsSource.GENIUS, LyricsSource.EMBEDDED,
 )
 
 /** "Room for sung songs" at its last step: no limit (#238). */
@@ -1166,46 +1638,22 @@ data class AppSettings(
     val immersiveLyrics: ImmersiveLyrics = ImmersiveLyrics.LOW,
     /** Immersive mode keeps previous / play / next on screen instead of only after a tap. */
     val immersiveControls: Boolean = false,
-    /** Shuffle and repeat buttons either side of the player's transport, always (not only with the queue up). */
-    val playerShuffleRepeat: Boolean = false,
     /** How much of what's queued is loaded ahead while a song plays ([Preload]). */
     val preload: Preload = Preload.START,
     /** Songs are loaded ahead ([preload]: a start or whole songs) on mobile data too (else only on Wi-Fi). */
     val preloadCellular: Boolean = false,
-    /** Animated cover art (motion artwork / video covers) over the sleeve. */
-    val canvasEnabled: Boolean = true,
-    val canvasOnCellular: Boolean = true,
     val hideVolumeBar: Boolean = true,
     /** "Playing from …" above the artwork in the player. */
     val showPlayingFrom: Boolean = true,
-    /** Optional next-track card; existing installs keep their player unchanged. */
-    val showNextTrack: Boolean = false,
-    val lyricsBlur: Boolean = true,
-    /** The thin line of split light under the line being sung (lyrics page and immersive). */
-    val lyricsProgressLine: Boolean = true,
-    /** A glass button beside Sing under the open lyrics: where they come from; a tap picks another source (1.7.9). */
-    val lyricsSourceButton: Boolean = false,
-    /** Each screen's background (screen name -> "STYLE" or "PHOTO|path"); missing means the default. */
+    /** Each screen's background (screen name -> "STYLE", "PHOTO|path" or "COLOR|#RRGGBB"); missing means the default. */
     val backdrops: Map<String, String> = emptyMap(),
     /** How much the theme color washes over custom backgrounds (0 = none). */
     val backdropDim: Float = 0.35f,
     val backdropMotion: Boolean = true,
     // Lyrics
-    val lyricsOnPlayer: Boolean = true,
-    val lyricsOrder: List<LyricsSource> = defaultLyricsOrder,
-    /** Lyric sources the listener turned off: never asked (#51). */
-    val lyricsOff: Set<LyricsSource> = emptySet(),
     val preferSynced: Boolean = true,
     /** Pass over sources whose lyrics star out swear words when another has them in full. */
     val skipCensored: Boolean = true,
-    /** A translation under each lyric line (machine translation, asked of Google Translate), when the song isn't in it. */
-    val lyricsTranslate: Boolean = false,
-    /** Language code to translate lyrics into; blank means the phone's language. */
-    val lyricsTranslateTo: String = "",
-    /** Lyrics saved into music files keep each word's timing, as enhanced LRC (Reddit, 1.7.9.2; off: lines, as before). */
-    val lyricsFileWords: Boolean = false,
-    /** Lyrics saved into music files carry the translation under each line (Reddit, 1.7.9.2). */
-    val lyricsFileTranslation: Boolean = false,
     /** Romanized lyrics (Lyrics → Display). */
     val romanize: RomanizeMode = RomanizeMode.UNDER,
     /** Also scripts of the phone's own language (off: a Korean phone isn't shown Korean in Latin letters). */
@@ -1226,7 +1674,6 @@ data class AppSettings(
     val webRemote: Boolean = false,
     /** Vinz Connect: other Vinz devices on the Wi-Fi can find this one and move what they're playing here. */
     val handoffAvailable: Boolean = false,
-    val lyricsScale: Float = 1f,
     /** Lyrics on Android Auto's player (the car's Lyrics button flips this too). */
     val carLyrics: Boolean = true,
     val carLyricsStyle: CarLyricsStyle = CarLyricsStyle.TEXT,
@@ -1243,16 +1690,10 @@ data class AppSettings(
     val shareYoutubeLinks: Boolean = false,
     // Playback
     val showNerdStats: Boolean = false,
-    /** Downloaded songs save their animated cover too. */
-    val canvasWithDownloads: Boolean = true,
-    /** ...on mobile data as well (off: they're saved once on Wi-Fi). */
-    val canvasWithDownloadsCellular: Boolean = false,
     /** The stream's quality (codec and bitrate, or "Downloaded") under the player's scrubber. */
     val showQuality: Boolean = true,
     /** Videos played as songs get a square cover: the thumbnail's black bars trimmed and its middle cut square (#92). */
     val squareVideoCovers: Boolean = true,
-    /** Lyrics are looked up on mobile data as each song starts; off, only once the lyrics are opened (#95). */
-    val lyricsOnMobileData: Boolean = true,
     /** A "Best part" button by the scrubber in a song's first seconds, to skip to its most replayed stretch. */
     val bestPartButton: Boolean = true,
     /** The Song / Video switch on the player. Off, the player stays audio only. */
@@ -1298,21 +1739,6 @@ data class AppSettings(
     val losslessLocal: Boolean = false,
     val normalize: Boolean = true,
     val skipSilence: Boolean = false,
-    /** Crossfade: songs fade into each other when one runs into the next (after Spotify's), instead of stopping and starting. */
-    val mix: Boolean = false,
-    /** How long a crossfade lasts, in seconds, when it isn't [mixAuto]. */
-    val mixSeconds: Int = 6,
-    /** Crossfade works out the best length for each pair of songs, from how one ends and the next begins. */
-    val mixAuto: Boolean = true,
-    /** DJ-style: lines up the songs' beats and plays the incoming song at the outgoing one's tempo during the crossfade. */
-    val mixBeatMatch: Boolean = false,
-    /**
-     * An album's songs never cross into each other, wherever they sit side by side (#247; an album playing through
-     * already didn't). Off as before: a playlist or shuffle putting two of an album's songs together blends them.
-     */
-    val mixKeepAlbums: Boolean = false,
-    /** Tempo analysis (a 1–4 MB download per song) may use mobile data, not only Wi-Fi. */
-    val mixTempoOnCellular: Boolean = false,
     val videoMaxHeight: Int = 1080,
     /**
      * The country YouTube Music is asked as (ISO code, e.g. "US"); blank follows the phone. Where YouTube Music
@@ -1343,47 +1769,25 @@ data class AppSettings(
     val spatial: Boolean = false,
     val spatialAmount: Float = 0.75f,
     // Home
-    val homeLayout: List<HomeSectionConfig> = HomeSections.initial,
     val autoAddSections: Boolean = true,
     /** Search's page before you type (1.7.6): its sections, in order. */
     val searchSections: List<SearchSection> = SearchSection.entries.toList(),
     /** Search's chips in the listener's order (#224, 1.7.9.2): SearchFilter names and "PHONE"; the first is where Search opens. Empty: Vinz's order. */
     val searchChips: List<String> = emptyList(),
-    val homeHeader: HomeHeader = HomeHeader.GREETING,
-    val homeHeaderHeight: HomeHeaderHeight = HomeHeaderHeight.MEDIUM,
-    /** The picture behind a PICTURE header: a background design's name, or "PHOTO|<file>" (as backgrounds keep theirs). */
-    val homeHeaderPicture: String = "AURORA",
-    /** Kinds of YouTube Music's sections left off Home ([HomeSections.KIND_VIDEOS], [HomeSections.KIND_PODCASTS]; 1.7.6). */
-    val homeHideKinds: Set<String> = emptySet(),
     /** Replay shows listening time as hours and minutes (20h 4m) instead of minutes (1,204 min). */
     val replayHours: Boolean = true,
     /** Home's headline; blank means good morning / afternoon / evening. */
     val greetingText: String = "",
     val greetingShowName: Boolean = true,
-    val homeShortcuts: List<HomeShortcut> = listOf(HomeShortcut.LIKED, HomeShortcut.DOWNLOADS, HomeShortcut.REPLAY),
-    /** Recently played albums added after the shortcuts. */
-    val homeRecentTiles: Int = 3,
-    /** Playlists shown as tiles after the shortcuts. */
-    val homePlaylists: List<PinnedPlaylist> = emptyList(),
-    val homeCustomizeButton: Boolean = true,
-    /** Settings, Home screen, Continue line: the Continue line under Home's greeting. */
-    val homeContinue: Boolean = true,
     /** Tapping a song in Quick picks starts a radio from it (as on YouTube Music), instead of playing Quick picks in order (#38). */
     val quickPicksRadio: Boolean = true,
     /** Home's Speed dial shows only YouTube's own tiles, without the albums and songs Vinz adds from your plays (#131). */
     val speedDialYouTubeOnly: Boolean = false,
-    /** The round Customize button at the top of Home (beside Podcasts); separate from the one at the bottom. */
-    val homeCustomizeTopButton: Boolean = true,
-    /** The Podcasts button at the top of Home. Off, Podcasts opens from a Library tile instead (#28). */
-    val homePodcastsButton: Boolean = true,
     // Interface
     val fontChoice: FontChoice = FontChoice.VINZ,
     /** The imported app font's name, and when it (or the lyrics font) was last imported, so the UI picks it up. */
     val appFontName: String = "",
     val fontStamp: Long = 0,
-    /** The lyrics' font: "" = the app's, else a [FontChoice] name (CUSTOM = its own imported file, [lyricsFontName]). */
-    val lyricsFont: String = "",
-    val lyricsFontName: String = "",
     val textScale: Float = 1f,
     val corners: Corners = Corners.ROUND,
     /**
@@ -1397,6 +1801,18 @@ data class AppSettings(
     val view: ViewLook = ViewLook(),
     val sound: SoundPrefs = SoundPrefs(),
     val behavior: BehaviorPrefs = BehaviorPrefs(),
+    /** The gestures on the player's cover and on the mini player. */
+    val gestures: GesturePrefs = GesturePrefs(),
+    /** Crossfade. */
+    val mix: MixPrefs = MixPrefs(),
+    /** Home. */
+    val home: HomePrefs = HomePrefs(),
+    /** Library. */
+    val library: LibraryPrefs = LibraryPrefs(),
+    /** Lyrics. */
+    val lyrics: LyricsPrefs = LyricsPrefs(),
+    /** The player. */
+    val player: PlayerPrefs = PlayerPrefs(),
     /** Vinz TV and the phone's desk mode (1.8.0). */
     val tv: TvPrefs = TvPrefs(),
     val uiDensity: UiDensity = UiDensity.COMFORTABLE,
@@ -1428,25 +1844,14 @@ data class AppSettings(
     val miniPrevButton: Boolean = false,
     val miniProgress: MiniProgress = MiniProgress.LINE,
     // Player look
-    val playerBackground: PlayerBackground = PlayerBackground.MESH,
-    /**
-     * 0..1: how much of the player's background shows through its darkening (blurred cover and your background); below
-     * 0, down to [com.vinz.music.ui.player.BACKDROP_SHOW_MIN], it darkens on to black (#309, 1.8.1).
-     */
-    val playerBackdropShow: Float = 0.35f,
-    val playerArtCorners: Int = 20,
     val coverSize: CoverSize = CoverSize.STANDARD,
     // Aura × Spectrum (1.7): a solid play button, ringed in split light.
     val transportStyle: TransportStyle = TransportStyle.BUTTON,
     val scrubberStyle: ScrubberStyle = ScrubberStyle.HAIRLINE,
     val artShrinkOnPause: Boolean = true,
     val showOutputDevice: Boolean = true,
-    val lyricsAlign: LyricsAlign = LyricsAlign.START,
     /** Lyrics, your way (1.7.5), in one value since 1.7.7 ([LyricsLookPrefs]); read as `lyricsStyle` etc. below. */
     val lyricsLook: LyricsLookPrefs = LyricsLookPrefs(),
-    /** The current-lyric line on the player (#121): where it sits, and whether a long line may take two lines. */
-    val lyricsStripAlign: LyricsAlign = LyricsAlign.START,
-    val lyricsStripTwoLines: Boolean = false,
     // GitHub requests picked for 1.7.5.
     /** #111: a liked song and its liked music video show once, as the song (Liked songs, Library, the car). */
     val mergeLikedVideos: Boolean = true,
@@ -1456,41 +1861,24 @@ data class AppSettings(
     val volumeControl: VolumeControl = VolumeControl.PHONE,
     val appVolume: Float = 1f,
     // The player, your way (1.7.4). Every default is the player as 1.7 had it.
-    val playerLayout: PlayerLayout = PlayerLayout.STANDARD,
     /** Vinyl: the tonearm swings onto the record while it plays. */
     val vinylTonearm: Boolean = true,
-    /** The parts under the title, in this order (what's switched off elsewhere still hides). */
-    val playerDeck: List<DeckPart> = DeckPart.entries,
-    val playerButtons: List<PlayerButton> = PlayerButton.DEFAULT,
     /** The buttons beside play in the notification, on the lock screen and in Android Auto, in order. */
     val sessionButtons: List<SessionButton> = SessionButton.DEFAULT,
     val scrubberColor: ScrubberColor = ScrubberColor.SPECTRUM,
-    val playerTitleAlign: PlayerTitleAlign = PlayerTitleAlign.START,
-    val playerTitleSize: PlayerTitleSize = PlayerTitleSize.MEDIUM,
-    /** A title too long for the line scrolls across (off: it's cut short with "…"). */
-    val playerTitleScroll: Boolean = true,
-    val playerTimes: PlayerTimes = PlayerTimes.BOTH,
     /**
      * The color mesh behind the player: how fast it drifts (0 still, as before, … 1) and how strong its colors are
      * (0.4 soft … 1.6 rich; 1 as before).
      */
     val meshSpeed: Float = 0f,
     val meshIntensity: Float = 1f,
-    /** How soft the blurred cover is (0.5 … 1.5; 1 as before). */
-    val playerBlur: Float = 1f,
-    /** An animated cover fills the whole player behind everything, not only the cover. */
-    val canvasFillsBackground: Boolean = false,
     /** The progress bar's thickness (0.6 thin … 2 thick; 1 as the style draws it) and the knob at the playhead. */
     val scrubberThickness: Float = 1f,
     val scrubberThumb: ScrubberThumb = ScrubberThumb.AUTO,
     /** The volume bar takes the progress bar's style and thickness (Reddit, 1.7.9.1); off, its own height as before. */
     val volumeMatchesProgress: Boolean = false,
-    /** The grey handle at the player's top (Reddit, 1.7.9.1); a swipe down closes the player with or without it. */
-    val playerHandle: Boolean = true,
     /** The status bar hidden only while the player is open, with its lyrics and queue (Reddit, 1.7.9.1). */
     val hideStatusBarPlayer: Boolean = false,
-    /** The dark band behind three-button navigation on the player (#250, 1.7.9.1); off, the player shows through it. */
-    val playerNavBand: Boolean = true,
     /**
      * The visualizer (off by default: it's the one part of the player that works on every frame): moves with the music
      * Vinz plays (its own sound, so no microphone), only while the player is on screen.
@@ -1498,29 +1886,7 @@ data class AppSettings(
     val visualizer: VisualizerStyle = VisualizerStyle.OFF,
     val visualizerColor: ScrubberColor = ScrubberColor.SPECTRUM,
     // Gestures on the player's cover and on the mini player.
-    val coverSwipeLeft: PlayerGesture = PlayerGesture.NEXT,
-    val coverSwipeRight: PlayerGesture = PlayerGesture.PREVIOUS,
-    val coverSwipeUp: PlayerGesture = PlayerGesture.QUEUE,
-    val coverDoubleTap: PlayerGesture = PlayerGesture.SEEK_SIDES,
-    val coverLongPress: PlayerGesture = PlayerGesture.NONE,
-    val miniSwipeLeft: PlayerGesture = PlayerGesture.NEXT,
-    val miniSwipeRight: PlayerGesture = PlayerGesture.PREVIOUS,
-    val miniSwipeDown: PlayerGesture = PlayerGesture.STOP,
-    /** Swiping the mini player up (#149, 1.7.7): it did nothing before, so opening the player changes no habit. */
-    val miniSwipeUp: PlayerGesture = PlayerGesture.OPEN,
     // Library & Replay
-    val libraryView: LibraryView = LibraryView.LIST,
-    /** Library tabs shown their own way (1.7.6: "PLAYLISTS", "ALBUMS", "ARTISTS"); the rest as [libraryView]. */
-    val libraryViews: Map<String, LibraryView> = emptyMap(),
-    /** How many covers across Library's grid (1.7.6). */
-    val libraryColumns: LibraryColumns = LibraryColumns.AUTO,
-    /** Song counts, owners and years under Library's playlists, albums and artists (1.7.6). */
-    val librarySubtitles: Boolean = true,
-    val libraryStartTab: String = "PLAYLISTS",
-    /** Library's tiles that show, in order (the rest are hidden). */
-    val libraryTiles: List<LibraryTile> = LibraryTile.initial,
-    /** Library → Playlists shows your playlists above the tiles (Liked songs, Downloads…) instead of below them. */
-    val libraryPlaylistsFirst: Boolean = false,
     /** Playlist pages open with their picture edge to edge, like an artist page. */
     val playlistHeroCover: Boolean = true,
     /** Artist, album and playlist pages sit on frosted glass made from their picture (Apple Music's look). */
@@ -1536,9 +1902,6 @@ data class AppSettings(
     val performanceOffered: Boolean = false,
 ) {
     val isLoggedIn: Boolean get() = cookie.contains("SAPISID")
-
-    /** Nested with behavior settings to leave room under the JVM constructor limit. */
-    val experimentalSplitNavigation: Boolean get() = behavior.experimentalSplitNavigation
 
     // The lyrics' look, read as before (1.7.7 moved them into [lyricsLook]; see [LyricsLookPrefs]).
     val lyricsStyle: LyricsStyle get() = lyricsLook.style
@@ -1577,15 +1940,18 @@ data class AppSettings(
         frostedGlass = false,
         frostedPages = false,
         // Your own photo stays (owner, 1.8.1): a still picture costs next to nothing; the drawn and moving ones pause.
-        backdrops = backdrops.filterValues { it.substringBefore('|') == "PHOTO" },
+        // A solid color too (#413, 1.8.4): one flat fill, lighter than any of them.
+        backdrops = backdrops.filterValues { it.substringBefore('|').let { word -> word == "PHOTO" || word == "COLOR" } },
         backdropMotion = false,
         reduceMotion = true,
-        canvasEnabled = false,
-        canvasFillsBackground = false,
+        // 1.8.6: no loops cut from music videos either (Canvas is off here; this keeps a reader of the nested value honest).
+        // 1.8.7 (#336): no fast refresh rate asked of the screen either.
+        // 1.8.7.6: Spotify's canvas first pauses too (it no longer hangs on Canvas being on).
+        behavior = behavior.copy(canvas = behavior.canvas.copy(enabled = false, fillsBackground = false, useVideos = false, spotifyFirst = false), smoothScrolling = false),
         visualizer = VisualizerStyle.OFF,
         meshSpeed = 0f,
-        playerBackground = if (playerBackground == PlayerBackground.BLUR || playerBackground == PlayerBackground.APPEARANCE) PlayerBackground.MESH else playerBackground,
-        lyricsBlur = false,
+        player = player.copy(background = if (player.background == PlayerBackground.BLUR || player.background == PlayerBackground.APPEARANCE) PlayerBackground.MESH else player.background),
+        lyrics = lyrics.copy(blur = false),
         lyricsLook = lyricsLook.copy(
             blurAmount = 0f,
             shadow = false,
@@ -1593,19 +1959,41 @@ data class AppSettings(
             background = if (lyricsBackground == LyricsBackground.BLUR || lyricsBackground == LyricsBackground.CANVAS) LyricsBackground.PLAYER else lyricsBackground,
             immersiveBackground = if (immersiveBackground == LyricsBackground.CANVAS) LyricsBackground.PLAYER else immersiveBackground,
         ),
-        homeHeader = if (homeHeader == HomeHeader.PICTURE || homeHeader == HomeHeader.NOW_PLAYING) HomeHeader.GREETING else homeHeader,
-        view = view.copy(crossfadeShape = false),
+        home = home.copy(header = if (home.header == HomeHeader.PICTURE || home.header == HomeHeader.NOW_PLAYING) HomeHeader.GREETING else home.header),
+        view = view.copy(crossfadeShape = false, glass = GlassLook()),
     )
 
+    /**
+     * #326: the glass look on cards, chips and round buttons. Asked for here too, not only through [effective], because the
+     * settings pages are given the settings as stored, and they'd draw it under Performance mode otherwise.
+     */
+    val glassEverywhere: Boolean get() = view.glass.more && !performanceMode
+
+    /** D55 (1.8.4): the pages with their picture across the whole width. */
+    val fullWidthPictures: FullWidthPictures get() = FullWidthPictures.of(playlistHeroCover, view.albumHeroCover)
+
     /** The lyric sources Vinz asks, in the listener's order: the ones turned off are left out (#51). */
-    val lyricsSources: List<LyricsSource> get() = lyricsOrder.filter { it !in lyricsOff }.ifEmpty { lyricsOrder }
+    val lyricsSources: List<LyricsSource> get() = lyrics.order.filter(::lyricsSourceOn).ifEmpty { lyrics.order.filter { it != LyricsSource.EMBEDDED } }
+
+    /** Whether [src] is asked: every source until it's switched off, but a file's own lyrics only once they're switched on (#344). */
+    fun lyricsSourceOn(src: LyricsSource) = if (src == LyricsSource.EMBEDDED) behavior.embeddedLyrics else src !in lyrics.off
 }
 
-class SettingsRepository(private val context: Context, scope: CoroutineScope) {
+/** [writer]: where the settings' writes run, one at a time (tests hold it back to line writes up). */
+class SettingsRepository(
+    private val context: Context,
+    scope: CoroutineScope,
+    writer: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
+) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private object K {
         val onboarded = booleanPreferencesKey("onboarded")
+        /**
+         * 1.8.7.6: this phone's first run wrote a new install's own defaults ([NewInstall]), so those in a Look are how
+         * Vinz comes here: Vinz's own Look, and any Look that doesn't set them, keeps them on ([putLook]).
+         */
+        val newInstallLook = booleanPreferencesKey("new_install_look")
         val cookie = stringPreferencesKey("cookie")
         val visitorData = stringPreferencesKey("visitor_data")
         val dataSyncId = stringPreferencesKey("data_sync_id")
@@ -1659,7 +2047,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val canvasOnCellular = booleanPreferencesKey("canvas_on_cellular")
         val hideVolumeBar = booleanPreferencesKey("hide_volume_bar")
         val showPlayingFrom = booleanPreferencesKey("show_playing_from")
-        val showNextTrack = booleanPreferencesKey("show_next_track")
         val spatial = booleanPreferencesKey("soft_spatial")
         val spatialAmount = floatPreferencesKey("soft_spatial_amount")
         val lyricsBlur = booleanPreferencesKey("lyrics_blur")
@@ -1786,7 +2173,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val navStyle = stringPreferencesKey("nav_style")
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
-        val experimentalSplitNavigation = booleanPreferencesKey("experimental_split_navigation")
         val navTabs = stringPreferencesKey("nav_tabs")
         val tabNames = stringPreferencesKey("tab_names")
         val navBarSize = stringPreferencesKey("nav_bar_size")
@@ -1930,9 +2316,34 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val pipMode = stringPreferencesKey("pip_mode")
         val panelSwipes = booleanPreferencesKey("panel_swipes")
         val recentShows = stringPreferencesKey("recent_shows")
+        val quickPicksSource = stringPreferencesKey("quick_picks_source")
+        val speedDialYoursFirst = booleanPreferencesKey("speed_dial_yours_first")
+        val accountSavedAt = longPreferencesKey("account_saved_at")
+        val autoplayNoRepeats = booleanPreferencesKey("autoplay_no_repeats")
+        val radioNewness = floatPreferencesKey("radio_tune_newness")
+        val radioDepth = floatPreferencesKey("radio_tune_depth")
+        val radioEnergy = floatPreferencesKey("radio_tune_energy")
+        // 1.8.2 requests ([BehaviorPrefs.autoplayMaxMinutes] and on; [ViewLook.coverFlightBack] and on).
+        val autoplayMaxMinutes = intPreferencesKey("autoplay_max_minutes")
+        val noVideoOnData = booleanPreferencesKey("no_video_on_data")
+        val gesturesUnderLyrics = booleanPreferencesKey("player_gestures_under_lyrics")
+        val playerRemembersPage = booleanPreferencesKey("player_remembers_page")
+        val lyricsSteady = booleanPreferencesKey("lyrics_steady")
+        val coverFlightBack = booleanPreferencesKey("cover_flight_back")
+        val videoButtonsHide = booleanPreferencesKey("video_buttons_hide")
+        val bleedRoomy = booleanPreferencesKey("bleed_roomy")
+        val queueLengths = booleanPreferencesKey("queue_lengths")
+        val queuePlayedMoves = booleanPreferencesKey("queue_played_moves")
+        val queueTidy = booleanPreferencesKey("queue_tidy")
+        val embeddedLyrics = booleanPreferencesKey("embedded_lyrics")
+        val localSkipFolders = stringPreferencesKey("local_skip_folders")
+        val keptPlaylists = stringPreferencesKey("kept_playlists")
         val queueLocked = booleanPreferencesKey("queue_locked")
         val scrollShowsControls = booleanPreferencesKey("scroll_shows_controls")
         val playlistGenres = booleanPreferencesKey("playlist_genres")
+        val artistBio = booleanPreferencesKey("artist_bio")
+        val artistYou = booleanPreferencesKey("artist_you")
+        val artistEssentials = booleanPreferencesKey("artist_essentials")
         val screenFades = booleanPreferencesKey("screen_fades")
         val crossfadeMark = booleanPreferencesKey("crossfade_mark")
         val blendCovers = booleanPreferencesKey("blend_covers")
@@ -1948,9 +2359,52 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         // 1.8.1 ([ViewLook.replayGraph], [ViewLook.replayStoryFont]; [BehaviorPrefs]' history choices).
         val replayGraph = stringPreferencesKey("replay_card_graph")
         val replayStoryFont = booleanPreferencesKey("replay_story_font")
+        // 1.8.2 ([ViewLook.glass], [ViewLook.gradientDepth]).
+        val glassBlur = floatPreferencesKey("glass_blur")
+        val glassFrost = floatPreferencesKey("glass_frost")
+        val glassMore = booleanPreferencesKey("glass_more")
+        val gradientDepth = floatPreferencesKey("player_gradient_depth")
         val historyPausedUntil = longPreferencesKey("history_paused_until")
         val playCountSeconds = intPreferencesKey("play_count_seconds")
         val playCountOnAccount = booleanPreferencesKey("play_count_account")
+        val lockScreen = booleanPreferencesKey("lock_screen_player")
+        val lockScreenLayout = stringPreferencesKey("lock_screen_layout")
+        val lockScreenVolume = booleanPreferencesKey("lock_screen_volume")
+        val lockScreenLike = booleanPreferencesKey("lock_screen_like")
+        val lockScreenOutput = booleanPreferencesKey("lock_screen_output")
+        val lockScreenRepeat = booleanPreferencesKey("lock_screen_repeat")
+        val lockScreenUpNext = booleanPreferencesKey("lock_screen_up_next")
+        val lockScreenPaused = stringPreferencesKey("lock_screen_paused")
+        val lockScreenHideSong = booleanPreferencesKey("lock_screen_hide_song")
+        // 1.8.4 ([BehaviorPrefs.rowSwipes] and on; [ViewLook.lockScreenPlayerLook], [ViewLook.albumHeroCover]).
+        val rowSwipes = booleanPreferencesKey("row_swipes")
+        val lyricsOffsetMs = intPreferencesKey("lyrics_offset_ms")
+        val keepShuffle = booleanPreferencesKey("keep_shuffle")
+        val shuffleButton = stringPreferencesKey("shuffle_button")
+        val carLyricsLines = stringPreferencesKey("car_lyrics_lines")
+        val locatePlaying = booleanPreferencesKey("locate_playing")
+        // 1.8.5 ([BehaviorPrefs.recapNotify] and on).
+        val recapNotify = booleanPreferencesKey("recap_notify")
+        val milestoneNotify = booleanPreferencesKey("milestone_notify")
+        val finishLyric = booleanPreferencesKey("finish_lyric")
+        val faceDownPause = booleanPreferencesKey("face_down_pause")
+        val lyricsCoverPlays = booleanPreferencesKey("lyrics_cover_plays")
+        val smoothScrolling = booleanPreferencesKey("smooth_scrolling")
+        /** 1.8.7.6 ([BehaviorPrefs.supported]). */
+        val supported = booleanPreferencesKey("supported")
+        // 1.8.6 ([CanvasPrefs], in [BehaviorPrefs]).
+        val canvasCovers = booleanPreferencesKey("canvas_covers")
+        val canvasUseVideos = booleanPreferencesKey("canvas_use_videos")
+        val canvasVideoFirst = booleanPreferencesKey("canvas_video_first")
+        val canvasKeepControls = booleanPreferencesKey("canvas_keep_controls")
+        val canvasLyrics = booleanPreferencesKey("canvas_lyrics")
+        val canvasLighter = booleanPreferencesKey("canvas_lighter")
+        val canvasVideosCellular = booleanPreferencesKey("canvas_videos_cellular")
+        /** 1.8.7.6 ([CanvasPrefs.spotifyFirst], [CanvasPrefs.spotifyOffered]). */
+        val canvasSpotifyFirst = booleanPreferencesKey("canvas_spotify_first")
+        val canvasSpotifyOffered = booleanPreferencesKey("canvas_spotify_offered")
+        val lockScreenPlayerLook = booleanPreferencesKey("lock_screen_player_look")
+        val albumHeroCover = booleanPreferencesKey("album_hero_cover")
         // 1.8.0 player editor ([PlayerParts]): the hidden parts are part of a Look, the menu's choices aren't.
         val playerHiddenParts = stringPreferencesKey("player_hidden_parts")
         val playerMenuHidden = stringPreferencesKey("player_menu_hidden")
@@ -1973,12 +2427,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         /** Everything the "Reset look" button puts back. */
         val look: List<Preferences.Key<*>> by lazy {
             listOf(
-                fontChoice, textScale, corners, uiDensity, titleSize, cardSize, navStyle, navLabels, navHideOnScroll,
+                fontChoice, textScale, corners, uiDensity, titleSize, cardSize, reduceMotion, navStyle, navLabels, navHideOnScroll,
                 navTabs, startTab, miniPlayerStyle, miniSkipButtons, miniPrevButton, miniPlayButton, miniProgress, miniProgressColor, miniFillStrength, playRing, playingInPageColor, playerBackground, playerBackdropShow, playerArtCorners, transportStyle,
                 coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
                 playerLayout, vinylTonearm, playerDeck, playerButtons, scrubberColor, playerTitleAlign, playerTitleSize, playerTitleScroll,
-                playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground, showNextTrack,
+                playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground,
                 scrubberThickness, scrubberThumb, volumeMatchesProgress, playerHandle, playerNavBand, visualizer, visualizerColor,
                 lyricsBlur, lyricsScale, lyricsProgressLine, lyricsSourceButton, hideStatusBar, hideStatusBarPlayer,
                 tabNames, navBarSize, navBarFill, miniPlayerJoined, libraryViews, libraryColumns, librarySubtitles,
@@ -1986,9 +2440,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 cornerScale, songShape, albumShape, artistShape, playerShape, buttonShape, playOutlined,
                 typeWeight, typeSpacing, titleFont, tabTint, playerTitleWeight, typeClassic, controlsClassic,
                 panelPlayer, queueHeadings, queueDjChip, castMark, immersiveVideo, bleedFit, coverFlight, videoControlsHide,
+                coverFlightBack, videoButtonsHide, bleedRoomy, queueLengths, queuePlayedMoves, queueTidy,
                 crossfadeMark, blendCovers, buttonsPill, playerHiddenParts, crossfadeShape,
                 downloadsAlbums, artistLinks, backdropFade,
                 crossfadeMark, blendCovers, buttonsPill, playerHiddenParts, crossfadeShape, replayGraph, replayStoryFont,
+                glassBlur, glassFrost, glassMore, gradientDepth,
+                lockScreenPlayerLook, albumHeroCover,
             ) + lyricsLook.map { it.first }
         }
 
@@ -2004,14 +2461,14 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 spectrumStops to 's', spectrumBands to 'b', surfaceTint to 's', surfaceTintStrength to 'f', surfaceColor to 'i', contrast to 's',
                 artworkSwatch to 's', artworkVivid to 'b', artworkChange to 's', pageColors to 'b',
                 liquidGlass to 'b', glassKind to 's', frostedGlass to 'b', frostedPages to 'b', backdrops to 's', backdropDim to 'f',
-                backdropMotion to 'b',
+                backdropMotion to 'b', reduceMotion to 'b',
                 fontChoice to 's', appFontName to 's', lyricsFont to 's', textScale to 'f', corners to 's', uiDensity to 's', titleSize to 's', cardSize to 's',
                 navStyle to 's', navLabels to 's', navHideOnScroll to 'b', navTabs to 's', startTab to 's',
                 tabNames to 's', navBarSize to 's', navBarFill to 's', miniPlayerJoined to 'b',
                 miniPlayerStyle to 's', miniSkipButtons to 'b', miniPrevButton to 'b', miniPlayButton to 'b', miniProgress to 's', miniProgressColor to 's', miniFillStrength to 'f', playRing to 'b', playingInPageColor to 'b',
                 playerBackground to 's', playerBackdropShow to 'f', playerArtCorners to 'i', transportStyle to 's', coverSize to 's',
                 scrubberStyle to 's', artShrinkOnPause to 'b', showOutputDevice to 'b', fullBleedArtwork to 'b', videoFullBleed to 'b', hideVolumeBar to 'b',
-                showNextTrack to 'b', showPlayingFrom to 'b', playerShuffleRepeat to 'b', immersiveArt to 's', immersiveLyrics to 's', immersiveControls to 'b',
+                showPlayingFrom to 'b', playerShuffleRepeat to 'b', immersiveArt to 's', immersiveLyrics to 's', immersiveControls to 'b',
                 playerLayout to 's', vinylTonearm to 'b', playerDeck to 's', playerButtons to 's', scrubberColor to 's', playerTitleAlign to 's',
                 playerTitleSize to 's', playerTitleScroll to 'b', playerTimes to 's', meshSpeed to 'f', meshIntensity to 'f', playerBlur to 'f',
                 canvasFillsBackground to 'b', scrubberThickness to 'f', scrubberThumb to 's', visualizer to 's', visualizerColor to 's',
@@ -2024,22 +2481,23 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 panelPlayer to 's', queueHeadings to 'b', queueDjChip to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
                 videoControlsHide to 'b', crossfadeMark to 'b', blendCovers to 'b', buttonsPill to 'b', playerHiddenParts to 's',
                 crossfadeShape to 'b',
+                coverFlightBack to 'b', videoButtonsHide to 'b', bleedRoomy to 'b', queueLengths to 'b', queuePlayedMoves to 'b', queueTidy to 'b',
                 downloadsAlbums to 'b', artistLinks to 'b', backdropFade to 'b',
                 crossfadeShape to 'b', replayGraph to 's', replayStoryFont to 'b',
+                glassBlur to 'f', glassFrost to 'f', glassMore to 'b', gradientDepth to 'f',
+                // 1.8.4 (D53, D55).
+                lockScreenPlayerLook to 'b', albumHeroCover to 'b',
             ) + lyricsLook
         }
 
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
-                // Accessibility is the listener's choice, never a shared Look's or Reset look's.
-                // Old codes carrying reduce_motion are ignored by LookCode.sanitized.
-                "reduce_motion", "experimental_split_navigation",
                 "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
                 "merge_liked_videos", "volume_control", "app_volume", "speed_dial_youtube_only", "swipe_tabs",
-                "onboarded", "cookie", "visitor_data", "data_sync_id", "auth_user", "discord_presence", "account_name", "account_email",
+                "onboarded", "new_install_look", "cookie", "visitor_data", "data_sync_id", "auth_user", "discord_presence", "account_name", "account_email",
                 "account_avatar", "haptics", "immersive_player", "preload", "preload_cellular", "canvas_enabled", "canvas_on_cellular",
                 "soft_spatial", "soft_spatial_amount", "lyrics_on_player", "lyrics_order", "lyrics_off", "prefer_synced", "skip_censored",
                 "lyrics_translate", "lyrics_translate_to", "romanize_lyrics", "romanize_all", "sing_cellular", "sing_always_ready",
@@ -2060,7 +2518,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 "session_buttons", "cover_swipe_left", "cover_swipe_right", "cover_swipe_up", "cover_double_tap", "cover_long_press",
                 "mini_swipe_left", "mini_swipe_right", "mini_swipe_down", "mini_swipe_up",
                 // 1.7.8 ([BehaviorPrefs]).
-                "lock_portrait", "pause_on_mute", "pip_mode", "panel_swipes", "recent_shows", "queue_locked", "scroll_shows_controls", "playlist_genres", "screen_fades", "player_gestures_everywhere", "page_slide", "tab_bar_position",
+                "lock_screen_player", "lock_screen_layout", "lock_screen_volume", "lock_screen_like", "lock_screen_output", "lock_screen_paused", "lock_screen_hide_song",
+                "lock_screen_repeat", "lock_screen_up_next",
+                "lock_portrait", "pause_on_mute", "pip_mode", "panel_swipes", "recent_shows", "queue_locked", "scroll_shows_controls", "playlist_genres", "artist_bio", "artist_you", "artist_essentials", "screen_fades", "player_gestures_everywhere", "page_slide", "tab_bar_position",
                 // 1.8.0 ([TvPrefs]): how Vinz behaves on a TV and in desk mode.
                 "tv_ambient_minutes", "desk_mode", "tv_lyrics_scale", "tv_welcomed", "tv_home_layout", "tv_backdrop_dim",
                 // 1.7.8 ([SoundPrefs]).
@@ -2070,8 +2530,33 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 "own_lossy_files",
                 // 1.8.1 (#216): what plays and shows, not a look.
                 "explicit_content",
+                // 1.8.2 (#349): where Home's Quick picks come from.
+                "quick_picks_source", "speed_dial_yours_first", "account_saved_at",
+                // 1.8.2 (#159): what radios play, not a look.
+                "autoplay_no_repeats", "radio_tune_newness", "radio_tune_depth", "radio_tune_energy",
+                // 1.8.2 (#299, #281, #282, #280): how Vinz behaves, not how it looks.
+                "autoplay_max_minutes", "no_video_on_data", "player_gestures_under_lyrics", "player_remembers_page", "lyrics_steady",
+                // 1.8.2 (#344): where lyrics come from.
+                "embedded_lyrics",
+                // 1.8.2 (#207, #249): this phone's folders.
+                "local_skip_folders",
+                // 1.8.2 (#298): what stays downloaded.
+                "kept_playlists",
                 // 1.8.1 (#296, #263): what Vinz keeps of your listening.
                 "history_paused_until", "play_count_seconds", "play_count_account",
+                // 1.8.4 (#406, #404, #416, D57, PR #400, D54): how Vinz behaves, not how it looks.
+                "row_swipes", "lyrics_offset_ms", "keep_shuffle", "shuffle_button", "car_lyrics_lines", "locate_playing",
+                // 1.8.5: Replay's notices and game, pausing face down, and the small cover's tap over the lyrics (#464).
+                "recap_notify", "milestone_notify", "finish_lyric", "face_down_pause", "lyrics_cover_plays",
+                // 1.8.6 ([CanvasPrefs]): where a canvas comes from, its controls, its quality and its data: behaviour, not a look.
+                "canvas_use_videos", "canvas_video_first", "canvas_keep_controls", "canvas_lighter", "canvas_videos_cellular",
+                "canvas_covers", "canvas_lyrics",
+                // 1.8.7 (#336): the screen's refresh rate is the phone's own matter, not a look.
+                "smooth_scrolling",
+                // 1.8.7.6: "I've supported Vinz" is the listener's word, never a Look's.
+                "supported",
+                // 1.8.7.6: where a canvas comes from (Spotify, with the listener's own sign-in), and its one-time offer.
+                "canvas_spotify_first", "canvas_spotify_offered",
             )
         }
     }
@@ -2097,10 +2582,26 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     private fun lookOf(p: Preferences): Map<String, String> =
         K.lookSpec.mapNotNull { (k, _) -> p[k]?.let { v -> LookValue.tag(v)?.let { k.name to it } } }.toMap()
 
-    /** Puts a Look's [values] in place of every look setting in [p] (those it doesn't set go back to their defaults). */
+    /** A new install's own defaults that are in a Look (1.8.7.6: Canvas full screen, the cover's flight both ways, the background's fade, the album pages' picture). */
+    val newInstallLookNames: Set<String> by lazy { (NewInstall.on + NewInstall.motion).filter { lookKinds[it] == 'b' }.toSet() }
+
+    /**
+     * Of the look settings [names] just put back to how Vinz comes, those that are a new install's own defaults go on
+     * where this phone's first run wrote them ([K.newInstallLook]); elsewhere nothing changes.
+     */
+    private fun putNewInstallLook(p: MutablePreferences, names: Collection<String>) {
+        if (p[K.newInstallLook] != true) return
+        names.forEach { if (it in newInstallLookNames) p[booleanPreferencesKey(it)] = true }
+    }
+
+    /**
+     * Puts a Look's [values] in place of every look setting in [p] (those it doesn't set go back to their defaults: on a
+     * phone whose first run wrote a new install's own defaults ([K.newInstallLook]), those are on).
+     */
     @Suppress("UNCHECKED_CAST")
     private fun putLook(p: MutablePreferences, values: Map<String, String>) {
         K.lookSpec.forEach { (k, _) -> p.remove(k as Preferences.Key<Any>) }
+        putNewInstallLook(p, newInstallLookNames)
         values.forEach { (name, tagged) ->
             val key = lookKeysByName[name] ?: return@forEach
             val v = LookValue.untag(tagged, lookKinds[name] ?: return@forEach) ?: return@forEach
@@ -2157,38 +2658,17 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             immersiveArt = p.enum(K.immersiveArt, d.immersiveArt),
             immersiveLyrics = p.enum(K.immersiveLyrics, d.immersiveLyrics),
             immersiveControls = p[K.immersiveControls] ?: d.immersiveControls,
-            playerShuffleRepeat = p[K.playerShuffleRepeat] ?: d.playerShuffleRepeat,
             preload = p.enum(K.preload, d.preload),
             preloadCellular = p[K.preloadCellular] ?: d.preloadCellular,
-            canvasEnabled = p[K.canvasEnabled] ?: d.canvasEnabled,
-            canvasOnCellular = p[K.canvasOnCellular] ?: d.canvasOnCellular,
             hideVolumeBar = p[K.hideVolumeBar] ?: d.hideVolumeBar,
             showPlayingFrom = p[K.showPlayingFrom] ?: d.showPlayingFrom,
-            showNextTrack = p[K.showNextTrack] ?: d.showNextTrack,
             spatial = p[K.spatial] ?: d.spatial,
             spatialAmount = p[K.spatialAmount] ?: d.spatialAmount,
-            lyricsBlur = p[K.lyricsBlur] ?: d.lyricsBlur,
-            lyricsProgressLine = p[K.lyricsProgressLine] ?: d.lyricsProgressLine,
-            lyricsSourceButton = p[K.lyricsSourceButton] ?: d.lyricsSourceButton,
             backdrops = p[K.backdrops]?.let { runCatching { json.decodeFromString<Map<String, String>>(it) }.getOrNull() } ?: d.backdrops,
             backdropDim = p[K.backdropDim] ?: d.backdropDim,
             backdropMotion = p[K.backdropMotion] ?: d.backdropMotion,
-            lyricsOnPlayer = p[K.lyricsOnPlayer] ?: d.lyricsOnPlayer,
-            lyricsOrder = p[K.lyricsOrder]?.split(",")?.mapNotNull { n ->
-                LyricsSource.entries.firstOrNull { it.name == n }
-            }?.let { list ->
-                // Sources added in an update slot in at their default position.
-                val merged = list.toMutableList()
-                LyricsSource.entries.forEachIndexed { i, src -> if (src !in merged) merged.add(i.coerceAtMost(merged.size), src) }
-                merged
-            } ?: d.lyricsOrder,
-            lyricsOff = p[K.lyricsOff]?.split(",")?.mapNotNull { n -> LyricsSource.entries.firstOrNull { it.name == n } }?.toSet() ?: d.lyricsOff,
             preferSynced = p[K.preferSynced] ?: d.preferSynced,
             skipCensored = p[K.skipCensored] ?: d.skipCensored,
-            lyricsTranslate = p[K.lyricsTranslate] ?: d.lyricsTranslate,
-            lyricsTranslateTo = p[K.lyricsTranslateTo] ?: d.lyricsTranslateTo,
-            lyricsFileWords = p[K.lyricsFileWords] ?: d.lyricsFileWords,
-            lyricsFileTranslation = p[K.lyricsFileTranslation] ?: d.lyricsFileTranslation,
             romanize = p.enum(K.romanize, d.romanize),
             romanizeAll = p[K.romanizeAll] ?: d.romanizeAll,
             singOnCellular = p[K.singOnCellular] ?: d.singOnCellular,
@@ -2199,7 +2679,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             rewindNotification = p[K.rewindNotification] ?: d.rewindNotification,
             webRemote = p[K.webRemote] ?: d.webRemote,
             handoffAvailable = p[K.handoffAvailable] ?: d.handoffAvailable,
-            lyricsScale = p[K.lyricsScale] ?: d.lyricsScale,
             carLyrics = p[K.carLyrics] ?: d.carLyrics,
             carLyricsStyle = p.enum(K.carLyricsStyle, d.carLyricsStyle),
             carLyricsOnPhone = p[K.carLyricsOnPhone] ?: d.carLyricsOnPhone,
@@ -2209,12 +2688,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             showNerdStats = p[K.showNerdStats] ?: d.showNerdStats,
             showQuality = p[K.showQuality] ?: d.showQuality,
             squareVideoCovers = p[K.squareVideoCovers] ?: d.squareVideoCovers,
-            lyricsOnMobileData = p[K.lyricsOnMobileData] ?: d.lyricsOnMobileData,
             bestPartButton = p[K.bestPartButton] ?: d.bestPartButton,
             showVideoSwitch = p[K.showVideoSwitch] ?: d.showVideoSwitch,
             holdSeekSeconds = p[K.holdSeekSeconds] ?: d.holdSeekSeconds,
-            canvasWithDownloads = p[K.canvasWithDownloads] ?: d.canvasWithDownloads,
-            canvasWithDownloadsCellular = p[K.canvasWithDownloadsCellular] ?: d.canvasWithDownloadsCellular,
             audioQuality = p.enum(K.audioQuality, d.audioQuality),
             cellularQuality = p.enum(K.cellularQuality, d.cellularQuality),
             premiumStream = p[K.premiumStream] ?: d.premiumStream,
@@ -2233,12 +2709,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             lossless = p[K.lossless] ?: d.lossless,
             losslessLocal = p[K.losslessLocal] ?: d.losslessLocal,
             normalize = p[K.normalize] ?: d.normalize,
-            mix = p[K.mix] ?: d.mix,
-            mixSeconds = (p[K.mixSeconds] ?: d.mixSeconds).coerceIn(1, 12),
-            mixAuto = p[K.mixAuto] ?: d.mixAuto,
-            mixBeatMatch = p[K.mixBeatMatch] ?: d.mixBeatMatch,
-            mixKeepAlbums = p[K.mixKeepAlbums] ?: d.mixKeepAlbums,
-            mixTempoOnCellular = p[K.mixTempoOnCellular] ?: d.mixTempoOnCellular,
             contentCountry = p[K.contentCountry] ?: d.contentCountry,
             skipSilence = p[K.skipSilence] ?: d.skipSilence,
             videoMaxHeight = p[K.videoMaxHeight] ?: d.videoMaxHeight,
@@ -2254,43 +2724,21 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             },
             smartDownloadsCellular = p[K.smartDownloadsCellular] ?: d.smartDownloadsCellular,
             eq = p[K.eq]?.let { runCatching { json.decodeFromString<EqSettings>(it) }.getOrNull() } ?: d.eq,
-            homeLayout = p[K.homeLayout]?.let {
-                runCatching { json.decodeFromString<List<HomeSectionConfig>>(it) }.getOrNull()
-                    // The tiles section was once called "Greeting & shortcuts"; the greeting is the top bar's.
-                    ?.map { s -> if (s.key == HomeSections.GREETING) s.copy(title = HomeSections.TILES_TITLE) else s }
-                    // Release Radar's section was "New releases", the same name as YouTube's own shelf beside it.
-                    ?.map { s -> if (s.key == HomeSections.NEW_RELEASES && s.title == "New releases") s.copy(title = HomeSections.NEW_RELEASES_TITLE) else s }
-            }.let { it ?: d.homeLayout }.map(HomeSections::inYourLanguage),
             autoAddSections = p[K.autoAddSections] ?: d.autoAddSections,
-            homeHideKinds = p[K.homeHideKinds]?.split(',')?.filter { it.isNotBlank() }?.toSet() ?: d.homeHideKinds,
             searchSections = p[K.searchSections]?.let { SearchSection.parse(it) } ?: d.searchSections,
             searchChips = p[K.searchChips]?.split(',')?.filter { it.isNotBlank() } ?: d.searchChips,
-            homeHeader = p.enum(K.homeHeader, d.homeHeader),
-            homeHeaderHeight = p.enum(K.homeHeaderHeight, d.homeHeaderHeight),
-            homeHeaderPicture = p[K.homeHeaderPicture] ?: d.homeHeaderPicture,
             replayHours = p[K.replayHours] ?: d.replayHours,
             greetingText = p[K.greetingText] ?: d.greetingText,
             greetingShowName = p[K.greetingShowName] ?: d.greetingShowName,
-            homeShortcuts = p[K.homeShortcuts]?.let { v ->
-                v.split(",").mapNotNull { n -> HomeShortcut.entries.firstOrNull { it.name == n } }
-            } ?: d.homeShortcuts,
-            homeRecentTiles = p[K.homeRecentTiles] ?: d.homeRecentTiles,
-            homePlaylists = p[K.homePlaylists]?.let { runCatching { json.decodeFromString<List<PinnedPlaylist>>(it) }.getOrNull() } ?: d.homePlaylists,
-            homeCustomizeButton = p[K.homeCustomizeButton] ?: d.homeCustomizeButton,
-            homeContinue = p[K.homeContinue] ?: d.homeContinue,
             quickPicksRadio = p[K.quickPicksRadio] ?: d.quickPicksRadio,
             speedDialYouTubeOnly = p[K.speedDialYouTubeOnly] ?: d.speedDialYouTubeOnly,
-            homeCustomizeTopButton = p[K.homeCustomizeTopButton] ?: d.homeCustomizeTopButton,
-            homePodcastsButton = p[K.homePodcastsButton] ?: d.homePodcastsButton,
             fontChoice = p[K.fontChoice]?.let { n -> FontChoice.entries.firstOrNull { it.name == FontChoice.upgrade(n) } } ?: d.fontChoice,
             appFontName = p[K.appFontName] ?: d.appFontName,
             fontStamp = p[K.fontStamp] ?: d.fontStamp,
-            lyricsFont = p[K.lyricsFont]?.let(FontChoice::upgrade) ?: d.lyricsFont,
-            lyricsFontName = p[K.lyricsFontName] ?: d.lyricsFontName,
             textScale = p[K.textScale] ?: d.textScale,
             corners = p.enum(K.corners, d.corners),
             shapes = ShapeLook(
-                cornerScale = p[K.cornerScale]?.takeIf { it.isFinite() }?.coerceIn(0f, 2f),
+                cornerScale = p[K.cornerScale],
                 songs = p.enum(K.songShape, d.shapes.songs),
                 albums = p.enum(K.albumShape, d.shapes.albums),
                 artists = p.enum(K.artistShape, d.shapes.artists),
@@ -2316,6 +2764,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 bleedFit = p.enum(K.bleedFit, d.view.bleedFit),
                 coverFlight = p[K.coverFlight] ?: d.view.coverFlight,
                 videoControlsHide = p[K.videoControlsHide] ?: d.view.videoControlsHide,
+                coverFlightBack = p[K.coverFlightBack] ?: d.view.coverFlightBack,
+                videoButtonsHide = p[K.videoButtonsHide] ?: d.view.videoButtonsHide,
+                bleedRoomy = p[K.bleedRoomy] ?: d.view.bleedRoomy,
+                queueLengths = p[K.queueLengths] ?: d.view.queueLengths,
+                queuePlayedMoves = p[K.queuePlayedMoves] ?: d.view.queuePlayedMoves,
+                queueTidy = p[K.queueTidy] ?: d.view.queueTidy,
                 crossfadeMark = p[K.crossfadeMark] ?: d.view.crossfadeMark,
                 blendCovers = p[K.blendCovers] ?: d.view.blendCovers,
                 buttonsPill = p[K.buttonsPill] ?: d.view.buttonsPill,
@@ -2331,6 +2785,15 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 backdropFade = p[K.backdropFade] ?: d.view.backdropFade,
                 replayGraph = p.enum(K.replayGraph, d.view.replayGraph),
                 replayStoryFont = p[K.replayStoryFont] ?: d.view.replayStoryFont,
+                glass = GlassLook(
+                    // A Look shared by someone else can hold any number.
+                    blur = (p[K.glassBlur] ?: d.view.glass.blur).coerceIn(GlassLook.BLUR_RANGE),
+                    frost = (p[K.glassFrost] ?: d.view.glass.frost).coerceIn(GlassLook.FROST_RANGE),
+                    more = p[K.glassMore] ?: d.view.glass.more,
+                ),
+                gradientDepth = (p[K.gradientDepth] ?: d.view.gradientDepth).coerceIn(0f, 1f),
+                lockScreenPlayerLook = p[K.lockScreenPlayerLook] ?: d.view.lockScreenPlayerLook,
+                albumHeroCover = p[K.albumHeroCover] ?: d.view.albumHeroCover,
             ),
             sound = SoundPrefs(
                 crossfadeCurve = p.enum(K.crossfadeCurve, d.sound.crossfadeCurve),
@@ -2353,6 +2816,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 queueLocked = p[K.queueLocked] ?: d.behavior.queueLocked,
                 scrollShowsControls = p[K.scrollShowsControls] ?: d.behavior.scrollShowsControls,
                 playlistGenres = p[K.playlistGenres] ?: d.behavior.playlistGenres,
+                artistBio = p[K.artistBio] ?: d.behavior.artistBio,
+                artistYou = p[K.artistYou] ?: d.behavior.artistYou,
+                artistEssentials = p[K.artistEssentials] ?: d.behavior.artistEssentials,
                 screenFades = p[K.screenFades] ?: d.behavior.screenFades,
                 gesturesEverywhere = p[K.gesturesEverywhere] ?: d.behavior.gesturesEverywhere,
                 pageSlide = p[K.pageSlide] ?: d.behavior.pageSlide,
@@ -2361,7 +2827,154 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 historyPausedUntil = p[K.historyPausedUntil] ?: d.behavior.historyPausedUntil,
                 playCountSeconds = (p[K.playCountSeconds] ?: d.behavior.playCountSeconds).coerceIn(0, 600),
                 playCountOnAccount = p[K.playCountOnAccount] ?: d.behavior.playCountOnAccount,
-                experimentalSplitNavigation = p[K.experimentalSplitNavigation] ?: d.behavior.experimentalSplitNavigation,
+                lockScreen = p[K.lockScreen] ?: d.behavior.lockScreen,
+                lockScreenLayout = p.enum(K.lockScreenLayout, d.behavior.lockScreenLayout),
+                lockScreenVolume = p[K.lockScreenVolume] ?: d.behavior.lockScreenVolume,
+                lockScreenLike = p[K.lockScreenLike] ?: d.behavior.lockScreenLike,
+                lockScreenOutput = p[K.lockScreenOutput] ?: d.behavior.lockScreenOutput,
+                lockScreenRepeat = p[K.lockScreenRepeat] ?: d.behavior.lockScreenRepeat,
+                lockScreenUpNext = p[K.lockScreenUpNext] ?: d.behavior.lockScreenUpNext,
+                lockScreenPaused = p.enum(K.lockScreenPaused, d.behavior.lockScreenPaused),
+                lockScreenHideSong = p[K.lockScreenHideSong] ?: d.behavior.lockScreenHideSong,
+                quickPicksSource = p.enum(K.quickPicksSource, d.behavior.quickPicksSource),
+                speedDialYoursFirst = p[K.speedDialYoursFirst] ?: d.behavior.speedDialYoursFirst,
+                accountSavedAt = p[K.accountSavedAt] ?: 0,
+                autoplayNoRepeats = p[K.autoplayNoRepeats] ?: d.behavior.autoplayNoRepeats,
+                radioTune = com.vinz.music.data.foryou.RadioTune(
+                    (p[K.radioNewness] ?: 0f).coerceIn(-1f, 1f), (p[K.radioDepth] ?: 0f).coerceIn(-1f, 1f), (p[K.radioEnergy] ?: 0f).coerceIn(-1f, 1f),
+                ),
+                autoplayMaxMinutes = (p[K.autoplayMaxMinutes] ?: d.behavior.autoplayMaxMinutes).coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES),
+                noVideoOnData = p[K.noVideoOnData] ?: d.behavior.noVideoOnData,
+                gesturesUnderLyrics = p[K.gesturesUnderLyrics] ?: d.behavior.gesturesUnderLyrics,
+                playerRemembersPage = p[K.playerRemembersPage] ?: d.behavior.playerRemembersPage,
+                lyricsSteady = p[K.lyricsSteady] ?: d.behavior.lyricsSteady,
+                embeddedLyrics = p[K.embeddedLyrics] ?: d.behavior.embeddedLyrics,
+                localSkipFolders = p[K.localSkipFolders]?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: d.behavior.localSkipFolders,
+                keptPlaylists = p[K.keptPlaylists]?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: d.behavior.keptPlaylists,
+                rowSwipes = p[K.rowSwipes] ?: d.behavior.rowSwipes,
+                // A restored backup can hold any number.
+                lyricsOffsetMs = (p[K.lyricsOffsetMs] ?: d.behavior.lyricsOffsetMs).coerceIn(BehaviorPrefs.LYRICS_OFFSET_MS),
+                keepShuffle = p[K.keepShuffle] ?: d.behavior.keepShuffle,
+                shuffleButton = p.enum(K.shuffleButton, d.behavior.shuffleButton),
+                carLyricsLines = p.enum(K.carLyricsLines, d.behavior.carLyricsLines),
+                locatePlaying = p[K.locatePlaying] ?: d.behavior.locatePlaying,
+                recapNotify = p[K.recapNotify] ?: d.behavior.recapNotify,
+                milestoneNotify = p[K.milestoneNotify] ?: d.behavior.milestoneNotify,
+                finishLyric = p[K.finishLyric] ?: d.behavior.finishLyric,
+                faceDownPause = p[K.faceDownPause] ?: d.behavior.faceDownPause,
+                lyricsCoverPlays = p[K.lyricsCoverPlays] ?: d.behavior.lyricsCoverPlays,
+                smoothScrolling = p[K.smoothScrolling] ?: d.behavior.smoothScrolling,
+                supported = p[K.supported] ?: d.behavior.supported,
+                canvas = CanvasPrefs(
+                    covers = p[K.canvasCovers] ?: d.behavior.canvas.covers,
+                    useVideos = p[K.canvasUseVideos] ?: d.behavior.canvas.useVideos,
+                    videoFirst = p[K.canvasVideoFirst] ?: d.behavior.canvas.videoFirst,
+                    keepControls = p[K.canvasKeepControls] ?: d.behavior.canvas.keepControls,
+                    lyrics = p[K.canvasLyrics] ?: d.behavior.canvas.lyrics,
+                    lighter = p[K.canvasLighter] ?: d.behavior.canvas.lighter,
+                    videosOnCellular = p[K.canvasVideosCellular] ?: d.behavior.canvas.videosOnCellular,
+                    enabled = p[K.canvasEnabled] ?: d.behavior.canvas.enabled,
+                    fillsBackground = p[K.canvasFillsBackground] ?: d.behavior.canvas.fillsBackground,
+                    onCellular = p[K.canvasOnCellular] ?: d.behavior.canvas.onCellular,
+                    withDownloads = p[K.canvasWithDownloads] ?: d.behavior.canvas.withDownloads,
+                    withDownloadsCellular = p[K.canvasWithDownloadsCellular] ?: d.behavior.canvas.withDownloadsCellular,
+                    spotifyFirst = p[K.canvasSpotifyFirst] ?: d.behavior.canvas.spotifyFirst,
+                    spotifyOffered = p[K.canvasSpotifyOffered] ?: d.behavior.canvas.spotifyOffered,
+                ),
+                newInstallLook = p[K.newInstallLook] ?: d.behavior.newInstallLook,
+            ),
+            gestures = GesturePrefs(
+                coverSwipeLeft = p.enum(K.coverSwipeLeft, d.gestures.coverSwipeLeft),
+                coverSwipeRight = p.enum(K.coverSwipeRight, d.gestures.coverSwipeRight),
+                coverSwipeUp = p.enum(K.coverSwipeUp, d.gestures.coverSwipeUp),
+                coverDoubleTap = p.enum(K.coverDoubleTap, d.gestures.coverDoubleTap),
+                coverLongPress = p.enum(K.coverLongPress, d.gestures.coverLongPress),
+                miniSwipeLeft = p.enum(K.miniSwipeLeft, d.gestures.miniSwipeLeft),
+                miniSwipeRight = p.enum(K.miniSwipeRight, d.gestures.miniSwipeRight),
+                miniSwipeDown = p.enum(K.miniSwipeDown, d.gestures.miniSwipeDown),
+                miniSwipeUp = p.enum(K.miniSwipeUp, d.gestures.miniSwipeUp),
+            ),
+            mix = MixPrefs(
+                on = p[K.mix] ?: d.mix.on,
+                seconds = (p[K.mixSeconds] ?: d.mix.seconds).coerceIn(1, MAX_CROSSFADE_SECONDS),
+                auto = p[K.mixAuto] ?: d.mix.auto,
+                beatMatch = p[K.mixBeatMatch] ?: d.mix.beatMatch,
+                keepAlbums = p[K.mixKeepAlbums] ?: d.mix.keepAlbums,
+                tempoOnCellular = p[K.mixTempoOnCellular] ?: d.mix.tempoOnCellular,
+            ),
+            home = HomePrefs(
+                layout = p[K.homeLayout]?.let {
+                    runCatching { json.decodeFromString<List<HomeSectionConfig>>(it) }.getOrNull()
+                        // The tiles section was once called "Greeting & shortcuts"; the greeting is the top bar's.
+                        ?.map { s -> if (s.key == HomeSections.GREETING) s.copy(title = HomeSections.TILES_TITLE) else s }
+                        // Release Radar's section was "New releases", the same name as YouTube's own shelf beside it.
+                        ?.map { s -> if (s.key == HomeSections.NEW_RELEASES && s.title == "New releases") s.copy(title = HomeSections.NEW_RELEASES_TITLE) else s }
+                }.let { it ?: d.home.layout }.map(HomeSections::inYourLanguage),
+                header = p.enum(K.homeHeader, d.home.header),
+                headerHeight = p.enum(K.homeHeaderHeight, d.home.headerHeight),
+                headerPicture = p[K.homeHeaderPicture] ?: d.home.headerPicture,
+                hideKinds = p[K.homeHideKinds]?.split(',')?.filter { it.isNotBlank() }?.toSet() ?: d.home.hideKinds,
+                shortcuts = p[K.homeShortcuts]?.let { v ->
+                    v.split(",").mapNotNull { n -> HomeShortcut.entries.firstOrNull { it.name == n } }
+                } ?: d.home.shortcuts,
+                recentTiles = p[K.homeRecentTiles] ?: d.home.recentTiles,
+                playlists = p[K.homePlaylists]?.let { runCatching { json.decodeFromString<List<PinnedPlaylist>>(it) }.getOrNull() } ?: d.home.playlists,
+                customizeButton = p[K.homeCustomizeButton] ?: d.home.customizeButton,
+                continueLine = p[K.homeContinue] ?: d.home.continueLine,
+                customizeTopButton = p[K.homeCustomizeTopButton] ?: d.home.customizeTopButton,
+                podcastsButton = p[K.homePodcastsButton] ?: d.home.podcastsButton,
+            ),
+            library = LibraryPrefs(
+                view = p.enum(K.libraryView, d.library.view),
+                views = p[K.libraryViews]?.let(::parseLibraryViews) ?: d.library.views,
+                columns = p.enum(K.libraryColumns, d.library.columns),
+                subtitles = p[K.librarySubtitles] ?: d.library.subtitles,
+                startTab = p[K.libraryStartTab] ?: d.library.startTab,
+                tiles = p[K.libraryTiles]?.let { v -> if (v.isEmpty()) emptyList() else v.split(',').mapNotNull { n -> LibraryTile.entries.firstOrNull { it.name == n } } } ?: d.library.tiles,
+                playlistsFirst = p[K.libraryPlaylistsFirst] ?: d.library.playlistsFirst,
+            ),
+            lyrics = LyricsPrefs(
+                onPlayer = p[K.lyricsOnPlayer] ?: d.lyrics.onPlayer,
+                order = p[K.lyricsOrder]?.split(",")?.mapNotNull { n ->
+                    LyricsSource.entries.firstOrNull { it.name == n }
+                }?.let { list ->
+                    // Sources added in an update slot in at their default position.
+                    val merged = list.toMutableList()
+                    LyricsSource.entries.forEachIndexed { i, src -> if (src !in merged) merged.add(i.coerceAtMost(merged.size), src) }
+                    merged
+                } ?: d.lyrics.order,
+                off = p[K.lyricsOff]?.split(",")?.mapNotNull { n -> LyricsSource.entries.firstOrNull { it.name == n } }?.toSet() ?: d.lyrics.off,
+                translate = p[K.lyricsTranslate] ?: d.lyrics.translate,
+                translateTo = p[K.lyricsTranslateTo] ?: d.lyrics.translateTo,
+                fileWords = p[K.lyricsFileWords] ?: d.lyrics.fileWords,
+                fileTranslation = p[K.lyricsFileTranslation] ?: d.lyrics.fileTranslation,
+                blur = p[K.lyricsBlur] ?: d.lyrics.blur,
+                progressLine = p[K.lyricsProgressLine] ?: d.lyrics.progressLine,
+                sourceButton = p[K.lyricsSourceButton] ?: d.lyrics.sourceButton,
+                scale = p[K.lyricsScale] ?: d.lyrics.scale,
+                onMobileData = p[K.lyricsOnMobileData] ?: d.lyrics.onMobileData,
+                align = p.enum(K.lyricsAlign, d.lyrics.align),
+                stripAlign = p.enum(K.lyricsStripAlign, d.lyrics.stripAlign),
+                stripTwoLines = p[K.lyricsStripTwoLines] ?: d.lyrics.stripTwoLines,
+                font = p[K.lyricsFont]?.let(FontChoice::upgrade) ?: d.lyrics.font,
+                fontName = p[K.lyricsFontName] ?: d.lyrics.fontName,
+            ),
+            player = PlayerPrefs(
+                shuffleRepeat = p[K.playerShuffleRepeat] ?: d.player.shuffleRepeat,
+                background = p.enum(K.playerBackground, d.player.background),
+                // #309 (1.8.1): down to a fully dark player.
+                backdropShow = (p[K.playerBackdropShow] ?: d.player.backdropShow).coerceIn(com.vinz.music.ui.player.BACKDROP_SHOW_MIN, 1f),
+                artCorners = p[K.playerArtCorners] ?: d.player.artCorners,
+                layout = p.enum(K.playerLayout, d.player.layout),
+                deck = p.enumList(K.playerDeck, d.player.deck).let { it + (DeckPart.entries - it.toSet()) },
+                buttons = p.enumList(K.playerButtons, d.player.buttons),
+                titleAlign = p.enum(K.playerTitleAlign, d.player.titleAlign),
+                titleSize = p.enum(K.playerTitleSize, d.player.titleSize),
+                titleScroll = p[K.playerTitleScroll] ?: d.player.titleScroll,
+                times = p.enum(K.playerTimes, d.player.times),
+                blur = p[K.playerBlur] ?: d.player.blur,
+                handle = p[K.playerHandle] ?: d.player.handle,
+                navBand = p[K.playerNavBand] ?: d.player.navBand,
             ),
             tv = TvPrefs(
                 ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
@@ -2391,43 +3004,27 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             miniSkipButtons = p[K.miniSkipButtons] ?: d.miniSkipButtons,
             miniPrevButton = p[K.miniPrevButton] ?: d.miniPrevButton,
             miniProgress = p.enum(K.miniProgress, d.miniProgress),
-            playerBackground = p.enum(K.playerBackground, d.playerBackground),
-            // #309 (1.8.1): down to a fully dark player.
-            playerBackdropShow = (p[K.playerBackdropShow] ?: d.playerBackdropShow).coerceIn(com.vinz.music.ui.player.BACKDROP_SHOW_MIN, 1f),
-            playerArtCorners = p[K.playerArtCorners] ?: d.playerArtCorners,
             transportStyle = p.enum(K.transportStyle, d.transportStyle),
             coverSize = p.enum(K.coverSize, d.coverSize),
             scrubberStyle = p.enum(K.scrubberStyle, d.scrubberStyle),
             artShrinkOnPause = p[K.artShrinkOnPause] ?: d.artShrinkOnPause,
             showOutputDevice = p[K.showOutputDevice] ?: d.showOutputDevice,
-            lyricsAlign = p.enum(K.lyricsAlign, d.lyricsAlign),
-            playerLayout = p.enum(K.playerLayout, d.playerLayout),
             vinylTonearm = p[K.vinylTonearm] ?: d.vinylTonearm,
             // Every part is in the order, a part added later at the end.
-            playerDeck = p.enumList(K.playerDeck, d.playerDeck).let { it + (DeckPart.entries - it.toSet()) },
-            playerButtons = p.enumList(K.playerButtons, d.playerButtons),
             sessionButtons = p.enumList(K.sessionButtons, d.sessionButtons),
             scrubberColor = p.enum(K.scrubberColor, d.scrubberColor),
-            playerTitleAlign = p.enum(K.playerTitleAlign, d.playerTitleAlign),
-            playerTitleSize = p.enum(K.playerTitleSize, d.playerTitleSize),
-            playerTitleScroll = p[K.playerTitleScroll] ?: d.playerTitleScroll,
-            playerTimes = p.enum(K.playerTimes, d.playerTimes),
             meshSpeed = p[K.meshSpeed] ?: d.meshSpeed,
             meshIntensity = p[K.meshIntensity] ?: d.meshIntensity,
-            playerBlur = p[K.playerBlur] ?: d.playerBlur,
-            canvasFillsBackground = p[K.canvasFillsBackground] ?: d.canvasFillsBackground,
             scrubberThickness = (p[K.scrubberThickness] ?: d.scrubberThickness).coerceIn(0.6f, 2f),
             scrubberThumb = p.enum(K.scrubberThumb, d.scrubberThumb),
             volumeMatchesProgress = p[K.volumeMatchesProgress] ?: d.volumeMatchesProgress,
-            playerHandle = p[K.playerHandle] ?: d.playerHandle,
             hideStatusBarPlayer = p[K.hideStatusBarPlayer] ?: d.hideStatusBarPlayer,
-            playerNavBand = p[K.playerNavBand] ?: d.playerNavBand,
             visualizer = p.enum(K.visualizer, d.visualizer),
             visualizerColor = p.enum(K.visualizerColor, d.visualizerColor),
             lyricsLook = LyricsLookPrefs(
                 style = p.enum(K.lyricsStyle, d.lyricsStyle),
                 // Until it's set, the strength follows the old switch: on is 1.7's blur, off none.
-                blurAmount = (p[K.lyricsBlurAmount] ?: if (p[K.lyricsBlur] ?: d.lyricsBlur) 1f else 0f).coerceIn(0f, 2f),
+                blurAmount = (p[K.lyricsBlurAmount] ?: if (p[K.lyricsBlur] ?: d.lyrics.blur) 1f else 0f).coerceIn(0f, 2f),
                 spacing = (p[K.lyricsSpacing] ?: d.lyricsSpacing).coerceIn(0.6f, 1.8f),
                 othersAlpha = (p[K.lyricsOthersAlpha] ?: d.lyricsOthersAlpha).coerceIn(0.2f, 1f),
                 sungColor = p.enum(K.lyricsSungColor, d.lyricsSungColor),
@@ -2457,28 +3054,10 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 halo = p[K.lyricsHalo],
                 boldLines = p[K.lyricsBoldLines],
             ),
-            lyricsStripAlign = p.enum(K.lyricsStripAlign, d.lyricsStripAlign),
-            lyricsStripTwoLines = p[K.lyricsStripTwoLines] ?: d.lyricsStripTwoLines,
             mergeLikedVideos = p[K.mergeLikedVideos] ?: d.mergeLikedVideos,
             hideStatusBar = p[K.hideStatusBar] ?: d.hideStatusBar,
             volumeControl = p.enum(K.volumeControl, d.volumeControl),
             appVolume = (p[K.appVolume] ?: d.appVolume).coerceIn(0f, 1f),
-            coverSwipeLeft = p.enum(K.coverSwipeLeft, d.coverSwipeLeft),
-            coverSwipeRight = p.enum(K.coverSwipeRight, d.coverSwipeRight),
-            coverSwipeUp = p.enum(K.coverSwipeUp, d.coverSwipeUp),
-            coverDoubleTap = p.enum(K.coverDoubleTap, d.coverDoubleTap),
-            coverLongPress = p.enum(K.coverLongPress, d.coverLongPress),
-            miniSwipeLeft = p.enum(K.miniSwipeLeft, d.miniSwipeLeft),
-            miniSwipeRight = p.enum(K.miniSwipeRight, d.miniSwipeRight),
-            miniSwipeDown = p.enum(K.miniSwipeDown, d.miniSwipeDown),
-            miniSwipeUp = p.enum(K.miniSwipeUp, d.miniSwipeUp),
-            libraryView = p.enum(K.libraryView, d.libraryView),
-            libraryViews = p[K.libraryViews]?.let(::parseLibraryViews) ?: d.libraryViews,
-            libraryColumns = p.enum(K.libraryColumns, d.libraryColumns),
-            librarySubtitles = p[K.librarySubtitles] ?: d.librarySubtitles,
-            libraryStartTab = p[K.libraryStartTab] ?: d.libraryStartTab,
-            libraryPlaylistsFirst = p[K.libraryPlaylistsFirst] ?: d.libraryPlaylistsFirst,
-            libraryTiles = p[K.libraryTiles]?.let { v -> if (v.isEmpty()) emptyList() else v.split(',').mapNotNull { n -> LibraryTile.entries.firstOrNull { it.name == n } } } ?: d.libraryTiles,
             playlistHeroCover = p[K.playlistHeroCover] ?: d.playlistHeroCover,
             frostedPages = p[K.frostedPages] ?: d.frostedPages,
             replayThemeColors = p[K.replayThemeColors] ?: d.replayThemeColors,
@@ -2511,7 +3090,22 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun lookAfter(values: Map<String, String>): Map<String, String> = lookOf(raw.toMutablePreferences().also { putLook(it, values) })
 
     /** The settings as they'd be with [values] as the Look, without changing anything (Look cards draw from it). */
-    fun previewLook(values: Map<String, String>): AppSettings = read(raw.toMutablePreferences().also { putLook(it, values) })
+    fun previewLook(values: Map<String, String>): AppSettings = previewLook(raw, values)
+
+    /** The same from the store as it was in [p]. */
+    fun previewLook(p: Preferences, values: Map<String, String>): AppSettings = read(p.toMutablePreferences().also { putLook(it, values) })
+
+    /**
+     * The store as one snapshot at a time (1.8.7.6): Looks tells which Look is on from it, [storedOf] against
+     * [previewLook] of the same snapshot, so Performance mode (which [flow] reads through) doesn't hide the Look.
+     */
+    val prefsNow: StateFlow<Preferences> = context.dataStore.data.stateIn(scope, SharingStarted.Eagerly, raw)
+
+    /** The settings as stored in [p] (as [stored] reads them). */
+    fun storedOf(p: Preferences): AppSettings = read(p)
+
+    /** The store as it is this moment (what [prefsNow] is about to hold). */
+    suspend fun prefsLatest(): Preferences = context.dataStore.data.first()
 
     /**
      * Makes [values] the Look in one edit, so the app redraws once. [fontChanged]: an imported font file was swapped in
@@ -2526,6 +3120,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     @Suppress("UNCHECKED_CAST")
     fun resetLookKeys(names: Collection<String>) = edit { p ->
         names.forEach { n -> lookKeysByName[n]?.let { p.remove(it as Preferences.Key<Any>) } }
+        putNewInstallLook(p, names)
     }
 
     // One write at a time, in the order they were asked for (1.8.0): a merged choice writes two or three keys with
@@ -2533,31 +3128,90 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     // dispatcher wasn't enough: an edit suspends inside DataStore and lets the next one start, so they could still land
     // out of order. One reader takes them off a queue and finishes each before the next (what's waiting by then goes in
     // the same edit, still in order).
-    private val writes = kotlinx.coroutines.channels.Channel<(MutablePreferences) -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    // editNow (a restore, a Look, a sign-in) waits its turn in the same queue (1.8.3.1): written straight to the store,
+    // a change still queued could land after it and undo part of it.
+    /** A change to the store; [done] when its caller waits for it to land ([editNow]). */
+    private class Write(val block: (MutablePreferences) -> Unit, val done: kotlinx.coroutines.CompletableDeferred<Unit>? = null)
+
+    /** An editNow's writer has stopped (its scope ended): the caller writes it itself. */
+    private class WriterGone : IllegalStateException()
+
+    private val writes = kotlinx.coroutines.channels.Channel<Write>(kotlinx.coroutines.channels.Channel.UNLIMITED)
 
     init {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            for (first in writes) {
-                val batch = mutableListOf(first)
-                while (true) batch += writes.tryReceive().getOrNull() ?: break
-                runCatching { context.dataStore.edit { p -> batch.forEach { b -> runCatching { b(p) } } } }
-                    .onFailure { android.util.Log.w("VinzSettings", "a settings write failed", it) }
+        val job = scope.launch(writer) {
+            // An editNow taken off the queue while gathering a batch: written after the batch.
+            var next: Write? = null
+            try {
+                while (true) {
+                    val first = next ?: writes.receive()
+                    next = null
+                    val done = first.done
+                    if (done != null) {
+                        // In an edit of its own: its caller hears how it went, and a failing one writes none of itself.
+                        try {
+                            context.dataStore.edit { first.block(it) }
+                            done.complete(Unit)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            done.completeExceptionally(WriterGone()); throw e
+                        } catch (e: Throwable) {
+                            done.completeExceptionally(e)
+                        }
+                        continue
+                    }
+                    val batch = mutableListOf(first.block)
+                    while (true) {
+                        val w = writes.tryReceive().getOrNull() ?: break
+                        if (w.done != null) { next = w; break }
+                        batch += w.block
+                    }
+                    runCatching { context.dataStore.edit { p -> batch.forEach { b -> runCatching { b(p) } } } }
+                        .onFailure { android.util.Log.w("VinzSettings", "a settings write failed", it) }
+                }
+            } finally {
+                next?.done?.completeExceptionally(WriterGone())
             }
         }
+        // Once the writer has stopped (also when it never started), nobody waits on it.
+        job.invokeOnCompletion {
+            writes.close()
+            while (true) {
+                val w = writes.tryReceive().getOrNull() ?: break
+                w.done?.completeExceptionally(WriterGone())
+            }
+        }
+        // #378: photos saved under a translated word get their right name back, for everything that reads them
+        // (Looks, Performance mode, backups). Only writes when there's one to put right.
+        val fix = com.vinz.music.data.looks.Backgrounds::photoKeyFixed
+        raw[K.backdrops]?.let { saved ->
+            val map = runCatching { json.decodeFromString<Map<String, String>>(saved) }.getOrNull() ?: return@let
+            val fixed = map.mapValues { fix(it.value) }
+            if (fixed != map) edit { it[K.backdrops] = json.encodeToString<Map<String, String>>(fixed) }
+        }
+        raw[K.homeHeaderPicture]?.let { saved -> if (fix(saved) != saved) edit { it[K.homeHeaderPicture] = fix(saved) } }
     }
 
     private fun edit(block: (MutablePreferences) -> Unit) {
-        writes.trySend(block)
+        writes.trySend(Write(block))
     }
 
+    /**
+     * A change that's in the store when this returns, after everything asked for before it (a restore, a Look, a
+     * sign-in). A [block] that throws writes nothing and its error comes back here.
+     */
     suspend fun editNow(block: (MutablePreferences) -> Unit) {
+        val w = Write(block, kotlinx.coroutines.CompletableDeferred())
+        if (writes.trySend(w).isSuccess) {
+            try { w.done!!.await(); return } catch (gone: WriterGone) { /* written below */ }
+        }
+        // The writer has stopped (its scope ended; Robolectric ends the app's after each test): straight to the store.
         context.dataStore.edit { block(it) }
     }
 
     // ---- Backups that hold only some parts (1.7.8, #149): settings and the sign-in share this store.
 
     /** The YouTube Music sign-in's own settings (a backup's "Accounts"). */
-    private val accountKeys = setOf("cookie", "visitor_data", "data_sync_id", "auth_user", "account_name", "account_email", "account_avatar")
+    private val accountKeys = setOf("cookie", "visitor_data", "data_sync_id", "auth_user", "account_name", "account_email", "account_avatar", "account_saved_at")
 
     /** Every setting now, as tagged text by name: the settings ([settings]) and/or the sign-in ([accounts]). */
     suspend fun forBackup(settings: Boolean, accounts: Boolean): Map<String, String> =
@@ -2581,7 +3235,46 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         }
     }
 
-    fun setOnboarded(v: Boolean) = edit { it[K.onboarded] = v }
+    /**
+     * A new install comes with Canvas using music videos (owner, 2026-11-13: without them Canvas shows nothing for most
+     * songs). Someone updating from before 1.8.6 never passes here: they are asked once in the player ([canvasVideosAnswered]).
+     * The same goes for the rest of a new install's own defaults ([NewInstall]).
+     *
+     * 1.8.7.6: only on the first run (nothing stored as onboarded yet). Every sign-in calls this too, and since 1.0 a
+     * sign-in has stored onboarded, so someone set up before 1.8.6 who signs in later is not given them unasked. The
+     * marker ([K.newInstallLook]) makes them part of how Vinz comes here, and Looks is told before the change can be
+     * seen ([onFirstRunLook]), so it is not kept in History as the listener's own.
+     */
+    fun setOnboarded(v: Boolean) = edit {
+        val firstRun = v && it[K.onboarded] != true
+        it[K.onboarded] = v
+        if (!firstRun) return@edit
+        val lookBefore = lookOf(it)
+        if (it[K.canvasUseVideos] == null) it[K.canvasUseVideos] = true
+        // The rest of a new install's own defaults (owner, 2026-11-13), each only where nothing was ever stored.
+        for (name in NewInstall.on + NewInstall.motion) booleanPreferencesKey(name).let { k -> if (it[k] == null) it[k] = true }
+        it[K.newInstallLook] = true
+        val lookAfter = lookOf(it)
+        if (lookAfter != lookBefore) onFirstRunLook?.let { tell -> runCatching { tell(lookAfter) } }
+    }
+
+    /**
+     * Told the look settings the first run leaves ([setOnboarded]) inside its write, so before the change can be read:
+     * Looks (`LookStore`) takes it as Vinz's own, not a change of the listener's.
+     */
+    @Volatile var onFirstRunLook: ((Map<String, String>) -> Unit)? = null
+
+    /** Whether [repairNewInstallLook] is still to run on this phone. */
+    val newInstallLookRepairDue: Boolean get() = raw[newInstallLookRepaired] != true
+
+    /**
+     * Once (1.8.7.6): a phone set up on 1.8.6 to 1.8.7.5 got a new install's own defaults without [K.newInstallLook], so
+     * Looks said "your own mix" from the start. It gets the marker when it is onboarded and its first run's values are
+     * there (all on) or Looks found the first run's step in History ([firstRunSeen]).
+     */
+    fun repairNewInstallLook(firstRunSeen: Boolean) = edit { markNewInstallLook(it, firstRunSeen, newInstallLookNames) }
+    /** Whether "Use music videos" was ever decided on this phone (by the first run, the question, or the switch). */
+    val canvasVideosAnswered: Boolean get() = raw[K.canvasUseVideos] != null
 
     /** Once (1.7): Home layouts saved before "Made for you" and "New releases" existed get them, after Quick picks. */
     fun addNewHomeSections() = edit { p ->
@@ -2610,9 +3303,34 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         // The holiday mixes' section (1.8.0), after Quick picks: it only shows in November and December.
         once("home_holiday_1_8") { HomeSections.withNewSections(it, listOf(HomeSectionConfig(HomeSections.SEASONAL, "Holiday music"))) }
         keepSmartDownloads(p)
+        splitLyricsOnPhone(p)
     }
 
     companion object {
+        private val lyricsOnPhoneSplit = booleanPreferencesKey("car_lyrics_on_phone_split_184")
+
+        private val newInstallLookRepaired = booleanPreferencesKey("new_install_look_repaired_1876")
+
+        /** [repairNewInstallLook]'s rule, once per store (a restored backup from before it brings the repair back). */
+        internal fun markNewInstallLook(p: MutablePreferences, firstRunSeen: Boolean, names: Collection<String>) {
+            if (p[newInstallLookRepaired] == true) return
+            if (p[K.onboarded] == true && p[K.newInstallLook] != true && (firstRunSeen || names.all { p[booleanPreferencesKey(it)] == true })) {
+                p[K.newInstallLook] = true
+            }
+            p[newInstallLookRepaired] = true
+        }
+
+        /**
+         * Once (#392, 1.8.4): lyrics in the notification no longer need "Lyrics in the car". Someone who had "On this
+         * phone too" on under a car switch that's off saw no lyrics: theirs is turned off, so nothing changes for them
+         * until they turn the new row on. With the car switch on (or never touched: it's on by default) it stays.
+         */
+        internal fun splitLyricsOnPhone(p: MutablePreferences) {
+            if (p[lyricsOnPhoneSplit] == true) return
+            if (p[K.carLyricsOnPhone] == true && p[K.carLyrics] == false) p[K.carLyricsOnPhone] = false
+            p[lyricsOnPhoneSplit] = true
+        }
+
         private val smartDownloadsKept = booleanPreferencesKey("smart_downloads_kept_1811")
 
         /**
@@ -2635,6 +3353,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         it[K.dataSyncId] = dataSyncId
         // A fresh sign-in is the session's first Google account.
         it[K.authUser] = 0
+        it[K.accountSavedAt] = System.currentTimeMillis()
     }
 
     fun saveAccountInfo(name: String, email: String?, avatar: String?) = edit {
@@ -2647,7 +3366,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     suspend fun saveIdentity(authUser: Int, dataSyncId: String, cookie: String? = null) = editNow {
         it[K.authUser] = authUser
         it[K.dataSyncId] = dataSyncId
-        if (cookie != null) it[K.cookie] = cookie
+        if (cookie != null) { it[K.cookie] = cookie; it[K.accountSavedAt] = System.currentTimeMillis() }
     }
 
     fun setVisitorData(v: String) = edit { it[K.visitorData] = v }
@@ -2666,6 +3385,13 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setFrostedGlass(v: Boolean) = edit { it[K.frostedGlass] = v; if (v) it[K.liquidGlass] = false }
     fun setHaptics(v: Boolean) = edit { it[K.haptics] = v }
     fun setGlassKind(v: GlassKind) = edit { it[K.glassKind] = v.name }
+    /** A glass choice in one write, so Undo takes all of it back: as separate writes it could leave the kind behind. */
+    fun setGlassChoice(liquid: Boolean, kind: GlassKind?, frosted: Boolean?) = edit { p ->
+        kind?.let { p[K.glassKind] = it.name }
+        frosted?.let { p[K.frostedGlass] = it }
+        p[K.liquidGlass] = liquid
+        if (liquid) p[K.frostedGlass] = false
+    }
     fun setLightStyle(v: LightStyle) = edit { it[K.lightStyle] = v.name }
     fun setAccentExact(v: Boolean) = edit { it[K.accentExact] = v }
     fun setAccentLight(v: Int) = edit { it[K.accentLight] = v }
@@ -2701,7 +3427,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setCanvasOnCellular(v: Boolean) = edit { it[K.canvasOnCellular] = v }
     fun setHideVolumeBar(v: Boolean) = edit { it[K.hideVolumeBar] = v }
     fun setShowPlayingFrom(v: Boolean) = edit { it[K.showPlayingFrom] = v }
-    fun setShowNextTrack(v: Boolean) = edit { it[K.showNextTrack] = v }
     fun setSpatial(v: Boolean) = edit { it[K.spatial] = v }
     fun setSpatialAmount(v: Float) = edit { it[K.spatialAmount] = v }
     fun setLyricsBlur(v: Boolean) = edit { it[K.lyricsBlur] = v }
@@ -2764,7 +3489,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setLosslessLocal(v: Boolean) = edit { it[K.losslessLocal] = v }
     fun setNormalize(v: Boolean) = edit { it[K.normalize] = v }
     fun setMix(v: Boolean) = edit { it[K.mix] = v }
-    fun setMixSeconds(v: Int) = edit { it[K.mixSeconds] = v.coerceIn(1, 12) }
+    fun setMixSeconds(v: Int) = edit { it[K.mixSeconds] = v.coerceIn(1, MAX_CROSSFADE_SECONDS) }
     fun setMixAuto(v: Boolean) = edit { it[K.mixAuto] = v }
     fun setMixBeatMatch(v: Boolean) = edit { it[K.mixBeatMatch] = v }
     fun setMixKeepAlbums(v: Boolean) = edit { it[K.mixKeepAlbums] = v }
@@ -2813,10 +3538,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setTextScale(v: Float) = edit { it[K.textScale] = v }
     /** A corners step: the slider goes back to following it. */
     fun setCorners(v: Corners) = edit { it[K.corners] = v.name; it.remove(K.cornerScale) }
-    fun setCornerScale(v: Float) {
-        if (!v.isFinite()) return
-        edit { it[K.cornerScale] = v.coerceIn(0f, 2f) }
-    }
+    fun setCornerScale(v: Float) = edit { it[K.cornerScale] = v.coerceIn(0f, 2f) }
     fun setCoverShape(which: String, v: CoverShape) = edit { p ->
         val key = when (which) { "songs" -> K.songShape; "albums" -> K.albumShape; "artists" -> K.artistShape; "player" -> K.playerShape; else -> return@edit }
         p[key] = v.name
@@ -2838,7 +3560,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
-    fun setExperimentalSplitNavigation(v: Boolean) = edit { it[K.experimentalSplitNavigation] = v }
     fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name } }
     /** A tab's own name; blank gives it back its own. */
     fun setTabName(tab: NavTab, name: String) = edit {
@@ -2937,6 +3658,17 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setBleedFit(v: BleedFit) = edit { it[K.bleedFit] = v.name }
     fun setCoverFlight(v: Boolean) = edit { it[K.coverFlight] = v }
     fun setVideoControlsHide(v: Boolean) = edit { it[K.videoControlsHide] = v }
+    fun setCoverFlightBack(v: Boolean) = edit { it[K.coverFlightBack] = v }
+    fun setVideoButtonsHide(v: Boolean) = edit { it[K.videoButtonsHide] = v }
+    fun setBleedRoomy(v: Boolean) = edit { it[K.bleedRoomy] = v }
+    fun setQueueLengths(v: Boolean) = edit { it[K.queueLengths] = v }
+    fun setQueuePlayedMoves(v: Boolean) = edit { it[K.queuePlayedMoves] = v }
+    fun setQueueTidy(v: Boolean) = edit { it[K.queueTidy] = v }
+    fun setAutoplayMaxMinutes(v: Int) = edit { it[K.autoplayMaxMinutes] = v.coerceIn(0, com.vinz.music.data.AutoplayLength.MAX_MINUTES) }
+    fun setNoVideoOnData(v: Boolean) = edit { it[K.noVideoOnData] = v }
+    fun setGesturesUnderLyrics(v: Boolean) = edit { it[K.gesturesUnderLyrics] = v }
+    fun setPlayerRemembersPage(v: Boolean) = edit { it[K.playerRemembersPage] = v }
+    fun setLyricsSteady(v: Boolean) = edit { it[K.lyricsSteady] = v }
     fun setLockPortrait(v: Boolean) = edit { it[K.lockPortrait] = v }
     fun setGesturesEverywhere(v: Boolean) = edit { it[K.gesturesEverywhere] = v }
     fun setPageSlide(v: Boolean) = edit { it[K.pageSlide] = v }
@@ -2955,9 +3687,27 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setPipMode(v: PipMode) = edit { it[K.pipMode] = v.name }
     fun setPanelSwipes(v: Boolean) = edit { it[K.panelSwipes] = v }
     fun setRecentShows(v: RecentShows) = edit { it[K.recentShows] = v.name }
+    fun setQuickPicksSource(v: QuickPicksSource) = edit { it[K.quickPicksSource] = v.name }
+    fun setSpeedDialYoursFirst(v: Boolean) = edit { it[K.speedDialYoursFirst] = v }
+    fun setAutoplayNoRepeats(v: Boolean) = edit { it[K.autoplayNoRepeats] = v }
+    fun setRadioTune(v: com.vinz.music.data.foryou.RadioTune) = edit {
+        it[K.radioNewness] = v.newness
+        it[K.radioDepth] = v.depth
+        it[K.radioEnergy] = v.energy
+    }
+    fun setEmbeddedLyrics(v: Boolean) = edit { it[K.embeddedLyrics] = v }
+    fun setLocalSkipFolders(v: Set<String>) = edit { it[K.localSkipFolders] = v.joinToString("\n") }
+    /** One at a time, read in the same edit, so quick ticks in a row don't undo one another. */
+    fun setKeptPlaylist(key: String, keep: Boolean) = edit {
+        val now = it[K.keptPlaylists]?.split('\n')?.filter { k -> k.isNotBlank() }?.toSet().orEmpty()
+        it[K.keptPlaylists] = (if (keep) now + key else now - key).joinToString("\n")
+    }
     fun setQueueLocked(v: Boolean) = edit { it[K.queueLocked] = v }
     fun setScrollShowsControls(v: Boolean) = edit { it[K.scrollShowsControls] = v }
     fun setPlaylistGenres(v: Boolean) = edit { it[K.playlistGenres] = v }
+    fun setArtistBio(v: Boolean) = edit { it[K.artistBio] = v }
+    fun setArtistYou(v: Boolean) = edit { it[K.artistYou] = v }
+    fun setArtistEssentials(v: Boolean) = edit { it[K.artistEssentials] = v }
     fun setScreenFades(v: Boolean) = edit { it[K.screenFades] = v }
     fun setCrossfadeMark(v: Boolean) = edit { it[K.crossfadeMark] = v }
     fun setBlendCovers(v: Boolean) = edit { it[K.blendCovers] = v }
@@ -2969,10 +3719,79 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setExplicitContent(v: ExplicitContent) = edit { it[K.explicitContent] = v.name }
     fun setReplayGraph(v: ReplayGraph) = edit { it[K.replayGraph] = v.name }
     fun setReplayStoryFont(v: Boolean) = edit { it[K.replayStoryFont] = v }
+    fun setGlassBlur(v: Float) = edit { it[K.glassBlur] = v }
+    fun setGlassFrost(v: Float) = edit { it[K.glassFrost] = v }
+    fun setGlassMore(v: Boolean) = edit { it[K.glassMore] = v }
+    fun setGradientDepth(v: Float) = edit { it[K.gradientDepth] = v }
     /** #296: history paused until [until] (0: on again). */
     fun setHistoryPausedUntil(until: Long) = edit { if (until > 0) it[K.historyPausedUntil] = until else it.remove(K.historyPausedUntil) }
     fun setPlayCountSeconds(v: Int) = edit { it[K.playCountSeconds] = v.coerceIn(0, 600) }
     fun setPlayCountOnAccount(v: Boolean) = edit { it[K.playCountOnAccount] = v }
+    fun setLockScreen(v: Boolean) = edit { it[K.lockScreen] = v }
+    fun setLockScreenLayout(v: LockLayout) = edit { it[K.lockScreenLayout] = v.name }
+    fun setLockScreenVolume(v: Boolean) = edit { it[K.lockScreenVolume] = v }
+    fun setLockScreenLike(v: Boolean) = edit { it[K.lockScreenLike] = v }
+    fun setLockScreenOutput(v: Boolean) = edit { it[K.lockScreenOutput] = v }
+    fun setLockScreenRepeat(v: Boolean) = edit { it[K.lockScreenRepeat] = v }
+    fun setLockScreenUpNext(v: Boolean) = edit { it[K.lockScreenUpNext] = v }
+    fun setLockScreenPaused(v: LockPaused) = edit { it[K.lockScreenPaused] = v.name }
+    fun setLockScreenHideSong(v: Boolean) = edit { it[K.lockScreenHideSong] = v }
+    // 1.8.4 (#406, #404, #416, D57, PR #400, D54, D53, D55).
+    fun setRowSwipes(v: Boolean) = edit { it[K.rowSwipes] = v }
+    fun setLyricsOffsetMs(v: Int) = edit { it[K.lyricsOffsetMs] = v.coerceIn(BehaviorPrefs.LYRICS_OFFSET_MS) }
+    fun setKeepShuffle(v: Boolean) = edit { it[K.keepShuffle] = v }
+    fun setRecapNotify(v: Boolean) = edit { it[K.recapNotify] = v }
+    fun setMilestoneNotify(v: Boolean) = edit { it[K.milestoneNotify] = v }
+    fun setFinishLyric(v: Boolean) = edit { it[K.finishLyric] = v }
+    fun setFaceDownPause(v: Boolean) = edit { it[K.faceDownPause] = v }
+    fun setLyricsCoverPlays(v: Boolean) = edit { it[K.lyricsCoverPlays] = v }
+    fun setSmoothScrolling(v: Boolean) = edit { it[K.smoothScrolling] = v }
+    fun setSupported(v: Boolean) = edit { it[K.supported] = v }
+    // 1.8.6 Canvas ([CanvasPrefs]).
+    fun setCanvasCovers(v: Boolean) = edit { it[K.canvasCovers] = v }
+    fun setCanvasUseVideos(v: Boolean) = edit { it[K.canvasUseVideos] = v }
+
+    /**
+     * Settings' "Animated covers" and "Canvas" switches ([CanvasKinds]), in one write: Canvas on while either is on, and
+     * then both flags as asked; both off turns Canvas off and leaves the two flags as stored. [covers] or [videos] null:
+     * that one as it shows now, read in the same write (so two calls in a row, as "Reset this page" makes, never race).
+     */
+    fun setCanvasKinds(covers: Boolean? = null, videos: Boolean? = null) = edit { p ->
+        val d = AppSettings()
+        val was = CanvasStored(p[K.canvasEnabled] ?: d.behavior.canvas.enabled, p[K.canvasCovers] ?: d.behavior.canvas.covers, p[K.canvasUseVideos] ?: d.behavior.canvas.useVideos)
+        val now = CanvasKinds.shown(was)
+        val want = CanvasKinds(covers ?: now.covers, videos ?: now.videos)
+        val to = want.toStored(was)
+        p[K.canvasEnabled] = to.enabled
+        if (want.any) {
+            p[K.canvasCovers] = to.covers
+            p[K.canvasUseVideos] = to.videos
+        }
+    }
+    fun setCanvasVideoFirst(v: Boolean) = edit { it[K.canvasVideoFirst] = v }
+    fun setCanvasKeepControls(v: Boolean) = edit { it[K.canvasKeepControls] = v }
+    fun setCanvasLyrics(v: Boolean) = edit { it[K.canvasLyrics] = v }
+    fun setCanvasLighter(v: Boolean) = edit { it[K.canvasLighter] = v }
+    fun setCanvasVideosOnCellular(v: Boolean) = edit { it[K.canvasVideosCellular] = v }
+    /** 1.8.7.6, the switch in Canvas's sheet: set by hand, the one-time offer is never shown again. */
+    fun setCanvasSpotifyFirst(v: Boolean) = edit { it[K.canvasSpotifyFirst] = v; it[K.canvasSpotifyOffered] = true }
+    /**
+     * 1.8.7.6, the one-time offer after a Spotify sign-in: "Turn on" ([turnOn]) sets the switch; either answer means it
+     * is never offered again. (Not a setter: the switch's one home is Canvas's sheet on Player.)
+     */
+    fun answerSpotifyCanvasOffer(turnOn: Boolean) = edit {
+        if (turnOn) it[K.canvasSpotifyFirst] = true
+        it[K.canvasSpotifyOffered] = true
+    }
+    fun setShuffleButton(v: ShuffleButton) = edit { it[K.shuffleButton] = v.name }
+    fun setCarLyricsLines(v: CarLyricsLines) = edit { it[K.carLyricsLines] = v.name }
+    fun setLocatePlaying(v: Boolean) = edit { it[K.locatePlaying] = v }
+    fun setLockScreenPlayerLook(v: Boolean) = edit { it[K.lockScreenPlayerLook] = v }
+    /** D55: both switches in one edit ([FullWidthPictures]). */
+    fun setFullWidthPictures(v: FullWidthPictures) = edit {
+        it[K.playlistHeroCover] = v != FullWidthPictures.OFF
+        it[K.albumHeroCover] = v == FullWidthPictures.ALBUMS_AND_PLAYLISTS
+    }
 
     // 1.8.0 player editor
     /** A comma-separated set of names (unknown ones skipped): a Look or backup from a later Vinz still opens. */
@@ -3073,5 +3892,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
 
     /** Puts every look & layout option back to how Vinz ships (colors and backgrounds are left alone). */
     @Suppress("UNCHECKED_CAST")
-    fun resetLook() = edit { p -> K.look.forEach { p.remove(it as Preferences.Key<Any>) } }
+    fun resetLook() = edit { p ->
+        K.look.forEach { p.remove(it as Preferences.Key<Any>) }
+        putNewInstallLook(p, K.look.map { it.name })
+    }
 }

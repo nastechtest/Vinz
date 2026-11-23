@@ -77,9 +77,11 @@ class WebRemote(private val app: Application, private val c: AppContainer) : Rem
         override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
         override fun remove(key: String) = prefs.edit().remove(key).apply()
     })
-    // The page's files; its font is Vinz's own Outfit, straight from the app (nothing is fetched from the internet).
+    // The page's files; its font is Vinz's own Outfit, bundled as a web asset (nothing is fetched from the internet).
     private val server = RemoteServer(auth, this, { name ->
-        runCatching { app.assets.open("remote/$name").use { it.readBytes() } }.getOrNull()
+        runCatching {
+            app.assets.open("remote/$name").use { it.readBytes() }
+        }.getOrNull()
     })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }

@@ -80,8 +80,8 @@ object KeyDetector {
     private const val BASS_WEIGHT = 0.6
 
     /** The key, or null when the audio is too short or has no clear notes. */
-    fun detect(pcm: FloatArray, rate: Int): MusicKey? {
-        val chroma = chroma(pcm, rate) ?: return null
+    fun detect(pcm: FloatArray, rate: Int, count: Int = pcm.size): MusicKey? {
+        val chroma = chroma(pcm, rate, count) ?: return null
         return best(chroma)
     }
 
@@ -122,47 +122,54 @@ object KeyDetector {
         return if (dc <= 0 || dp <= 0) 0.0 else num / sqrt(dc * dp)
     }
 
-    /** The song's chromagram (C … B), or null when it's too short or nothing in it is a note. */
-    fun chroma(pcm: FloatArray, rate: Int): DoubleArray? {
+    /**
+     * The song's chromagram (C … B) from the first [count] samples, or null when it's too short or nothing in it is a note.
+     *
+     * The frames' spectra live side by side in one array, whitened in place: three arrays a frame (2,000 of 12 KB each,
+     * all large objects, for a 4-minute song) were most of a scan's garbage on Android (#373's log).
+     */
+    fun chroma(pcm: FloatArray, rate: Int, count: Int = pcm.size): DoubleArray? {
         var n = 1
         while (n * 2 <= rate * 0.75) n *= 2
         n *= 2
         val hop = n / 2
-        if (pcm.size < n * 8) return null
+        if (count < n * 8) return null
         val fft = Fft(n)
         val window = DoubleArray(n) { 0.5 - 0.5 * cos(2 * PI * it / n) }
         val df = rate.toDouble() / n
         val lo = (LOW_HZ / df).toInt().coerceAtLeast(1)
         val hi = minOf((HIGH_HZ / df).toInt(), n / 2 - 2)
         val re = DoubleArray(n); val im = DoubleArray(n)
-        val frames = (pcm.size - n) / hop + 1
-        val spectra = ArrayList<DoubleArray>(frames)
+        val frames = (count - n) / hop + 1
+        val width = hi + 2
+        val spectra = DoubleArray(frames * width)
         val energies = DoubleArray(frames)
         for (f in 0 until frames) {
             val at = f * hop
             for (i in 0 until n) { re[i] = pcm[at + i] * window[i]; im[i] = 0.0 }
             fft.transform(re, im)
-            val mag = DoubleArray(hi + 2)
+            val row = f * width
             var e = 0.0
-            for (k in 0..hi + 1) { mag[k] = sqrt(re[k] * re[k] + im[k] * im[k]); e += mag[k] * mag[k] }
-            spectra += mag; energies[f] = e
+            for (k in 0 until width) { val m = sqrt(re[k] * re[k] + im[k] * im[k]); spectra[row + k] = m; e += m * m }
+            energies[f] = e
         }
         // Quiet frames (silence, fades) say nothing about the key.
-        val loud = energies.sorted()[frames / 2] * 0.05
+        val loud = energies.sortedArray()[frames / 2] * 0.05
         // Whitening: each bin against its neighbourhood (a third of an octave), so peaks count, not the overall tilt.
-        val white = spectra.mapIndexed { f, mag ->
-            if (energies[f] < loud) null else DoubleArray(mag.size).also { w ->
-                val prefix = DoubleArray(mag.size + 1)
-                for (k in mag.indices) prefix[k + 1] = prefix[k] + mag[k]
-                for (k in lo..hi) {
-                    val half = maxOf(2, (k * 0.12).roundToInt())
-                    val a = maxOf(0, k - half); val b = minOf(mag.size - 1, k + half)
-                    val mean = (prefix[b + 1] - prefix[a]) / (b - a + 1)
-                    w[k] = (mag[k] - mean).coerceAtLeast(0.0)
-                }
+        val prefix = DoubleArray(width + 1)
+        for (f in 0 until frames) {
+            if (energies[f] < loud) continue
+            val row = f * width
+            for (k in 0 until width) prefix[k + 1] = prefix[k] + spectra[row + k]
+            for (k in 0 until width) {
+                if (k < lo || k > hi) { spectra[row + k] = 0.0; continue }
+                val half = maxOf(2, (k * 0.12).roundToInt())
+                val a = maxOf(0, k - half); val b = minOf(width - 1, k + half)
+                val mean = (prefix[b + 1] - prefix[a]) / (b - a + 1)
+                spectra[row + k] = (spectra[row + k] - mean).coerceAtLeast(0.0)
             }
         }
-        val tuning = tuningCents(white, df, lo, hi)
+        val tuning = tuningCents(spectra, energies, loud, width, df, lo, hi)
         // Each bin's note and weight. Higher notes in an octave cover more bins than lower ones (the FFT's bins are
         // evenly spaced in Hz), so each note's share is divided by its bins' total weight: noise comes out flat.
         val pcOf = IntArray(hi + 1) { -1 }
@@ -177,11 +184,13 @@ object KeyDetector {
             if (k * df < BASS_TOP_HZ) coverB[pcOf[k]] += weight else coverT[pcOf[k]] += weight
         }
         val bass = DoubleArray(12); val treble = DoubleArray(12)
-        for (w in white) {
-            if (w == null) continue
-            val fb = DoubleArray(12); val ft = DoubleArray(12)
+        val fb = DoubleArray(12); val ft = DoubleArray(12)
+        for (f in 0 until frames) {
+            if (energies[f] < loud) continue
+            val row = f * width
+            fb.fill(0.0); ft.fill(0.0)
             for (k in lo..hi) {
-                val v = w[k]
+                val v = spectra[row + k]
                 val pc = pcOf[k]
                 if (v <= 0 || pc < 0) continue
                 if (k * df < BASS_TOP_HZ) fb[pc] += v * wOf[k] / coverB[pc] else ft[pc] += v * wOf[k] / coverT[pc]
@@ -197,20 +206,21 @@ object KeyDetector {
     }
 
     /** How far (cents, −50…50) the recording sits from A = 440 Hz, from where its spectral peaks fall. */
-    private fun tuningCents(white: List<DoubleArray?>, df: Double, lo: Int, hi: Int): Double {
+    private fun tuningCents(white: DoubleArray, energies: DoubleArray, loud: Double, width: Int, df: Double, lo: Int, hi: Int): Double {
         var x = 0.0; var y = 0.0
-        for (w in white) {
-            if (w == null) continue
+        for (f in energies.indices) {
+            if (energies[f] < loud) continue
+            val row = f * width
             for (k in maxOf(lo, 2)..hi - 1) {
-                val v = w[k]
-                if (v <= 0 || v < w[k - 1] || v < w[k + 1]) continue
+                val v = white[row + k]
+                if (v <= 0 || v < white[row + k - 1] || v < white[row + k + 1]) continue
                 // The peak's true frequency, between bins (parabolic).
-                val a = w[k - 1]; val c = w[k + 1]
+                val a = white[row + k - 1]; val c = white[row + k + 1]
                 val denom = a - 2 * v + c
                 val shift = if (denom != 0.0) 0.5 * (a - c) / denom else 0.0
-                val f = (k + shift) * df
-                if (f < 100) continue
-                val cents = 1200 * ln(f / 440.0) / ln(2.0)
+                val freq = (k + shift) * df
+                if (freq < 100) continue
+                val cents = 1200 * ln(freq / 440.0) / ln(2.0)
                 val angle = 2 * PI * cents / 100
                 x += v * cos(angle); y += v * sin(angle)
             }

@@ -2,11 +2,11 @@ package com.vinz.music.data
 
 import android.content.SharedPreferences
 import androidx.room.withTransaction
-import com.vinz.music.data.db.GenreEntity
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.SongEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.GenreEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.SongEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.foryou.Excluded
 import com.vinz.music.playback.together.fromPeer
 import kotlinx.serialization.Serializable
@@ -94,7 +94,7 @@ object BringOver {
     // ------------------------------------------------------------ The phone's side
 
     /** The phone's listening and preferences, without its files. */
-    suspend fun collect(db: VinzDatabase, prefs: (String) -> SharedPreferences, library: String?, look: String?): BringContent {
+    suspend fun collect(db: PrismDatabase, prefs: (String) -> SharedPreferences, library: String?, look: String?): BringContent {
         val plays = db.plays().events(0, Long.MAX_VALUE).filter { !isLocal(it.songId) }
         val liked = db.songs().liked().filter { !isLocal(it.id) }
         val songs = LinkedHashMap<String, SongEntity>()
@@ -135,7 +135,7 @@ object BringOver {
      * Merges [content] in. The database's part is one transaction (all of it, or none); preferences and playlists after
      * it. [library] is the TV's own; [prefs] opens its saved preferences by name.
      */
-    suspend fun merge(content: BringContent, db: VinzDatabase, prefs: (String) -> SharedPreferences, library: VinzLibrary?): BringMerged {
+    suspend fun merge(content: BringContent, db: PrismDatabase, prefs: (String) -> SharedPreferences, library: VinzLibrary?): BringMerged {
         val history = mergeHistory(db, content.history)
         var changedPrefs = 0
         for ((name, theirs) in content.prefs) {
@@ -153,7 +153,7 @@ object BringOver {
     }
 
     /** Songs, likes and plays into [db]: one transaction. */
-    suspend fun mergeHistory(db: VinzDatabase, h: BringHistory): BringMerged {
+    suspend fun mergeHistory(db: PrismDatabase, h: BringHistory): BringMerged {
         val songs = h.songs.mapNotNull(::clean).distinctBy { it.id }
         val known = songs.map { it.id }.toHashSet()
         val plays = h.plays.mapNotNull { p ->

@@ -2,10 +2,10 @@ package com.vinz.music
 
 import android.content.Context
 import androidx.room.Room
-import com.vinz.music.data.db.ImportSummary
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.ImportSummary
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.imports.CountSources
 import com.vinz.music.data.imports.CountedPlays
 import com.vinz.music.data.imports.HistoryDiff
@@ -32,6 +32,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.time.Instant
 import java.time.ZoneId
+import org.junit.experimental.categories.Category
 
 /**
  * YouTube Music (live) (1.8.1): what's new between two reads of the account's History page (FEmusic_history, answered by
@@ -40,9 +41,10 @@ import java.time.ZoneId
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
+@Category(LiveNetwork::class)
 class YouTubeLiveTest {
     private val app = RuntimeEnvironment.getApplication()
-    private val db = Room.inMemoryDatabaseBuilder(app, VinzDatabase::class.java).allowMainThreadQueries().build()
+    private val db = Room.inMemoryDatabaseBuilder(app, PrismDatabase::class.java).allowMainThreadQueries().build()
     private val importer = HistoryImporter(db)
     private val prefs = app.getSharedPreferences(YouTubeLive.PREFS, Context.MODE_PRIVATE)
     private val utc = ZoneId.of("UTC")
@@ -224,7 +226,7 @@ class YouTubeLiveTest {
         now += 3_600_000L
         page = historyPage("Today" to listOf("x", "a", "b", "c"))
         // Storing fails (a closed database here): the read before stays the one to compare with.
-        val gone = Room.inMemoryDatabaseBuilder(app, VinzDatabase::class.java).allowMainThreadQueries().build().also { it.close() }
+        val gone = Room.inMemoryDatabaseBuilder(app, PrismDatabase::class.java).allowMainThreadQueries().build().also { it.close() }
         val failing = YouTubeLive(prefs, db, HistoryImporter(gone), read = { yt.ytm.historySections() }, account = { account }, jobs = jobs, clock = { now }, zone = { utc })
         assertTrue(runCatching { failing.sync() }.isFailure)
         assertEquals("kept", first, live().snapshot())

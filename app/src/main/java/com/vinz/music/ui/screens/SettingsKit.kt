@@ -43,6 +43,7 @@ import com.vinz.music.ui.theme.hairline
 import com.vinz.music.ui.theme.ink3
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
@@ -86,31 +87,6 @@ fun Group(title: String, info: String? = null, content: @Composable ColumnScope.
             InfoText(open && info != null, info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             content()
         }
-    }
-}
-
-/**
- * The less-used groups of a page, folded away under one row that names them (1.7.6: pages had a dozen groups each).
- * It opens by itself when Settings search leads to one of [groups].
- */
-@Composable
-fun MoreOptions(groups: List<String>, content: @Composable () -> Unit) {
-    val found = LocalSettingsFind.current in groups
-    var open by androidx.compose.runtime.saveable.rememberSaveable(groups.joinToString(), "more") { androidx.compose.runtime.mutableStateOf(found) }
-    val ui = LocalUi.current
-    Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(22.dp)) {
-        Row(
-            Modifier.fillMaxWidth().clip(ui.card).pane(ui.card).clickable(onClickLabel = if (open) tr(R.string.show_fewer_options) else tr(R.string.show_more_options)) { open = !open }
-                .padding(horizontal = 16.dp, vertical = ui.gap(14.dp)),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(if (open) tr(R.string.fewer_options) else tr(R.string.more_options), style = MaterialTheme.typography.bodyLarge)
-                if (!open) Text(groups.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(if (open) VinzIcons.ChevronUp else VinzIcons.ChevronDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (open) content()
     }
 }
 
@@ -174,18 +150,18 @@ private fun ColumnScope.SettingText(title: String, subtitle: String?, info: Stri
 }
 
 @Composable
-fun Toggle(title: String, subtitle: String?, checked: Boolean, icon: ImageVector? = null, info: String? = null, onChange: (Boolean) -> Unit) {
+fun Toggle(title: String, subtitle: String?, checked: Boolean, icon: ImageVector? = null, info: String? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     val ui = LocalUi.current
     // The whole row is the switch (one target for TalkBack too); the switch itself only shows the state.
     Row(
-        Modifier.fillMaxWidth().toggleable(checked, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
+        Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
             .padding(horizontal = 16.dp, vertical = ui.gap(13.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(16.dp)) }
         Column(Modifier.weight(1f)) { SettingText(title, subtitle, info) }
         Spacer(Modifier.width(12.dp))
-        VinzSwitch(checked, null)
+        VinzSwitch(checked, null, enabled = enabled)
     }
 }
 
@@ -227,7 +203,10 @@ fun ShowChips(options: List<ShowOption>) {
     }
 }
 
-/** Opens a settings page. Colour belongs to the symbol; its surrounding slot stays transparent. */
+/**
+ * A row that opens another page: an icon, title, summary, chevron. With a [hue] (Settings' sections, red to violet in
+ * the spectrum's order) the icon sits on a tile of that color.
+ */
 @Composable
 fun NavRow(icon: ImageVector, title: String, subtitle: String?, selected: Boolean = false, hint: String? = null, hue: Color? = null, onClick: () -> Unit) {
     val ui = LocalUi.current
@@ -238,14 +217,11 @@ fun NavRow(icon: ImageVector, title: String, subtitle: String?, selected: Boolea
             .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = ui.gap(11.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val ink = settingsIconColor(
-            hue ?: com.vinz.music.ui.theme.VinzTokens.spectrumAt(((icon.name.hashCode() ushr 1) % 101) / 100f),
-            MaterialTheme.colorScheme.surface,
-        )
-        androidx.compose.foundation.layout.Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-            Icon(icon, null, Modifier.size(22.dp), tint = ink)
-        }
-        Spacer(Modifier.width(14.dp))
+        if (hue != null) androidx.compose.foundation.layout.Box(
+            Modifier.size(34.dp).clip(ui.smallArt).background(hue), contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, Modifier.size(20.dp), tint = Color.White) }
+        else Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(if (hue != null) 14.dp else 18.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -278,10 +254,8 @@ fun SliderSetting(
     info: String? = null,
     onSave: (Float) -> Unit,
 ) {
-    // Do not pass malformed imported preferences to either the label formatter or the slider.
-    val safeValue = value.takeIf { it.isFinite() }?.coerceIn(range.start, range.endInclusive) ?: range.start
-    var v by remember { mutableFloatStateOf(safeValue) }
-    LaunchedEffect(safeValue) { v = safeValue }
+    var v by remember { mutableFloatStateOf(value) }
+    LaunchedEffect(value) { v = value }
     var open by androidx.compose.runtime.saveable.rememberSaveable(title, "slider") { androidx.compose.runtime.mutableStateOf(false) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -310,7 +284,9 @@ fun worded(word: String, v: Float) = "$word · ${kotlin.math.round(v * 100).toIn
 fun VinzCheck(checked: Boolean, enabled: Boolean = true, label: String, onChange: (Boolean) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     androidx.compose.foundation.layout.Box(
-        Modifier.size(48.dp).toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = onChange),
+        // Named on and off alike (off, it used to have no name for a screen reader).
+        Modifier.size(48.dp).toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = onChange)
+            .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         androidx.compose.foundation.layout.Box(
@@ -321,7 +297,7 @@ fun VinzCheck(checked: Boolean, enabled: Boolean = true, label: String, onChange
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (checked) Icon(VinzIcons.Check, label, Modifier.size(14.dp), tint = scheme.surface)
+            if (checked) Icon(VinzIcons.Check, null, Modifier.size(14.dp), tint = scheme.surface)
         }
     }
 }

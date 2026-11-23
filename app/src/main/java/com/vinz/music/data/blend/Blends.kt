@@ -4,8 +4,8 @@ import com.vinz.music.R
 import com.vinz.music.tr
 import android.content.Context
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.BlendEntity
-import com.vinz.music.data.db.mainArtist
+import com.prism.music.data.db.BlendEntity
+import com.prism.music.data.db.mainArtist
 import com.vinz.music.data.model.ArtistRef
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.flow.Flow

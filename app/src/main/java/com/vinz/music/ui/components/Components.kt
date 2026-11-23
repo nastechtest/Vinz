@@ -1,5 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-
 package com.vinz.music.ui.components
 
 import com.vinz.music.R
@@ -7,6 +5,8 @@ import com.vinz.music.tr
 import com.vinz.music.download.forRow
 import com.vinz.music.ui.theme.lit
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -66,6 +66,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -155,6 +156,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, strapline: Strin
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun SongRow(
     song: Song,
     modifier: Modifier = Modifier,
@@ -173,7 +175,7 @@ fun SongRow(
     // The likes, downloads and saved videos, collected once for the whole app (VinzRoot) rather than by each row: a
     // row coming into view during a fling started four collectors of its own (1.8.1).
     val marks = LocalRowMarks.current ?: LocalContainer.current.let { c ->
-        rememberRowMarks(c.library.likedIds, c.downloadState, c.downloadStandIns, c.videoState)
+        rememberRowMarks(c.library.likedIds, c.downloadState, c.downloadStandIns, c.videoState) { s -> c.downloads.playsFromPhone(s) }
     }
     var menu by remember { mutableStateOf(false) }
     val done = androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
@@ -181,12 +183,26 @@ fun SongRow(
     // (a list on screen while Smart Downloads ran was rebuilt row by row at each step).
     val liked by remember(song.id, marks) { derivedStateOf { song.id in marks.liked.value } }
     // A music video downloaded as its song shows as downloaded (#315).
-    val downloaded by remember(song.id, marks) { derivedStateOf { marks.downloads.value.forRow(song.id, marks.standIns.value)?.state == done } }
+    // #385: a row whose song plays from a file on the phone too, whatever id the list gives it (read again whenever
+    // the downloads change, which they do as lossless sync finds files).
+    val downloaded by remember(song.id, marks) { derivedStateOf { com.vinz.music.download.rowDownloaded(song, marks.downloads.value, marks.standIns.value, marks.fromPhone) } }
     val videoSaved by remember(song.id, marks) { derivedStateOf { marks.videos.value[song.id]?.state == done } }
+    // Select many (1.8.3): in a list that takes part, long-press starts picking and a tap picks; elsewhere as before.
+    val selection = LocalSongSelection.current
+    val selectScope = LocalSelectScope.current
+    val pickable = selection != null && selectScope != null && onLongClick == null
+    val pick by remember(song.id, selection, pickable) { derivedStateOf { if (pickable) selection?.picked?.let { song.id in it } else null } }
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     SongRowLayout(
         song, modifier, index, playing, trailingInfo, starred,
         liked = liked, downloaded = downloaded, videoSaved = videoSaved, showAlbum = showAlbum,
-        onLongClick = onLongClick ?: { menu = true }, onMore = { menu = true }, onClick = onClick,
+        onLongClick = when {
+            pick != null -> ({ selection!!.toggle(song) })
+            pickable -> ({ haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); selection!!.start(song, selectScope) })
+            else -> onLongClick ?: { menu = true }
+        },
+        onMore = { menu = true }, onClick = if (pick != null) ({ selection!!.toggle(song) }) else onClick,
+        pick = pick,
     )
     if (menu) SongActionsSheet(song, extraActions) { menu = false }
 }
@@ -201,6 +217,8 @@ class RowMarks(
     val downloads: androidx.compose.runtime.State<Map<String, com.vinz.music.download.DownloadInfo>>,
     val standIns: androidx.compose.runtime.State<Map<String, String>>,
     val videos: androidx.compose.runtime.State<Map<String, com.vinz.music.download.VideoDownload>>,
+    /** #385 (1.8.3): the song plays from a file on the phone (lossless sync's matcher, as playback asks it). */
+    val fromPhone: (Song) -> Boolean = { false },
 )
 
 /** The app's [RowMarks], provided once at its root; null (a TV, a test) makes each row collect its own. */
@@ -213,12 +231,13 @@ fun rememberRowMarks(
     downloads: kotlinx.coroutines.flow.StateFlow<Map<String, com.vinz.music.download.DownloadInfo>>,
     standIns: kotlinx.coroutines.flow.StateFlow<Map<String, String>>,
     videos: kotlinx.coroutines.flow.StateFlow<Map<String, com.vinz.music.download.VideoDownload>>,
+    fromPhone: (Song) -> Boolean = { false },
 ): RowMarks {
     val l = liked.collectAsState()
     val d = downloads.collectAsState()
     val s = standIns.collectAsState()
     val v = videos.collectAsState()
-    return remember(l, d, s, v) { RowMarks(l, d, s, v) }
+    return remember(l, d, s, v) { RowMarks(l, d, s, v, fromPhone) }
 }
 
 /** [SongRow]'s look, given what it shows (so it can be drawn without the app around it: the Design gallery, tests). */
@@ -238,6 +257,8 @@ fun SongRowLayout(
     onLongClick: (() -> Unit)? = null,
     onMore: () -> Unit = {},
     onClick: () -> Unit = {},
+    /** Select many: null when not picking, else whether this song is picked (a check in place of the ⋯). */
+    pick: Boolean? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ui = com.vinz.music.ui.theme.LocalUi.current
@@ -248,7 +269,9 @@ fun SongRowLayout(
     Row(
         modifier
             .fillMaxWidth()
+            .then(if (pick == true) Modifier.background(scheme.onSurface.copy(alpha = 0.08f)) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(if (pick != null) Modifier.semantics { selected = pick } else Modifier)
             // The playing song says so to TalkBack too, not only in color and the bars.
             .then(if (playing) Modifier.semantics { stateDescription = tr(R.string.now_playing) } else Modifier)
             .padding(start = 16.dp, end = 4.dp, top = ui.gap(6.dp), bottom = ui.gap(6.dp)),
@@ -298,7 +321,11 @@ fun SongRowLayout(
             Modifier.padding(start = 8.dp).size(13.dp, 14.dp).then(if (pageMark != null) Modifier.testTag("pageColorBars") else Modifier),
             color = pageMark ?: Color.White, spectrum = pageMark == null,
         )
-        IconButton(onClick = onMore) { Icon(VinzIcons.More, tr(R.string.more), Modifier.size(20.dp), tint = scheme.ink3) }
+        if (pick == null) IconButton(onClick = onMore) { Icon(VinzIcons.More, tr(R.string.more), Modifier.size(20.dp), tint = scheme.ink3) }
+        else Box(Modifier.size(48.dp).testTag("pick"), contentAlignment = Alignment.Center) {
+            if (pick) Icon(VinzIcons.CheckCircle, tr(R.string.picked), Modifier.size(22.dp), tint = scheme.onSurface)
+            else Box(Modifier.size(20.dp).border(1.5.dp, scheme.ink3, androidx.compose.foundation.shape.CircleShape))
+        }
     }
 }
 
@@ -579,14 +606,43 @@ fun VinzSheet(
         }
     }
     ModalBottomSheet(onDismissRequest = finish, sheetState = state, containerColor = containerColor, contentColor = contentColor, dragHandle = dragHandle) {
-        content(close)
+        val keep = remember { KeepFlingsOffSheet() }
+        Column(Modifier.fillMaxWidth().nestedScroll(keep)) { content(close) }
     }
+}
+
+/**
+ * Between a sheet and the lists in it (#401, #147): Material hands the sheet whatever a fling leaves over at a list's
+ * end, and a sheet resting open sprang with that speed although it was already in place (up past its top, or down and
+ * back), while Material gave the next swipe to the moving sheet instead of the list. A leftover reaches the sheet only
+ * when the finger pulled the sheet down in that swipe, so a pull and a flick still close it.
+ */
+internal class KeepFlingsOffSheet : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+    private var pulled = false
+    private var pulledThisFling = false
+
+    override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+        // What a finger's drag leaves over downward moves the sheet (Material's pull to close).
+        if (source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput && available.y > 0f) pulled = true
+        return androidx.compose.ui.geometry.Offset.Zero
+    }
+
+    override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+        pulledThisFling = pulled
+        pulled = false
+        return androidx.compose.ui.unit.Velocity.Zero
+    }
+
+    override suspend fun onPostFling(consumed: androidx.compose.ui.unit.Velocity, available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity =
+        if (available.y < 0f || (available.y > 0f && !pulledThisFling)) androidx.compose.ui.unit.Velocity(0f, available.y)
+        else androidx.compose.ui.unit.Velocity.Zero
 }
 
 // ---------------------------------------------------------------- Song actions
 
 /** "Download video": saves the song's music video (and the song) for offline; tapped again, takes the video back. */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun videoDownloadAction(song: Song, video: com.vinz.music.download.VideoDownload?): ActionItem? {
     if (song.isLive) return null
     val c = LocalContainer.current
@@ -609,6 +665,7 @@ fun videoDownloadAction(song: Song, video: com.vinz.music.download.VideoDownload
  * actions as tiles, then where to go. [extra] adds rows (e.g. "Remove from this playlist").
  */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss: () -> Unit) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
@@ -627,16 +684,23 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
     val dl = downloads.forRow(song.id, standIns)
     val downloaded = dl?.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
     val together by c.together.state.collectAsState()
-    val playedEpisodes by c.episodes.played.collectAsState()
     // A file on the phone isn't on YouTube: no radio, download, sharing, YouTube playlists, or sending it to a session.
     val local = song.isLocal
-    val guest = (together as? com.vinz.music.playback.together.TogetherState.Guest)?.takeIf { !local }
+    // An episode from a feed isn't on YouTube either: no download, sharing, likes or playlists for it.
+    val rss = song.isRss
+    val guest = (together as? com.vinz.music.playback.together.TogetherState.Guest)?.takeIf { !local && !rss }
     fun toast(text: String) = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
 
     // The playlist picker and the share sheet take over from the sheet.
     if (pickPlaylist) { PlaylistPicker(song) { pickPlaylist = false; onDismiss() }; return }
+    // 1.8.3: the listener's own tags on it.
+    var tagging by remember { mutableStateOf(false) }
+    if (tagging) { TagPicker(listOf(song), song.title) { tagging = false; onDismiss() }; return }
+    val songTags by remember(song.id) { c.tags.tagsOf(song.id) }.collectAsState(emptyList())
     if (sharing) { ShareSheet(song.shareTarget()) { sharing = false; onDismiss() }; return }
     if (credits) { SongCreditsSheet(song) { credits = false; onDismiss() }; return }
+    var details by remember { mutableStateOf(false) }
+    if (details) { SongDetailsSheet(song) { details = false; onDismiss() }; return }
     if (versions) { SongVersionsSheet(song) { versions = false; onDismiss() }; return }
     // #305: the song's own cover.
     var cover by remember { mutableStateOf(false) }
@@ -652,9 +716,10 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
         else ActionItem(VinzIcons.QueueMusic, tr(R.string.add_to_queue)) { c.player.addToQueue(song) },
         // A radio of a podcast episode is music radio: not offered for episodes.
         if (song.isEpisode || local) null else ActionItem(VinzIcons.Radio, tr(R.string.radio_2)) { c.player.playRadio(song) },
-        if (local) null else ActionItem(
-            if (downloaded) VinzIcons.DownloadDone else VinzIcons.Download, tr(R.string.download),
-            value = when { downloaded -> tr(R.string.downloaded); dl != null -> "${dl.percent.toInt().coerceAtLeast(0)}%"; else -> null },
+        // #471: named for what a tap does once it's downloaded (it read "Downloaded", and nobody found how to remove one).
+        if (local || rss) null else ActionItem(
+            if (downloaded) VinzIcons.DownloadDone else VinzIcons.Download, if (downloaded) tr(R.string.remove_download) else tr(R.string.download),
+            value = if (!downloaded && dl != null) "${dl.percent.toInt().coerceAtLeast(0)}%" else null,
             active = downloaded, keepOpen = true,
         ) { if (dl != null) c.downloads.remove(song.id) else c.downloads.download(song) },
     ).filterNotNull()
@@ -662,14 +727,17 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
         // Straight to its most replayed stretch (or its chorus).
         if (song.isEpisode || song.isLive || guest != null) null else ActionItem(VinzIcons.FlameFilled, tr(R.string.play_from_the_best_part)) { c.player.playFromBestPart(song) },
         song.podcastId?.let { id -> ActionItem(VinzIcons.Podcasts, tr(R.string.go_to_podcast)) { nav.go(Routes.podcast(id)) } },
-        if (song.isEpisode && song.id in playedEpisodes) ActionItem(VinzIcons.Refresh, tr(R.string.mark_as_unplayed)) { c.episodes.forget(song.id); c.episodes.unmarkPlayed(song.id) }
+        if (song.isEpisode && song.id in c.episodes.played.value) ActionItem(VinzIcons.Refresh, tr(R.string.mark_as_unplayed)) { c.episodes.forget(song.id); c.episodes.unmarkPlayed(song.id) }
         else if (song.isEpisode) ActionItem(VinzIcons.DoneAll, tr(R.string.mark_as_played)) { c.episodes.markPlayed(song.id) } else null,
-        ActionItem(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) { pickPlaylist = true },
+        if (rss) null else ActionItem(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) { pickPlaylist = true },
+        if (rss) null else ActionItem(VinzIcons.Tag, tr(R.string.add_a_tag), value = tagsValue(songTags), active = songTags.isNotEmpty(), keepOpen = true) { tagging = true },
         // A picked version's album and artists (#328): it plays as that recording.
         shown.album?.id?.let { id -> ActionItem(VinzIcons.Album, tr(R.string.go_to_album), value = shown.album?.title?.takeIf { it.length <= 22 }) { nav.go(Routes.album(id)) } },
     ) + goToArtists(shown) { route -> nav.go(route) } + listOfNotNull(
         // Who performed, wrote and produced it (Reddit 1.7).
         if (song.isEpisode || local || song.isLive) null else ActionItem(VinzIcons.Info, tr(R.string.song_credits), keepOpen = true) { credits = true },
+        // Its plays and dates (#211). The listener's own uploads aren't public: YouTube has nothing to say about them.
+        if (song.isEpisode || local || song.isLive || song.isUpload) null else ActionItem(VinzIcons.Replay, tr(R.string.song_details), keepOpen = true) { details = true },
     )
     val more = extra.map { it.toAction() } + listOfNotNull(
         // Your own FLAC / MP3 files (a Local file, or the lossless file played for this song) can keep its lyrics (#16).
@@ -700,10 +768,10 @@ fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss
             listOfNotNull(shown.artistText, formatDuration(shown.durationSec).takeIf { it.isNotEmpty() }).joinToString(" · "),
             placeholderIcon = VinzIcons.Song,
         ) {
-            SheetIconButton(if (isLiked) VinzIcons.HeartFilled else VinzIcons.Heart, if (isLiked) tr(R.string.remove_from_liked_songs) else tr(R.string.add_to_liked_songs), active = isLiked) {
+            if (!rss) SheetIconButton(if (isLiked) VinzIcons.HeartFilled else VinzIcons.Heart, if (isLiked) tr(R.string.remove_from_liked_songs) else tr(R.string.add_to_liked_songs), active = isLiked) {
                 c.library.toggleLike(song)
             }
-            if (!local) SheetIconButton(VinzIcons.Share, tr(R.string.share)) { sharing = true }
+            if (!local && !rss) SheetIconButton(VinzIcons.Share, tr(R.string.share)) { sharing = true }
         }
         if (guest != null) Text(
             tr(R.string.adding_to_s_session, guest.hostName), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
@@ -770,12 +838,13 @@ fun PlaylistPicker(songs: List<Song>, what: String, onDismiss: () -> Unit) {
                     c.ytm.createPlaylist(name, ids.take(50), privacy = privacy)?.also { if (ids.size > 50) runCatching { c.ytm.addAllToPlaylist(it, ids.drop(50)) } }
                 }.getOrNull()
                 toast(if (id != null) tr(R.string.added_to, name) else tr(R.string.couldn_t_make_the_playlist))
-                if (id != null) c.library.refreshCollections()
+                if (id != null) c.library.created(id, name, ids.size)
             }
         }
         return
     }
-    val mine = vinzLists.map { it.item() } +
+    // A smart playlist (1.8.3) takes what its rules find, nothing added by hand.
+    val mine = vinzLists.filter { it.smart == null }.map { it.item() } +
         (if (signedIn) playlists.filterIsInstance<PlaylistItem>().filter { !it.id.startsWith("LM") && !it.isMix } else emptyList())
     val shown = if (query.isBlank()) mine else mine.filter { it.title.contains(query.trim(), ignoreCase = true) }
     // #246 (1.8.1): the playlists that already have it, from what's on the phone (Vinz playlists, the kept copies of
@@ -788,7 +857,7 @@ fun PlaylistPicker(songs: List<Song>, what: String, onDismiss: () -> Unit) {
         }
     }
     VinzSheet(onDismiss = onDismiss) { close ->
-        Column(Modifier.padding(bottom = 20.dp)) {
+        Column(Modifier.padding(bottom = 20.dp).testTag("playlistPicker")) {
             Text(tr(R.string.add_to_playlist), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 20.dp))
             Text(
                 if (many) "$what · ${com.vinz.music.data.model.songCount(songs.size)}" else what,
@@ -801,61 +870,76 @@ fun PlaylistPicker(songs: List<Song>, what: String, onDismiss: () -> Unit) {
                 if (signedIn) tr(R.string.your_playlists_show_up_here_once) else tr(R.string.make_your_first_playlist_it_s), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp),
             )
-            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 440.dp)) {
+            // #401: a fast fling's leftover at the list's end stays with the list (it pushed the sheet past its top).
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.heightIn(max = 440.dp).nestedScroll(KeepUpwardScroll).testTag("playlistPickerList"),
+            ) {
                 items(shown, key = { it.id }) { p ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            close {
-                                if (com.vinz.music.data.VinzLibrary.isVinzList(p.id)) {
-                                    val added = c.vinzLibrary.add(p.id, songs)
-                                    toast(
-                                        when {
-                                            added == 0 -> tr(R.string.already_in, p.title)
-                                            many -> tr(R.string.added_to_2, com.vinz.music.data.model.songCount(added), p.title)
-                                            else -> tr(R.string.added_to, p.title)
-                                        },
-                                    )
-                                    return@close
-                                }
-                                c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                                    // Only what YouTube says went in is called added (Reddit, 1.7.9: "Added" for songs
-                                    // that never got there).
-                                    val result = runCatching { c.ytm.addSongsToPlaylist(p.id, ids) }
-                                    toast(addedMessage(result.getOrNull(), p.title, many))
-                                    // #246: the next time the sheet opens it says they're in, though the kept copy predates them.
-                                    result.getOrNull()?.takeIf { it.added + it.alreadyThere > 0 }?.let { com.vinz.music.data.PlaylistMembership.noteAdded(p.id, ids) }
-                                    if ((result.getOrNull()?.added ?: 0) > 0) c.library.playlistChanged(p.id)
-                                }
+                    val has = holds[p.id] ?: 0
+                    // #246: says when it's in there already (or how many of several are).
+                    val line = when {
+                        has == 0 -> p.subtitle.removePrefix("Playlist • ").takeIf { it.isNotBlank() }
+                        !many -> tr(R.string.already_has_this_song)
+                        has >= ids.distinct().size -> tr(R.string.already_has_all_of_these)
+                        else -> tr(R.string.already_has_n_of_these, has, ids.distinct().size)
+                    }
+                    PickerRow(c.covers.art(p), p.title, line, has > 0, if (has > 0) tr(R.string.already_in, p.title) else null, p.id) {
+                        close {
+                            if (com.vinz.music.data.VinzLibrary.isVinzList(p.id)) {
+                                val added = c.vinzLibrary.add(p.id, songs)
+                                toast(
+                                    when {
+                                        added == 0 -> tr(R.string.already_in, p.title)
+                                        many -> tr(R.string.added_to_2, com.vinz.music.data.model.songCount(added), p.title)
+                                        else -> tr(R.string.added_to, p.title)
+                                    },
+                                )
+                                return@close
                             }
-                        }.padding(horizontal = 20.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Artwork(c.covers.art(p), Modifier.size(46.dp), com.vinz.music.ui.theme.LocalUi.current.smallArt, size = 120, placeholderIcon = VinzIcons.QueueMusic)
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(p.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val has = holds[p.id] ?: 0
-                            // #246: says when it's in there already (or how many of several are).
-                            val line = when {
-                                has == 0 -> p.subtitle.removePrefix("Playlist • ").takeIf { it.isNotBlank() }
-                                !many -> tr(R.string.already_has_this_song)
-                                has >= ids.distinct().size -> tr(R.string.already_has_all_of_these)
-                                else -> tr(R.string.already_has_n_of_these, has, ids.distinct().size)
+                            c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                // Only what YouTube says went in is called added (Reddit, 1.7.9: "Added" for songs
+                                // that never got there).
+                                val result = runCatching { c.ytm.addSongsToPlaylist(p.id, ids) }
+                                toast(addedMessage(result.getOrNull(), p.title, many))
+                                // #246: the next time the sheet opens it says they're in, though the kept copy predates them.
+                                result.getOrNull()?.takeIf { it.added + it.alreadyThere > 0 }?.let { com.vinz.music.data.PlaylistMembership.noteAdded(p.id, ids) }
+                                if ((result.getOrNull()?.added ?: 0) > 0) c.library.playlistChanged(p.id)
                             }
-                            if (line != null) Text(
-                                line, style = MaterialTheme.typography.bodySmall,
-                                color = if (has > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            )
                         }
-                        if ((holds[p.id] ?: 0) > 0) Icon(
-                            VinzIcons.Check, tr(R.string.already_in, p.title),
-                            Modifier.padding(start = 8.dp).size(20.dp).testTag("inPlaylist:${p.id}"), tint = MaterialTheme.colorScheme.onSurface,
-                        )
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * One playlist in [PlaylistPicker]: its cover, its name, [line] under it (null: none; [strong] when it says the songs are
+ * in there), and a ✓ described as [mark] (tagged with the playlist's [id]) when they are.
+ */
+@Composable
+internal fun PickerRow(art: String?, title: String, line: String?, strong: Boolean, mark: String?, id: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Artwork(art, Modifier.size(46.dp), com.vinz.music.ui.theme.LocalUi.current.smallArt, size = 120, placeholderIcon = VinzIcons.QueueMusic)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Always two lines tall (#401): the marks come in after the sheet opens, and a row that grew a line then
+            // changed the list's heights in the middle of a fling. (A space, not "": an empty line is drawn shorter.)
+            Text(
+                line ?: " ", style = MaterialTheme.typography.bodySmall,
+                modifier = if (line == null) Modifier.clearAndSetSemantics {} else Modifier,
+                color = if (strong) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (mark != null) Icon(
+            VinzIcons.Check, mark,
+            Modifier.padding(start = 8.dp).size(20.dp).testTag("inPlaylist:$id"), tint = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -950,7 +1034,7 @@ fun <T> SortButton(options: List<T>, selected: T, label: (T) -> String, modifier
  * name ([com.vinz.music.ui.Routes.artist]). A file on the phone has no YouTube artists.
  */
 fun openableArtists(song: Song): List<com.vinz.music.data.model.ArtistRef> =
-    if (song.isLocal) emptyList()
+    if (song.isLocal || song.isRss) emptyList()
     else song.artists.filter { it.name.isNotBlank() }.distinctBy { it.id ?: com.vinz.music.data.innertube.SearchRank.norm(it.name) }
 
 /**

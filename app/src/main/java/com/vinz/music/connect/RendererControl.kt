@@ -31,7 +31,7 @@ data class PositionInfo(val trackUri: String?, val relMs: Long?, val durationMs:
 
 /** Sends a renderer its UPnP actions (SOAP over HTTP) and reads their answers. */
 class RendererControl(http: OkHttpClient, val renderer: Renderer) : RendererLink {
-    private val client = http.newBuilder()
+    private val client = with(LanHttp) { http.newBuilder().lanFirst() }
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .callTimeout(10, TimeUnit.SECONDS)

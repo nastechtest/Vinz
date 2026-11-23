@@ -61,6 +61,30 @@ fun codecName(codec: String): String = when {
     else -> codec.substringBefore('.').uppercase()
 }
 
+/**
+ * Stats for nerds' line for a song whose file on the phone this phone can't decode (1.8.4.1, #135): "ALAC file: this
+ * phone can't decode it, so the stream plays instead". Null when its file played, or it has none.
+ */
+fun undecodedFileNote(stats: com.vinz.music.playback.NerdStats): String? =
+    stats.undecodedFile.takeIf { it.isNotBlank() }?.let { tr(R.string.file_can_t_be_decoded_stream_plays, it) }
+
+/**
+ * Stats for nerds' line on where the quality comes from (1.8.7, #373 #179 #148): a saved copy ([source] "Downloaded" or
+ * "Cached") plays in the format it was saved in ([copy]), not today's; or Premium's best was held back by the mobile
+ * data quality ([heldBack]). Null when there's nothing to say.
+ */
+fun streamQualityNote(source: String, heldBack: com.vinz.music.data.prefs.AudioQuality?, copy: com.vinz.music.data.stream.CachedFormat?): String? = when {
+    source == "Downloaded" || source == "Cached" -> copy?.let { f ->
+        val what = listOfNotNull(
+            tr(R.string.itag, f.itag) + (com.vinz.music.data.stream.CachedFormat.codecOf(f.itag)?.let { " ($it)" } ?: ""),
+            f.length.takeIf { it > 0 }?.let { tr(R.string.t_2f_mb).format(it / 1_048_576f).trim() },
+        ).joinToString(" ")
+        tr(R.string.saved_copy_plays_its_format, what)
+    }
+    heldBack != null -> tr(R.string.premium_held_back_by_mobile_quality, heldBack.label)
+    else -> null
+}
+
 fun sampleRateText(hz: Int): String = if (hz <= 0) "—" else if (hz % 1000 == 0) "${hz / 1000} kHz" else tr(R.string.t_1f_khz).format(hz / 1000f)
 
 /**
@@ -69,10 +93,22 @@ fun sampleRateText(hz: Int): String = if (hz <= 0) "—" else if (hz % 1000 == 0
  */
 @Composable
 fun NerdStatsPanel(modifier: Modifier = Modifier) {
-    val stats by LocalContainer.current.nerdStats.collectAsState()
+    val c = LocalContainer.current
+    val stats by c.nerdStats.collectAsState()
     Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
         Text(tr(R.string.stats_for_nerds), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(10.dp))
+        // A saved copy playing in its own format, or Premium's best held back by the mobile data quality (1.8.7, #373).
+        // Read again whenever the stats change (the source is set as the song's audio is looked up).
+        remember(stats) { c.streamNote(stats.videoId) }?.let {
+            Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(10.dp))
+        }
+        // The song's file on the phone won't decode here, so the stream plays (1.8.4.1): said where the source is read.
+        undecodedFileNote(stats)?.let {
+            Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(10.dp))
+        }
         // Nothing has been decoded yet (e.g. a restored queue that hasn't started).
         if (stats.codec.isBlank() && stats.streamBitrateKbps <= 0) {
             Text(tr(R.string.play_the_song_to_see_its), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium)

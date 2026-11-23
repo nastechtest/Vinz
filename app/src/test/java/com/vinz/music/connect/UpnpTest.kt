@@ -66,12 +66,72 @@ class UpnpTest {
 
     @Test
     fun urlBaseAndBareBases() {
-        val withBase = nested.replace("<specVersion>", "<URLBase>http://10.0.0.9:8080/base/</URLBase><specVersion>")
-        assertEquals("http://10.0.0.9:8080/upnp/control/AVTransport1", Description.parse(withBase, "http://192.168.1.50:9197/dmr")!!.avTransport!!.controlUrl)
-        assertEquals("http://10.0.0.9:8080/base/RenderingControl/control", Description.parse(withBase, "http://192.168.1.50:9197/dmr")!!.rendering!!.controlUrl)
+        val withBase = nested.replace("<specVersion>", "<URLBase>http://192.168.1.50:8080/base/</URLBase><specVersion>")
+        assertEquals("http://192.168.1.50:8080/upnp/control/AVTransport1", Description.parse(withBase, "http://192.168.1.50:9197/dmr")!!.avTransport!!.controlUrl)
+        assertEquals("http://192.168.1.50:8080/base/RenderingControl/control", Description.parse(withBase, "http://192.168.1.50:9197/dmr")!!.rendering!!.controlUrl)
         // java.net.URI on its own would make "http://h:1ctl" of these.
         assertEquals("http://192.168.1.5:1400/ctl", Description.resolve("http://192.168.1.5:1400", "ctl"))
         assertEquals("http://192.168.1.5:1400/a/ctl", Description.resolve("http://192.168.1.5:1400/a/desc.xml", "ctl"))
+    }
+
+    private val place = "http://192.168.1.50:9197/dmr"
+
+    /** A description says where its actions go, with the phone's stream address in them: only ever the device that described itself. */
+    @Test
+    fun aDescriptionsActionsStayOnItsOwnDevice() {
+        // A device can't send them to anyone else, on the network or off it.
+        for (elsewhere in listOf("http://203.0.113.9/steal", "https://203.0.113.9/steal", "http://192.168.1.77:9197/c", "//203.0.113.9/steal", "http://127.0.0.1:47320/x", "http://192.168.1.50@203.0.113.9/steal")) {
+            val moved = nested.replace("<controlURL>/upnp/control/AVTransport1</controlURL>", "<controlURL>$elsewhere</controlURL>")
+            assertNull(elsewhere, Description.parse(moved, place))
+            // A service that isn't the one it can't play without just goes.
+            val aside = nested.replace("<controlURL>RenderingControl/control</controlURL>", "<controlURL>$elsewhere</controlURL>")
+            assertNull(elsewhere, Description.parse(aside, place)!!.rendering)
+        }
+        val events = nested.replace("<eventSubURL>/upnp/event/AVTransport1</eventSubURL>", "<eventSubURL>http://203.0.113.9/e</eventSubURL>")
+            .replace("<SCPDURL>/AVTransport/desc.xml</SCPDURL>", "<SCPDURL>http://203.0.113.9/s</SCPDURL>")
+        val r = Description.parse(events, place)!!
+        assertNull(r.avTransport!!.eventUrl)
+        assertNull(r.avTransport!!.scpdUrl)
+    }
+
+    /** A device whose URLBase is another address of its own: its relative addresses are on the one that was asked. */
+    @Test
+    fun aUrlBaseElsewhereIsIgnored() {
+        val based = nested.replace("<specVersion>", "<URLBase>http://203.0.113.9:8080/base/</URLBase><specVersion>")
+        assertEquals("http://192.168.1.50:9197/upnp/control/AVTransport1", Description.parse(based, place)!!.avTransport!!.controlUrl)
+        assertEquals("http://192.168.1.50:9197/RenderingControl/control", Description.parse(based, place)!!.rendering!!.controlUrl)
+    }
+
+    /** The debug hook adding a renderer through adb reverse, and a real device on its own port for its actions. */
+    @Test
+    fun itsOwnHostOnAnyPortIsFine() {
+        val r = Description.parse(nested.replace("<controlURL>/upnp/control/AVTransport1</controlURL>", "<controlURL>http://127.0.0.1:1400/av</controlURL>"), "http://127.0.0.1:49152/description.xml")!!
+        assertEquals("http://127.0.0.1:1400/av", r.avTransport!!.controlUrl)
+        assertEquals("http://127.0.0.1:49152/RenderingControl/control", r.rendering!!.controlUrl)
+    }
+
+    /** Anyone on the Wi-Fi can answer a search: not on behalf of another address, least of all the phone's own. */
+    @Test
+    fun aSearchAnswerSpeaksOnlyForItsSender() {
+        fun answersFor(location: String): List<String> {
+            val seen = java.util.concurrent.CopyOnWriteArrayList<String>()
+            java.net.DatagramSocket(0, java.net.InetAddress.getByName("127.0.0.1")).use { device ->
+                val answering = kotlin.concurrent.thread(isDaemon = true) {
+                    runCatching {
+                        val asked = java.net.DatagramPacket(ByteArray(2048), 2048)
+                        device.receive(asked)
+                        val b = ("HTTP/1.1 200 OK\r\nLOCATION: $location\r\nST: ${Ssdp.RENDERER}\r\nUSN: uuid:x\r\n\r\n").toByteArray()
+                        device.send(java.net.DatagramPacket(b, b.size, asked.socketAddress))
+                    }
+                }
+                SsdpSearch.run(700, to = java.net.InetSocketAddress("127.0.0.1", device.localPort)) { m, _ -> m.location?.let { seen += it } }
+                answering.join(1_000)
+            }
+            return seen
+        }
+        assertEquals(listOf("http://127.0.0.1:49152/d.xml"), answersFor("http://127.0.0.1:49152/d.xml"))
+        assertEquals("another device's address", emptyList<String>(), answersFor("http://192.168.1.77:1400/d.xml"))
+        assertEquals("a name, not an address", emptyList<String>(), answersFor("http://speaker.local:1400/d.xml"))
     }
 
     @Test

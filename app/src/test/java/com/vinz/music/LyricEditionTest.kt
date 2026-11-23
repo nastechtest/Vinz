@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.LyricsDao
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsDao
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.Editions
@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.experimental.categories.Category
 import java.util.concurrent.TimeUnit
 
 /**
@@ -47,6 +48,7 @@ class LyricEditionTest {
     }
 
     /** Live: KuGou's lyrics for the album "Thriller" start with "It's close to midnight" at about 0:59. */
+    @Category(LiveNetwork::class)
     @Test
     fun thrillerFromKuGouIsTheAlbumsTiming() = runBlocking {
         val song = Song("Z85lxckrtzg", "Thriller", listOf(ArtistRef("Michael Jackson")), AlbumRef("Thriller"), 356)

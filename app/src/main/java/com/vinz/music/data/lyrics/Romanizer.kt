@@ -4,8 +4,8 @@ import com.vinz.music.R
 import com.vinz.music.tr
 import android.os.Build
 import com.vinz.music.data.ModelStore
-import com.vinz.music.data.db.RomanizedDao
-import com.vinz.music.data.db.RomanizedEntity
+import com.prism.music.data.db.RomanizedDao
+import com.prism.music.data.db.RomanizedEntity
 import com.vinz.music.data.lyrics.roman.Cyrillic
 import com.vinz.music.data.lyrics.roman.Greek
 import com.vinz.music.data.lyrics.roman.Hangul
@@ -50,10 +50,36 @@ class Romanizer(
     private val scope: CoroutineScope,
     /** Songs the listener turned romanization on (true) or off (false) for, from the player's ⋯ menu. */
     private val songPrefs: android.content.SharedPreferences? = null,
+    /** The Japanese reader to use without the downloaded dictionary (tests read from Kuromoji's own). */
+    private val japaneseForTests: Japanese? = null,
 ) {
     private val _overrides = MutableStateFlow(
-        songPrefs?.all?.mapNotNull { (k, v) -> (v as? Boolean)?.let { k to it } }?.toMap().orEmpty()
+        songPrefs?.all?.filterKeys { !it.startsWith(READ_AS_PREFIX) }?.mapNotNull { (k, v) -> (v as? Boolean)?.let { k to it } }?.toMap().orEmpty()
     )
+
+    /**
+     * Preserved Japanese classification choices. Lyrics romanization follows main and does not consult these choices.
+     */
+    private val readAs = HashMap<String, Boolean>().apply {
+        songPrefs?.all?.forEach { (k, v) -> if (k.startsWith(READ_AS_PREFIX) && v is Boolean) put(k.removePrefix(READ_AS_PREFIX), v) }
+    }
+
+    /** Sets (null: clears) whether [songId]'s lyrics are read as Japanese. */
+    fun setJapanese(songId: String, japanese: Boolean?) {
+        synchronized(readAs) { if (japanese == null) readAs.remove(songId) else readAs[songId] = japanese }
+        songPrefs?.edit()?.apply { if (japanese == null) remove(READ_AS_PREFIX + songId) else putBoolean(READ_AS_PREFIX + songId, japanese) }?.apply()
+    }
+
+    /** The listener's own word on whether [songId] is Japanese, if they gave it. */
+    fun japaneseChoice(songId: String): Boolean? = synchronized(readAs) { readAs[songId] }
+
+    /**
+     * Whether a song is Japanese: the listener's word for it, else any kana in its lyrics, title, artist or album
+     * (6.3: a song of only kanji by "ヨルシカ" or on an album with kana was read as Chinese).
+     */
+    fun isJapanese(songId: String, lines: List<LyricLine>, title: String = "", artist: String = "", album: String = ""): Boolean =
+        japaneseChoice(songId) ?: (listOf(title, artist, album).any { Script.KANA in Script.foreignIn(it) } ||
+            lines.any { Script.KANA in Script.foreignIn(it.text) })
     /** Per-song choices: song id → romanized (even in the phone's own script) or not. */
     val overrides: StateFlow<Map<String, Boolean>> = _overrides
 
@@ -61,6 +87,21 @@ class Romanizer(
         songPrefs?.edit()?.apply { if (on == null) remove(songId) else putBoolean(songId, on) }?.apply()
         _overrides.value = if (on == null) _overrides.value - songId else _overrides.value + (songId to on)
     }
+
+    /**
+     * A title in Latin letters, for finding it by typing (1.8.3, #363: "tori no uta" finds とりのうた): the phone's own
+     * engines only (kana, Hangul, Cyrillic, Greek; kanji only once the Japanese dictionary is downloaded), never the
+     * network. Null when it needs none, or no engine here can spell all of it.
+     */
+    suspend fun spellTitle(text: String): String? = withContext(Dispatchers.Default) {
+        val scripts = Script.foreignIn(text)
+        if (scripts.isEmpty()) return@withContext null
+        val japanese = Script.KANA in scripts || (Script.HAN in scripts && japaneseReady)
+        runCatching { localSpelling(LyricLine(0, text), scripts, japanese) }.getOrNull()?.first?.takeIf { it.isNotBlank() && it != text }
+    }
+
+    /** Whether kanji can be read on the phone (the Japanese dictionary is downloaded). */
+    val japaneseReady: Boolean get() = japaneseForTests != null || models.ready(ModelStore.Model.JAPANESE)
 
     @Serializable
     private data class Stored(val t: String, val w: List<String>? = null, val b: String? = null, val bw: List<String>? = null)
@@ -80,6 +121,7 @@ class Romanizer(
     private var releaseJob: Job? = null
 
     private suspend fun japaneseReader(): Japanese? {
+        japaneseForTests?.let { return it }
         if (!models.ready(ModelStore.Model.JAPANESE)) return null
         val reader = jaLock.withLock {
             japanese ?: runCatching { withContext(Dispatchers.Default) { Japanese.load(models.dir(ModelStore.Model.JAPANESE)) } }
@@ -98,7 +140,7 @@ class Romanizer(
     suspend fun romanize(songId: String, lines: List<LyricLine>, skip: Set<Script>, network: Boolean = true): List<LyricLine?> =
         withContext(Dispatchers.Default) {
             val japaneseSong = lines.any { Script.KANA in Script.foreignIn(it.text) }
-            val jaReady = models.ready(ModelStore.Model.JAPANESE)
+            val jaReady = japaneseForTests != null || models.ready(ModelStore.Model.JAPANESE)
             val key = "$songId|$VERSION|${if (jaReady) "ja" else "-"}|${skip.sorted().joinToString(",")}|" +
                 lines.joinToString("\n") { it.text + "|" + it.backgroundLine?.text.orEmpty() }.hashCode()
             synchronized(memory) { memory[key] }?.let { return@withContext it }
@@ -285,8 +327,12 @@ class Romanizer(
     companion object {
         /** Bumped when an engine changes, so songs romanized the old way are romanized again. */
         // 3 (1.7.9.1, #256): Japanese songs spelled by Android's transliterator as Chinese are spelled again.
-        private const val VERSION = 3
+        // 4 (1.8.2.1, #370): Japanese songs with kanji read as Chinese are spelled again.
+        // 5: restore main-branch lyrics behavior without reusing prior cached spellings.
+        private const val VERSION = 5
         private const val RELEASE_AFTER_MS = 3 * 60_000L
+        /** [songPrefs] keys for the listener's "this song is Japanese" word (beside the plain song-id romanize switches). */
+        private const val READ_AS_PREFIX = "ja-read:"
         /** Line-by-line requests are only made for this many lines (a long song's worth). */
         private const val MAX_SINGLE = 80
 

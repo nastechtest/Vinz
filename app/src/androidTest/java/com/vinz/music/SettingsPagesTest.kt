@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.performTouchInput
@@ -9,6 +9,10 @@ import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import com.vinz.music.ui.screens.settings.SettingsMap
+import com.vinz.music.ui.screens.settings.SettingsPageId
+import com.vinz.music.ui.screens.settings.SettingsTags
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,6 +21,9 @@ import org.junit.runner.RunWith
  * Every Settings page opens and scrolls to its end without crashing (1.7.9's check: Downloads, storage & data crashed
  * as soon as its Smart Downloads estimate passed 1,000 songs, "1,363" read back as a number). Pages are lazy, so each
  * one is scrolled all the way down: a group below the fold is only drawn then.
+ *
+ * Since 1.8.4 the pages are the 17 of [SettingsMap], each one tap from the root (no pages inside pages); the one screen
+ * still opened from a page here is the licenses, from Backup & about.
  */
 @RunWith(AndroidJUnit4::class)
 class SettingsPagesTest {
@@ -25,24 +32,15 @@ class SettingsPagesTest {
 
     private val device by lazy { UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()) }
 
-    /** Hub page → the pages inside it (opened from it). */
-    private val pages = linkedMapOf(
-        "Customize Vinz" to listOf("Looks", "Color", "Text", "Icons & shapes", "Glass & backgrounds", "Tabs & mini player", "Home & Library", "Player", "Lyrics"),
-        "Playback & sound" to emptyList(),
-        "Lyrics & Sing" to emptyList(),
-        "Controls & gestures" to emptyList(),
-        "Recommendations & Replay" to emptyList(),
-        "Downloads, storage & data" to emptyList(),
-        "Devices & connections" to listOf("Speakers, TVs & browser", "Discord", "Last.fm"),
-        "Language" to emptyList(),
-        "Backup & about" to listOf("Open-source licenses"),
-    )
+    /** The root, top to bottom: its five groups' pages. */
+    private fun everyPage(): List<SettingsPageId> = SettingsMap.groups.flatMap { it.second }
 
     @Test fun everySettingsPageOpensAndScrolls() {
         Fixture.ready()
         Fixture.launch()
         compose.openSettings()
-        walk(pages)
+        assertEquals("the map's 17 pages", 17, everyPage().size)
+        walk(everyPage())
     }
 
     /**
@@ -60,7 +58,7 @@ class SettingsPagesTest {
 
     /**
      * #208 (1.7.9.2): with "Slide between screens" on, pages slide in and Back slides them out: every page still
-     * opens, and Back still lands on the page before (a slide left half-way would leave the hub unreachable).
+     * opens, and Back still lands on the page before (a slide left half-way would leave the root unreachable).
      */
     @Test fun pagesSlideInAndBackSlidesThemOut() {
         Fixture.ready()
@@ -68,8 +66,9 @@ class SettingsPagesTest {
         try {
             Fixture.launch()
             compose.openSettings()
-            walk(linkedMapOf("Customize Vinz" to listOf("Color", "Player"), "Controls & gestures" to emptyList()))
-            compose.clickWhenFound(hasText("Downloads, storage & data") and hasClickAction(), 15_000)
+            walk(listOf(SettingsPageId.THEME_COLORS, SettingsPageId.PLAYER, SettingsPageId.GESTURES_BUTTONS), licenses = false)
+            // Back on the root: another page's row is there to tap.
+            compose.openFromSettingsRoot(SettingsPageId.DOWNLOADS_DATA)
         } finally {
             kotlinx.coroutines.runBlocking { Fixture.container.settings.setPageSlide(false) }
         }
@@ -82,52 +81,40 @@ class SettingsPagesTest {
         try {
             Fixture.ready()
             Fixture.launch()
+            // The pages' titles are read where Vinz reads them (SettingsPageId), so they are in the language it shows.
             compose.openSettings(tr(R.string.settings))
-            walk(linkedMapOf(
-                tr(R.string.customize_vinz) to listOf(
-                    R.string.looks, R.string.color_2, R.string.text, R.string.icons_shapes, R.string.glass_backgrounds,
-                    R.string.tabs_mini_player, R.string.home_library, R.string.player, R.string.lyrics,
-                ).map { tr(it) },
-                tr(R.string.playback_sound) to emptyList(),
-                tr(R.string.lyrics_sing) to emptyList(),
-                tr(R.string.controls_gestures) to emptyList(),
-                tr(R.string.recommendations_replay) to emptyList(),
-                tr(R.string.downloads_storage_data) to emptyList(),
-                tr(R.string.devices_connections) to listOf(tr(R.string.speakers_tvs_browser), tr(R.string.discord), "Last.fm"),
-                tr(R.string.language) to emptyList(),
-                tr(R.string.backup_about) to listOf(tr(R.string.open_source_licenses)),
-            ))
+            walk(everyPage())
         } finally {
             Strings.resources = null
         }
     }
 
-    private fun walk(pages: Map<String, List<String>>) {
-        for ((hub, inside) in pages) {
-            open(hub)
+    /** Each page from the root: opened by its row, scrolled to its end, and Back to the root. */
+    private fun walk(pages: List<SettingsPageId>, licenses: Boolean = true) {
+        for (page in pages) {
+            compose.openFromSettingsRoot(page)
             scrollToEnd()
-            for (page in inside) {
-                open(page)
+            if (licenses && page == SettingsPageId.BACKUP_ABOUT) {
+                // Its row is in "About" (the page is at its end now; the row is scrolled back to).
+                compose.clickWhenFound(settingsRow(tr(R.string.open_source_licenses)), 15_000)
+                compose.waitForIdle()
                 scrollToEnd()
                 back()
             }
-            // Back on the hub (kept where it was scrolled; the next page's row is scrolled to when opened).
+            // Back on the root (kept where it was scrolled; the next page's row is scrolled to when opened).
             back()
+            compose.waitUntil(10_000) { compose.onAllNodes(settingsRootRow(page)).fetchSemanticsNodes().isNotEmpty() }
         }
-    }
-
-    private fun open(title: String) {
-        compose.clickWhenFound(hasText(title) and hasClickAction(), 15_000)
-        compose.waitForIdle()
     }
 
     /** Swipes the page up until nothing new comes into view (at most 40 swipes). */
     private fun scrollToEnd() {
         var last = ""
         repeat(40) {
-            val pageNodes = compose.onAllNodes(hasScrollToNodeAction()).fetchSemanticsNodes()
-            if (pageNodes.isEmpty()) return
-            compose.onAllNodes(hasScrollToNodeAction())[0].performTouchInput { swipeUp() }
+            // A settings page's own list; a screen that isn't one (the licenses), its first list.
+            val list = if (compose.onAllNodes(hasTestTag(SettingsTags.PAGE_LIST)).fetchSemanticsNodes().isNotEmpty()) hasTestTag(SettingsTags.PAGE_LIST) else hasScrollToNodeAction()
+            if (compose.onAllNodes(list).fetchSemanticsNodes().isEmpty()) return
+            compose.onAllNodes(list)[0].performTouchInput { swipeUp() }
             compose.waitForIdle()
             val now = compose.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes()
                 .joinToString("|") { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString() ?: "" }

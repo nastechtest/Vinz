@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.vinz.music.data.model.Song
+import com.vinz.music.ui.theme.LocalAppSettings
 import com.vinz.music.ui.theme.LocalContainer
 import com.vinz.music.ui.theme.VinzIcons
 import com.vinz.music.ui.theme.rememberHaptics
@@ -45,10 +46,13 @@ import kotlin.math.roundToInt
 
 /**
  * A song's row that can be swiped sideways: to the right it plays next, to the left it goes on the end of the queue
- * (in someone's Listen Together session, it's sent to theirs). Letting go short of the mark does nothing.
+ * (in someone's Listen Together session, it's sent to theirs). Letting go short of the mark does nothing. With the
+ * swipes turned off (#406) it's the plain row.
  */
 @Composable
 fun SwipeToQueue(song: Song, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    // While songs are being picked (Select many), a sideways drag shouldn't queue one of them.
+    if (LocalSongSelection.current?.selecting == true) { androidx.compose.foundation.layout.Box(modifier) { content() }; return }
     val c = LocalContainer.current
     val context = LocalContext.current
     val together by c.together.state.collectAsState()
@@ -77,6 +81,9 @@ fun SwipeToQueue(item: com.vinz.music.data.model.BrowseItem, modifier: Modifier 
 /** The swipe itself: [onQueue] with true to the right (play next), false to the left (end of the queue). */
 @Composable
 fun SwipeToQueue(onQueue: (next: Boolean) -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    // #406 (1.8.4): "Swipe song rows to queue" off leaves the row as it is, wherever rows swipe (songs, and the albums
+    // and playlists that do), so a sideways drag is the page's again.
+    if (!LocalAppSettings.current.behavior.rowSwipes) { Box(modifier) { content() }; return }
     val haptics = rememberHaptics()
     val density = LocalDensity.current
     val mark = with(density) { 84.dp.toPx() }

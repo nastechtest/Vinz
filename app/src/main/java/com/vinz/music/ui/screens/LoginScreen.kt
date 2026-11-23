@@ -146,7 +146,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit, addAccount: Boolean = fa
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopAppBar(
-            title = { Text(tr(R.string.connect_youtube_for_playback)) },
+            title = { Text(tr(R.string.sign_in_to_youtube_music)) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(VinzIcons.ArrowBack, tr(R.string.back)) } },
             actions = { VinzTextButton(onClick = { pasteDialog = true }) { Text(tr(R.string.use_cookie)) } },
         )
@@ -455,7 +455,7 @@ fun WelcomeScreen(onSignIn: () -> Unit, onAccount: () -> Unit, onSkip: () -> Uni
             Feature(VinzIcons.Recognize, tr(R.string.name_the_song_playing_around_you))
             Feature(VinzIcons.Replay, tr(R.string.rewind_your_year_in_music))
             Spacer(Modifier.height(32.dp))
-            // Vinz is the primary identity. YouTube import is available inside Account → Connections; playback sessions remain optional.
+            // Cloud identity is optional; YouTube playback can still be connected from Settings.
             VinzButton(onClick = onAccount, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
                 Text(tr(R.string.make_a_vinz_account), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }

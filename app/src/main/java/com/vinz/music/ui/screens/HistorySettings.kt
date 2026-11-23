@@ -34,30 +34,6 @@ internal fun pausedUntilText(until: Long, now: Long = System.currentTimeMillis()
     return tr(R.string.hist_paused_until, formatAt(until, com.vinz.music.localDates(if (sameDay) "jmm" else "EEEjmm")))
 }
 
-/**
- * Settings → Recommendations & Replay → History (1.8.1): pause it (#296), and how long a song plays before it counts
- * (#263). Both start as Vinz always was: recording, at ten seconds, YouTube Music told as a song starts.
- */
-@Composable
-internal fun ListeningHistoryGroup() {
-    val c = LocalContainer.current
-    val s = LocalAppSettings.current
-    val prefs = c.settings
-    val b = s.behavior
-    Group(tr(R.string.hist_title), info = tr(R.string.hist_info)) {
-        Label(tr(R.string.hist_pause), info = tr(R.string.hist_pause_info))
-        val choice = HistoryPause.choiceOf(b.historyPausedUntil)
-        Chips(HistoryPause.Choice.entries, choice, { it.label }) { prefs.setHistoryPausedUntil(HistoryPause.until(it, System.currentTimeMillis())) }
-        if (choice != HistoryPause.Choice.OFF) Note(tr(R.string.hist_paused_line, pausedUntilText(b.historyPausedUntil)))
-        Label(tr(R.string.hist_count_after), info = tr(R.string.hist_count_after_info))
-        Chips(PlayCount.CHOICES, b.playCountSeconds.takeIf { it in PlayCount.CHOICES } ?: PlayCount.DEFAULT_SEC, { PlayCount.label(it) }) { prefs.setPlayCountSeconds(it) }
-        // Only the account's history waits for it, and only when there's an account.
-        if (s.isLoggedIn) Toggle(
-            tr(R.string.hist_count_account), tr(R.string.hist_count_account_detail), b.playCountOnAccount, info = tr(R.string.hist_count_account_info),
-        ) { prefs.setPlayCountOnAccount(it) }
-    }
-}
-
 /** The note at the top of Replay while history is paused (#296): what's paused, until when, and the way back on. */
 @Composable
 internal fun HistoryPausedNote(modifier: Modifier = Modifier) {

@@ -166,7 +166,7 @@ class LyricsLookTest {
                     Column(Modifier.width(412.dp).background(Color(0xFF0A0A0D)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         looks.forEach { (name, look) ->
                             Text(name, color = Color.White.copy(alpha = 0.7f))
-                            val s = if (name == centered) dark.copy(lyricsAlign = com.vinz.music.data.prefs.LyricsAlign.CENTER) else dark
+                            val s = if (name == centered) dark.copy(lyrics = dark.lyrics.copy(align = com.vinz.music.data.prefs.LyricsAlign.CENTER)) else dark
                             CompositionLocalProvider(LocalAppSettings provides s) {
                                 LyricsSample(look, Modifier.fillMaxWidth(), extra = if (name == extraFor) "Cada color encuentra su camino" else null, backing = name == centered, progress = name == centered)
                             }

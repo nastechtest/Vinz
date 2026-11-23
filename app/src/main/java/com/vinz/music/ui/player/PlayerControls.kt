@@ -1,4 +1,3 @@
-@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 package com.vinz.music.ui.player
 
 import com.vinz.music.R
@@ -39,6 +38,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -460,8 +460,8 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
             quietMarks = if (blendShape?.fadesOut == true) remember(blendShape) { listOf(blendShape.outFrom) } else emptyList(),
         )
         Box(Modifier.fillMaxWidth().offset(y = (-9).dp).heightIn(min = 16.dp)) {
-            val elapsed = settings.playerTimes == com.vinz.music.data.prefs.PlayerTimes.BOTH || settings.playerTimes == com.vinz.music.data.prefs.PlayerTimes.ELAPSED
-            val left = settings.playerTimes == com.vinz.music.data.prefs.PlayerTimes.BOTH || settings.playerTimes == com.vinz.music.data.prefs.PlayerTimes.LEFT
+            val elapsed = settings.player.times == com.vinz.music.data.prefs.PlayerTimes.BOTH || settings.player.times == com.vinz.music.data.prefs.PlayerTimes.ELAPSED
+            val left = settings.player.times == com.vinz.music.data.prefs.PlayerTimes.BOTH || settings.player.times == com.vinz.music.data.prefs.PlayerTimes.LEFT
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 if (elapsed) Text(formatTime((shown * duration).toLong()), style = times, color = Color.White.copy(alpha = 0.55f)) else Spacer(Modifier.width(1.dp))
                 if (left) Text(
@@ -571,18 +571,15 @@ fun TransportRow(
     val style = LocalAppSettings.current.transportStyle
     val playSize = if (compact) 58.dp else 74.dp
     // With shuffle and repeat beside it, play's touch area gives a little room back (narrow phones).
-    val playTouch = if (compact) 76.dp else if (LocalAppSettings.current.playerShuffleRepeat) 80.dp else 92.dp
+    val playTouch = if (compact) 76.dp else if (LocalAppSettings.current.player.shuffleRepeat) 80.dp else 92.dp
     val skipSize = if (compact) 44.dp else 53.dp
     // Settings → Player: shuffle and repeat either side of the transport.
-    val modes = LocalAppSettings.current.playerShuffleRepeat
+    val modes = LocalAppSettings.current.player.shuffleRepeat
     val shuffle by pc.shuffle.collectAsState()
     val smart by LocalContainer.current.queue.smartShuffle.collectAsState()
     val repeat by pc.repeatMode.collectAsState()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-        if (modes) ModeGlyph(
-            if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle,
-            if (smart) tr(R.string.smart_shuffle_on) else if (shuffle) tr(R.string.shuffle_on) else tr(R.string.shuffle_off), shuffle,
-        ) { pc.toggleShuffle() }
+        if (modes) ShuffleGlyph(shuffle, smart) { pc.toggleShuffle() }
         val prevIcon = if (style == TransportStyle.GLYPHS) VinzIcons.Backward else VinzIcons.Previous
         val nextIcon = if (style == TransportStyle.GLYPHS) VinzIcons.Forward else VinzIcons.Next
         val skip = if (style == TransportStyle.GLYPHS) skipSize else skipSize * 0.82f
@@ -593,7 +590,7 @@ fun TransportRow(
         // A podcast episode skips within itself, as podcast players do: back 15 s, ahead 30 s.
         if (skips || episode) {
             if (episode) SkipGlyph(EPISODE_BACK_S, ahead = false, touch = 53.dp) { pc.seekBy(-EPISODE_BACK_S * 1000L) }
-            else TransportGlyph(prevIcon, tr(R.string.widget_previous), skip, 53.dp, if (style == TransportStyle.GLYPHS) 0.85f else 1f, previousEnabled, onHold = back) { pc.previous() }
+            else PreviousGlyph(prevIcon, skip, if (style == TransportStyle.GLYPHS) 0.85f else 1f, previousEnabled, holdSeek = back, onPrevious = pc::previous, onPreviousSong = pc::previousSong)
         }
         if (style == TransportStyle.GLYPHS) {
             if (isLoading) {
@@ -632,13 +629,35 @@ fun MinimalPlay(isPlaying: Boolean, isLoading: Boolean) {
     }
 }
 
-/** Shuffle or repeat beside the transport: bright with a dot under it when on, dim when off; [badge] marks repeat one. */
+/**
+ * What TalkBack says of Shuffle's state (it said nothing before 1.8.5): Off, On, or Smart Shuffle, its third press where
+ * the queue allows it ([com.vinz.music.playback.PlayerConnection.toggleShuffle]).
+ */
+internal fun shuffleState(shuffle: Boolean, smart: Boolean): String = when {
+    smart -> tr(R.string.smart_shuffle)
+    shuffle -> tr(R.string.tl_on)
+    else -> tr(R.string.off)
+}
+
+/** Shuffle beside the transport, named "Shuffle" with its state ([shuffleState]) and selected while on. */
 @Composable
-private fun ModeGlyph(icon: ImageVector, description: String, active: Boolean, badge: String? = null, onClick: () -> Unit) {
+internal fun ShuffleGlyph(shuffle: Boolean, smart: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) = ModeGlyph(
+    if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle, tr(R.string.shuffle), shuffle,
+    state = shuffleState(shuffle, smart), modifier = modifier, onClick = onClick,
+)
+
+/**
+ * Shuffle or repeat beside the transport: bright with a dot under it when on, dim when off; [badge] marks repeat one.
+ * [state], when given, is read out after [description] (and the glyph is marked selected while [active]).
+ */
+@Composable
+private fun ModeGlyph(icon: ImageVector, description: String, active: Boolean, badge: String? = null, state: String? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val haptics = rememberHaptics()
     val alpha by animateFloatAsState(if (active) 1f else 0.45f, label = "modeAlpha")
     Box(
-        Modifier.size(44.dp).clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = description) { haptics.tick(); onClick() },
+        modifier.size(44.dp)
+            .then(if (state != null) Modifier.semantics { stateDescription = state; selected = active } else Modifier)
+            .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = description) { haptics.tick(); onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, description, tint = Color.White.copy(alpha = alpha), modifier = Modifier.size(24.dp))
@@ -677,6 +696,27 @@ private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, si
     }
 }
 
+/**
+ * The player's Previous: a tap goes back as it always has ([onPrevious]: the song's start, or the song before near
+ * it). #481 (1.8.5): held, it goes to the song before ([onPreviousSong]), unless "Hold to seek" is set ([holdSeek]),
+ * which keeps holding for seeking back.
+ */
+@Composable
+internal fun PreviousGlyph(
+    icon: ImageVector,
+    size: Dp,
+    heightScale: Float,
+    enabled: Boolean,
+    holdSeek: (() -> Unit)?,
+    onPrevious: () -> Unit,
+    onPreviousSong: () -> Unit,
+    modifier: Modifier = Modifier,
+) = TransportGlyph(
+    icon, tr(R.string.widget_previous), size, 53.dp, heightScale, enabled, onHold = holdSeek,
+    onLongPress = if (holdSeek == null) onPreviousSong else null, longPressLabel = tr(R.string.previous_song),
+    modifier = modifier, onClick = onPrevious,
+)
+
 @Composable
 private fun TransportGlyph(
     icon: ImageVector,
@@ -686,6 +726,10 @@ private fun TransportGlyph(
     heightScale: Float = 1f,
     enabled: Boolean = true,
     onHold: (() -> Unit)? = null,
+    /** One long press (when [onHold] isn't set): done once, named [longPressLabel] for TalkBack. */
+    onLongPress: (() -> Unit)? = null,
+    longPressLabel: String? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val alpha by animateFloatAsState(if (enabled) 1f else 0.3f, label = "transportAlpha")
@@ -694,8 +738,12 @@ private fun TransportGlyph(
     val tapEnabled by rememberUpdatedState(enabled)
     val step by rememberUpdatedState(onHold)
     Box(
-        Modifier.size(touch).then(
-            if (onHold == null) Modifier.clickable(remember { MutableInteractionSource() }, indication = null, enabled = enabled) { haptics.click(); onClick() }
+        modifier.size(touch).then(
+            if (onHold == null && onLongPress != null) Modifier.combinedClickable(
+                remember { MutableInteractionSource() }, indication = null, enabled = enabled,
+                onLongClickLabel = longPressLabel, onLongClick = { haptics.click(); onLongPress() },
+            ) { haptics.click(); onClick() }
+            else if (onHold == null) Modifier.clickable(remember { MutableInteractionSource() }, indication = null, enabled = enabled) { haptics.click(); onClick() }
             // A tap changes songs; holding seeks, one step at once and then again every moment it's held.
             // Holding works even when the tap can't (forward on the queue's last song).
             else Modifier
@@ -829,16 +877,34 @@ fun barHeights(style: ScrubberStyle, thick: Float): Pair<Dp, Dp> = when (style) 
 
 @Composable
 fun VolumeRow(volume: PlayerVolume) {
-    val s = LocalAppSettings.current
-    // Reddit, 1.7.9.1: "Volume bar like the progress bar" takes its style's height and thickness; else its own, as before.
-    val (idle, held) = if (s.volumeMatchesProgress) barHeights(s.scrubberStyle, s.scrubberThickness) else 6.dp to 10.dp
+    // Like the progress bar, its color can come from the cover: the song's art, read only when it's asked for.
+    val cover = if (LocalAppSettings.current.volumeMatchesProgress) {
+        val current by LocalContainer.current.player.currentSong.collectAsState()
+        current?.let { com.vinz.music.data.PlaylistCovers.artOf(it) }
+    } else null
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(VinzIcons.VolumeDown, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        ThinSlider(volume.level, volume::drag, Modifier.weight(1f).testTag("volumeBar"), volume::release, idleHeight = idle, activeHeight = held)
+        VolumeSlider(volume.level, volume::drag, volume::release, cover, Modifier.weight(1f).testTag("volumeBar"))
         Spacer(Modifier.width(10.dp))
         Icon(VinzIcons.VolumeUp, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
     }
+}
+
+/**
+ * The volume bar itself: white, or with "Volume bar like the progress bar" the progress bar's heights and its light too
+ * (the split light, or the color picked for it with [cover] the song's art), as [PlayerScrubber] draws it.
+ */
+@Composable
+internal fun VolumeSlider(level: Float, onDrag: (Float) -> Unit, onRelease: () -> Unit, cover: String?, modifier: Modifier = Modifier) {
+    val s = LocalAppSettings.current
+    // Reddit, 1.7.9.1: "Volume bar like the progress bar" takes its style's height and thickness; else its own, as before.
+    val like = s.volumeMatchesProgress
+    val (idle, held) = if (like) barHeights(s.scrubberStyle, s.scrubberThickness) else 6.dp to 10.dp
+    ThinSlider(
+        level, onDrag, modifier, onRelease, idleHeight = idle, activeHeight = held,
+        spectrum = like, fill = if (like) scrubberFill(s.scrubberColor, cover) else null,
+    )
 }
 
 /**
@@ -868,7 +934,7 @@ fun PlayerActionRow(
     val settings by c.settings.flow.collectAsState()
     val videoLoading by pc.videoLoading.collectAsState()
     // Settings → Player → "Song / Video switch" off: audio only, the Video button goes.
-    val chosen = settings.playerButtons.filter { it != PlayerButton.VIDEO || settings.showVideoSwitch }
+    val chosen = settings.player.buttons.filter { it != PlayerButton.VIDEO || settings.showVideoSwitch }
     // Six to a row still fits a small phone: the buttons narrow a little past four.
     val glyph = when { chosen.size >= 6 -> 46.dp; chosen.size == 5 -> 50.dp; else -> 56.dp }
     // In one glass capsule (1.7), or (1.7.8, #155) as separate buttons spread across the row, as Vinz 1.6 had them.
@@ -890,8 +956,8 @@ fun PlayerActionRow(
                     if (PlayerButton.LYRICS in chosen) BottomGlyph(VinzIcons.Lyrics, tr(R.string.lyrics), false, onToggleLyrics)
                     Pill {
                         PillSegment(
-                            if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle, if (smart) tr(R.string.smart_shuffle) else tr(R.string.shuffle), shuffle,
-                            width = PILL_SEGMENT_WIDTH_TRIPLE,
+                            if (smart) VinzIcons.SmartShuffle else VinzIcons.Shuffle, tr(R.string.shuffle), shuffle,
+                            width = PILL_SEGMENT_WIDTH_TRIPLE, state = shuffleState(shuffle, smart),
                         ) { pc.toggleShuffle() }
                         PillDivider()
                         PillSegment(
@@ -901,7 +967,8 @@ fun PlayerActionRow(
                         PillDivider()
                         PillSegment(VinzIcons.Autoplay, tr(R.string.autoplay), settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
                     }
-                    BottomGlyph(VinzIcons.Queue, tr(R.string.up_next), true, onToggleQueue)
+                    // #294: "Tidier queue": Back or pulling its title down closes it.
+                    if (!settings.view.queueTidy) BottomGlyph(VinzIcons.Queue, tr(R.string.up_next), true, onToggleQueue)
                 } else Row(
                     if (pill) Modifier else Modifier.fillMaxWidth(),
                     horizontalArrangement = if (pill) Arrangement.spacedBy(4.dp) else Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
@@ -915,6 +982,7 @@ fun PlayerActionRow(
 
 /** One of the bottom row's buttons ([PlayerButton]), as it stands for the song playing (liked, downloaded, DJ on…). */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun PlayerButtonGlyph(
     b: PlayerButton,
     width: Dp,
@@ -936,7 +1004,12 @@ private fun PlayerButtonGlyph(
         // One Video toggle: on (marked) plays the music video; tapping again goes back to the song.
         PlayerButton.VIDEO -> PillSegment(
             VinzIcons.Video,
-            when { videoMode -> tr(R.string.back_to_the_song); videoAvailable -> tr(R.string.music_video_3); else -> tr(R.string.no_music_video_for_this_song) },
+            when {
+                videoMode -> tr(R.string.back_to_the_song)
+                videoAvailable -> tr(R.string.music_video_3)
+                pc.videoOffOnData.collectAsState().value -> tr(R.string.videos_are_off_on_mobile_data)
+                else -> tr(R.string.no_music_video_for_this_song)
+            },
             videoMode || videoLoading, enabled = videoAvailable || videoMode, loading = videoLoading, width = width,
         ) { onVideoMode(!(videoMode || videoLoading)) }
         PlayerButton.QUEUE -> BottomGlyph(VinzIcons.Queue, tr(R.string.up_next), false, onToggleQueue, width)
@@ -1072,13 +1145,15 @@ private fun PillSegment(
     enabled: Boolean = true,
     width: Dp = PILL_SEGMENT_WIDTH,
     loading: Boolean = false,
+    /** Read out after [description] (Shuffle's Off / On / Smart Shuffle). */
+    state: String? = null,
     onClick: () -> Unit,
 ) {
     val haptics = rememberHaptics()
     Box(
         Modifier.width(width).height(BOTTOM_ACTION_SIZE).clip(CircleShape)
             .background(if (highlighted && enabled) Color.White.copy(alpha = 0.16f) else Color.Transparent)
-            .semantics { selected = highlighted }
+            .semantics { selected = highlighted; if (state != null) stateDescription = state }
             .clickable(remember { MutableInteractionSource() }, indication = null, enabled = enabled) { haptics.tick(); onClick() },
         contentAlignment = Alignment.Center,
     ) {

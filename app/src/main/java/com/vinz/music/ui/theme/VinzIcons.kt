@@ -33,7 +33,7 @@ enum class IconWeight(val label: String, val scale: Float) { THIN(tr(R.string.th
  */
 /** Sets of icons to pick from (Settings → Appearance → Icons): Vinz's own, or Cupertino, drawn after Apple's style. */
 enum class IconPack(val label: String, val detail: String) {
-    VINZ(tr(R.string.app_name), tr(R.string.vinz_s_own_icons)),
+    VINZ(tr(R.string.vinz_s_own), tr(R.string.vinz_s_own_icons)),
     CUPERTINO(tr(R.string.cupertino), tr(R.string.in_the_style_of_apple_s)),
     /** Every icon with its curves cut into straight facets and sharp corners (1.7.7, generated from Vinz's drawings). */
     FACET(tr(R.string.facet), tr(R.string.straight_lines_and_sharp_corners_every)),
@@ -70,15 +70,10 @@ object IconStyle {
         weight = w; rounded = r
         pack = savedPack(context)
         likeStar = savedLikeStar(context)
-        fill = savedFill(context)
-    }
-
-    // Old installs/imports can contain a different preference type. Typed getters throw on those values.
-    private fun savedValues(context: android.content.Context): Map<String, *> =
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).all
+        fill = savedFill(context)    }
 
     fun savedFill(context: android.content.Context): IconFill =
-        (savedValues(context)["fill"] as? String)
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString("fill", null)
             ?.let { n -> IconFill.entries.firstOrNull { it.name == n } } ?: IconFill.OUTLINE
 
     fun saveFill(context: android.content.Context, f: IconFill) {
@@ -86,15 +81,15 @@ object IconStyle {
     }
 
     fun savedLikeStar(context: android.content.Context): Boolean =
-        savedValues(context)["like_star"] as? Boolean ?: false
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getBoolean("like_star", false)
 
     fun saveLikeStar(context: android.content.Context, on: Boolean) {
         context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean("like_star", on).apply()
     }
 
     fun savedPack(context: android.content.Context): IconPack {
-        val name = savedValues(context)["pack"] as? String
-        return IconPack.entries.firstOrNull { it.name == name } ?: IconPack.VINZ
+        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        return IconPack.entries.firstOrNull { it.name == p.getString("pack", null) } ?: IconPack.VINZ
     }
 
     fun savePack(context: android.content.Context, pack: IconPack) {
@@ -103,10 +98,9 @@ object IconStyle {
 
     /** What's saved (it may differ from what's drawn until a restart). */
     fun saved(context: android.content.Context): Pair<IconWeight, Boolean> {
-        val values = savedValues(context)
-        val name = values["weight"] as? String
-        val w = IconWeight.entries.firstOrNull { it.name == name } ?: IconWeight.REGULAR
-        return w to (values["rounded"] as? Boolean ?: true)
+        val p = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        val w = IconWeight.entries.firstOrNull { it.name == p.getString("weight", null) } ?: IconWeight.REGULAR
+        return w to p.getBoolean("rounded", true)
     }
 
     fun save(context: android.content.Context, weight: IconWeight, rounded: Boolean) {
@@ -314,10 +308,13 @@ object VinzIcons {
     val ThumbDownFilled = drawn("ThumbDown", filled = true)
     val Bookmark = drawn("Bookmark")
     val BookmarkFilled = drawn("Bookmark", filled = true)
+    /** The listener's tags on songs (1.8.3). */
+    val Tag = drawn("Tag")
     val Folder = drawn("Folder")
     val FolderFilled = drawn("Folder", filled = true)
     val Pin = drawn("Pin")
     val PinFilled = drawn("Pin", filled = true)
+    val Upload = drawn("Upload")
     val Download = drawn("Download").or { Cupertino.Download }
     val DownloadDone = drawn("DownloadDone").or { Cupertino.DownloadDone }
     val DownloadCircle = drawn("DownloadCircle")

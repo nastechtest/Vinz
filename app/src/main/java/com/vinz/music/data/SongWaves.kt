@@ -55,12 +55,12 @@ class SongWaves(context: Context) {
          * [pcm]'s outline: the loudness (RMS) of each of [POINTS] equal slices, on a gentle curve (square root) so quiet
          * passages still show, scaled so the loudest slice is 1.
          */
-        fun outline(pcm: FloatArray): FloatArray {
+        fun outline(pcm: FloatArray, count: Int = pcm.size): FloatArray {
             val out = FloatArray(POINTS)
-            if (pcm.isEmpty()) return out
+            if (count <= 0) return out
             for (i in 0 until POINTS) {
-                val from = (pcm.size.toLong() * i / POINTS).toInt()
-                val to = (pcm.size.toLong() * (i + 1) / POINTS).toInt().coerceAtLeast(from + 1).coerceAtMost(pcm.size)
+                val from = (count.toLong() * i / POINTS).toInt()
+                val to = (count.toLong() * (i + 1) / POINTS).toInt().coerceAtLeast(from + 1).coerceAtMost(count)
                 var sum = 0.0
                 for (j in from until to) sum += pcm[j] * pcm[j]
                 out[i] = sqrt(sqrt(sum / (to - from))).toFloat()

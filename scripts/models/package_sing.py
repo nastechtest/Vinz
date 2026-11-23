@@ -16,15 +16,17 @@ def read_json(path):
 def dump_json(path, value):
     with open(path, "w", encoding="utf-8", newline="\n") as f: json.dump(value, f, indent=2, sort_keys=True); f.write("\n")
 def fail(message): raise ValueError(message)
+def verify_source(data, spec):
+    if len(data) != spec["bytes"] or sha(data) != spec["sha256"]: fail("source checksum mismatch: " + spec["filename"])
+    return data
+
 def source_bytes(source_dir, spec):
     path = source_dir / spec["filename"]
     if not path.is_file():
         if not spec.get("download_if_missing"): fail("missing source: " + str(path))
         req = urllib.request.Request(spec["url"], headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=30) as r, open(path, "wb") as out: shutil.copyfileobj(r, out)
-    data = path.read_bytes()
-    if len(data) != spec["bytes"] or sha(data) != spec["sha256"]: fail("source checksum mismatch: " + spec["filename"])
-    return data
+    return verify_source(path.read_bytes(), spec)
 
 def safe_name(name):
     p = PurePosixPath(name)
@@ -74,8 +76,11 @@ def build(source_dir, output_dir):
     runtime = zip_entries(source_bytes(source_dir, by_id["onnxruntime_aar"]), {"jni/%s/libonnxruntime.so" % a for a in ABIS})
     deezer = source_bytes(source_dir, by_id["deezer_mit"])
     sherpa = source_bytes(source_dir, by_id["sherpa_apache"])
-    ort = source_bytes(source_dir, by_id["onnxruntime_mit"])
-    notices = source_bytes(source_dir, by_id["onnxruntime_third_party"])
+    wheel_id = "onnxruntime_notice_wheel"
+    notice_specs = [by_id["onnxruntime_mit"], by_id["onnxruntime_third_party"]]
+    if any(s["archive_source"] != wheel_id for s in notice_specs): fail("incorrect ONNX notice archive source")
+    entries = zip_entries(source_bytes(source_dir, by_id[wheel_id]), {s["archive_member"] for s in notice_specs})
+    ort, notices = (verify_source(entries[s["archive_member"]], s) for s in notice_specs)
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     e = dict(spleeter); e["LICENSE-DEEZER-MIT.txt"] = deezer; e["LICENSE-SHERPA-ONNX-APACHE-2.0.txt"] = sherpa

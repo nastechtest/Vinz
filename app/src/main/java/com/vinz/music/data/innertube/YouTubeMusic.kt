@@ -48,8 +48,11 @@ enum class SearchFilter(val label: String, val params: String?) {
 class YouTubeMusic(
     private val api: InnerTube,
     private val songsEverywhere: () -> Boolean = { false },
-    /** Songs paired with their music videos while reading a page (song id -> video id), for the player's Video button. */
-    private val onPairs: (Map<String, String>) -> Unit = {},
+    /**
+     * Songs paired with their music videos while reading an album page (each song with the video it was listed as), for
+     * the player's Video button and what the video plays as elsewhere ([com.vinz.music.data.meta.PlaysAs]).
+     */
+    private val onPairs: (List<Pair<Song, String>>) -> Unit = {},
 ) {
     companion object {
         /** An artist page "id" that's looked up by name ([artistIdByName]). */
@@ -65,6 +68,16 @@ class YouTubeMusic(
          * 1.7.9 (#202: "Punk Rocky"'s video runs 62 s past the song).
          */
         internal const val LONGER_VIDEO_SEC = 90
+        /**
+         * How much shorter than its song an artist's own video may run (#383, 1.8.5): a film song's video is the scene's
+         * cut of it, often 10 to 35 s short of the soundtrack's song ("Peniviti" 289 s for 310, "Kaun Tujhe" 216 for 242,
+         * "Hey Idi Nenena" 221 for 255); of 34 videos two playlists missed, 13 were only this. Title and artist must agree.
+         */
+        internal const val SHORTER_VIDEO_SEC = 35
+        /** "(feat. Dhanush & Samyuktha Menon)": who else is on it, written on the video or the song but rarely both. */
+        private val FEAT_TAG = Regex("""\s*[(\[]\s*(?:feat\.?|ft\.?|featuring)\s[^)\]]*[)\]]""", RegexOption.IGNORE_CASE)
+        /** What a label adds after the song's name: "… - Video Song", "… Full Video Song", "… Lyrical". */
+        private val LABEL_TAIL = Regex("""\s*[-–:]?\s*(?:(?:full|official|lyrical|lyric|video|song|audio|hd|4k)\b\s*)+$""", RegexOption.IGNORE_CASE)
         /** A song's name in quotes in a video's title ('Artist - "Song" Label'), any kind of double quotes. */
         private val QUOTED_TITLE = Regex("[\"“”]([^\"“”]+)[\"“”]")
 
@@ -88,6 +101,228 @@ class YouTubeMusic(
         internal fun sameTrackTitle(a: String, b: String): Boolean {
             fun norm(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
             return norm(a).isNotEmpty() && norm(a) == norm(b)
+        }
+
+        /**
+         * #383 (1.8.4.1): a film song's soundtrack tag, '(From "Sarrainodu")', names where the song is from, not another
+         * recording: "Private Party (From "Sarrainodu")"'s video is the song "Private Party", and the video "Yeshanagula" is
+         * the song 'Yeshanagula (From "The Paradise") (Telugu)'. Quoted, as the labels write it (the film's name may hold
+         * brackets of its own: 'Dheema (From "Love Insurance Kompany (Telugu)")').
+         */
+        private val FROM_TAG = Regex("""\s*[(\[]\s*from\s+["“”][^"“”]*["“”]\s*[)\]]""", RegexOption.IGNORE_CASE)
+        /** Languages a film song is dubbed into: '(Telugu)' tells the dub apart, so two different ones never match. */
+        private val LANGUAGES = setOf(
+            "telugu", "tamil", "hindi", "malayalam", "kannada", "bengali", "marathi", "punjabi", "gujarati", "odia", "bhojpuri",
+        )
+        private val VARIOUS = setOf("variousartist", "variousartists")
+
+        private fun matchNorm(s: String) = s.lowercase()
+            .replace(FROM_TAG, " ")
+            .replace(FEAT_TAG, " ")
+            .replace(SONG_FOR_VIDEO_BRACKETS) { m ->
+                val words = m.value.trim('(', ')', '[', ']', ' ').split(Regex("\\s+"))
+                // "(Official Video)" is the video's; "(Telugu)" / "(Telugu Version)" the dub's language, checked apart.
+                if (words.all { it in VIDEO_WORDS } || (words.any { it in LANGUAGES } && words.all { it in LANGUAGES || it == "version" })) " " else m.value
+            }
+            .replace(Regex("\\b(${VIDEO_WORDS.joinToString("|")})\\b"), " ")
+            .replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+        /** The dub languages a title names in its brackets (its soundtrack tag's included). */
+        private fun languages(title: String): Set<String> =
+            Regex("[(\\[][^)\\]]*[)\\]]").findAll(title.lowercase()).flatMap { Regex("\\p{L}+").findAll(it.value).map { w -> w.value } }
+                .filter { it in LANGUAGES }.toSet()
+
+        /**
+         * [name] without a label's "Video Song" / "Lyrical" ([LABEL_TAIL]). A last "Song" or "Audio" alone stays when it's
+         * half the name and no dash sets it apart: "Love Song" and "Radio Audio" are names. ("Kesariya Song" is matched
+         * without it too: [pickSongForVideo].)
+         */
+        private fun withoutLabelTail(name: String): String {
+            val tail = LABEL_TAIL.find(name) ?: return name
+            val rest = name.removeRange(tail.range).trim()
+            val words = rest.split(Regex("\\s+")).count { it.isNotEmpty() }
+            val namelike = tail.value.none { it in "-–:" } &&
+                tail.value.trim().split(Regex("\\s+")).all { it.lowercase() in NAME_WORDS }
+            return if (words < 2 && namelike) name else rest
+        }
+        /** [LABEL_TAIL]'s words that are often a song's own name's too. */
+        private val NAME_WORDS = setOf("song", "audio")
+
+        /** The song's title and artist as a video's title and channel give them ([songForVideo]). */
+        private fun videoParts(video: Song): Pair<String, String> {
+            // #383 (1.8.5): a film label's title, "Chamkeela Angeelesi - Video Song | Dasara | Nani,Keerthy Suresh | …":
+            // the song's name is what comes before the first bar, without the label's "Video Song".
+            val full = video.title.takeIf { "| " in it }?.substringBefore("|")?.trim()?.let(::withoutLabelTail)
+                ?.takeIf { matchNorm(it).isNotBlank() } ?: video.title
+            // "Artist - Title (Live at …)" videos put the artist in the title.
+            val channel = matchNorm(video.primaryArtist)
+            val head = full.substringBefore(" - ", "")
+            val headIsChannel = head.isNotEmpty() && matchNorm(head).let { a -> channel.isBlank() || a.contains(channel) || channel.contains(a) }
+            // A label's or a music channel's upload (#202: 'Meg & Dia - "Monster" Doghouse Records' by BlankTV): the artist
+            // before the dash, the song's name in quotes, the rest the label's.
+            val quoted = if (head.isNotEmpty() && !headIsChannel) QUOTED_TITLE.find(full.substringAfter(" - "))?.groupValues?.get(1)?.trim() else null
+            val artistName = if (quoted != null) head.trim() else video.primaryArtist
+            val rawTitle = when {
+                quoted != null -> quoted
+                headIsChannel -> full.substringAfter(" - ")
+                else -> full
+            }
+            return rawTitle to artistName
+        }
+
+        /** What's searched for a video's song: its title without brackets, and its artist. Null: no title to search with. */
+        internal fun songForVideoQuery(video: Song): String? {
+            val (rawTitle, artistName) = videoParts(video)
+            if (matchNorm(rawTitle).isBlank()) return null
+            return "${rawTitle.replace(FROM_TAG, " ").replace(Regex("\\(.*?\\)|\\[.*?]"), " ").trim()} $artistName".trim()
+        }
+
+        /**
+         * Two artist names that are one person's: one inside the other ("MC Vickey" / "M.C. Vickey & Co"), or a letter
+         * apart, as names written from another script are ("Renjith" / "Ranjith", "Ram Miriyala" / "Ram Miryala",
+         * "Shefali Alvares" / "Shefali Alvaris": #383, 1.8.5). Short names must be the same.
+         */
+        internal fun sameArtistName(a: String, b: String): Boolean {
+            if (a.isBlank() || b.isBlank()) return false
+            if (a.contains(b) || b.contains(a)) return true
+            if (minOf(a.length, b.length) < 6 || kotlin.math.abs(a.length - b.length) > 1) return false
+            // One letter changed, added or left out.
+            var i = 0
+            while (i < a.length && i < b.length && a[i] == b[i]) i++
+            return when {
+                a.length == b.length -> a.regionMatches(i + 1, b, i + 1, a.length - i - 1)
+                a.length > b.length -> a.regionMatches(i + 1, b, i, b.length - i)
+                else -> b.regionMatches(i + 1, a, i, a.length - i)
+            }
+        }
+
+        /**
+         * The song among search [results] that [video] is of, or null. Without YouTube's own pairing it must be the same
+         * recording (GitHub #113: a live album's track, "Nos siguen pegando abajo (Pecado mortal)", played as the studio
+         * song from another album). So only the video's own words go ("Official Video", "(Lyric Video)", "HD"), and a film
+         * song's soundtrack and language tags (#383); anything else in brackets, and live or session takes, tell recordings
+         * apart; and the lengths must agree.
+         */
+        internal fun pickSongForVideo(
+            video: Song,
+            results: List<Song>,
+            anyLength: Boolean = false,
+            /**
+             * #383 (1.8.7): for a song of the video's title that credits none of its artists, what else may confirm it
+             * ([namesRelease]: the video's full title names the song's film or album). Without it such a song never counts.
+             */
+            confirm: ((Song) -> Boolean)? = null,
+        ): Song? {
+            val m = songMatches(video, results, anyLength) ?: return null
+            return m.byName.ifEmpty { if (confirm == null) emptyList() else m.titleOnly.filter(confirm) }.minWithOrNull(m.order)
+        }
+
+        /**
+         * Whether [pickSongForVideo] finds nothing by name but has songs of the video's title only a confirmation could
+         * take ([songForVideo] then asks for the video's full title, one request, only then).
+         */
+        internal fun waitsOnConfirmation(video: Song, results: List<Song>, anyLength: Boolean = false): Boolean =
+            songMatches(video, results, anyLength)?.let { it.byName.isEmpty() && it.titleOnly.isNotEmpty() } == true
+
+        /** What [pickSongForVideo] chooses from: the songs that match by name, the ones of the title alone, and the order. */
+        private class SongMatches(val byName: List<Song>, val titleOnly: List<Song>, val order: Comparator<Song>)
+
+        private fun songMatches(video: Song, results: List<Song>, anyLength: Boolean): SongMatches? {
+            val (rawTitle, artistName) = videoParts(video)
+            val title = matchNorm(rawTitle)
+            if (title.isBlank()) return null
+            // A label's title whose last "Song" was kept as the name's ([withoutLabelTail]) may still mean the song without it.
+            val titles = setOfNotNull(title, matchNorm(rawTitle.replace(LABEL_TAIL, "")).takeIf { "| " in video.title && it.isNotBlank() })
+            val artist = matchNorm(artistName)
+            val videoLanguages = languages(video.title)
+            // An artist's own music video often runs longer than the song (an intro, a scene after it: "bad guy", 206 s for a
+            // 194 s song), so it may be up to a minute and a half longer, never much shorter. A live or acoustic take is told apart by
+            // its title, so the lengths only matter beyond that.
+            val ownTake = !MusicVideoMatch.otherTake(video.title)
+            fun lengthFits(s: Song): Boolean {
+                // [anyLength]: only its cover is wanted (Reddit 1.7.9: "Carl Sagan"'s video is a 3:29 edit of the 3:53 song),
+                // never its sound, so another length of the same title by the same artist is the same release.
+                if (anyLength || video.durationSec <= 0 || s.durationSec <= 0) return true
+                val longer = video.durationSec - s.durationSec
+                return if (ownTake) longer in -SHORTER_VIDEO_SEC..LONGER_VIDEO_SEC else kotlin.math.abs(longer) <= SONG_FOR_VIDEO_SLACK_SEC
+            }
+            fun byArtist(s: Song, a: String) = s.artists.any { x -> sameArtistName(matchNorm(x.name), a) }
+            // Any of the video's artists will do (#383, 1.8.5): YouTube lists a film video's singers in another order than
+            // the song's, or leads with one the song doesn't credit ("Yuvakula": Ranjith, Remo Fernandes, Revathy).
+            val credited = video.artists.map { matchNorm(it.name) }.filter { it.isNotBlank() }
+            fun byAnyArtist(s: Song) = byArtist(s, artist) || credited.any { byArtist(s, it) }
+            // Only an exact title counts; a near miss would put the wrong song's lyrics on the video. A Telugu dub isn't the Tamil song.
+            val titled = results.filter { s ->
+                !s.isVideo && matchNorm(s.title) in titles && languages(s.title).let { l -> l.isEmpty() || videoLanguages.isEmpty() || l.any { it in videoLanguages } }
+            }
+            val fits = titled.filter { s -> (artist.isBlank() || byAnyArtist(s)) && lengthFits(s) }
+            // #383: a label's upload ("Junglee Music Telugu") of a soundtrack YouTube credits to "Various Artists" names no
+            // singer to compare: it counts only as the one song of that title the search gives, and of a fitting length.
+            val chosen = fits.ifEmpty {
+                titled.singleOrNull()?.takeIf { s -> s.artists.isNotEmpty() && s.artists.all { matchNorm(it.name) in VARIOUS } && lengthFits(s) }?.let(::listOf).orEmpty()
+            }
+            // #383 (1.8.7): a label's upload credits whom it likes ("Dandiya India": Mukesh, the song Suchitra): the same title
+            // and a fitting length, but nobody shared. Only kept for a confirmation that doesn't rest on names.
+            val titleOnly = titled.filter { s -> s !in chosen && lengthFits(s) }
+            // The one crediting more of the video's artists first (the Telugu dub names its Telugu lyricist), then the nearest length.
+            return SongMatches(
+                chosen, titleOnly,
+                compareBy<Song>({ s -> -credited.count { byArtist(s, it) } }, { s -> if (video.durationSec > 0 && s.durationSec > 0) kotlin.math.abs(s.durationSec - video.durationSec) else 0 }),
+            )
+        }
+
+        /** A `player` answer's full video title: its page's (microformat); "videoDetails" carries the cut one. */
+        internal fun fullVideoTitleOf(player: JsonObject): String? =
+            (player.str("microformat", "microformatDataRenderer", "title") ?: player.str("videoDetails", "title"))?.takeIf { it.isNotBlank() }
+
+        /** A film's name in a soundtrack tag, '(From "Nenu Sailaja")'. */
+        private val FROM_NAME = Regex("""[(\[]\s*from\s+["“”]([^"“”]*)["“”]""", RegexOption.IGNORE_CASE)
+        private fun nameWords(s: String) = s.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        private fun List<String>.indexOfRun(run: List<String>): Int =
+            if (run.isEmpty()) -1 else (0..size - run.size).firstOrNull { i -> subList(i, i + run.size) == run } ?: -1
+
+        /**
+         * #383 (1.8.7): whether a video's full title ([videoTitle], as its watch page gives it: a playlist row cuts a label's
+         * "Oosaravelli Telugu Movie || Dandiya India Song With Lyrics || Jr.Ntr,Tamanna" down to "Dandiya India") names
+         * the film or album [song] is from, apart from the song's own name. Never for another take (a cover, a live one).
+         */
+        internal fun namesRelease(videoTitle: String, song: Song): Boolean {
+            if (MusicVideoMatch.otherTake(videoTitle)) return false
+            val own = nameWords(song.title.replace(FROM_TAG, " ").replace(SONG_FOR_VIDEO_BRACKETS, " "))
+            var words = nameWords(videoTitle)
+            // "Sailaja Sailaja Full Song || Nenu Sailaja Songs": the song's name doesn't count as its film's.
+            val at = words.indexOfRun(own)
+            if (at >= 0) words = words.take(at) + words.drop(at + own.size)
+            val names = listOfNotNull(
+                FROM_NAME.find(song.title)?.groupValues?.get(1),
+                song.album?.title?.let { a -> FROM_NAME.find(a)?.groupValues?.get(1) ?: a },
+            ).map { nameWords(it.replace(SONG_FOR_VIDEO_BRACKETS, " ")) }
+            // A single's album is the song itself: that names nothing more.
+            return names.any { n -> n.joinToString("").length >= 4 && n != own && n.joinToString("") !in VARIOUS && words.indexOfRun(n) >= 0 }
+        }
+
+        /**
+         * For an album page that lists music videos ([listed]), the songs its own playlist ([own]) lists in their place,
+         * each with the video it replaces. Where both lists have as many tracks, by place and the same title. Where they
+         * don't (#154's last gap, 1.8.7: a bonus track on one of them), each video on its own through [pickSongForVideo]
+         * among the playlist's songs, its being on the song's album page the confirmation; a song is taken once.
+         */
+        internal fun pairAlbumTracks(listed: List<Song>, own: List<Song>): Map<Int, Pair<Song, String>> {
+            if (own.size == listed.size) return listed.indices.mapNotNull { i ->
+                val page = listed[i]
+                val song = own[i]
+                if (!page.isVideo || song.isVideo || song.id == page.id || !sameTrackTitle(page.title, song.title)) null
+                else i to (song to page.id)
+            }.toMap()
+            val songs = own.filter { !it.isVideo }
+            val taken = HashSet<String>()
+            return listed.indices.mapNotNull { i ->
+                val page = listed[i]
+                if (!page.isVideo) return@mapNotNull null
+                val song = pickSongForVideo(page, songs.filter { it.id != page.id && it.id !in taken }, confirm = { true }) ?: return@mapNotNull null
+                taken += song.id
+                i to (song to page.id)
+            }.toMap()
         }
     }
 
@@ -128,25 +363,48 @@ class YouTubeMusic(
     /** [fullHome], with the pages as YouTube sent them (Home keeps those to show straight away at the next start, #126). */
     suspend fun fullHomePages(
         pages: Int = 3, maxPages: Int = pages, satisfied: (List<Shelf>) -> Boolean = { true },
+        /** Each page's shelves as they come (#371: Quick picks needn't wait for the pages after theirs). */
+        onPage: (List<Shelf>) -> Unit = {},
     ): Pair<List<Shelf>, List<JsonObject>> {
         val all = mutableListOf<Shelf>()
         val raw = mutableListOf<JsonObject>()
         var res = browse("FEmusic_home")
         raw += res
         all += Parser.shelves(res)
+        onPage(all)
         var next = Parser.continuation(res.obj("continuationContents") ?: res.obj("contents"))
         var n = 1
         while (next != null && (n < pages || (n < maxPages && !satisfied(all)))) {
             res = runCatching { continueBrowse(next!!) }.getOrNull() ?: break
             raw += res
             all += Parser.shelves(res)
+            onPage(all)
             next = Parser.continuation(res.obj("continuationContents") ?: res.obj("contents"))
             n++
         }
         return all.distinctBy { it.title } to raw
     }
 
-    suspend fun moodsAndGenres(): List<Shelf> = Parser.shelves(browse("FEmusic_moods_and_genres"))
+    /** D40 (1.8.3): kept for a day when the app gives a [moodsCache] (Home, Search and the Moods page all ask). */
+    var moodsCache: com.vinz.music.data.MoodsCache? = null
+
+    suspend fun moodsAndGenres(): List<Shelf> = moodsCache?.get(api.pageLanguage, { browse("FEmusic_moods_and_genres") }, Parser::shelves)
+        ?: Parser.shelves(browse("FEmusic_moods_and_genres"))
+
+    /**
+     * Explore's new releases, moods and genres, and trending. Asked without the account: it's the same public page, and
+     * what was checked is what everyone gets.
+     */
+    suspend fun explore(): List<Shelf> =
+        Explore.music(Parser.shelves(api.postAnonymous("browse", buildJsonObject { put("browseId", "FEmusic_explore") })))
+
+    /** The charts of [country] (a [ChartCountry.code]), or of the country YouTube picks for the listener when null. */
+    suspend fun charts(country: String? = null): ChartsPage = Explore.charts(
+        api.postAnonymous("browse", buildJsonObject {
+            put("browseId", "FEmusic_charts")
+            if (country != null) putJsonObject("formData") { putJsonArray("selectedValues") { add(country) } }
+        }),
+    )
 
     suspend fun browseShelves(browseId: String, params: String? = null): List<Shelf> {
         val res = browse(browseId, params)
@@ -218,25 +476,42 @@ class YouTubeMusic(
      * the song search leaves it out ("halo": Beyoncé's, under a Halo game soundtrack card).
      */
     suspend fun youtubeTop(query: String): Pair<BrowseItem?, List<SongItem>> {
-        val res = api.postAnonymous("search", buildJsonObject { put("query", query) })
-        val card = res.findAll("musicCardShelfRenderer").firstOrNull()?.let { Parser.card(it) }
-        val songs = res.findAll("musicResponsiveListItemRenderer").mapNotNull { Parser.responsive(it) as? SongItem }.filter { !it.song.isVideo }
-        return card to songs
+        fun read(res: JsonObject): Pair<BrowseItem?, List<SongItem>> {
+            val card = res.findAll("musicCardShelfRenderer").firstOrNull()?.let { Parser.card(it) }
+            val songs = res.findAll("musicResponsiveListItemRenderer").mapNotNull { Parser.responsive(it) as? SongItem }.filter { !it.song.isVideo }
+            return card to songs
+        }
+        return searchAsked(query, SearchFilter.TOP, buildJsonObject { put("query", query) }, ::read) { it.first == null && it.second.isEmpty() }
+    }
+
+    /** #396: searches go with the account for the rest of the session ([SearchAccount]). */
+    @Volatile private var searchWithAccount = false
+
+    /**
+     * A search request read by [read]: without the account (signed in, YouTube keeps every search in the account's
+     * history, #27), unless [SearchAccount] says it goes with it, or asks it again with it when nothing was found.
+     */
+    private suspend fun <T> searchAsked(query: String, filter: SearchFilter, body: JsonObject, read: (JsonObject) -> T, nextPage: Boolean = false, urlQuery: String = "", empty: (T) -> Boolean): T {
+        if (SearchAccount.withAccount(api.signedIn, searchWithAccount)) return read(api.post("search", body, urlQuery))
+        val found = read(api.postAnonymous("search", body, urlQuery))
+        if (!SearchAccount.askAgain(api.signedIn, query, filter, empty(found), nextPage)) return found
+        val again = try { read(api.post("search", body, urlQuery)) } catch (e: java.io.IOException) { return found }
+        if (empty(again)) return found
+        searchWithAccount = true
+        return again
     }
 
     suspend fun search(query: String, filter: SearchFilter, continuation: String? = null): SearchResult {
         if (filter == SearchFilter.LIVE) return searchLive(query, continuation)
-        // Without the account: signed in, YouTube keeps every search in the account's history (#27).
-        val res = if (continuation != null) {
-            api.postAnonymous("search", buildJsonObject { put("continuation", continuation) }, "&ctoken=$continuation&continuation=$continuation&type=next")
-        } else {
-            api.postAnonymous("search", buildJsonObject {
-                put("query", query)
-                filter.params?.let { put("params", it.replace("%3D", "=")) }
-            })
+        val body = if (continuation != null) buildJsonObject { put("continuation", continuation) } else buildJsonObject {
+            put("query", query)
+            filter.params?.let { put("params", it.replace("%3D", "=")) }
         }
-        val items = res.findAll("musicResponsiveListItemRenderer").mapNotNull { Parser.responsive(it) }
-        return SearchResult(items, Parser.continuation(res.obj("contents") ?: res.obj("continuationContents")))
+        val urlQuery = if (continuation != null) "&ctoken=$continuation&continuation=$continuation&type=next" else ""
+        return searchAsked(query, filter, body, { res ->
+            val items = res.findAll("musicResponsiveListItemRenderer").mapNotNull { Parser.responsive(it) }
+            SearchResult(items, Parser.continuation(res.obj("contents") ?: res.obj("continuationContents")))
+        }, nextPage = continuation != null, urlQuery = urlQuery) { it.items.isEmpty() }
     }
 
     private suspend fun searchLive(query: String, continuation: String?): SearchResult {
@@ -272,6 +547,7 @@ class YouTubeMusic(
         res.findAll("musicResponsiveListItemRenderer").mapNotNull { (Parser.responsive(it) as? SongItem)?.song }
 
     suspend fun album(browseId: String): CollectionPage {
+        if (Parser.isUploadAlbum(browseId)) return uploadAlbum(browseId)
         val res = browse(browseId)
         val header = res.findFirst("musicResponsiveHeaderRenderer") ?: res.findFirst("musicDetailHeaderRenderer")
         val title = header.obj("title").text() ?: "Album"
@@ -290,7 +566,6 @@ class YouTubeMusic(
         // "Death & Romance" played its 8-minute video with another song in it, at the album's 5:15). The album's own
         // playlist still lists the songs, in the same order: one request puts them back.
         val songsOf = if (listed.any { it.isVideo } && playlistId != null) albumSongs(listed, playlistId) else emptyMap()
-        if (songsOf.isNotEmpty()) onPairs(songsOf.values.associate { (song, video) -> song.id to video })
         val songs = listed.mapIndexed { i, s ->
             val song = songsOf[i]?.first
             (song ?: s).copy(
@@ -304,6 +579,8 @@ class YouTubeMusic(
                 explicit = s.explicit || song?.explicit == true,
             )
         }
+        // Each song as the page shows it (its album and cover filled in), with the video it was listed as.
+        if (songsOf.isNotEmpty()) onPairs(songsOf.mapNotNull { (i, pair) -> songs.getOrNull(i)?.let { it to pair.second } })
         // "Other versions" sits beside the track list (deluxe, clean, live editions).
         val others = Parser.shelves(res).firstOrNull { it.title.equals("Other versions", true) }?.items.orEmpty()
             .filter { it.id != browseId }
@@ -336,22 +613,14 @@ class YouTubeMusic(
     }
 
     /**
-     * For an album page that lists music videos ([listed]), the songs its own playlist lists in their place, by track
-     * position, each with the video it replaces. Only where both lists agree: the same number of tracks and, at each
-     * place, the same title. Empty when the playlist can't be read or doesn't line up (the page then stays as listed).
+     * For an album page that lists music videos ([listed]), the songs its own playlist lists in their place, each with
+     * the video it replaces ([pairAlbumTracks]). Empty when the playlist can't be read (the page then stays as listed).
      */
     private suspend fun albumSongs(listed: List<Song>, playlistId: String): Map<Int, Pair<Song, String>> {
         val own = runCatching { playlist(playlistId).songs }.getOrNull() ?: return emptyMap()
-        if (own.size != listed.size) {
-            log("album $playlistId: its playlist has ${own.size} tracks, the page ${listed.size}; videos left as listed")
-            return emptyMap()
-        }
-        return listed.indices.mapNotNull { i ->
-            val page = listed[i]
-            val song = own[i]
-            if (!page.isVideo || song.isVideo || song.id == page.id || !sameTrackTitle(page.title, song.title)) null
-            else i to (song to page.id)
-        }.toMap().also { if (it.isNotEmpty()) log("album $playlistId: ${it.size} tracks listed as videos played as their songs") }
+        if (own.size != listed.size) log("album $playlistId: its playlist has ${own.size} tracks, the page ${listed.size}; each video matched on its own")
+        return pairAlbumTracks(listed, own)
+            .also { if (it.isNotEmpty()) log("album $playlistId: ${it.size} tracks listed as videos played as their songs") }
     }
 
     /** The header's bookmark ("Save to library") state; only meaningful when signed in. */
@@ -450,7 +719,7 @@ class YouTubeMusic(
     }
 
     /** Loads every song of a playlist, following continuations up to [limit]. */
-    suspend fun playlistAll(playlistId: String, limit: Int = 2000): CollectionPage {
+    suspend fun playlistAll(playlistId: String, limit: Int = 2000, notAll: () -> Unit = {}): CollectionPage {
         val first = playlist(playlistId)
         val songs = first.songs.toMutableList()
         var token = first.continuation
@@ -460,6 +729,7 @@ class YouTubeMusic(
             songs += more
             token = next
         }
+        if (token != null) notAll()
         return first.copy(songs = songs.distinctBy { it.id }, continuation = null)
     }
 
@@ -482,6 +752,7 @@ class YouTubeMusic(
             val name = browseId.removePrefix(ARTIST_BY_NAME)
             return artist(artistIdByName(name) ?: throw java.io.IOException("Couldn't find $name in Vinz Music"))
         }
+        if (Parser.isUploadArtist(browseId)) return uploadArtist(browseId)
         val res = browse(browseId)
         val header = res.findFirst("musicImmersiveHeaderRenderer") ?: res.findFirst("musicVisualHeaderRenderer")
             ?: res.findFirst("musicResponsiveHeaderRenderer")
@@ -611,51 +882,21 @@ class YouTubeMusic(
             r.counterpartSongs[video.id]?.takeIf { !it.isVideo }?.let { return it }
             r.songs.firstOrNull { !it.isVideo && r.counterparts[it.id] == video.id }?.let { return it }
         }
-        // Without YouTube's own pairing it must be the same recording (GitHub #113: a live album's track,
-        // "Nos siguen pegando abajo (Pecado mortal)", played as the studio song from another album). So only the video's
-        // own words go ("Official Video", "(Lyric Video)", "HD"); anything else in brackets, and live or session takes,
-        // tell recordings apart; and the lengths must agree.
-        fun norm(s: String) = s.lowercase()
-            .replace(SONG_FOR_VIDEO_BRACKETS) { m -> if (m.value.trim('(', ')', '[', ']', ' ').split(Regex("\\s+")).all { it in VIDEO_WORDS }) " " else m.value }
-            .replace(Regex("\\b(${VIDEO_WORDS.joinToString("|")})\\b"), " ")
-            .replace(Regex("[^\\p{L}\\p{N}]"), "")
-        // "Artist - Title (Live at …)" videos put the artist in the title.
-        val channel = norm(video.primaryArtist)
-        val head = video.title.substringBefore(" - ", "")
-        val headIsChannel = head.isNotEmpty() && norm(head).let { a -> channel.isBlank() || a.contains(channel) || channel.contains(a) }
-        // A label's or a music channel's upload (#202: 'Meg & Dia - "Monster" Doghouse Records' by BlankTV): the artist
-        // before the dash, the song's name in quotes, the rest the label's.
-        val quoted = if (head.isNotEmpty() && !headIsChannel) QUOTED_TITLE.find(video.title.substringAfter(" - "))?.groupValues?.get(1)?.trim() else null
-        val artistName = if (quoted != null) head.trim() else video.primaryArtist
-        val artist = norm(artistName)
-        val rawTitle = when {
-            quoted != null -> quoted
-            headIsChannel -> video.title.substringAfter(" - ")
-            else -> video.title
-        }
-        val title = norm(rawTitle)
-        if (title.isBlank()) return null
-        val query = "${rawTitle.replace(Regex("\\(.*?\\)|\\[.*?]"), " ").trim()} $artistName".trim()
-        // An artist's own music video often runs longer than the song (an intro, a scene after it: "bad guy", 206 s for a
-        // 194 s song), so it may be up to a minute and a half longer, never much shorter. A live or acoustic take is told apart by
-        // its title, so the lengths only matter beyond that.
-        val ownTake = !MusicVideoMatch.otherTake(video.title)
-        fun lengthFits(s: Song): Boolean {
-            // [anyLength]: only its cover is wanted (Reddit 1.7.9: "Carl Sagan"'s video is a 3:29 edit of the 3:53 song),
-            // never its sound, so another length of the same title by the same artist is the same release.
-            if (anyLength || video.durationSec <= 0 || s.durationSec <= 0) return true
-            val longer = video.durationSec - s.durationSec
-            return if (ownTake) longer in -SONG_FOR_VIDEO_SLACK_SEC..LONGER_VIDEO_SEC else kotlin.math.abs(longer) <= SONG_FOR_VIDEO_SLACK_SEC
-        }
-        // Only an exact title by the same artist counts; a near miss would put the wrong song's lyrics on the video.
-        return search(query, SearchFilter.SONGS).items.filterIsInstance<SongItem>().map { it.song }
-            .filter { s ->
-                !s.isVideo && norm(s.title) == title &&
-                    (artist.isBlank() || s.artists.any { a -> norm(a.name).let { it.isNotBlank() && (it.contains(artist) || artist.contains(it)) } }) &&
-                    lengthFits(s)
-            }
-            .minByOrNull { s -> if (video.durationSec > 0 && s.durationSec > 0) kotlin.math.abs(s.durationSec - video.durationSec) else 0 }
+        val query = songForVideoQuery(video) ?: return null
+        val results = search(query, SearchFilter.SONGS).items.filterIsInstance<SongItem>().map { it.song }
+        pickSongForVideo(video, results, anyLength)?.let { return it }
+        // #383 (1.8.7): the title matches but nobody is shared. The video's title may name the song's film or album; a
+        // playlist row's title is often cut to the song's name, so its watch page's full title is asked for then.
+        if (!waitsOnConfirmation(video, results, anyLength)) return null
+        pickSongForVideo(video, results, anyLength) { namesRelease(video.title, it) }?.let { return it }
+        val full = runCatching { fullVideoTitle(video.id) }.getOrNull()?.takeIf { it != video.title } ?: return null
+        return pickSongForVideo(video, results, anyLength) { namesRelease(full, it) }
+            .also { log("song for ${video.id} \"${video.title}\": by its full title \"$full\": ${it?.id ?: "none"}") }
     }
+
+    /** A video's title as its watch page gives it, in full (YouTube Music's own rows may carry only the song's name). */
+    private suspend fun fullVideoTitle(videoId: String): String? =
+        fullVideoTitleOf(api.post("player", buildJsonObject { put("videoId", videoId) }))
 
     /**
      * Finds the official music video for an audio track. Uses the pairing from
@@ -683,6 +924,30 @@ class YouTubeMusic(
                 videos.take(6).joinToString("; ") { "\"${it.title}\" by ${it.artistText} ${it.durationSec}s ${it.id}" },
         )
         return picked
+    }
+
+    /**
+     * The song's music video by search alone, leaving out [not] and any whose title [refused] (1.8.6 Canvas: where
+     * YouTube's own pairing is the lyric video or an audio upload, the music video is usually the next result).
+     */
+    suspend fun otherMusicVideos(song: Song, not: Set<String>, refused: (String) -> Boolean): List<String> {
+        if (song.artists.isEmpty() || song.title.isBlank()) return emptyList()
+        val found = search("${song.title} ${song.primaryArtist} official video", SearchFilter.VIDEOS).items
+            .filterIsInstance<SongItem>().map { it.song }.filter { it.id !in not && !refused(it.title) }
+        val picked = MusicVideoMatch.pick(song, found)
+        log("another video for ${song.id} \"${song.title}\": " + (picked ?: "none of") + " " + found.take(6).joinToString("; ") { "\"${it.title}\" ${it.id}" })
+        return listOfNotNull(picked)
+    }
+
+    /**
+     * The videos a listener may pick from for a song's canvas ("Pick another video"): YouTube's own pairing first, then
+     * what a video search for the song finds, as it finds them (nothing is judged here: the listener is choosing).
+     */
+    suspend fun musicVideoChoices(song: Song): List<Song> {
+        val own = runCatching { pairing(song.id)?.counterparts?.get(song.id) }.getOrNull()
+        if (song.title.isBlank()) return emptyList()
+        val found = search("${song.title} ${song.primaryArtist}".trim(), SearchFilter.VIDEOS).items.filterIsInstance<SongItem>().map { it.song }
+        return (found.filter { it.id == own } + found.filter { it.id != own }).distinctBy { it.id }.take(10)
     }
 
     private fun log(message: String) { runCatching { android.util.Log.i("VinzVideo", message) } }
@@ -730,9 +995,13 @@ class YouTubeMusic(
             loudnessDb = res.str("playerConfig", "audioConfig", "loudnessDb")?.toDoubleOrNull(),
             trackingUrl = res.str("playbackTracking", "videostatsPlaybackUrl", "baseUrl"),
             watchtimeUrl = res.str("playbackTracking", "videostatsWatchtimeUrl", "baseUrl"),
+            seen = YouTubeSeen.of(res).text,
         ).also {
-            if (it.trackingUrl == null) android.util.Log.w("VinzHistory", "no tracking URL for $videoId: " +
-                "${res.str("playabilityStatus", "status")} ${res.str("playabilityStatus", "reason")} (sts $signatureTimestamp)")
+            if (it.trackingUrl == null) {
+                val why = "no tracking URL: ${res.str("playabilityStatus", "status")} ${res.str("playabilityStatus", "reason")} (signature timestamp ${if (signatureTimestamp != null) "known" else "NOT known"}), ${it.seen}"
+                android.util.Log.w("VinzHistory", "$videoId: $why")
+                com.vinz.music.playback.AudioDiagnostics.log("history", "$videoId: not sent: $why")
+            }
         }
     }
 
@@ -740,12 +1009,14 @@ class YouTubeMusic(
      * Registers a play in the user's YouTube Music history so recommendations stay in sync. Whether YouTube took it
      * (a 2xx answer): no tracking URL, no answer or a refusal is false.
      */
-    suspend fun registerPlayback(extras: PlayerExtras): Boolean {
+    suspend fun registerPlayback(extras: PlayerExtras, songId: String = "?"): Boolean {
         val base = extras.trackingUrl ?: return false
         val cpn = (1..16).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".random() }.joinToString("")
         val sep = if (base.contains("?")) "&" else "?"
         val code = api.ping("$base${sep}ver=2&c=WEB_REMIX&cver=${api.clientVersion}&cpn=$cpn")
         android.util.Log.i("VinzHistory", "play sent to YouTube Music: HTTP $code")
+        // #377: a 204 taken for a request that isn't the account's would still not be in its history; so it says both.
+        com.vinz.music.playback.AudioDiagnostics.log("history", "$songId: sent${if (api.brandChannel) " for the brand channel" else ""}, YouTube answered ${code?.let { "HTTP $it" } ?: "nothing (no connection?)"}; ${extras.seen ?: "not said if signed in"}")
         return code != null && code in 200..299
     }
 
@@ -823,6 +1094,78 @@ class YouTubeMusic(
         return (tracks + subs).filterIsInstance<com.vinz.music.data.model.ArtistItem>().distinctBy { it.id }
     }
 
+    // ---------------------------------------------------------------- The listener's uploads (#332, #101)
+    //
+    // Browse ids as ytmusicapi uses them (mixins/uploads.py). Not yet checked against an account with uploads: see Parser.
+
+    /** A page of the account's uploaded songs; [token] from the page before. */
+    suspend fun uploadedSongsPage(token: String? = null): Parser.UploadRows<Song> =
+        Parser.uploadSongRows(if (token == null) browse("FEmusic_library_privately_owned_tracks") else continueBrowse(token))
+
+    /** Every card of the account's uploaded albums (they come a page at a time). [Parser.UploadRows.next]: a page didn't come. */
+    suspend fun uploadedAlbums(maxPages: Int = 40): Parser.UploadRows<com.vinz.music.data.model.AlbumItem> =
+        allUploadPages(maxPages, browse("FEmusic_library_privately_owned_releases"), Parser::uploadAlbumCards)
+
+    /** Every row of the account's uploaded artists. [Parser.UploadRows.next]: a page didn't come. */
+    suspend fun uploadedArtists(maxPages: Int = 40): Parser.UploadRows<ArtistItem> =
+        allUploadPages(maxPages, browse("FEmusic_library_privately_owned_artists"), Parser::uploadArtistRows)
+
+    /**
+     * Deletes an upload from the account for good (1.8.3, D49), as ytmusicapi's delete_upload_entity: a song's entity id
+     * ([Parser.UploadRows.entities]) or an uploaded album's page id. Throws when YouTube refuses.
+     */
+    suspend fun deleteUpload(entityId: String) {
+        val id = entityId.removePrefix("FEmusic_library_privately_owned_release_detail")
+        val res = api.post("music/delete_privately_owned_entity", buildJsonObject { put("entityId", id) })
+        res["error"]?.let { e -> throw InnerTubeException(e.str("message") ?: "YouTube Music didn't delete it") }
+    }
+
+    /** Uploads a music file to the account (1.8.3, D49): see [InnerTube.uploadSong]. */
+    suspend fun uploadSong(fileName: String, size: Long, body: okhttp3.RequestBody) =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { api.uploadSong(fileName, size, body) }
+
+    private suspend fun <T : com.vinz.music.data.model.BrowseItem> allUploadPages(maxPages: Int, first: JsonObject, read: (JsonElement) -> Parser.UploadRows<T>): Parser.UploadRows<T> {
+        var page = read(first)
+        val items = page.items.toMutableList()
+        var rows = page.rows
+        var pages = 1
+        var stoppedAt: String? = null
+        while (page.next != null && pages++ < maxPages) {
+            val token = page.next!!
+            page = runCatching { read(continueBrowse(token)) }.getOrNull() ?: run { stoppedAt = token; null } ?: break
+            items += page.items
+            rows += page.rows
+        }
+        // Repeated across pages, one would crash a list keyed by id.
+        return Parser.UploadRows(items.distinctBy { it.id }, rows, stoppedAt)
+    }
+
+    private suspend fun uploadAlbum(browseId: String): CollectionPage {
+        val page = Parser.uploadAlbumPage(browseId, browse(browseId))
+        val ref = com.vinz.music.data.model.AlbumRef(page.title, browseId)
+        val songs = page.songs.toMutableList()
+        var token = page.continuation
+        var pages = 1
+        while (token != null && pages++ < 20) {
+            val more = runCatching { Parser.uploadSongRows(continueBrowse(token!!), ref) }.getOrNull() ?: break
+            songs += more.items.map { s -> s.copy(thumbnail = s.thumbnail ?: page.thumbnail, artists = s.artists.ifEmpty { page.artists }) }
+            token = more.next
+        }
+        return page.copy(songs = songs.distinctBy { it.id }, continuation = null)
+    }
+
+    private suspend fun uploadArtist(browseId: String): ArtistPage {
+        val res = browse(browseId)
+        var page = Parser.uploadSongRows(res)
+        val songs = page.items.toMutableList()
+        var pages = 1
+        while (page.next != null && pages++ < 200) {
+            page = runCatching { Parser.uploadSongRows(continueBrowse(page.next!!)) }.getOrNull() ?: break
+            songs += page.items
+        }
+        return Parser.uploadArtistPage(browseId, res, songs.distinctBy { it.id })
+    }
+
     /**
      * A song's credits as YouTube Music's "View song credits" shows them ("Performed by", "Written by", "Produced by",
      * "Music metadata provided by"), each with its names. Empty when there are none (music videos usually have none).
@@ -845,6 +1188,24 @@ class YouTubeMusic(
             val names = runs(sec["subtitle"] as? kotlinx.serialization.json.JsonObject).joinToString("").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
             if (title.isEmpty() || names.isEmpty()) null else title to names
         }
+    }
+
+    /**
+     * A song's or video's plays and dates (#211). Asked without the account: these are public, and only the plain web
+     * client's answer carries the description with the release date. YouTube Music's own answer fills in what that one
+     * lacks (it can refuse with a bot check). Fails only if neither could be asked.
+     */
+    suspend fun songFacts(videoId: String): SongFacts {
+        val body = buildJsonObject {
+            put("videoId", videoId)
+            put("racyCheckOk", true)
+            put("contentCheckOk", true)
+        }
+        val web = runCatching { SongFacts.parse(videoId, api.webPost("player", body)) }
+        if (web.getOrNull()?.let { it.count != null && (it.releasedOn ?: it.publishedOn) != null } == true) return web.getOrThrow()
+        val music = runCatching { SongFacts.parse(videoId, api.postAnonymous("player", body)) }
+        if (web.isFailure && music.isFailure) throw music.exceptionOrNull()!!
+        return (web.getOrNull() ?: SongFacts()).orElse(music.getOrNull() ?: SongFacts())
     }
 
     /** Only the artists the account subscribes to (follows) on YouTube Music. */

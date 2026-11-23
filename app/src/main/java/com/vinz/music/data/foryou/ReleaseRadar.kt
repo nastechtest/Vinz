@@ -16,7 +16,7 @@ import androidx.work.WorkerParameters
 import com.vinz.music.AppContainer
 import com.vinz.music.container
 import com.vinz.music.data.Notifications
-import com.vinz.music.data.db.ReleaseEntity
+import com.prism.music.data.db.ReleaseEntity
 import com.vinz.music.data.innertube.arr
 import com.vinz.music.data.innertube.str
 import com.vinz.music.data.model.AlbumItem
@@ -151,7 +151,7 @@ class ReleaseRadar(private val c: AppContainer) {
                 else -> tr(R.string.new_from_and_more, names[0], names[1], names.size - 2)
             }
             val text = worth.take(4).joinToString(" · ") { "${it.title} (${it.kind.lowercase()})" }
-            Notifications.post(c.app, Notifications.NEW_RELEASES, NOTIFICATION_ID, title, text, "vinz://releases", iconRes = R.drawable.ic_notification_release)
+            Notifications.post(c.app, Notifications.NEW_RELEASES, NOTIFICATION_ID, title, text, "vinz://releases")
         }
         c.db.releases().setNotified(pending.map { it.id }, System.currentTimeMillis())
     }

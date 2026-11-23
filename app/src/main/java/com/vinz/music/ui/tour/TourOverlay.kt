@@ -124,7 +124,7 @@ fun TourOverlay(plan: TourPlan, onOpen: (String) -> Unit, onDone: () -> Unit) {
                     contentAlignment = Alignment.Center,
                 ) {
                     if (page == 0) Opening(plan)
-                    else StepPage(plan.steps[page - 1], onShowMe = { route -> Tour.markSeen(context); onDone(); onOpen(route) })
+                    else StepPage(plan.steps[page - 1], current = pager.settledPage == page, onShowMe = { route -> Tour.markSeen(context); onDone(); onOpen(route) })
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -165,7 +165,7 @@ private fun Opening(plan: TourPlan) {
 }
 
 @Composable
-private fun StepPage(step: TourStep, onShowMe: (String) -> Unit) {
+private fun StepPage(step: TourStep, current: Boolean, onShowMe: (String) -> Unit) {
     val c = LocalContainer.current
     val context = LocalContext.current
     PageColumn {
@@ -211,6 +211,11 @@ private fun StepPage(step: TourStep, onShowMe: (String) -> Unit) {
         step.showMe?.let { route ->
             Spacer(Modifier.height(18.dp))
             VinzOutlinedButton(onClick = { onShowMe(route) }) { Text(tr(R.string.show_me), color = Color.White) }
+        }
+        // 1.8.7.6: the release's last card may end with one quiet line to support Vinz (once per release).
+        if (step.support) {
+            Spacer(Modifier.height(18.dp))
+            com.vinz.music.ui.support.SupportWhatsNewLine(step.since, current)
         }
     }
 }

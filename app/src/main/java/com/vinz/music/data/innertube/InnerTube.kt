@@ -96,6 +96,12 @@ class InnerTube(
         return parts[0].takeIf { parts.size > 1 && parts[1].isNotBlank() && it.isNotBlank() }
     }
 
+    /** The language and country pages are asked in ("en-US"): what's kept of a page is only reused for the same. */
+    val pageLanguage: String get() = "$hl-$gl"
+
+    /** Signed in with a brand channel in use (for the diagnostics). */
+    val brandChannel: Boolean get() = current.isLoggedIn && onBehalfOfUser() != null
+
     private fun cookieMap(): Map<String, String> = current.cookie.split(";")
         .mapNotNull { part ->
             val i = part.indexOf('=')
@@ -242,6 +248,47 @@ class InnerTube(
         }.getOrNull()
     }
 
+    /**
+     * Uploads a music file to the signed-in account (1.8.3, D49): the two requests ytmusicapi's upload_song makes. The
+     * first says the file's name and size and gets an address back; the second sends the file there. Throws when
+     * YouTube refuses either. Only ever on the listener's tap.
+     */
+    fun uploadSong(fileName: String, size: Long, body: okhttp3.RequestBody) {
+        val s = current
+        if (!s.isLoggedIn) throw InnerTubeException("Not signed in")
+        val form = "application/x-www-form-urlencoded;charset=utf-8"
+        fun Request.Builder.asAccount(): Request.Builder {
+            header("User-Agent", USER_AGENT)
+            header("Origin", ORIGIN)
+            header("Referer", "$ORIGIN/")
+            header("Cookie", s.cookie)
+            authorization()?.let { header("Authorization", it) }
+            header("X-Goog-AuthUser", s.authUser.toString())
+            return this
+        }
+        // A file of up to 300 MB on a slow uplink: minutes, not the API's seconds.
+        val client = http.newBuilder().writeTimeout(15, java.util.concurrent.TimeUnit.MINUTES).readTimeout(2, java.util.concurrent.TimeUnit.MINUTES).build()
+        val start = Request.Builder()
+            .url("https://upload.youtube.com/upload/usermusic/http?authuser=${s.authUser}")
+            .post("filename=$fileName".toRequestBody(form.toMediaType()))
+            .asAccount()
+            .header("X-Goog-Upload-Command", "start")
+            .header("X-Goog-Upload-Header-Content-Length", size.toString())
+            .header("X-Goog-Upload-Protocol", "resumable")
+            .build()
+        val address = client.newCall(start).execute().use { r ->
+            if (!r.isSuccessful) throw InnerTubeException("YouTube Music didn't take the upload (HTTP ${r.code})", r.code)
+            r.header("X-Goog-Upload-URL")
+        } ?: throw InnerTubeException("YouTube Music gave no address to upload to")
+        val send = Request.Builder().url(address).post(body).asAccount()
+            .header("X-Goog-Upload-Command", "upload, finalize")
+            .header("X-Goog-Upload-Offset", "0")
+            .build()
+        client.newCall(send).execute().use { r ->
+            if (r.code != 200) throw InnerTubeException("YouTube Music didn't take the file (HTTP ${r.code})", r.code)
+        }
+    }
+
     private fun postOnce(endpoint: String, body: JsonObject, query: String, anonymous: Boolean = false): JsonObject {
         val payload = buildJsonObject {
             put("context", context(anonymous))
@@ -258,8 +305,21 @@ class InnerTube(
                 val msg = runCatching { json.parseToJsonElement(text).str("error", "message") }.getOrNull()
                 throw InnerTubeException(msg ?: "YouTube Music returned HTTP ${resp.code}", resp.code)
             }
-            json.parseToJsonElement(text).jsonObject
+            json.parseToJsonElement(text).jsonObject.also { if (!anonymous && current.isLoggedIn) noteSeen(it) }
         }
+    }
+
+    /**
+     * YouTube's own word on the last signed-in request: taken as the account or not (#372, #373, #377). Null until an
+     * answer says. Settings tells the listener when it's no, so they aren't silently treated as signed out.
+     */
+    val seen = kotlinx.coroutines.flow.MutableStateFlow<YouTubeSeen?>(null)
+
+    private fun noteSeen(answer: JsonObject) {
+        val now = YouTubeSeen.of(answer)
+        if (now.signedIn == null || now == seen.value) return
+        seen.value = now
+        runCatching { com.vinz.music.playback.AudioDiagnostics.log("account", "YouTube takes Vinz's requests as: ${now.text}") }
     }
 
     /**
@@ -387,7 +447,7 @@ class InnerTube(
      * ExoPlayer's loader threads. [signatureTimestamp] is the current player JS's, so its ciphered
      * stream URLs can be deciphered.
      */
-    fun signedInPlayer(client: PlayerClient, videoId: String, signatureTimestamp: Int?): JsonObject {
+    fun signedInPlayer(client: PlayerClient, videoId: String, signatureTimestamp: Int?, via: OkHttpClient? = null): JsonObject {
         val s = current
         val version = client.version ?: clientVersion
         val payload = buildJsonObject {
@@ -432,7 +492,7 @@ class InnerTube(
                 header("X-Goog-AuthUser", s.authUser.toString())
             }
             .build()
-        http.newCall(req).execute().use { resp ->
+        (via ?: http).newCall(req).execute().use { resp ->
             val text = resp.body.string()
             if (!resp.isSuccessful) {
                 val msg = runCatching { json.parseToJsonElement(text).str("error", "message") }.getOrNull()
@@ -449,7 +509,7 @@ class InnerTube(
     private fun visionOsUserAgent() =
         "com.google.visionos.youtube/$VISIONOS_VERSION(RealityDevice14,1; U; CPU visionOS 25_6_0 like Mac OS X; $gl)"
 
-    private fun visionOsPost(endpoint: String, body: JsonObject, visitor: String?): JsonObject {
+    private fun visionOsPost(endpoint: String, body: JsonObject, visitor: String?, via: OkHttpClient? = null): JsonObject {
         val payload = buildJsonObject {
             putJsonObject("context") {
                 putJsonObject("client") {
@@ -478,15 +538,15 @@ class InnerTube(
             .header("X-YouTube-Client-Version", VISIONOS_VERSION)
             .apply { if (visitor != null) header("X-Goog-Visitor-Id", visitor) }
             .build()
-        http.newCall(req).execute().use { resp ->
+        (via ?: http).newCall(req).execute().use { resp ->
             val text = resp.body.string()
             if (!resp.isSuccessful) throw InnerTubeException("YouTube returned HTTP ${resp.code}", resp.code)
             return json.parseToJsonElement(text).jsonObject
         }
     }
 
-    private fun visionVisitor(): String =
-        visionVisitor ?: (visionOsPost("visitor_id", JsonObject(emptyMap()), null).str("responseContext", "visitorData")
+    private fun visionVisitor(via: OkHttpClient? = null): String =
+        visionVisitor ?: (visionOsPost("visitor_id", JsonObject(emptyMap()), null, via).str("responseContext", "visitorData")
             ?: throw InnerTubeException("No visitor id")).also { visionVisitor = it }
 
     /**
@@ -494,26 +554,32 @@ class InnerTube(
      * from, asked directly in one request (~0.2 s) instead of NewPipe's three or four (visitor id, player, the web
      * page's details), ~2 s. Its stream URLs need no signature or "n" solving, and googlevideo serves them whole
      * (ANDROID_VR's stopped after the first megabyte). Without a visitor id YouTube answers with a bot check, so one is
-     * asked for once and kept; a bot check later gets one fresh id and one more try. Blocking.
+     * asked for once and kept; a bot check later gets one fresh id and one more try. Blocking. [via]: the client to ask
+     * with (the stream resolver's, which notes the address family, or its IPv4-only one, #408); this one's by default.
      */
-    fun visionOsPlayer(videoId: String): JsonObject {
+    fun visionOsPlayer(videoId: String, via: OkHttpClient? = null): JsonObject {
         val body = buildJsonObject {
             put("videoId", videoId)
             put("contentCheckOk", true)
             put("racyCheckOk", true)
         }
-        val res = visionOsPost("player", body, visionVisitor())
+        val res = visionOsPost("player", body, visionVisitor(via), via)
         val botCheck = res.str("playabilityStatus", "status") == "LOGIN_REQUIRED" &&
             res.str("playabilityStatus", "reason")?.contains("bot", ignoreCase = true) == true
         if (!botCheck) return res
         visionVisitor = null
-        return visionOsPost("player", body, visionVisitor())
+        return visionOsPost("player", body, visionVisitor(via), via)
     }
 
-    /** Fire-and-forget GET used for playback-history pings. */
+    /**
+     * Fire-and-forget GET used for playback-history pings. #377 (1.8.3): with a brand channel in use the ping also
+     * names the channel (`X-Goog-PageId`, as YouTube's own pages do), else the cookies alone credit the Google
+     * account's own channel and the play never shows in the brand channel's history.
+     */
     suspend fun ping(url: String): Int? = withContext(Dispatchers.IO) {
         runCatching {
-            val req = Request.Builder().url(url).get().applyHeaders().build()
+            val req = Request.Builder().url(url).get().applyHeaders()
+                .apply { if (current.isLoggedIn) onBehalfOfUser()?.let { header("X-Goog-PageId", it) } }.build()
             http.newCall(req).execute().use { it.code }
         }.getOrNull()
     }

@@ -6,8 +6,22 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -49,9 +63,25 @@ interface ReorderScope {
     /**
      * For a grip (the ⠿ handle): dragging it moves the row at once, no hold needed. The rest of the row still moves
      * after a hold.
+     *
+     * The grip is also how the row moves without a finger (1.8.4), so every row shows one:
+     * - TalkBack (and Switch / Voice Access): its actions "Move up", "Move down", "Move to top", "Move to bottom" (the
+     *   ones that apply where it is); the store follows at once and the new place is said ("3 of 8").
+     * - D-pad or keyboard: focus the grip, Enter (or the remote's centre, or Space) picks the row up, Up / Down move it a
+     *   place each, Enter, Back or Esc puts it down (so does moving focus away). The order is stored when it's put down,
+     *   as a drag is.
      */
     fun Modifier.dragHandle(): Modifier
 }
+
+/**
+ * Says a reorder list's news out loud (TalkBack): the row's new place after a move. A test provides its own to read them.
+ * Null (the app): the list's view announces it.
+ */
+val LocalReorderAnnouncer = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
+/** A row's place, said after it moves: "3 of 8". */
+fun reorderPosition(index: Int, size: Int): String = tr(R.string.reorder_position, index + 1, size)
 
 /**
  * A list to rearrange: hold any row (or drag its [ReorderScope.dragHandle]) and move it up or down; [onReorder] gets the
@@ -60,7 +90,11 @@ interface ReorderScope {
  * As it moves (1.7.4): the carried row lifts off the page on a card edged in the split light, the rows it passes slide
  * out of its way, a light tick marks each place it passes, the page scrolls while it's held near the screen's top or
  * bottom (so the last row can go first in one move), and it settles into its place when let go.
+ *
+ * Without touch (1.8.4): the grip carries TalkBack actions and takes the D-pad / keyboard, see [ReorderScope.dragHandle].
+ * The up / down arrows rows used to show for that are gone.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun <T> ReorderList(
     items: List<T>,
@@ -71,6 +105,8 @@ fun <T> ReorderList(
 ) {
     var dragKey by remember { mutableStateOf<Any?>(null) }
     var dragOrder by remember { mutableStateOf<List<T>?>(null) }
+    // The row picked up from the keyboard or remote (its grip focused, Enter): carried like a drag, moved by Up / Down.
+    var carryKey by remember { mutableStateOf<Any?>(null) }
     // The finger's travel from the carried row's own place (its layout moves as it's reordered and as the page scrolls).
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var heldHeight by remember { mutableIntStateOf(0) }
@@ -98,7 +134,7 @@ fun <T> ReorderList(
 
     fun start(k: Any) {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        dragOrder = current; dragKey = k; dragOffset = 0f; awaitingLayout = false
+        dragOrder = current; dragKey = k; dragOffset = 0f; awaitingLayout = false; carryKey = null
     }
 
     /** Moves the carried row a place up or down when it's been carried more than half over its neighbour. */
@@ -133,6 +169,82 @@ fun <T> ReorderList(
         if (left != 0f) slide(k, left)
     }
 
+    val announcer = LocalReorderAnnouncer.current
+    fun say(text: String) {
+        if (announcer != null) announcer(text)
+        else @Suppress("DEPRECATION") view.announceForAccessibility(text)
+    }
+
+    /** TalkBack's moves: [k]'s row straight to [to], stored at once (or, while it's carried by keys, in the carried order). */
+    fun moveTo(k: Any, to: Int): Boolean {
+        // A finger is carrying a row: its order wins.
+        if (dragKey != null && carryKey == null) return false
+        val list = dragOrder ?: current
+        val at = list.indexOfFirst { keyOf(it) == k }
+        if (at < 0 || to !in list.indices || to == at) return false
+        val next = list.toMutableList().apply { add(to, removeAt(at)) }
+        if (carryKey != null) dragOrder = next else onReorderNow(next)
+        say(reorderPosition(to, list.size))
+        return true
+    }
+
+    fun pickUp(k: Any) {
+        if (dragKey != null) return
+        start(k)
+        carryKey = k
+        val list = dragOrder ?: current
+        val at = list.indexOfFirst { keyOf(it) == k }
+        say(tr(R.string.reorder_picked_up, at + 1, list.size))
+    }
+
+    fun putDown(k: Any) {
+        if (carryKey != k) return
+        val list = dragOrder ?: current
+        val at = list.indexOfFirst { keyOf(it) == k }
+        carryKey = null
+        end(k, true)
+        say(tr(R.string.reorder_put_down, at + 1, list.size))
+    }
+
+    /** Up / Down while carried: a place each; the row passed slides into the place it left. */
+    fun step(k: Any, by: Int, bringIntoView: () -> Unit) {
+        val list = dragOrder ?: return
+        val at = list.indexOfFirst { keyOf(it) == k }
+        val to = at + by
+        if (at < 0 || to !in list.indices) return
+        slide(keyOf(list[to]), (to - at) * heldHeight.toFloat())
+        slide(k, (at - to) * heldHeight.toFloat())
+        dragOrder = list.toMutableList().apply { add(to, removeAt(at)) }
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        say(reorderPosition(to, list.size))
+        bringIntoView()
+    }
+
+    /** The grip's keys: see [ReorderScope.dragHandle]. True when the key was the list's. */
+    fun keys(k: Any, e: KeyEvent, bringIntoView: () -> Unit): Boolean {
+        val carried = carryKey == k
+        return when (e.key) {
+            Key.Enter, Key.NumPadEnter, Key.DirectionCenter, Key.Spacebar -> {
+                // Both halves of the press are the list's; it acts on the key's release, as a click does.
+                if (e.type == KeyEventType.KeyUp) { if (carried) putDown(k) else pickUp(k) }
+                true
+            }
+            Key.DirectionUp, Key.DirectionDown -> {
+                if (!carried) false
+                else {
+                    // Held down, it keeps moving (the key repeats); at the end it stays put rather than letting focus leave.
+                    if (e.type == KeyEventType.KeyDown) step(k, if (e.key == Key.DirectionUp) -1 else 1, bringIntoView)
+                    true
+                }
+            }
+            Key.Back, Key.Escape -> {
+                if (!carried) false
+                else { if (e.type == KeyEventType.KeyUp) putDown(k); true }
+            }
+            else -> false
+        }
+    }
+
     suspend fun PointerInputScope.dragAfterHold(k: Any) = detectDragGesturesAfterLongPress(
         onDragStart = { start(k) },
         onDrag = { change, amount -> change.consume(); move(k, amount.y) },
@@ -147,17 +259,33 @@ fun <T> ReorderList(
         onDragCancel = { end(k, false) },
     )
 
+    // Android 13+ hands Back to the page's back handling rather than to the focused grip: while a row is carried, Back
+    // puts it down there too (instead of leaving the page).
+    androidx.activity.compose.BackHandler(enabled = carryKey != null) { carryKey?.let { putDown(it) } }
+    // The list leaves (its sheet closed) while a row is carried: the order it was carried to is kept.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            val order = dragOrder
+            if (carryKey != null && order != null && order != current) onReorderNow(order)
+        }
+    }
+
+    val focusRing = MaterialTheme.colorScheme.primary
     Column(modifier.nestedScroll(noConnection, scroller)) {
         rows.forEachIndexed { i, item ->
             val k = keyOf(item)
             key(k) {
                 val held = dragKey == k
+                // Carried by keys, not a finger: nothing to follow, no page scrolling at the screen's edges.
+                val byFinger = held && carryKey != k
                 val lift by animateFloatAsState(if (held) 1f else 0f, spring(stiffness = Spring.StiffnessMedium), label = "lift")
                 var rowHeight by remember { mutableIntStateOf(0) }
                 var lastY by remember { mutableFloatStateOf(Float.NaN) }
+                var gripFocused by remember { mutableStateOf(false) }
+                val viewer = remember { BringIntoViewRequester() }
                 // Held in the top or bottom of the screen (where the bars float over the page): the page scrolls, faster
                 // the further in it's held. The row stays under the finger and keeps finding its place as rows pass.
-                if (held) LaunchedEffect(k) {
+                if (byFinger) LaunchedEffect(k) {
                     val density = view.resources.displayMetrics.density
                     val zone = EDGE_ZONE_DP * density
                     while (true) {
@@ -177,10 +305,35 @@ fun <T> ReorderList(
                         place(k)
                     }
                 }
-                val scopeForRow = remember(k) {
-                    object : ReorderScope {
-                        override fun Modifier.dragHandle(): Modifier = this.pointerInput(k) { dragNow(k) }
-                    }
+                val count = rows.size
+                val carried = carryKey == k
+                // TalkBack's moves for this place: only the ones that move it.
+                val actions = buildList {
+                    if (i > 0) add(CustomAccessibilityAction(tr(R.string.move_up)) { moveTo(k, i - 1) })
+                    if (i < count - 1) add(CustomAccessibilityAction(tr(R.string.move_down)) { moveTo(k, i + 1) })
+                    if (i > 0) add(CustomAccessibilityAction(tr(R.string.move_to_top)) { moveTo(k, 0) })
+                    if (i < count - 1) add(CustomAccessibilityAction(tr(R.string.move_to_bottom)) { moveTo(k, count - 1) })
+                }
+                val bringIntoView = { scope.launch { withFrameNanos { }; viewer.bringIntoView() }; Unit }
+                val scopeForRow = object : ReorderScope {
+                    override fun Modifier.dragHandle(): Modifier = this
+                        .pointerInput(k) { dragNow(k) }
+                        .semantics { customActions = actions }
+                        // Focused from the keyboard or remote: a ring; picked up: a fuller one.
+                        .drawBehind {
+                            if (gripFocused || carried) drawRoundRect(
+                                focusRing, alpha = if (carried) 0.32f else 0.18f,
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
+                            )
+                        }
+                        .bringIntoViewRequester(viewer)
+                        .onFocusChanged { f ->
+                            gripFocused = f.isFocused
+                            // Focus moved away while carried: it's put down where it is.
+                            if (!f.isFocused && carryKey == k) putDown(k)
+                        }
+                        .onKeyEvent { e -> keys(k, e, bringIntoView) }
+                        .focusable()
                 }
                 scopeForRow.row(
                     item, i, held,
@@ -191,12 +344,12 @@ fun <T> ReorderList(
                             rowHeight = c.size.height
                             if (held) heldHeight = c.size.height
                             val y = c.positionInWindow().y
-                            if (held && !lastY.isNaN() && y != lastY) { dragOffset -= (y - lastY); awaitingLayout = false }
+                            if (byFinger && !lastY.isNaN() && y != lastY) { dragOffset -= (y - lastY); awaitingLayout = false }
                             lastY = y
                         }
                         .zIndex(if (held || lift > 0f) 1f else 0f)
                         .graphicsLayer {
-                            translationY = if (held) dragOffset else slides[k]?.value ?: 0f
+                            translationY = if (byFinger) dragOffset else slides[k]?.value ?: 0f
                             val s = 1f + 0.03f * lift
                             scaleX = s; scaleY = s
                             shadowElevation = 14.dp.toPx() * lift

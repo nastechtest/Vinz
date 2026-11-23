@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,40 @@ fun SpotifyFollowedSheet(p: SpotifyPlaylist, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     var refreshed by remember { mutableStateOf(false) }
+    // With the sign-in on Spotify's page (1.8.7.5) its songs can be read: one action brings it in as a Vinz playlist.
+    if (c.spotify.canBringFollowed) {
+        // From the app, not this sheet: opened again while it's being read, it still says so.
+        val bringingNow by c.spotify.followedBringing.collectAsState()
+        val bringing = p.id in bringingNow
+        var failed by remember { mutableStateOf(false) }
+        ActionSheet(p.image, onDismiss) { close ->
+            ActionHeader(p.image, p.name, p.ownerName.ifBlank { null }, placeholderIcon = VinzIcons.QueueMusic)
+            Text(tr(R.string.spot_session_followed_why), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 20.dp))
+            ActionGroup(null, listOf(
+                ActionItem(
+                    VinzIcons.PlaylistAdd, tr(R.string.spot_session_bring), keepOpen = true,
+                    value = when { bringing -> tr(R.string.spot_session_bringing); failed -> tr(R.string.spot_session_bring_failed); else -> null },
+                ) {
+                    if (!bringing) {
+                        failed = false
+                        // In the app's scope: closing the sheet doesn't stop a playlist half read.
+                        c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            val made = c.spotify.bringFollowed(p.id)
+                            if (made != null) close {} else failed = true
+                        }
+                    }
+                },
+                ActionItem(VinzIcons.OpenInNew, tr(R.string.spot_open_in_spotify)) {
+                    val view = Intent(Intent.ACTION_VIEW, Uri.parse(SpotifyPlaylists.openLink(p.id)))
+                    runCatching { context.startActivity(view) }.onFailure { runCatching { context.startActivity(view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+                },
+            )) { runAction(it, close) }
+            ActionGroup(null, listOf(
+                ActionItem(VinzIcons.PlaylistRemove, tr(R.string.spot_hide_from_library)) { c.spotify.hideFollowed(p.id) },
+            )) { runAction(it, close) }
+        }
+        return
+    }
     ActionSheet(p.image, onDismiss) { close ->
         ActionHeader(p.image, p.name, p.ownerName.ifBlank { null }, placeholderIcon = VinzIcons.QueueMusic)
         Text(tr(R.string.spot_followed_why), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 20.dp))

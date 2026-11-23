@@ -71,6 +71,8 @@ class PlayerCover {
     var settled by mutableStateOf(false)
     /** The player is being pulled down or is sliding closed (the player itself). */
     var pulled by mutableStateOf(false)
+    /** The player is on its way out (MainActivity); false again, before it has gone, when it's opened again. */
+    var leaving by mutableStateOf(false)
     val hides: Boolean get() = settled && !pulled
 }
 

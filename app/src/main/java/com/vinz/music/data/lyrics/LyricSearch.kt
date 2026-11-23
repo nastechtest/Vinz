@@ -1,8 +1,8 @@
 package com.vinz.music.data.lyrics
 
-import com.vinz.music.data.db.LyricsSearchDao
-import com.vinz.music.data.db.LyricsText
-import com.vinz.music.data.db.SongDao
+import com.prism.music.data.db.LyricsSearchDao
+import com.prism.music.data.db.LyricsText
+import com.prism.music.data.db.SongDao
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.innertube.YouTubeMusic

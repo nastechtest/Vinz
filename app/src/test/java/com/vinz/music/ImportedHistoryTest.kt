@@ -1,9 +1,9 @@
 package com.vinz.music
 
 import androidx.room.Room
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.VinzDatabase
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.PrismDatabase
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.imports.CountedPlays
 import com.vinz.music.data.imports.HistoryImporter
 import com.vinz.music.data.imports.ImportKeys
@@ -40,7 +40,7 @@ import java.time.Instant
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
 class ImportedHistoryTest {
-    private val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), VinzDatabase::class.java).allowMainThreadQueries().build()
+    private val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), PrismDatabase::class.java).allowMainThreadQueries().build()
     private val importer = HistoryImporter(db)
 
     @After fun close() = db.close()

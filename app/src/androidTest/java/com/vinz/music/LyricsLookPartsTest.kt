@@ -1,11 +1,9 @@
 package com.vinz.music
 
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.vinz.music.ui.screens.settings.SettingsPageId
 import com.vinz.music.data.prefs.AppSettings
 import com.vinz.music.data.prefs.LyricsBackground
 import com.vinz.music.data.prefs.LyricsMotion
@@ -17,9 +15,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * #253 (1.8.0): the lyrics look in four parts. On Customize Vinz → Lyrics, "Start from" a template, then change one part
- * (the Animation, then the Background): each time only that part of the look changes, and the template's card says the
- * look has your changes; starting from another template sets its parts and keeps the background picked.
+ * #253 (1.8.0): the lyrics look in four parts. On Settings → Lyrics & Sing → Style (1.8.4; it was Customize Vinz →
+ * Lyrics, the parts as cards on the page), "Start from" a template, then change one part (the Animation, then the
+ * Background), each picked in its row's sheet: each time only that part of the look changes, and the Start from row says
+ * the look has your changes; starting from another template sets its parts and keeps the background picked.
  */
 @RunWith(AndroidJUnit4::class)
 class LyricsLookPartsTest {
@@ -41,26 +40,25 @@ class LyricsLookPartsTest {
     )
     private fun AppSettings.look() = lyricsLook.let { p ->
         Look(
-            p.motionNow, p.wordByWordNow, p.weightNow.weight, p.sizeScale * lyricsScale, lyricsAlign.name, p.spacing, p.sungColor.name,
-            p.othersAlpha, p.pageBackground, p.onCard, p.immersiveBackground, p.haloNow, p.shadow, lyricsProgressLine, p.backingSize, p.gapMark.name,
+            p.motionNow, p.wordByWordNow, p.weightNow.weight, p.sizeScale * lyrics.scale, lyrics.align.name, p.spacing, p.sungColor.name,
+            p.othersAlpha, p.pageBackground, p.onCard, p.immersiveBackground, p.haloNow, p.shadow, lyrics.progressLine, p.backingSize, p.gapMark.name,
         )
     }
     private fun now() = settings.stored.value
 
-    private fun tap(card: String, part: String) {
-        compose.clickWhenFound(hasText(card) and hasClickAction() and hasAnyAncestor(hasTestTag(part)), 15_000)
+    /** A part's row (Style group), and [card] picked in its sheet of examples. */
+    private fun pick(card: String, part: Int) {
+        compose.pickInSheet(tr(part), card, 15_000)
         compose.waitForIdle()
     }
 
     @Test fun aTemplateThenOnePartChangesOnlyThatPart() {
         Fixture.ready()
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText("Customize Vinz") and hasClickAction(), 15_000)
-        compose.clickWhenFound(hasText("Lyrics") and hasClickAction(), 15_000)
+        compose.openSettingsPage(SettingsPageId.LYRICS_SING)
 
         // Start from Bold card: its sweep, its bold type, its card.
-        tap("Bold card", "lyricsStartFrom")
+        pick("Bold card", R.string.start_from)
         compose.waitUntil(10_000) { now().lyricsStyle == LyricsStyle.CARD }
         val card = now().look()
         assertEquals(LyricsMotion.SWEEP, card.motion)
@@ -68,22 +66,23 @@ class LyricsLookPartsTest {
         assertEquals(700, card.weight)
 
         // The Animation part: Typewriter. Only the animation changes.
-        tap("Typewriter", "lyricsAnimation")
+        pick("Typewriter", R.string.animation)
         compose.waitUntil(10_000) { now().lyricsLook.motionNow == LyricsMotion.TYPEWRITER }
         assertEquals(card.copy(motion = LyricsMotion.TYPEWRITER), now().look())
         assertEquals(LyricsStyle.CARD, now().lyricsStyle)
+        // The Start from row says so under its name ("Bold card · With your changes").
         compose.waitUntil(10_000) {
-            compose.onAllNodes(hasText("With your changes") and hasAnyAncestor(hasTestTag("lyricsStartFrom"))).fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodes(settingsRow(tr(R.string.start_from)) and hasText(tr(R.string.with_your_changes), substring = true)).fetchSemanticsNodes().isNotEmpty()
         }
 
         // The Background part: Plain dark. Only the background changes (no card on it), the typewriter stays.
-        tap("Plain dark", "lyricsBackground")
+        pick("Plain dark", R.string.background)
         compose.waitUntil(10_000) { now().lyricsLook.pageBackground == LyricsBackground.DARK }
         assertEquals(card.copy(motion = LyricsMotion.TYPEWRITER, page = LyricsBackground.DARK, card = false), now().look())
 
         // Start from Glow: its animation and glow, the type back to your own; the background you picked stays. Glow
         // lights a line timed only as a whole all at once (as 1.7.9 did), so word by word is off there.
-        tap("Glow", "lyricsStartFrom")
+        pick("Glow", R.string.start_from)
         compose.waitUntil(10_000) { now().lyricsStyle == LyricsStyle.GLOW }
         assertEquals(
             card.copy(motion = LyricsMotion.SWEEP, wordByWord = false, weight = 300, size = card.size / 1.1f, page = LyricsBackground.DARK, card = false, halo = true),

@@ -41,7 +41,7 @@ class DjPrescanWorker(context: Context, params: WorkerParameters) : CoroutineWor
         withTimeoutOrNull(MAX_MINUTES * 60_000L) {
             for (id in ids) {
                 if (!idle()) { interrupted = true; break }
-                if (c.mixTempo.quickScan(id, network = true, priority = android.os.Process.THREAD_PRIORITY_LOWEST) == MixTempo.QuickResult.KEYED) done++
+                if (c.mixTempo.quickScan(id, network = true, priority = android.os.Process.THREAD_PRIORITY_LOWEST, scheduled = true) == MixTempo.QuickResult.KEYED) done++
             }
         }
         Log.i("VinzDj", "pre-scanned $done of ${ids.size} songs in ${(System.currentTimeMillis() - started) / 1000} s" + if (interrupted) " (the phone's in use: later)" else "")

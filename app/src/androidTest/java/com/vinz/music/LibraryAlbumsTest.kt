@@ -29,8 +29,7 @@ class LibraryAlbumsTest {
             AlbumItem("MPREb_test_single", "Test One Song", "Single • Test Artist • 2025", null),
             AlbumItem("MPREb_test_ep", "Test Short Player", "EP • Test Artist • 2023", null),
         )
-        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Library") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasText("Library") and hasClickAction()).onFirst().performClick()
+        compose.tapTab("Library")
         compose.clickWhenFound(hasText("Albums") and hasClickAction(), 15_000)
         compose.waitForText("Test Long Player")
         compose.waitForText("Test One Song")

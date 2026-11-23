@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -94,6 +95,12 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
     val current = if (forPlayer) s.backdrops[com.vinz.music.ui.theme.PLAYER_BACKDROP] ?: s.backdrops[BackdropScreen.HOME.name] else s.backdrops[screen.name]
     val (currentStyle, currentPhoto) = Backdrop.parse(current)
     val today = remember { com.vinz.music.data.looks.Seasons.today() }
+    // #413 (1.8.4), Solid color: the color this screen has, else one picked for another screen, else the accent to start from.
+    var pickingColor by remember { mutableStateOf(false) }
+    val accent = MaterialTheme.colorScheme.primary
+    val solidNow: Int = (Backdrop.solidColor(currentPhoto.takeIf { currentStyle == Backdrop.COLOR })
+        ?: s.backdrops.values.firstNotNullOfOrNull { v -> Backdrop.parse(v).takeIf { it.first == Backdrop.COLOR }?.let { Backdrop.solidColor(it.second) } }
+        ?: accent).toArgb()
 
     fun apply(value: String?) {
         val map = s.backdrops.toMutableMap()
@@ -112,7 +119,7 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
         scope.launch {
             val name = if (forPlayer) "player" else if (everywhere) "all" else screen.name.lowercase()
             val file = withContext(Dispatchers.IO) { savePhoto(context, uri, name) }
-            if (file != null) apply(tr(R.string.photo, file.absolutePath))
+            if (file != null) apply(Backdrop.photoValue(file.absolutePath))
         }
     }
 
@@ -196,19 +203,31 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
                                 when (style) {
                                     Backdrop.DEFAULT -> apply(null)
                                     Backdrop.PHOTO -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    // The color picker; nothing changes until a color is used there.
+                                    Backdrop.COLOR -> pickingColor = true
                                     else -> apply(style.name)
                                 }
-                            },
+                            }
+                            .testTag("bg:${style.name}"),
                         contentAlignment = Alignment.Center,
                     ) {
-                        val photo = if (style == Backdrop.PHOTO) currentPhoto ?: s.backdrops.values.firstNotNullOfOrNull { Backdrop.parse(it).second } else null
-                        BackdropLayer(style, photo, s.backdropDim, motion = false, modifier = Modifier.fillMaxSize())
-                        // A hint of the screen on top, so the wash and contrast read true.
-                        Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(Modifier.fillMaxWidth(0.6f).height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)))
-                            // Glass panels, as the screens draw them over any background.
-                            repeat(3) { Box(Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(8.dp)).background(com.vinz.music.ui.components.frostFill(1.2f))) }
+                        val photo = if (style == Backdrop.PHOTO) {
+                            currentPhoto.takeIf { currentStyle == Backdrop.PHOTO }
+                                ?: s.backdrops.values.firstNotNullOfOrNull { v -> Backdrop.parse(v).takeIf { it.first == Backdrop.PHOTO }?.second }
+                        } else null
+                        val hint: @Composable () -> Unit = {
+                            // The solid color's tile is its swatch: the color as it is (the screens draw it without the wash).
+                            if (style == Backdrop.COLOR) BackdropLayer(style, Backdrop.colorValue(solidNow).substringAfter('|'), 0f, motion = false, modifier = Modifier.fillMaxSize())
+                            else BackdropLayer(style, photo, s.backdropDim, motion = false, modifier = Modifier.fillMaxSize())
+                            // A hint of the screen on top, so the wash and contrast read true.
+                            Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(Modifier.fillMaxWidth(0.6f).height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)))
+                                // Glass panels, as the screens draw them over any background.
+                                repeat(3) { Box(Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(8.dp)).background(com.vinz.music.ui.components.frostFill(1.2f))) }
+                            }
                         }
+                        // On a solid color the text and glass are the ones that read on that color, as on the screen.
+                        if (style == Backdrop.COLOR) com.vinz.music.ui.theme.SolidInk(Color(solidNow)) { hint() } else hint()
                         if (style == Backdrop.PHOTO && photo == null) Icon(VinzIcons.Photo, null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.onSurface)
                         if (selected) Box(
                             Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape).background(com.vinz.music.ui.theme.VinzTokens.spectrumRing()),
@@ -250,6 +269,28 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
                 }
             }
     }
+
+    // #413: Vinz's own color picker (the one "Your color" uses), with the page in that color as you pick.
+    if (pickingColor) com.vinz.music.ui.components.ColorPickerSheet(
+        tr(R.string.solid_color), solidNow,
+        onDismiss = { pickingColor = false },
+        preview = { picked ->
+            Box(Modifier.fillMaxWidth().height(104.dp).clip(ui.card)) {
+                com.vinz.music.ui.theme.SolidInk(Color(picked)) {
+                    BackdropLayer(Backdrop.COLOR, Backdrop.colorValue(picked).substringAfter('|'), 0f, motion = false, modifier = Modifier.fillMaxSize())
+                    Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.fillMaxWidth(0.5f).height(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface))
+                        Box(Modifier.fillMaxWidth(0.35f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant))
+                        Row(Modifier.fillMaxWidth().height(34.dp).clip(RoundedCornerShape(10.dp)).background(com.vinz.music.ui.components.frostFill(1.2f)).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(14.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                            Spacer(Modifier.size(8.dp))
+                            Box(Modifier.fillMaxWidth(0.5f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface))
+                        }
+                    }
+                }
+            }
+        },
+    ) { picked -> apply(Backdrop.colorValue(picked)) }
 }
 
 /** Copies a picked photo into the app (scaled to at most 1600 px), so it survives the original being moved. */

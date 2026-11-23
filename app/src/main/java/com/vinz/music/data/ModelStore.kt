@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -34,20 +35,20 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
         /** Deezer's Spleeter, 2 stems, as sherpa-onnx exported it (fp16): Sing's vocal separation. */
         SING_MODEL(
             "sing-spleeter", "sing-spleeter-2stems-fp16.zip",
-            "69714083b6fd5a88aa93cc021b4fb9534388960a532f6c987036e30f5332c191", 36370454, tr(R.string.sing_s_voice_separation), 39374474,
+            "69714083b6fd5a88aa93cc021b4fb9534388960a532f6c987036e30f5332c191", 36_370_454, tr(R.string.sing_s_voice_separation), 39_374_474,
         ),
         /** ONNX Runtime's native libraries (Microsoft, MIT), which Sing runs Spleeter on, one per kind of processor. */
         SING_RUNTIME_ARM64(
             "onnxruntime-arm64-v8a", "onnxruntime-1.31.0-arm64-v8a.zip",
-            "bd993a5b14035b57d9edaf4994491dbb87de4034781852f9e16540d9100b10f5", 12896594, tr(R.string.sing_s_engine), 34547841,
+            "bd993a5b14035b57d9edaf4994491dbb87de4034781852f9e16540d9100b10f5", 12_896_594, tr(R.string.sing_s_engine), 34_547_841,
         ),
         SING_RUNTIME_ARMV7(
             "onnxruntime-armeabi-v7a", "onnxruntime-1.31.0-armeabi-v7a.zip",
-            "ff278a1cbd09d243b30cfe590f30c55c174c828d943edbe35c6e0fa1aac4ac3e", 11656050, tr(R.string.sing_s_engine), 24521173,
+            "ff278a1cbd09d243b30cfe590f30c55c174c828d943edbe35c6e0fa1aac4ac3e", 11_656_050, tr(R.string.sing_s_engine), 24_521_173,
         ),
         SING_RUNTIME_X86_64(
             "onnxruntime-x86_64", "onnxruntime-1.31.0-x86_64.zip",
-            "a03df391fb77786f8a3a9f358110c16dc9559e059dd45127859524c4b7871044", 14967583, tr(R.string.sing_s_engine), 41167105,
+            "a03df391fb77786f8a3a9f358110c16dc9559e059dd45127859524c4b7871044", 14_967_583, tr(R.string.sing_s_engine), 41_167_105,
         ),
         ;
 
@@ -166,11 +167,11 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
     }
 
     /** Unpacks a checked zip into the model's folder; the ready marker goes last, so a half-unpacked one never counts. */
-    internal fun install(m: Model, zip: File) {
+    internal fun install(m: Model, zip: File, expandedLimit: Long = maxExpanded(m)) {
         val dir = dir(m)
         try {
             if (!zip.isFile || zip.length() == 0L) throw IOException(tr(R.string.download_failed))
-            dir.deleteRecursively()
+            if (dir.exists() && !dir.deleteRecursively()) throw IOException(tr(R.string.download_failed))
             if (!dir.mkdirs()) throw IOException(tr(R.string.download_failed))
             val strictNames = mutableSetOf<String>()
             var expanded = 0L
@@ -190,7 +191,7 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
                             val count = z.read(buffer)
                             if (count < 0) break
                             expanded += count
-                            if (m != Model.JAPANESE && expanded > maxExpanded(m)) throw IOException(tr(R.string.download_failed))
+                            if (m != Model.JAPANESE && expanded > minOf(maxExpanded(m), expandedLimit)) throw IOException(tr(R.string.download_failed))
                             output.write(buffer, 0, count)
                         }
                     }
@@ -201,7 +202,9 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
                 throw IOException(tr(R.string.download_failed))
             }
             // Native code loaded from here is kept read-only (Android 14 asks that of anything loaded at run time).
-            dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { it.setWritable(false, false) }
+            dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach {
+                if (!it.setWritable(false, false)) throw IOException(tr(R.string.download_failed))
+            }
             File(dir, READY).writeText(m.sha256)
         } catch (failure: Throwable) {
             dir.deleteRecursively()

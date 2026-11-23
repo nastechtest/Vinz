@@ -6,7 +6,7 @@ import android.provider.OpenableColumns
 import com.vinz.music.AppContainer
 import com.vinz.music.data.FavoriteArtist
 import com.vinz.music.data.SavedAlbum
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.innertube.SearchFilter
 import com.vinz.music.data.model.AlbumItem
 import com.vinz.music.data.model.ArtistItem
@@ -131,15 +131,18 @@ class HistoryImports(private val c: AppContainer) {
     /** What Replay, Rewind and the Replay card count now. */
     fun replay(): PlayStats = stats(_counted.value)
 
+    /** The same plays by name, for a question of [com.prism.music.data.db.CountedPlayDao] Replay doesn't ask. */
+    fun countedOrigins(): List<String> = listOf(CountedPlays.VINZ) + _counted.value.sortedBy { it.ordinal }.map { it.key }
+
     fun stats(sources: Set<ImportSource>): PlayStats =
         if (sources.isEmpty()) VinzPlays(c.db.plays()) else CountedPlays(sources.sortedBy { it.ordinal }, c.db.counted(), c.db.plays())
 
     /** Plays the recommendations learn from ([TasteHistory]). */
     val taste = TasteHistory(c.db.plays(), c.db.counted(), boost = { c.spotify.taste() }) { if (_teach.value) ImportSource.entries else emptyList() }
 
-    val summaries: Flow<List<com.vinz.music.data.db.ImportSummary>> = c.db.imports().summariesFlow()
-    val statuses: Flow<List<com.vinz.music.data.db.StatusCount>> = c.db.imports().statusFlow()
-    val review: Flow<List<com.vinz.music.data.db.ImportMatchEntity>> = c.db.imports().reviewFlow()
+    val summaries: Flow<List<com.prism.music.data.db.ImportSummary>> = c.db.imports().summariesFlow()
+    val statuses: Flow<List<com.prism.music.data.db.StatusCount>> = c.db.imports().statusFlow()
+    val review: Flow<List<com.prism.music.data.db.ImportMatchEntity>> = c.db.imports().reviewFlow()
 
     /** Reading files or Last.fm now: what's read so far (null when nothing is). */
     val reading = MutableStateFlow<Reading?>(null)
@@ -490,7 +493,7 @@ class HistoryImports(private val c: AppContainer) {
         }
     }
 
-    private fun com.vinz.music.data.db.ImportMatchEntity.toTrack() =
+    private fun com.prism.music.data.db.ImportMatchEntity.toTrack() =
         TrackToMatch(title, artist, album, durationMs, atLeastMs, isrc, youtubeId)
 
 

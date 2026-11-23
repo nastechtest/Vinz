@@ -1,7 +1,7 @@
 package com.vinz.music.data
 
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.mainArtist
+import com.prism.music.data.db.mainArtist
 import com.vinz.music.data.innertube.SearchRank
 import com.vinz.music.data.meta.Genres
 import com.vinz.music.data.model.MoodItem

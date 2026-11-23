@@ -1,8 +1,8 @@
 package com.vinz.music
 
 import com.vinz.music.data.ModelStore
-import com.vinz.music.data.db.RomanizedDao
-import com.vinz.music.data.db.RomanizedEntity
+import com.prism.music.data.db.RomanizedDao
+import com.prism.music.data.db.RomanizedEntity
 import com.vinz.music.data.lyrics.LyricLine
 import com.vinz.music.data.lyrics.LyricWord
 import com.vinz.music.data.lyrics.Romanizer
@@ -67,6 +67,7 @@ class RomanizerTest {
         assertTrue("not kept, so it's asked for again", saved.isEmpty())
     }
 
+    @org.junit.experimental.categories.Category(LiveNetwork::class)
     @Test
     fun googleSpellsOutJapaneseWholly() = runBlocking {
         val r = romanizer.romanize("ja-live", listOf(LyricLine(0, "心の臓を鳴らす"), LyricLine(2_000, "風の中でも")), skip = emptySet(), network = true)
@@ -88,6 +89,7 @@ class RomanizerTest {
         assertEquals(3_000L, spread[1].endMs)
     }
 
+    @org.junit.experimental.categories.Category(LiveNetwork::class)
     @Test
     fun googleSpellsOutChineseAndHindi() = runBlocking {
         val lines = listOf(

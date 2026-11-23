@@ -39,6 +39,7 @@ import com.vinz.music.data.lyrics.LyricLine
 import com.vinz.music.data.lyrics.Lyrics
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.model.hiRes
+import com.vinz.music.data.prefs.CarLyricsLines
 import com.vinz.music.data.prefs.CarLyricsStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.text.BreakIterator
+import java.util.Locale
 
 /**
  * What the media session (and so Android Auto, the notification, a watch) sees of the player: the real player,
@@ -60,7 +63,8 @@ import java.io.ByteArrayOutputStream
  */
 @OptIn(UnstableApi::class)
 class LyricsOverlayPlayer(player: Player) : ForwardingSimpleBasePlayer(player) {
-    class Overlay(val mediaId: String, val title: String, val artist: String, val artwork: ByteArray?)
+    /** [subtitle] is only set when a lyric may wrap onto the second line (PR #400): otherwise the song's own stays. */
+    class Overlay(val mediaId: String, val title: String, val artist: String, val artwork: ByteArray?, val subtitle: String? = null)
 
     private var overlay: Overlay? = null
     private val window = Timeline.Window()
@@ -78,7 +82,6 @@ class LyricsOverlayPlayer(player: Player) : ForwardingSimpleBasePlayer(player) {
         /** 0–100, or null when not casting. */
         val volume: Int?
         fun setVolume(v: Int)
-        fun adjust(delta: Int)
     }
 
     var remote: Remote? = null
@@ -89,21 +92,21 @@ class LyricsOverlayPlayer(player: Player) : ForwardingSimpleBasePlayer(player) {
     override fun handleSetDeviceVolume(deviceVolume: Int, flags: Int): com.google.common.util.concurrent.ListenableFuture<*> {
         val r = remote
         if (r?.volume == null) return super.handleSetDeviceVolume(deviceVolume, flags)
-        r.setVolume(deviceVolume)
+        r.setVolume(RemoteVolume.level(deviceVolume))
         return com.google.common.util.concurrent.Futures.immediateVoidFuture()
     }
 
     override fun handleIncreaseDeviceVolume(flags: Int): com.google.common.util.concurrent.ListenableFuture<*> {
         val r = remote
         if (r?.volume == null) return super.handleIncreaseDeviceVolume(flags)
-        r.adjust(REMOTE_STEP)
+        r.setVolume(RemoteVolume.stepped(r.volume ?: 0, 1))
         return com.google.common.util.concurrent.Futures.immediateVoidFuture()
     }
 
     override fun handleDecreaseDeviceVolume(flags: Int): com.google.common.util.concurrent.ListenableFuture<*> {
         val r = remote
         if (r?.volume == null) return super.handleDecreaseDeviceVolume(flags)
-        r.adjust(-REMOTE_STEP)
+        r.setVolume(RemoteVolume.stepped(r.volume ?: 0, -1))
         return com.google.common.util.concurrent.Futures.immediateVoidFuture()
     }
 
@@ -133,8 +136,8 @@ class LyricsOverlayPlayer(player: Player) : ForwardingSimpleBasePlayer(player) {
         shown = null
         remote?.volume?.let { v ->
             s = s.buildUpon()
-                .setDeviceInfo(androidx.media3.common.DeviceInfo.Builder(androidx.media3.common.DeviceInfo.PLAYBACK_TYPE_REMOTE).setMinVolume(0).setMaxVolume(100).build())
-                .setDeviceVolume(v)
+                .setDeviceInfo(androidx.media3.common.DeviceInfo.Builder(androidx.media3.common.DeviceInfo.PLAYBACK_TYPE_REMOTE).setMinVolume(0).setMaxVolume(RemoteVolume.STEPS).build())
+                .setDeviceVolume(RemoteVolume.shown(v))
                 .setIsDeviceMuted(v == 0)
                 .setAvailableCommands(
                     s.availableCommands.buildUpon().addAll(
@@ -161,15 +164,84 @@ class LyricsOverlayPlayer(player: Player) : ForwardingSimpleBasePlayer(player) {
             .setTitle(o.title)
             .setDisplayTitle(o.title)
             .setArtist(o.artist)
+            .apply { if (o.subtitle != null) setSubtitle(o.subtitle) }
             .apply { if (o.artwork != null) { setArtworkData(o.artwork, MediaMetadata.PICTURE_TYPE_FRONT_COVER); setArtworkUri(null) } }
             .build()
         return s.buildUpon().setPlaylist(s.timeline, s.currentTracks, meta).build()
     }
 
-    private companion object {
-        /** A volume key press on a cast speaker or TV, out of 100. */
-        const val REMOTE_STEP = 4
+}
+
+/**
+ * A cast speaker's volume (0–100) as the phone's volume keys and Android's volume panel see it (#534, 1.8.7.6): in
+ * [STEPS] steps, one per key press. Before, the session said 100 steps and a press moved 4 of them: Android's panel
+ * showed one step up, then jumped to where the speaker really was, and a held key ran to the end.
+ */
+object RemoteVolume {
+    const val STEPS = 25
+    private const val PER_STEP = 100 / STEPS
+    /** A held key's repeats come every 50 ms; one step is taken per this long, about 2.5 s from silent to full. */
+    const val HELD_GAP_MS = 100L
+
+    /** The step shown for a speaker at [level] (0–100). */
+    fun shown(level: Int): Int = (level.coerceIn(0, 100) + PER_STEP / 2) / PER_STEP
+
+    /** The speaker's level (0–100) for the step [shown]. */
+    fun level(shown: Int): Int = shown.coerceIn(0, STEPS) * PER_STEP
+
+    /** The level one key press up ([by] 1) or down (-1) from [level]: the next step, so the panel and speaker agree. */
+    fun stepped(level: Int, by: Int): Int = level(shown(level) + by)
+
+    /** Whether a volume key event is taken: every first press, and a held key's repeats [HELD_GAP_MS] apart. */
+    fun takesKey(repeat: Int, now: Long, lastAt: Long): Boolean = repeat == 0 || now - lastAt >= HELD_GAP_MS
+}
+
+/**
+ * Whether the playing line is put in the session's title and cover (#392, 1.8.4). Two switches, each on its own:
+ * "Lyrics in the car" ([inCar]) while a car is connected and the phone is really in one, and "Lyrics in the
+ * notification" ([onPhone]) always. Before 1.8.4 the phone's switch only worked with the car's on.
+ */
+internal fun carLyricsActive(inCar: Boolean, onPhone: Boolean, carConnected: Boolean, driving: Boolean): Boolean =
+    (inCar && carConnected && driving) || onPhone
+
+/**
+ * The session's lyrics button (notification, watch, car): whether lyrics are [showing] where the listener is now, and
+ * what both switches are after a tap ([car] = "Lyrics in the car", [phone] = "Lyrics in the notification").
+ */
+internal data class LyricsButton(val showing: Boolean, val car: Boolean, val phone: Boolean)
+
+/**
+ * What the lyrics button shows and does (#392, 1.8.4), now that the phone's switch stands apart from the car's.
+ * It works the lyrics of the place the listener is in ([driving] = a car is connected and the phone is really in one):
+ * - in a car it turns "Lyrics in the car" on and off, as it always did. Hiding there also turns the notification's
+ *   switch off when that one is on, or the line would stay on the car's screen (one session feeds both);
+ * - anywhere else it turns "Lyrics in the notification" on and off, and leaves the car's switch alone.
+ * Before, it only ever worked the car's switch: with the notification's alone it said "Show lyrics" over lyrics that
+ * were showing, and a tap changed nothing to see.
+ */
+internal fun lyricsButton(inCar: Boolean, onPhone: Boolean, driving: Boolean): LyricsButton {
+    val showing = carLyricsActive(inCar, onPhone, carConnected = driving, driving = driving)
+    return when {
+        driving -> LyricsButton(showing, car = !showing, phone = if (showing) false else onPhone)
+        else -> LyricsButton(showing, car = inCar, phone = !showing)
     }
+}
+
+/** What the session is given for a lyric line: its title, its artist line, and a subtitle when the line may wrap. */
+internal data class CarLyricText(val title: String, val artist: String, val subtitle: String?)
+
+/**
+ * The title and second line for the line being sung. [keepTitle] (lyrics on the cover only) leaves the song's own;
+ * one line puts the lyric in the title over "Title · Artist"; wrap to two (PR #400) carries a long lyric on into the
+ * second line in place of the song's name.
+ */
+internal fun carLyricText(line: String, songTitle: String, songArtist: String, keepTitle: Boolean, lines: CarLyricsLines): CarLyricText = when {
+    keepTitle -> CarLyricText(songTitle, songArtist, null)
+    lines == CarLyricsLines.WRAP_TWO -> {
+        val (first, second) = CarLyrics.splitLyric(line, "$songTitle · $songArtist")
+        CarLyricText(first, second, second)
+    }
+    else -> CarLyricText(line, "$songTitle · $songArtist", null)
 }
 
 /**
@@ -194,7 +266,22 @@ class CarLyrics(
      */
     private val car = CarState(context, scope) { refresh() }
 
-    val active: Boolean get() = c.settings.current.let { it.carLyrics && ((carConnected && car.driving) || it.carLyricsOnPhone) }
+    val active: Boolean get() = c.settings.current.let { carLyricsActive(it.carLyrics, it.carLyricsOnPhone, carConnected, car.driving) }
+
+    /** The session's lyrics button as it stands now ([lyricsButton]). */
+    internal val button: LyricsButton get() = c.settings.current.let { lyricsButton(it.carLyrics, it.carLyricsOnPhone, carConnected && car.driving) }
+
+    /** A tap on the session's lyrics button: the switch of the place the listener is in ([lyricsButton]). */
+    fun toggle() {
+        val now = c.settings.current
+        val after = button
+        if (after.car != now.carLyrics) c.settings.setCarLyrics(after.car)
+        if (after.phone != now.carLyricsOnPhone) c.settings.setCarLyricsOnPhone(after.phone)
+    }
+
+    /** The button's answer may have changed (a car came or went): the service redraws its buttons. */
+    var onPlaceChange: (() -> Unit)? = null
+    private var place: Boolean? = null
 
     fun start() = car.start()
     fun stop() = car.stop()
@@ -211,6 +298,8 @@ class CarLyrics(
 
     /** Call when the song, the settings, the car connection or play/pause changes. */
     fun refresh() {
+        val inACar = carConnected && car.driving
+        if (place != inACar) { val first = place == null; place = inACar; if (!first) onPlaceChange?.invoke() }
         if (!active) {
             tickJob?.cancel(); tickJob = null
             overlay.show(null); shown = null
@@ -274,16 +363,125 @@ class CarLyrics(
         if (songId != s.id) return
         lastArtAt = now
         shown = key
-        overlay.show(
-            if (keepTitle) LyricsOverlayPlayer.Overlay(s.id, s.title, s.artistText, art)
-            else LyricsOverlayPlayer.Overlay(s.id, line.text, "${s.title} · ${s.artistText}", art)
-        )
+        val text = carLyricText(line.text, s.title, s.artistText, keepTitle, c.settings.current.behavior.carLyricsLines)
+        overlay.show(LyricsOverlayPlayer.Overlay(s.id, text.title, text.artist, art, text.subtitle))
     }
 
     private fun clear() {
         if (shown == null) return
         shown = null
         overlay.show(null)
+    }
+
+    companion object {
+        /** How much of a lyric the car's title takes before it wraps (PR #400's length), in cells: see [cells]. */
+        const val TITLE_CELLS = 24
+
+        /**
+         * A long lyric over the title and the second line (PR #400 by henrynvn09): the first line is as much as fits in
+         * [maxTitle] cells, the second is all the rest (the car shortens it itself). A line that fits is left with
+         * [defaultSubtitle] under it.
+         *
+         * The cut is at the end of a word when one ends in the last two thirds of the line, and otherwise, or for a word
+         * longer than a line, wherever the line is full. Chinese and Japanese have no spaces and may be cut between any
+         * two characters, though not just before closing punctuation or after an opening bracket. It is never inside what
+         * reads as one character: an emoji (two UTF-16 chars), a family or flag made of several, a letter and its accents.
+         * Right-to-left text is cut in reading order like any other, so the first line is the start of the sentence.
+         */
+        fun splitLyric(text: String, defaultSubtitle: String, maxTitle: Int = TITLE_CELLS): Pair<String, String> {
+            val max = maxTitle.coerceAtLeast(1)
+            val t = text.trim()
+            val bounds = graphemeBounds(t)
+            var width = 0
+            var word = -1
+            var wordWidth = 0
+            var hard = -1
+            var over = false
+            for (k in 0 until bounds.size - 1) {
+                val at = bounds[k]
+                if (k > 0) {
+                    hard = at
+                    if (wordEnds(t, bounds[k - 1], at)) { word = at; wordWidth = width }
+                }
+                width += cells(t.codePointAt(at))
+                if (width > max) { over = true; break }
+            }
+            if (!over) return text to defaultSubtitle
+            val cut = when {
+                word > 0 && wordWidth >= max / 3 -> word
+                hard > 0 -> hard
+                // Not even one character fits: it goes on the first line all the same.
+                bounds.size > 2 -> bounds[1]
+                else -> return text to defaultSubtitle
+            }
+            val first = t.substring(0, cut).trimEnd()
+            val second = t.substring(cut).trimStart()
+            return if (first.isEmpty() || second.isEmpty()) text to defaultSubtitle else first to second
+        }
+
+        /**
+         * Where [text] may be cut, from 0 to its length: between whole characters as they're read. Android's
+         * BreakIterator knows emoji sequences; an older one (the JVM's, in tests) cuts a family at each joiner and a
+         * flag in two, so those places are taken out here whichever is running.
+         */
+        private fun graphemeBounds(text: String): IntArray {
+            val out = ArrayList<Int>()
+            val it = BreakIterator.getCharacterInstance(Locale.ROOT)
+            it.setText(text)
+            var i = it.first()
+            while (i != BreakIterator.DONE) {
+                if (i == 0 || i == text.length || !joined(text, i)) out += i
+                i = it.next()
+            }
+            if (out.isEmpty() || out.last() != text.length) out += text.length
+            return out.toIntArray()
+        }
+
+        /** The characters on either side of [i] belong together. */
+        private fun joined(text: String, i: Int): Boolean {
+            if (Character.isLowSurrogate(text[i]) && Character.isHighSurrogate(text[i - 1])) return true
+            val before = text.codePointBefore(i)
+            val after = text.codePointAt(i)
+            if (before == ZWJ || after == ZWJ) return true
+            // Variation selectors, skin tones, tag letters (subdivision flags), the keycap.
+            if (after in 0xFE00..0xFE0F || after in 0x1F3FB..0x1F3FF || after in 0xE0020..0xE007F || after == 0x20E3) return true
+            when (Character.getType(after)) {
+                Character.NON_SPACING_MARK.toInt(), Character.ENCLOSING_MARK.toInt(), Character.COMBINING_SPACING_MARK.toInt() -> return true
+            }
+            if (flagLetter(before) && flagLetter(after)) {
+                // Flags are pairs: inside one when an odd number of flag letters comes before.
+                var n = 0
+                var j = i
+                while (j > 0 && flagLetter(text.codePointBefore(j))) { n++; j -= 2 }
+                return n % 2 == 1
+            }
+            return false
+        }
+
+        private const val ZWJ = 0x200D
+        private fun flagLetter(cp: Int) = cp in 0x1F1E6..0x1F1FF
+
+        /** A word ends between the character at [prev] and the one at [at]: before a space, or between Chinese/Japanese characters. */
+        private fun wordEnds(text: String, prev: Int, at: Int): Boolean {
+            val b = text.codePointAt(at)
+            if (Character.isWhitespace(b)) return true
+            val a = text.codePointAt(prev)
+            if (Character.isWhitespace(a)) return false
+            if (!cutsAnywhere(a) && !cutsAnywhere(b)) return false
+            return !(b < 0x10000 && b.toChar() in CLOSERS) && !(a < 0x10000 && a.toChar() in OPENERS)
+        }
+
+        /** Wide and written without spaces (Korean is wide too, but has spaces: its words stay whole). */
+        private fun cutsAnywhere(cp: Int) = wide(cp) && !(cp in 0x1100..0x115F || cp in 0x3130..0x318F || cp in 0xAC00..0xD7A3)
+
+        /** A Chinese, Japanese or Korean character or an emoji is about two Latin letters wide on the car's screen. */
+        private fun cells(cp: Int) = if (wide(cp)) 2 else 1
+
+        private fun wide(cp: Int) = cp in 0x1100..0x115F || cp in 0x2E80..0xA4CF || cp in 0xAC00..0xD7A3 || cp in 0xF900..0xFAFF ||
+            cp in 0xFE30..0xFE4F || cp in 0xFF00..0xFF60 || cp in 0xFFE0..0xFFE6 || cp in 0x1F000..0x1FAFF || cp in 0x20000..0x3FFFD
+
+        private const val CLOSERS = "、。，．・：；？！）］｝」』】〕〉》〗〙ー々ゝゞヽヾ…‥’”,.!?:;)]}"
+        private const val OPENERS = "（［｛「『【〔〈《〖〘‘“([{"
     }
 }
 

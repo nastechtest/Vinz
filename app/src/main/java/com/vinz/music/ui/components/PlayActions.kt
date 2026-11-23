@@ -39,6 +39,8 @@ import com.vinz.music.playback.QueueKind
 import com.vinz.music.playback.QueueSource
 import com.vinz.music.ui.theme.LocalContainer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -67,7 +69,7 @@ sealed interface Playable {
  * next / Add to queue, and a release swiped on New from your artists, #248).
  */
 fun queuePlayable(c: AppContainer, context: android.content.Context, target: Playable, title: String, next: Boolean) = c.scope.launch(Dispatchers.Main) {
-    val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+    val loaded = runCatching { whileLoading(context, title) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
     if (loaded == null || loaded.first.isEmpty()) {
         Toast.makeText(context, if (loaded == null) tr(R.string.couldn_t_load, title) else tr(R.string.nothing_to_play_in, title), Toast.LENGTH_SHORT).show()
         return@launch
@@ -77,8 +79,49 @@ fun queuePlayable(c: AppContainer, context: android.content.Context, target: Pla
     Toast.makeText(context, com.vinz.music.data.model.songCount(loaded.first.size) + " · " + (if (next) tr(R.string.playing_next) else tr(R.string.added_to_queue)), Toast.LENGTH_SHORT).show()
 }
 
+/**
+ * A long press's Play or Shuffle ([mix]: an artist's mix). #356: Shuffle on an 892-song playlist looked broken, the menu
+ * closing on nothing for about 5 s while every page loaded. It says it's loading if it isn't there at once, starts from
+ * the first page, and the rest follows behind the songs playing. Whatever's played meanwhile wins over it.
+ */
+fun playPlayable(c: AppContainer, context: android.content.Context, target: Playable, title: String, shuffle: Boolean, mix: Boolean = false) = c.scope.launch(Dispatchers.Main) {
+    val token = c.player.queueStarting()
+    val start = runCatching { whileLoading(context, title) { listStart(c, target, shuffle, mix) } }.getOrNull()
+    if (!c.player.stillStarting(token)) return@launch
+    if (start == null || start.songs.isEmpty()) {
+        Toast.makeText(context, if (start == null) tr(R.string.couldn_t_load, title) else tr(R.string.nothing_to_play_in, title), Toast.LENGTH_SHORT).show()
+        return@launch
+    }
+    // An artist's shuffle and mix come already in YouTube's order; the player shouldn't reshuffle them.
+    val artist = (target as? Playable.Of)?.item is ArtistItem
+    c.player.playQueue(start.songs, 0, start.source, shuffle = shuffle && !artist, rest = start.rest)
+}
+
+/** How long a lookup may take before the listener is told something's happening (a list on the phone needs no note). */
+private const val LOADING_NOTE_MS = 150L
+
+/** [load] off the main thread (call this on it), with a note on screen if it isn't done at once. */
+private suspend fun <T> whileLoading(context: android.content.Context, title: String, load: suspend () -> T): T = coroutineScope {
+    var toast: Toast? = null
+    val note = launch {
+        delay(LOADING_NOTE_MS)
+        toast = Toast.makeText(context, tr(R.string.loading_list, title), Toast.LENGTH_LONG).also { it.show() }
+    }
+    try {
+        withContext(Dispatchers.IO) { load() }
+    } finally {
+        note.cancel()
+        toast?.cancel()
+    }
+}
+
 /** Moods and genres are pages of shelves, not something to play. */
-fun BrowseItem.playable(): Playable? = if (this is MoodItem) null else Playable.Of(this)
+fun BrowseItem.playable(): Playable? = when {
+    this is MoodItem -> null
+    // A tag shown as a result (1.8.3) isn't a YouTube playlist: its menu would load, save or pin "tag:…" from YouTube.
+    this is PlaylistItem && id.startsWith(com.vinz.music.ui.screens.TAG_PAGE) -> null
+    else -> Playable.Of(this)
+}
 
 /**
  * A long-press menu for cards and tiles: call the returned function with what was pressed and the
@@ -102,7 +145,6 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
     val c = LocalContainer.current
     val context = LocalContext.current
     val liked by c.library.likedShown.collectAsState()
-    val libraryAlbums by c.library.albums.collectAsState()
     var sharing by remember { mutableStateOf<ShareTarget?>(null) }
     sharing?.let { t -> ShareSheet(t) { sharing = null; onDismiss() }; return }
     // Its songs, on their way into a playlist (Reddit R8).
@@ -126,21 +168,14 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
     // #305: an album's own cover, in its place.
     var coverFor by remember { mutableStateOf<CoverFor?>(null) }
     coverFor?.let { t -> CoverPickSheet(t) { coverFor = null; onDismiss() }; return }
-    fun play(shuffle: Boolean, mix: Boolean = false) = c.scope.launch(Dispatchers.Main) {
-        val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle, mix) } }.getOrNull()
-        if (loaded == null || loaded.first.isEmpty()) {
-            Toast.makeText(context, if (loaded == null) tr(R.string.couldn_t_load, title) else tr(R.string.nothing_to_play_in, title), Toast.LENGTH_SHORT).show()
-            return@launch
-        }
-        // An artist's shuffle and mix come already in YouTube's order; the player shouldn't reshuffle them.
-        c.player.playQueue(loaded.first, 0, loaded.second, shuffle = shuffle && item !is ArtistItem)
-    }
+    fun play(shuffle: Boolean, mix: Boolean = false) = playPlayable(c, context, target, title, shuffle, mix)
 
     /** The whole list after the current song ([next]) or at the end of the queue. */
     fun queue(next: Boolean) = queuePlayable(c, context, target, title, next)
-    val quick = if (item is ArtistItem) listOf(
+    val quick = if (item is ArtistItem) listOfNotNull(
         ActionItem(VinzIcons.Shuffle, tr(R.string.shuffle)) { play(shuffle = true) },
-        ActionItem(VinzIcons.Radio, tr(R.string.mix_2)) { play(shuffle = false, mix = true) },
+        // YouTube makes no mix of what's only yours.
+        ActionItem(VinzIcons.Radio, tr(R.string.mix_2)) { play(shuffle = false, mix = true) }.takeUnless { com.vinz.music.data.innertube.Parser.isUploadArtist(item.id) },
     ) else listOf(
         ActionItem(VinzIcons.Play, tr(R.string.widget_play)) { play(shuffle = false) },
         ActionItem(VinzIcons.Shuffle, tr(R.string.shuffle)) { play(shuffle = true) },
@@ -177,7 +212,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
         QuickActions(quick) { runAction(it, close) }
         // An album in the library can be taken out from here, by the library's own entry (a remaster or other edition
         // opens as another album page, whose bookmark didn't reach this one).
-        val inLibrary = item is AlbumItem && c.settings.current.isLoggedIn && libraryAlbums.any { it.id == item.id }
+        val inLibrary = item is AlbumItem && c.settings.current.isLoggedIn && c.library.albums.value.any { it.id == item.id }
         // Saved on the phone (no account): taken out of the phone's library.
         val savedHere = !c.settings.current.isLoggedIn && when (item) {
             is AlbumItem -> c.vinzLibrary.isSaved(item.id)
@@ -196,7 +231,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
         // Played in the order that blends best, mixed and beat-matched (DJ mode).
         val djSet = if (item is ArtistItem) emptyList() else listOf(ActionItem(VinzIcons.Album, tr(R.string.play_as_a_dj_set)) {
             c.scope.launch(Dispatchers.Main) {
-                val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+                val loaded = runCatching { whileLoading(context, title) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
                 if (loaded == null || loaded.first.size < 2) {
                     Toast.makeText(context, if (loaded == null) tr(R.string.couldn_t_load, title) else tr(R.string.a_dj_set_needs_more_than), Toast.LENGTH_SHORT).show()
                     return@launch
@@ -207,7 +242,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
         // Every song of it into one of your playlists, as a song's menu does for one (Reddit R8).
         val addTo = if (item is ArtistItem) emptyList() else listOf(ActionItem(VinzIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) {
             c.scope.launch(Dispatchers.Main) {
-                val loaded = runCatching { withContext(Dispatchers.IO) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+                val loaded = runCatching { whileLoading(context, title) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
                 if (loaded == null || loaded.first.isEmpty()) {
                     Toast.makeText(context, if (loaded == null) tr(R.string.couldn_t_load, title) else tr(R.string.nothing_to_add_in, title), Toast.LENGTH_SHORT).show()
                     return@launch
@@ -226,12 +261,18 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
         }.orEmpty()
         // A section of its own on Home (1.7.6): its songs, under its name.
         val pin = item?.let { com.vinz.music.ui.screens.OwnSections.pinOf(it) }?.let { cfg ->
-            val layout = c.settings.current.homeLayout
+            val layout = c.settings.current.home.layout
             val on = layout.any { it.key == cfg.key }
             listOf(ActionItem(if (on) VinzIcons.PinFilled else VinzIcons.Pin, if (on) tr(R.string.unpin_from_home) else tr(R.string.pin_to_home)) {
                 c.settings.setHomeLayout(if (on) layout.filterNot { it.key == cfg.key } else listOf(cfg) + layout)
                 Toast.makeText(context, if (on) tr(R.string.taken_off_home) else tr(R.string.pinned_to_the_top_of_home), Toast.LENGTH_SHORT).show()
-            })
+            }) + (
+                // Or as one tile: its cover, name and a play button (1.8.3, D48); the songs stay the default.
+                if (!on && com.vinz.music.ui.screens.OwnSections.canTile(cfg.key)) listOf(ActionItem(VinzIcons.Album, tr(R.string.pin_to_home_as_one_tile)) {
+                    c.settings.setHomeLayout(listOf(cfg.copy(tile = true)) + layout)
+                    Toast.makeText(context, tr(R.string.pinned_to_the_top_of_home), Toast.LENGTH_SHORT).show()
+                }) else emptyList()
+            )
         }.orEmpty()
         val cover = if (item is AlbumItem) listOf(ActionItem(VinzIcons.Photo, tr(R.string.change_cover), active = c.covers.custom(c.covers.albumKey(item.id)) != null, keepOpen = true) {
             coverFor = CoverFor.OfAlbum(item.id, item.title, item.thumbnail, c.covers.albumKey(item.id))
@@ -322,6 +363,40 @@ fun copyToVinz(c: AppContainer, context: android.content.Context, id: String, ti
     }
 }
 
+/** What a queue starts from: its first songs, what it's called, and how to get the rest of them ([rest]: a page each time). */
+private class ListStart(val songs: List<Song>, val source: QueueSource, val rest: (suspend () -> List<Song>?)? = null)
+
+/** A playlist as YouTube pages it: not one of Vinz's own, nor a mix or radio, which only exist as a watch queue. */
+private fun PlaylistItem.pagedOnYouTube() = !com.vinz.music.data.VinzLibrary.isVinzList(id) &&
+    !(isMix || (id.startsWith("RD") && !com.vinz.music.data.innertube.YouTubeMusic.isEpisodeList(id)))
+
+/** As many songs of a playlist as a queue takes. */
+private const val PLAYLIST_QUEUE_LIMIT = 1000
+
+/**
+ * The start of the queue for [target]: a long playlist's first page and the way to the rest (#356), the songs of
+ * anything else. A first page the explicit filter leaves nothing of reads on until there's a song that may play.
+ */
+private suspend fun listStart(c: AppContainer, target: Playable, shuffle: Boolean, mix: Boolean): ListStart {
+    val item = (target as? Playable.Of)?.item as? PlaylistItem
+    if (item == null || !item.pagedOnYouTube()) return songsFor(c, target, shuffle, mix).let { ListStart(it.first, it.second) }
+    val page = orKept(c, item.id.removePrefix("VL")) { c.ytm.playlist(item.id) }
+    val source = QueueSource(QueueKind.PLAYLIST, item.title, originId = item.id.removePrefix("VL"), page = item)
+    var token = page.continuation
+    var count = page.songs.size
+    val rest: suspend () -> List<Song>? = rest@{
+        val t = token?.takeIf { count < PLAYLIST_QUEUE_LIMIT } ?: return@rest null
+        val chunk = c.ytm.playlistPage(t)
+        token = chunk.next
+        count += chunk.songs.size
+        chunk.songs.ifEmpty { null }
+    }
+    val mode = c.settings.current.behavior.explicitContent
+    var songs = page.songs.distinctBy { it.id }
+    while (songs.none { com.vinz.music.data.ExplicitFilter.plays(mode, it) }) songs = (songs + (rest() ?: break)).distinctBy { it.id }
+    return ListStart(songs, source, rest.takeIf { token != null })
+}
+
 /** The songs to queue for [target], and what the queue is called. */
 private suspend fun songsFor(c: AppContainer, target: Playable, shuffle: Boolean, mix: Boolean): Pair<List<Song>, QueueSource> = when (target) {
     Playable.Liked -> c.library.likedShown.value to QueueSource(QueueKind.PLAYLIST, tr(R.string.liked_songs))
@@ -336,12 +411,15 @@ private suspend fun songsFor(c: AppContainer, target: Playable, shuffle: Boolean
             if (com.vinz.music.data.VinzLibrary.isVinzList(item.id))
                 (c.vinzLibrary.list(item.id)?.songs ?: emptyList()) to QueueSource(QueueKind.PLAYLIST, item.title, originId = item.id, page = item)
             // The account's "New episodes" (RDPN) is a list of episodes, not a radio.
-            else if (item.isMix || (item.id.startsWith("RD") && !com.vinz.music.data.innertube.YouTubeMusic.isEpisodeList(item.id))) radio(c, item.seedVideoId, item.id, item.params, item.title)
-            else orKept(c, item.id.removePrefix("VL")) { c.ytm.playlistAll(item.id, 1000) }.songs to
+            else if (!item.pagedOnYouTube()) radio(c, item.seedVideoId, item.id, item.params, item.title)
+            else orKept(c, item.id.removePrefix("VL")) { c.ytm.playlistAll(item.id, PLAYLIST_QUEUE_LIMIT) }.songs to
                 QueueSource(QueueKind.PLAYLIST, item.title, originId = item.id.removePrefix("VL"), page = item)
         is ArtistItem -> {
             val a = c.ytm.artist(item.id)
-            if (shuffle && !mix && a.shufflePlaylistId != null) radio(c, a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams, a.name)
+            // Your own upload has no list of YouTube's to shuffle: their songs, here (playPlayable leaves an artist's order as it comes).
+            if (com.vinz.music.data.innertube.Parser.isUploadArtist(item.id)) a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
+                .let { songs -> (if (shuffle) songs.shuffled() else songs) to QueueSource(QueueKind.LIBRARY, a.name) }
+            else if (shuffle && !mix && a.shufflePlaylistId != null) radio(c, a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams, a.name)
             else radio(c, a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException(tr(R.string.no_mix)), a.radioParams, tr(R.string.mix, a.name))
         }
         else -> emptyList<Song>() to QueueSource(QueueKind.OTHER, item.title)

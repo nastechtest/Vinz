@@ -88,7 +88,6 @@ import com.vinz.music.ui.theme.VinzIcons
 import kotlinx.coroutines.delay
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -137,7 +136,7 @@ private fun immersiveLook(song: Song): LyricsLook {
 @Composable
 private fun lyricsAxis(): androidx.compose.ui.text.font.FontFamily? {
     val s = com.vinz.music.ui.theme.LocalAppSettings.current
-    val choice = if (s.lyricsFont.isEmpty()) s.fontChoice else com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == s.lyricsFont }
+    val choice = if (s.lyrics.font.isEmpty()) s.fontChoice else com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == s.lyrics.font }
     return remember(choice) { choice?.let(com.vinz.music.ui.theme.AppFonts::axis) }
 }
 
@@ -302,8 +301,10 @@ fun ImmersivePlayer(
 
         // ---- Lyrics: a line at a time high, in the middle or low on the screen, or all of them over it.
         val insets = WindowInsets.safeDrawing.asPaddingValues()
+        // The lyrics page's translation, when it's turned on (#358).
+        val translation = rememberLyricTranslation(lyricsState)
         when (place) {
-            ImmersiveLyrics.FULL -> LyricsOverAll(song, lyricsState, isPlaying, Modifier.fillMaxSize().padding(horizontal = 28.dp))
+            ImmersiveLyrics.FULL -> LyricsOverAll(song, lyricsState, translation, isPlaying, Modifier.fillMaxSize().padding(horizontal = 28.dp))
             else -> {
                 val align = when (place) { ImmersiveLyrics.HIGH -> Alignment.TopCenter; ImmersiveLyrics.MIDDLE -> Alignment.Center; else -> Alignment.BottomCenter }
                 Box(
@@ -319,7 +320,7 @@ fun ImmersivePlayer(
                         ),
                     contentAlignment = align,
                 ) {
-                    LineAtATime(song, lyricsState, isPlaying, align)
+                    LineAtATime(song, lyricsState, translation, isPlaying, align)
                 }
             }
         }
@@ -410,6 +411,10 @@ fun ImmersivePlayer(
                 },
                 ActionItem(VinzIcons.Timer, tr(R.string.lyrics_timing), onClick = onLyricsTiming),
                 ActionItem(VinzIcons.Lyrics, tr(R.string.lyrics_source), onClick = onLyricsSource),
+                // The same switch as the player's menu (#358).
+                ActionItem(VinzIcons.Translate, tr(R.string.translate_lyrics), value = if (settings.lyrics.translate) tr(R.string.into, translateTargetName(settings)) else tr(R.string.off), active = settings.lyrics.translate, keepOpen = true) {
+                    c.settings.setLyricsTranslate(!settings.lyrics.translate)
+                },
             ),
         ) { runAction(it, close) }
     }
@@ -417,7 +422,7 @@ fun ImmersivePlayer(
 
 /** What's sung now, big, with the next line small under it; the song's name before the first line and without lyrics. */
 @Composable
-private fun LineAtATime(song: Song, state: LyricsState, active: Boolean, align: Alignment) {
+private fun LineAtATime(song: Song, state: LyricsState, translation: com.vinz.music.data.lyrics.LyricsTranslator.Translation?, active: Boolean, align: Alignment) {
     val roman = rememberRomanized(state)
     val instead = romanizeMode(song.id) == com.vinz.music.data.prefs.RomanizeMode.INSTEAD
     val look = immersiveLook(song)
@@ -450,7 +455,18 @@ private fun LineAtATime(song: Song, state: LyricsState, active: Boolean, align: 
         val line = lines.getOrNull(i)?.takeIf { !it.isGap }
         val next = remember(lines, i) { lines.drop(i + 1).firstOrNull { !it.isGap } }
         val arrange = when (align) { Alignment.TopCenter -> Arrangement.Top; Alignment.Center -> Arrangement.Center; else -> Arrangement.Bottom }
+        // #358: the line in the listener's language, as the lyrics page has it (under it, or over it as picked), smaller.
+        val translated = line?.let { translatedLine(translation, i, it.text) }
+        val translationLine = @Composable { padTop: Boolean ->
+            translated?.let { t ->
+                Text(
+                    t, style = look.extraStyle(lineStyle, 0.52f, 0.56f), color = look.extraColor.copy(alpha = 0.8f), maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(top = if (padTop) 6.dp else 0.dp, bottom = if (padTop) 0.dp else 6.dp),
+                )
+            }
+        }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = arrange) {
+            if (look.extraAbove) translationLine(false)
             when {
                 // Before the first line: the song's name, as a lyric video opens.
                 line == null && i < firstSung -> TitleCard(song)
@@ -469,11 +485,12 @@ private fun LineAtATime(song: Song, state: LyricsState, active: Boolean, align: 
                 if (r.isWordSynced) SweptLine(r, clock, romanStyle, Modifier.fillMaxWidth(), maxLines = 3, dimAlpha = 0.45f)
                 else Text(r.text, style = romanStyle, color = Color.White.copy(alpha = 0.85f), maxLines = 3, modifier = Modifier.fillMaxWidth())
             }
-            // The line to come, small and dim under it.
+            if (!look.extraAbove) translationLine(true)
+            // The line to come, small and dim under it (one row of it beside a translation, to keep the screen clear).
             next?.let { n ->
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    n.text, color = look.others.copy(alpha = 0.55f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    n.text, color = look.others.copy(alpha = 0.55f), maxLines = if (translated != null) 1 else 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight(look.weight), textAlign = TextAlign.Center, textDirection = TextDirection.Content, shadow = lineShadow,
                     ).withLyricsFont(),
@@ -583,7 +600,7 @@ private fun HoldToLeaveButton(onTap: () -> Unit, onPressing: (Boolean) -> Unit, 
  * (a drag on the screen stays the player's: down to close, sideways for another song). The edges fade out.
  */
 @Composable
-private fun LyricsOverAll(song: Song, state: LyricsState, active: Boolean, modifier: Modifier) {
+private fun LyricsOverAll(song: Song, state: LyricsState, translation: com.vinz.music.data.lyrics.LyricsTranslator.Translation?, active: Boolean, modifier: Modifier) {
     val roman = rememberRomanized(state)
     val instead = romanizeMode(song.id) == com.vinz.music.data.prefs.RomanizeMode.INSTEAD
     val look = immersiveLook(song)
@@ -606,7 +623,19 @@ private fun LyricsOverAll(song: Song, state: LyricsState, active: Boolean, modif
         val target = index.coerceAtLeast(0)
         // Glide to a line on screen; jump to one further off (a seek).
         val seen = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
-        if (seen != null) list.animateScrollBy(seen.offset.toFloat(), tween(700, easing = FastOutSlowInEasing)) else list.scrollToItem(target)
+        if (seen == null) { list.scrollToItem(target); return@LaunchedEffect }
+        // As #399 on the lyrics page: the glide follows the line on the way (where it is, read again each frame) rather
+        // than going a distance worked out before it starts, so anything changing height meanwhile can't leave it off its place.
+        fun away(): Float? = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }?.offset?.toFloat()
+        list.scroll {
+            var left = seen.offset.toFloat()
+            var before = 0f
+            animate(0f, 1f, animationSpec = tween(700, easing = FastOutSlowInEasing)) { now, _ ->
+                left = away() ?: left
+                left -= scrollBy(settleStep(left, before, now))
+                before = now
+            }
+        }
     }
     BoxWithConstraints(modifier) {
         LazyColumn(
@@ -635,23 +664,53 @@ private fun LyricsOverAll(song: Song, state: LyricsState, active: Boolean, modif
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(Modifier.fillMaxWidth()) {
-                        when {
-                            line.isGap -> Text("♪", style = style, color = Color.White, modifier = Modifier.fillMaxWidth())
-                            current && (line.isWordSynced || !look.plainWhenLineTimed) ->
-                                SungLine(line, clock, style, look, axis, Modifier.fillMaxWidth(), dimAlpha = 0.45f)
-                            // The lines around it are dimmed by the list itself; their color is the look's.
-                            else -> Text(line.text, style = style.copy(shadow = look.shadow ?: style.shadow), color = if (current) Color.White else look.others, modifier = Modifier.fillMaxWidth())
+                        // #358: as the lyrics page has it (under each line, or over it as picked), smaller.
+                        val translated = if (line.isGap) null else translatedLine(translation, i, line.text)
+                        val translationLine = @Composable { padTop: Boolean ->
+                            translated?.let { t ->
+                                Text(
+                                    t, style = look.extraStyle(style, 0.52f, 0.56f), color = look.extraColor.copy(alpha = 0.8f),
+                                    modifier = Modifier.fillMaxWidth().padding(top = if (padTop) 4.dp else 0.dp, bottom = if (padTop) 0.dp else 4.dp),
+                                )
+                            }
                         }
-                        if (current && !line.isGap && line.endMs > line.timeMs) LyricProgress(line.timeMs, line.endMs, clock, 0.5f, Modifier.fillMaxWidth().padding(top = 10.dp))
+                        if (look.extraAbove) translationLine(false)
+                        ImmersiveListWords(line, current, clock, style, look, axis)
                         if (!instead && !line.isGap) roman?.getOrNull(i)?.let { r ->
                             val romanStyle = style.copy(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal, textDirection = TextDirection.Ltr)
                             if (current && r.isWordSynced) SweptLine(r, clock, romanStyle, Modifier.fillMaxWidth().padding(top = 3.dp), dimAlpha = 0.45f)
                             else Text(r.text, style = romanStyle, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.fillMaxWidth().padding(top = 3.dp))
                         }
+                        if (!look.extraAbove) translationLine(true)
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * A line's own words in immersive mode's list of every line ([LyricsOverAll]): sung ([current], in the look's style) or
+ * resting, and under a line with an end the thin progress line, growing from the middle.
+ */
+@Composable
+internal fun ImmersiveListWords(
+    line: LyricLine, current: Boolean, clock: androidx.compose.runtime.State<Long>, style: androidx.compose.ui.text.TextStyle,
+    look: LyricsLook, axis: androidx.compose.ui.text.font.FontFamily?,
+) {
+    when {
+        line.isGap -> Text("♪", style = style, color = Color.White, modifier = Modifier.fillMaxWidth())
+        current && (line.isWordSynced || !look.plainWhenLineTimed) ->
+            SungLine(line, clock, style, look, axis, Modifier.fillMaxWidth(), dimAlpha = 0.45f)
+        // The lines around it are dimmed by the list itself; their color is the look's.
+        else -> Text(line.text, style = style.copy(shadow = look.shadow ?: style.shadow), color = if (current) Color.White else look.others, modifier = Modifier.fillMaxWidth())
+    }
+    // As #399 on the lyrics page: every line that can show the progress line keeps its room, drawn only under the sung
+    // one, so a line is as tall sung as resting (the old line shrank and the new one grew at every change, in the middle
+    // of the glide to it: the lines below jumped and the glide ended off its place).
+    if (!line.isGap && line.endMs > line.timeMs) {
+        val room = Modifier.fillMaxWidth().padding(top = 10.dp)
+        if (current) LyricProgress(line.timeMs, line.endMs, clock, 0.5f, room) else Spacer(room.height(2.dp))
     }
 }
 

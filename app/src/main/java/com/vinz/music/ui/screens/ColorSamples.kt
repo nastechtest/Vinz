@@ -91,7 +91,10 @@ fun PageGround(c: ThemeColors, modifier: Modifier = Modifier, player: Boolean = 
     ) {
         MaterialTheme(colorScheme = c.scheme) {
             when {
-                style != com.vinz.music.ui.theme.Backdrop.DEFAULT -> com.vinz.music.ui.theme.BackdropLayer(style, photo, s.backdropDim, false, modifier)
+                // A solid color (#413) is that color exactly, as its screen draws it: nothing washed over it.
+                style != com.vinz.music.ui.theme.Backdrop.DEFAULT -> com.vinz.music.ui.theme.BackdropLayer(
+                    style, photo, if (style == com.vinz.music.ui.theme.Backdrop.COLOR) 0f else s.backdropDim, false, modifier,
+                )
                 com.vinz.music.ui.theme.ambientFrostShown(s, c.dark) -> com.vinz.music.ui.components.AmbientFrost(modifier)
                 else -> Box(modifier.background(c.scheme.background))
             }
@@ -342,23 +345,6 @@ fun ColorSample(c: ThemeColors, modifier: Modifier = Modifier, marks: Boolean = 
         }
         // ③ in the page's corner (① and ② sit beside their parts above).
         if (marks) PartMark(ColorPart.BACKGROUND, c, Modifier.align(Alignment.TopEnd).offset(x = (-4).dp, y = 4.dp))
-    }
-}
-
-/** Text at a contrast level: a title, secondary lines and a hairline, as a page would show them. */
-@Composable
-fun TextSample(c: ThemeColors, modifier: Modifier = Modifier) {
-    val s = c.scheme
-    val shape = RoundedCornerShape(14.dp)
-    Column(
-        modifier.fillMaxWidth().height(96.dp).clip(shape).background(s.background).border(1.dp, c.line, shape).padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(tr(R.string.blinding_lights), color = s.onBackground, fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-        Text(tr(R.string.the_weeknd_2020), color = c.ink2, fontSize = 9.5.sp, lineHeight = 12.sp, maxLines = 1)
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
-        Text(tr(R.string.in_your_eyes), color = s.onBackground, fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-        Text(tr(R.string.t_3_min_explicit), color = c.ink3, fontSize = 9.5.sp, lineHeight = 12.sp, maxLines = 1)
     }
 }
 

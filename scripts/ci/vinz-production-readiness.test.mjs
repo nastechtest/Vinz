@@ -7,6 +7,7 @@ import {
   duplicateValues,
   isExpectedPrivateTableDenial,
   isLocalHost,
+  scanDiff,
 } from "./vinz-readiness-lib.mjs";
 
 test("JSONC parser strips comments and trailing commas", () => {
@@ -50,4 +51,20 @@ test("localhost variants are detected without matching unrelated hosts", () => {
   for (const host of ["localhost", "api.localhost", "127.0.0.1", "0.0.0.0", "::1"]) assert.equal(isLocalHost(host), true);
   assert.equal(isLocalHost("home.vinzmusic.workers.dev"), false);
   assert.equal(isLocalHost("notlocalhost.com"), false);
+});
+
+test("large diffs are scanned through to the end without buffering", async () => {
+  const script = `
+    process.stdout.write('--- a/file\\n+++ b/file\\n');
+    for (let i = 0; i < 22; i++) process.stdout.write(' x'.repeat(524288) + '\\n');
+    process.stdout.write('+endpoint=https://api.example.test\\n-ALLOWED_ORIGINS=old\\n');
+  `;
+  const result = await scanDiff(process.execPath, ["-e", script]);
+  assert.deepEqual(result.urlLines, ["+ [content redacted]"]);
+  assert.deepEqual(result.riskyLines, ["- [content redacted]"]);
+});
+
+test("diff producer errors and unsuccessful exits fail closed", async () => {
+  await assert.rejects(scanDiff(process.execPath, ["-e", "process.stdout.write('+https://example.test\\n'); process.exit(7)"]), /failed \(7\)/);
+  await assert.rejects(scanDiff("/definitely/not/a/command", []));
 });

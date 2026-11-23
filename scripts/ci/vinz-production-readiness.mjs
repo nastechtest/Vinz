@@ -8,6 +8,7 @@ import {
   duplicateValues,
   isExpectedPrivateTableDenial,
   isLocalHost,
+  scanDiff,
 } from "./vinz-readiness-lib.mjs";
 
 const ROOT = process.cwd();
@@ -310,9 +311,7 @@ try {
   const base = "origin/" + baseRef;
   const nameStatus = execFileSync("git", ["diff", "--name-status", base + "...HEAD"], { encoding: "utf8" }).trim();
   changedFiles = nameStatus ? nameStatus.split("\n").map(line => line.split("\t")) : [];
-  const diff = execFileSync("git", ["diff", "--unified=0", base + "...HEAD"], { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 });
-  const urlLines = diff.split("\n").filter(line => /^[+-].*https?:\/\//.test(line) && !/^[+-]{3}/.test(line));
-  const riskyLines = diff.split("\n").filter(line => /^[+-].*(localhost|127\.0\.0\.1|vercel\.app|workers\.dev|supabase\.co|ALLOWED_ORIGINS|SUPABASE_URL)/i.test(line) && !/^[+-]{3}/.test(line));
+  const { urlLines, riskyLines } = await scanDiff("git", ["diff", "--no-ext-diff", "--unified=0", base + "...HEAD"]);
   changeSummary = [
     ...changedFiles.map(([status, file]) => `${status} ${file}`),
     ...urlLines.map(line => "URL " + line.slice(0, 260)),

@@ -87,7 +87,11 @@ class MixMaker(private val sources: Sources) {
      * New songs for [seeds]: every way's answers weighed together (a song found by several seeds or ways counts more,
      * earlier in a list counts more), then drawn by weighted chance.
      */
-    suspend fun discover(seeds: List<Song>, recipe: Recipe, taste: Taste, mixArtists: Set<String>, seed: Long, exclude: Set<String>): List<Song> {
+    suspend fun discover(
+        seeds: List<Song>, recipe: Recipe, taste: Taste, mixArtists: Set<String>, seed: Long, exclude: Set<String>,
+        /** How many to draw: by default what the recipe's share of new songs needs. */
+        want: Int = (recipe.size * recipe.freshShare).toInt() + recipe.size / 10,
+    ): List<Song> {
         val weight = HashMap<String, Double>()
         val byId = HashMap<String, Song>()
         fun add(list: List<Song>, base: Double) = list.forEachIndexed { rank, s ->
@@ -117,7 +121,6 @@ class MixMaker(private val sources: Sources) {
             usable(s) && s.id !in taste.played && LocalRadio.sameSong(s) !in taste.played && LocalRadio.sameSong(s) !in exclude &&
                 !taste.refused(s, false)
         }.distinctBy { LocalRadio.sameSong(it) }
-        val want = (recipe.size * recipe.freshShare).toInt() + recipe.size / 10
         return Variety.sample(pool, want, seed + 1, sharpness = 1.3) { s ->
             val w = weight[s.id] ?: 0.0
             val artist = s.primaryArtist.lowercase()

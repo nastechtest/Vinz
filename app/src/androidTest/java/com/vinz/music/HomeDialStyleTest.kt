@@ -23,7 +23,7 @@ class HomeDialStyleTest {
         Fixture.launch()
         compose.waitForText("Quick picks", 20_000)
         val s = Fixture.container.settings
-        runBlocking { s.setHomeLayout(s.current.homeLayout.map { it.copy(style = SectionStyle.DIAL) }) }
+        runBlocking { s.setHomeLayout(s.current.home.layout.map { it.copy(style = SectionStyle.DIAL) }) }
         compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("dialPages")).fetchSemanticsNodes().isNotEmpty() }
     }
 }

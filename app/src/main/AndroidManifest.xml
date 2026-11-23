@@ -28,6 +28,11 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Only to open Android's "uninstall Vinz?" prompt when moving to the newly signed Vinz. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Vinz's lock screen (off by default; asked for only when it's turned on). Android lets a screen start from the
+         background only with "Display over other apps", which is the only reason it's here: Vinz never draws over
+         other apps. The full-screen intent is the fallback when that isn't allowed: it comes up later, as the phone wakes. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Vinz TV (1.8.0): the same APK on Android TV and Google TV. A TV has no touchscreen, often no Wi-Fi (Ethernet),
          camera or autofocus; none of them is needed (microphone and camera are declared above). -->
@@ -100,6 +105,16 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/zip" />
+            </intent-filter>
+            <!-- An audio file opened from a file manager ("Open with Vinz", 1.8.5): it plays from the file (OpenedAudio). -->
+            <intent-filter android:label="@string/open_in_vinz">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+                <data android:mimeType="application/x-flac" />
             </intent-filter>
             <!-- Last.fm's sign-in page sends the browser back here with a token (1.7.8). -->
             <intent-filter>
@@ -193,8 +208,8 @@
             </intent-filter>
         </service>
 
-        <!-- "Hey Google, play … on Vinz": Assistant / Gemini only offer apps that take this as music sources. It runs
-             over the lock screen (the phone sits locked in the car), where it shows nothing and closes at once. -->
+        <!-- "Hey Google, play … on Vinz": Assistant only offers apps that take this as music sources (Gemini keeps its own
+             short list of linked services, and doesn't use it: #362). It runs over the lock screen (the phone sits locked in the car), where it shows nothing and closes at once. -->
         <activity
             android:name=".playback.VoicePlayActivity"
             android:exported="true"
@@ -209,6 +224,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.lockscreen.LockScreenActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:screenOrientation="userPortrait"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Vinz.LockScreen"
+            tools:targetApi="27" />
 
         <!-- The playback service, once per app icon (Android Auto shows the media service's icon); only the one for the
              chosen icon is enabled (PlaybackServices.target). -->
@@ -450,6 +477,21 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recognize_info" />
         </receiver>
+        <!-- Replay (1.8.5): this week's top song (2×2), and the top song and artist (4×2). Home screen only. -->
+        <receiver
+            android:name=".widget.ReplayWidget"
+            android:exported="false"
+            android:label="@string/widget_replay_song_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_replay_small_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.ReplayWideWidget"
+            android:exported="false"
+            android:label="@string/widget_replay_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_replay_info" />
+        </receiver>
         <!-- The Recognize widget and Quick Settings tile's listening card, over whatever is on screen. -->
         <activity
             android:name=".ui.screens.RecognizeActivity"
@@ -512,5 +554,15 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <!--
+             1.8.3 (#388's log): ONNX Runtime (Sing) brings a content provider that runs at every start-up to set up its
+             telemetry, and fails there anyway (its native library is only downloaded with Sing). Vinz sends nothing
+             anywhere and Sing loads the library itself when used, so the provider is left out.
+        -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
     </application>
 </manifest>

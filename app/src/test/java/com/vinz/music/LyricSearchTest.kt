@@ -1,6 +1,6 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.LyricsText
+import com.prism.music.data.db.LyricsText
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.LyricSearch

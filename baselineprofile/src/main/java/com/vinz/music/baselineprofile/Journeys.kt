@@ -124,6 +124,32 @@ object Journeys {
         flingPage(down = false, times = 3)
     }
 
+    /**
+     * Opens an album from the results on screen and comes back. Album and playlist pages are one screen, and signed out
+     * YouTube's Home doesn't always hold a playlist for [openAPlaylist] (the 1.8.2 profile run lost the whole page that way).
+     */
+    fun MacrobenchmarkScope.openAnAlbumFromResults() {
+        // The journey searches Daft Punk: their albums by name (the text under a card varies by shelf, and "Album…" also
+        // matches the "Albums" heading, which opens the whole list, where the next journey finds nothing to play).
+        val line = java.util.regex.Pattern.compile("Discovery|Random Access Memories|Homework|Human After All|Album\\s+•.*")
+        var album: UiObject2? = null
+        var flung = 0
+        while (flung < 4) {
+            album = device.findObject(By.text(line).pkg(PACKAGE))
+            if (album != null) break
+            flingPage(down = true, times = 1)
+            flung++
+        }
+        // As in openAPlaylist: no page opened, no Back.
+        if (album?.tap() == true && device.wait(Until.hasObject(By.desc("More")), WAIT) == true) {
+            flingPage(down = true, times = 2)
+            device.pressBack()
+            device.waitForIdle(2_000)
+        }
+        // Back to the first song rows for the next journey.
+        flingPage(down = false, times = 5)
+    }
+
     /** Plays the first song row on screen, opens the player, looks at the lyrics and puts the player away. */
     fun MacrobenchmarkScope.playAndOpenPlayer() {
         val more = device.wait(Until.findObject(By.desc("More")), WAIT) ?: return

@@ -234,5 +234,8 @@ class EdgeSilenceProcessor : BaseAudioProcessor() {
 
         /** A song is trimmed; a podcast episode (Media3's skipper) and a music video's sound (the picture) aren't. */
         fun trims(item: MediaItem): Boolean = item.videoModeId == null && item.toSong()?.isEpisode != true
+
+        /** Whether Media3's skipper runs: only over a podcast episode, and only when podcasts are picked (#325). */
+        fun pausesSkipped(isEpisode: Boolean, episodesOn: Boolean): Boolean = isEpisode && episodesOn
     }
 }

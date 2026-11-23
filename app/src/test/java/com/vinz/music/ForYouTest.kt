@@ -1,6 +1,6 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.ReleaseEntity
+import com.prism.music.data.db.ReleaseEntity
 import com.vinz.music.data.foryou.MadeForYou
 import com.vinz.music.data.foryou.MadeForYou.Play
 import com.vinz.music.data.foryou.ReleaseRadar

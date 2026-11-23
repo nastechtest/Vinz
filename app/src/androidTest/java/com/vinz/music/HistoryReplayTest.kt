@@ -7,8 +7,8 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.vinz.music.data.HistoryPause
-import com.vinz.music.data.db.PlayEventEntity
-import com.vinz.music.data.db.toEntity
+import com.prism.music.data.db.PlayEventEntity
+import com.prism.music.data.db.toEntity
 import com.vinz.music.data.imports.ImportSource
 import com.vinz.music.data.prefs.ReplayGraph
 import kotlinx.coroutines.runBlocking
@@ -54,23 +54,24 @@ class HistoryReplayTest {
 
     @Test fun historyPausesAndComesBack() {
         Fixture.launch()
-        compose.openSettings()
-        compose.clickWhenFound(hasText("Recommendations & Replay") and hasClickAction())
+        // 1.8.4: Settings → Recommendations & history → History. "Pause history" is a row that opens its choices in a
+        // sheet (they were chips on the page), and says until when under its name.
+        compose.openSettingsPage(com.vinz.music.ui.screens.settings.SettingsPageId.RECOMMENDATIONS_HISTORY)
         seeText("Pause history")
-        compose.clickWhenFound(hasText("1 hour") and hasClickAction())
+        compose.pickInSheet("Pause history", HistoryPause.Choice.HOUR.label)
         compose.waitUntil(5_000) { HistoryPause.paused(c.settings.current.behavior) }
         val until = c.settings.current.behavior.historyPausedUntil
         assertTrue("about an hour", until - System.currentTimeMillis() in 3_500_000L..3_600_000L)
         seeText("Paused until")
 
-        // When a song counts: 30 seconds, and back to ten.
-        compose.clickWhenFound(hasText("30 s") and hasClickAction())
+        // When a song counts: 30 seconds, and back to ten (chips of "Counts as a play after").
+        compose.clickWhenFound(settingsChip("30 s", row = tr(R.string.hist_count_after)))
         compose.waitUntil(5_000) { c.settings.current.behavior.playCountSeconds == 30 }
-        compose.clickWhenFound(hasText("10 s") and hasClickAction())
+        compose.clickWhenFound(settingsChip("10 s", row = tr(R.string.hist_count_after)))
         compose.waitUntil(5_000) { c.settings.current.behavior.playCountSeconds == 10 }
 
         // Replay says history is paused, and turns it back on.
-        compose.clickWhenFound((hasText("Replay") or hasContentDescription("Replay")) and hasClickAction())
+        compose.tapTab("Replay")
         seeText("History is paused")
         compose.clickWhenFound(hasText("Turn back on") and hasClickAction())
         compose.waitUntil(5_000) { !HistoryPause.paused(c.settings.current.behavior) }
@@ -85,14 +86,14 @@ class HistoryReplayTest {
         com.vinz.music.ui.screens.SearchMemory.remember(Fixture.context, com.vinz.music.data.model.SongItem(Fixture.songs(1, "Private")[0]))
         assertEquals(before, com.vinz.music.ui.screens.SearchMemory.opened(Fixture.context))
         Fixture.launch()
-        compose.clickWhenFound((hasText("Replay") or hasContentDescription("Replay")) and hasClickAction())
+        compose.tapTab("Replay")
         seeText("until you turn it back on")
     }
 
     @Test fun replayDrawsAWeekByDayAndADayByHour() {
         listened()
         Fixture.launch()
-        compose.clickWhenFound((hasText("Replay") or hasContentDescription("Replay")) and hasClickAction())
+        compose.tapTab("Replay")
         compose.clickWhenFound(hasText("This week") and hasClickAction())
         seeText("Listening by day")
         seeText("Busiest day")

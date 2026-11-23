@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vinz.music.data.looks.UndoNote
+import com.vinz.music.ui.theme.LocalAppSettings
 import com.vinz.music.ui.theme.LocalContainer
 import com.vinz.music.ui.theme.LocalIsDark
 import com.vinz.music.ui.theme.VinzIcons
@@ -133,26 +135,55 @@ fun ScheduleKeptBar(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     AnimatedVisibility(kept != null, modifier, enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut()) {
         val name = kept ?: return@AnimatedVisibility
-        val scheme = MaterialTheme.colorScheme
-        Column(
-            Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(20.dp)).background(scheme.inverseSurface)
-                .padding(start = 18.dp, end = 8.dp, top = 12.dp, bottom = 4.dp),
-        ) {
-            Text(
-                tr(R.string.day_and_night_switched_to_your, name, name),
-                style = MaterialTheme.typography.bodyMedium, color = scheme.inverseOnSurface,
-            )
-            Row(Modifier.align(Alignment.End)) {
-                VinzTextButton({ c.looks.dismissKept() }) { Text("OK", color = scheme.inversePrimary) }
-                VinzTextButton({ scope.launch { c.looks.bringBackKept() } }) { Text(tr(R.string.bring_them_back), color = scheme.inversePrimary) }
+        // Never over the player (MainActivity leaves it out there).
+        val glass = LocalAppSettings.current.glassEverywhere
+        val (ink, action) = barInk(glass)
+        BarSurface(glass, RoundedCornerShape(20.dp), Modifier.widthIn(max = 520.dp)) {
+            Column(Modifier.padding(start = 18.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+                Text(
+                    tr(R.string.day_and_night_switched_to_your, name, name),
+                    style = MaterialTheme.typography.bodyMedium, color = ink,
+                )
+                Row(Modifier.align(Alignment.End)) {
+                    VinzTextButton({ c.looks.dismissKept() }) { Text("OK", color = action) }
+                    VinzTextButton({ scope.launch { c.looks.bringBackKept() } }) { Text(tr(R.string.bring_them_back), color = action) }
+                }
             }
         }
     }
 }
 
+/**
+ * The surface of a short-lived bar over the page: as ever in the inverse colors, or with "Glass on more of the screen" (#326)
+ * real glass, which only costs while it's up, a few seconds at a time.
+ */
+@Composable
+internal fun BarSurface(glass: Boolean, shape: RoundedCornerShape, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    if (glass) com.vinz.music.ui.theme.GlassSurface(modifier, shape = shape, elevation = 6.dp) { content() }
+    else Box(modifier.clip(shape).background(MaterialTheme.colorScheme.inverseSurface)) { content() }
+}
+
+/**
+ * How long an Undo bar stays: [base], or longer when the listener asked Android for more time to act (Accessibility →
+ * Time to take action, Android 10+), as for a bar with text and a button.
+ */
+internal fun undoBarMillis(context: android.content.Context, base: Long = 5_000): Long {
+    if (android.os.Build.VERSION.SDK_INT < 29) return base
+    val am = context.getSystemService(android.view.accessibility.AccessibilityManager::class.java) ?: return base
+    val flags = android.view.accessibility.AccessibilityManager.FLAG_CONTENT_CONTROLS or android.view.accessibility.AccessibilityManager.FLAG_CONTENT_TEXT
+    return am.getRecommendedTimeoutMillis(base.toInt(), flags).toLong().coerceAtLeast(base)
+}
+
+/** What's written on a [BarSurface]: its text, and its buttons. */
+@Composable
+internal fun barInk(glass: Boolean): Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color> {
+    val scheme = MaterialTheme.colorScheme
+    return if (glass) scheme.onSurface to scheme.primary else scheme.inverseOnSurface to scheme.inversePrimary
+}
+
 /** "Undo" after a change to the look, saying what changed ("Corners → Sharp"); taps back the last change. */
 @Composable
-fun LookUndoBar(modifier: Modifier = Modifier) {
+fun LookUndoBar(modifier: Modifier = Modifier, overPlayer: Boolean = false) {
     val c = LocalContainer.current
     var note by remember { mutableStateOf<UndoNote?>(null) }
     var shown by remember { mutableStateOf<UndoNote?>(null) }
@@ -165,25 +196,28 @@ fun LookUndoBar(modifier: Modifier = Modifier) {
     }
     AnimatedVisibility(note != null, modifier, enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut()) {
         val n = shown ?: return@AnimatedVisibility
-        val scheme = MaterialTheme.colorScheme
-        Row(
-            Modifier.widthIn(max = 520.dp).clip(CircleShape).background(scheme.inverseSurface)
+        // Glass samples the page, which the player covers: over the player it would show the wrong picture.
+        val glass = LocalAppSettings.current.glassEverywhere && !overPlayer
+        val (ink, action) = barInk(glass)
+        BarSurface(glass, RoundedCornerShape(50), Modifier.widthIn(max = 520.dp)) {
+            Row(
                 // The bar takes every touch on it, so none reaches what's under it (a Look card below once got the tap too).
-                .pointerInput(Unit) {
+                Modifier.pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false).consume()
                         do { val e = awaitPointerEvent(); e.changes.forEach { it.consume() } } while (e.changes.any { it.pressed })
                     }
                 }
-                .padding(start = 18.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(n.label, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = scheme.inverseOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.width(8.dp))
-            VinzTextButton({ note = null; n.undo?.invoke() ?: c.looks.undo() }) {
-                Icon(VinzIcons.Undo, null, Modifier.size(16.dp), tint = scheme.inversePrimary)
-                Spacer(Modifier.width(6.dp))
-                Text(tr(R.string.undo), color = scheme.inversePrimary)
+                    .padding(start = 18.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(n.label, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.width(8.dp))
+                VinzTextButton({ note = null; n.undo?.invoke() ?: c.looks.undo() }) {
+                    Icon(VinzIcons.Undo, null, Modifier.size(16.dp), tint = action)
+                    Spacer(Modifier.width(6.dp))
+                    Text(tr(R.string.undo), color = action)
+                }
             }
         }
     }

@@ -1,7 +1,7 @@
 package com.vinz.music.data
 
 import com.vinz.music.AppContainer
-import com.vinz.music.data.db.HeatmapEntity
+import com.prism.music.data.db.HeatmapEntity
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

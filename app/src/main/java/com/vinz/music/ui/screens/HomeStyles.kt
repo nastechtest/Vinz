@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +39,7 @@ import com.vinz.music.data.prefs.SectionStyle
 import com.vinz.music.ui.components.Artwork
 import com.vinz.music.ui.components.ItemCard
 import com.vinz.music.ui.components.ItemCarousel
+import com.vinz.music.ui.components.rowKeys
 import com.vinz.music.ui.theme.LocalUi
 import com.vinz.music.ui.theme.VinzIcons
 
@@ -76,25 +76,27 @@ private val LIST_WIDTH = 330.dp
 fun StyledEntries(style: SectionStyle, entries: List<HomeEntry>) {
     if (entries.isEmpty()) return
     val ui = LocalUi.current
+    // The same entry twice (a mood YouTube lists twice) is a key used twice, which a lazy list refuses (#330's kind).
+    val keys = rowKeys(entries) { it.key }
     when (style) {
         SectionStyle.CAROUSEL -> LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(entries, key = { it.key }) { e -> EntryCard(e, ui.cardWidth) }
+            items(entries.size, key = { keys[it] }) { i -> EntryCard(entries[i], ui.cardWidth) }
         }
         // Vinz's own tiles (mixes, moods) keep the two-row grid for 3 × 3 too: they're drawn, not covers.
         SectionStyle.GRID, SectionStyle.DIAL -> LazyHorizontalGrid(
             GridCells.Fixed(if (entries.size > 2) 2 else 1), Modifier.height(if (entries.size > 2) GRID_ROW * 2 else GRID_ROW),
             contentPadding = PaddingValues(horizontal = 12.dp),
         ) {
-            items(entries.size, key = { entries[it].key }) { i -> EntryCard(entries[i], GRID_CARD) }
+            items(entries.size, key = { keys[it] }) { i -> EntryCard(entries[i], GRID_CARD) }
         }
         SectionStyle.LIST -> {
             val rows = entries.size.coerceIn(1, 4)
             LazyHorizontalGrid(GridCells.Fixed(rows), Modifier.height(LIST_ROW * rows), contentPadding = PaddingValues(horizontal = 4.dp)) {
-                items(entries.size, key = { entries[it].key }) { i -> EntryRow(entries[i], Modifier.width(LIST_WIDTH)) }
+                items(entries.size, key = { keys[it] }) { i -> EntryRow(entries[i], Modifier.width(LIST_WIDTH)) }
             }
         }
         SectionStyle.HERO -> LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(entries.take(12), key = { it.key }) { e -> EntryHero(e) }
+            items(minOf(entries.size, 12), key = { keys[it] }) { i -> EntryHero(entries[i]) }
         }
     }
 }

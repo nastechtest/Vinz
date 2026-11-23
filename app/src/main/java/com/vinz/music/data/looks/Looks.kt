@@ -51,10 +51,19 @@ data class Look(
     }
 }
 
-/** The per-screen backgrounds a Look keeps, stored as one JSON map ("HOME" → "AURORA" or "PHOTO|…"). */
+/** The per-screen backgrounds a Look keeps, stored as one JSON map ("HOME" → "AURORA", "PHOTO|…" or "COLOR|#RRGGBB"). */
 object Backgrounds {
     private val json = Json { ignoreUnknownKeys = true }
     const val ASSET = "asset:"
+
+    /** #413 (1.8.4): a solid color, exactly "COLOR|#RRGGBB" (six hex digits, no see-through). */
+    private val solid = Regex("COLOR\\|#([0-9A-Fa-f]{6})")
+
+    /** The color (opaque ARGB) a background's saved value is, or null when it isn't a solid color written right. */
+    fun colorOf(v: String?): Int? = v?.let(solid::matchEntire)?.let { 0xFF000000.toInt() or it.groupValues[1].toInt(16) }
+
+    /** What's saved for the solid color [argb] (its see-through part is dropped). */
+    fun colorValue(argb: Int): String = "COLOR|#" + (argb and 0xFFFFFF).toString(16).uppercase(java.util.Locale.ROOT).padStart(6, '0')
 
     fun parse(tagged: String?): Map<String, String> =
         LookValue.text(tagged)?.let { runCatching { json.decodeFromString<Map<String, String>>(it) }.getOrNull() } ?: emptyMap()
@@ -65,6 +74,16 @@ object Backgrounds {
     fun assetOf(v: String): String? = v.takeIf { it.startsWith("PHOTO|$ASSET") }?.substringAfter(ASSET)?.takeIf(::isHash)
 
     fun isHash(s: String) = s.length == 40 && s.all { it in '0'..'9' || it in 'a'..'f' }
+
+    /**
+     * #378: from 1.7.9 until 1.8.2.1 a photo was saved under the word's translation in 8 languages ("FOTO|/…/all-1.jpg").
+     * [v] with the saved word put right; anything else as it is.
+     */
+    fun photoKeyFixed(v: String): String {
+        val word = v.substringBefore('|', "")
+        val path = v.substringAfter('|', "")
+        return if (word.isNotEmpty() && word != "PHOTO" && path.startsWith("/")) "PHOTO|$path" else v
+    }
 }
 
 /**
@@ -122,14 +141,15 @@ object LookCode {
     }.getOrNull()
 
     /**
-     * [look] with only what a Look may hold: known settings with the right kind of value, backgrounds that are designs
-     * or kept photos (never a path on someone's phone), a name of a sensible length and a known icon style.
+     * [look] with only what a Look may hold: known settings with the right kind of value, backgrounds that are designs,
+     * solid colors or kept photos (never a path on someone's phone), a name of a sensible length and a known icon style.
      */
     fun sanitized(look: Look, kinds: Map<String, Char>): Look {
         val values = look.values.filter { (k, v) -> kinds[k]?.let { LookValue.untag(v, it) } != null }.toMutableMap()
         values[Look.BACKDROPS]?.let { b ->
             val kept = Backgrounds.parse(b).filter { (screen, v) ->
-                screen.length <= 16 && (v.startsWith("PHOTO|").not() && v.length <= 32 || Backgrounds.assetOf(v) != null)
+                // "|" only ever comes with a photo, under any word (#378), or a solid color (#413): a design's name never has one.
+                screen.length <= 16 && ('|' !in v && v.length <= 32 || Backgrounds.assetOf(v) != null || Backgrounds.colorOf(v) != null)
             }
             if (kept.isEmpty()) values.remove(Look.BACKDROPS) else values[Look.BACKDROPS] = Backgrounds.tag(kept)
         }
@@ -190,6 +210,15 @@ object BuiltInLooks {
                 "transport_style" to "s:GLYPHS", "font_choice" to "s:CLEAN", "corners" to "s:SUBTLE",
             ),
         ),
+        // 1.8.6: the look the Canvas launch film was shot in. Black and white only: any colour is the music's own
+        // (covers, Canvas), never Vinz's.
+        Look(
+            "minimal", tr(R.string.minimal), builtIn = true, note = tr(R.string.black_and_white_nothing_extra),
+            values = mapOf(
+                "theme_mode" to "s:DARK", "pure_black" to "b:1", "light_style" to "s:WHITE", "color_source" to "s:CUSTOM",
+                "accent" to color(0xFFFFFFFF), "surface_tint" to "s:NEUTRAL", "play_ring" to "b:0", "player_background" to "s:BLACK",
+            ),
+        ),
         // Waited for 1.7.4's Vinyl player (planned with the Looks in 1.7.3).
         Look(
             "vinyl", tr(R.string.vinyl), builtIn = true, note = tr(R.string.a_record_on_the_player_warm),
@@ -240,6 +269,7 @@ object BuiltInLooks {
 /** How a look setting and its value read in the undo bar and History ("Corners → Sharp"). */
 object LookLabels {
     private val titles = mapOf(
+        "glass_blur" to tr(R.string.glass_blur), "glass_frost" to tr(R.string.glass_frost), "glass_more" to tr(R.string.glass_on_more_of_the_screen), "player_gradient_depth" to tr(R.string.gradient_depth),
         "theme_mode" to tr(R.string.theme), "pure_black" to tr(R.string.pure_black), "color_source" to tr(R.string.accent_from), "accent" to tr(R.string.accent_color),
         "light_style" to tr(R.string.light), "accent_exact" to tr(R.string.exactly_as_picked), "accent_light" to tr(R.string.light_mode_accent), "spectrum_preset" to tr(R.string.spectrum),
         "spectrum_stops" to tr(R.string.your_light_s_colors), "spectrum_bands" to tr(R.string.spectrum_in_bands), "surface_tint" to tr(R.string.page_background),
@@ -256,8 +286,7 @@ object LookLabels {
         "player_backdrop_show" to tr(R.string.player_background_showing), "player_art_corners" to tr(R.string.cover_corners), "transport_style" to tr(R.string.controls),
         "cover_size" to tr(R.string.cover_size), "scrubber_style" to tr(R.string.progress_bar), "art_shrink_on_pause" to tr(R.string.cover_shrinks_on_pause),
         "show_output_device" to tr(R.string.output_device), "full_bleed_artwork" to tr(R.string.edge_to_edge_cover), "video_full_bleed" to tr(R.string.edge_to_edge_video),"hide_volume_bar" to tr(R.string.hide_volume_bar),
-        "show_playing_from" to tr(R.string.playing_from),
-            "show_next_track" to tr(R.string.show_next_track_preview), "player_shuffle_repeat" to tr(R.string.shuffle_repeat), "immersive_art" to tr(R.string.immersive_cover),
+        "show_playing_from" to tr(R.string.playing_from), "player_shuffle_repeat" to tr(R.string.shuffle_repeat), "immersive_art" to tr(R.string.immersive_cover),
         "immersive_lyrics" to tr(R.string.immersive_lyrics), "immersive_controls" to tr(R.string.immersive_controls), "lyrics_align" to tr(R.string.lyrics_alignment),
         "lyrics_blur" to tr(R.string.lyrics_focus), "lyrics_progress_line" to tr(R.string.lyrics_progress_line),
         "lyrics_source_button" to tr(R.string.lyrics_source_button), "lyrics_scale" to tr(R.string.lyrics_size),
@@ -289,9 +318,15 @@ object LookLabels {
         "immersive_video" to tr(R.string.video_in_immersive_mode), "bleed_fit" to tr(R.string.full_bleed_artwork_s_fit), "cover_flight" to tr(R.string.cover_flies_into_the_player),
         "video_controls_hide" to tr(R.string.controls_hide_over_videos), "crossfade_mark" to tr(R.string.crossfade_mark), "blend_covers" to tr(R.string.covers_blend_in_a_crossfade), "player_buttons_pill" to tr(R.string.player_buttons_in_a_capsule),
         "crossfade_shape" to tr(R.string.crossfade_on_the_progress_bar),
+        // 1.8.2 requests (#223, #293, #294, #331).
+        "cover_flight_back" to tr(R.string.cover_flies_back_too), "video_buttons_hide" to tr(R.string.buttons_on_videos_wait_for_a_tap),
+        "bleed_roomy" to tr(R.string.more_room_for_the_picture), "queue_lengths" to tr(R.string.song_lengths_in_the_queue),
+        "queue_played_moves" to tr(R.string.move_songs_you_have_played), "queue_tidy" to tr(R.string.tidier_queue),
         // 1.8.1 requests (#310, #289, #283).
         "downloads_albums" to tr(R.string.album_names_in_downloads), "player_artist_links" to tr(R.string.each_artist_its_own_link),
         "backdrop_fade" to tr(R.string.now_playing_background_fades),
+        // 1.8.4 (D53, D55).
+        "lock_screen_player_look" to tr(R.string.look_lock_screen_like_player), "album_hero_cover" to tr(R.string.look_album_picture),
         "hide_status_bar" to tr(R.string.hide_the_status_bar),
         "hide_status_bar_player" to tr(R.string.hide_status_bar_on_the_player),
         "volume_matches_progress" to tr(R.string.volume_bar_like_the_progress_bar),
@@ -383,7 +418,7 @@ object LookLabels {
     private val percent = setOf(
         "text_scale", "lyrics_scale", "backdrop_dim", "player_backdrop_show", "surface_tint_strength", "mesh_speed", "mesh_intensity", "player_blur",
         "scrubber_thickness", "mini_fill_strength", "lyrics_blur_amount", "lyrics_spacing", "lyrics_others_alpha", "lyrics_backing_size", "lyrics_extra_size",
-        "corner_scale",
+        "corner_scale", "glass_blur", "glass_frost", "player_gradient_depth",
     )
     private val colors = setOf("accent", "accent_light", "surface_color", "lyrics_sung_custom", "lyrics_other_custom", "lyrics_bg_color", "lyrics_bg_color2")
 
@@ -429,13 +464,13 @@ object LookLabels {
             "surface_tint", "surface_tint_strength", "surface_color", "contrast_level", "artwork_swatch", "artwork_vivid", "artwork_change", "page_picture_accent", "playing_page_color",
         ),
         "type" to setOf("font_choice", "app_font_name", "lyrics_font", "text_scale", "type_classic"),
-        "backgrounds" to setOf("liquid_glass", "glass_kind", "frosted_glass", "frosted_pages", "backdrops", "backdrop_dim", "backdrop_motion", "reduce_motion", "backdrop_fade"),
+        "backgrounds" to setOf("liquid_glass", "glass_kind", "frosted_glass", "frosted_pages", "backdrops", "backdrop_dim", "backdrop_motion", "reduce_motion", "backdrop_fade", "glass_blur", "glass_frost", "glass_more"),
         "layout" to setOf(
             "corners", "ui_density", "title_size", "card_size", "nav_style", "nav_labels", "nav_hide_on_scroll", "nav_tabs", "start_tab",
             "mini_player_style", "mini_skip_buttons", "mini_prev_button", "mini_play_button", "mini_progress", "mini_progress_color", "mini_fill_strength", "library_view", "library_views", "library_columns", "library_subtitles", "home_header", "home_header_height", "playlist_hero_cover", "replay_theme_colors", "replay_card",
             "replay_card_graph", "replay_story_font",
             "hide_status_bar", "hide_status_bar_player", "tab_names", "nav_bar_size", "nav_bar_fill", "mini_player_joined", "controls_classic",
-            "downloads_albums",
+            "downloads_albums", "album_hero_cover",
         ),
         "player" to setOf(
             "player_background", "player_backdrop_show", "player_art_corners", "transport_style", "cover_size", "scrubber_style", "art_shrink_on_pause",
@@ -444,7 +479,9 @@ object LookLabels {
             "player_title_weight", "player_title_scroll", "player_times", "mesh_speed", "mesh_intensity", "player_blur", "canvas_fills_background",
             "scrubber_thickness", "scrubber_thumb", "volume_matches_progress", "player_handle", "player_nav_band", "play_ring", "visualizer", "visualizer_color",
             "panel_player", "queue_headings", "queue_dj_chip", "cast_mark", "immersive_video", "bleed_fit", "cover_flight", "video_controls_hide", "crossfade_mark", "blend_covers", "player_buttons_pill",
-            "player_hidden_parts", "crossfade_shape", "player_artist_links",
+            "player_hidden_parts", "crossfade_shape", "player_artist_links", "player_gradient_depth",
+            "cover_flight_back", "video_buttons_hide", "bleed_roomy", "queue_lengths", "queue_played_moves", "queue_tidy",
+            "lock_screen_player_look",
         ),
         "lyrics" to setOf(
             "lyrics_align", "lyrics_blur", "lyrics_progress_line", "lyrics_source_button", "lyrics_scale", "lyrics_style", "lyrics_blur_amount", "lyrics_spacing",
@@ -488,11 +525,15 @@ object LookLabels {
         else -> tr(R.string.list_last, parts.dropLast(1).reduce { a, b -> tr(R.string.list_middle, a, b) }, parts.last())
     }
 
-    /** One change as it reads: "Corners → Sharp", or "Corners → Sharp and 2 more". */
-    fun change(before: Map<String, String>, after: Map<String, String>, order: List<String>): String? {
+    /**
+     * One change as it reads: "Corners → Sharp", or "Corners → Sharp and 2 more". [rows]: how many rows it changed, where
+     * that's known ("Reset this page" lists them; one row can hold several stored values), instead of the values.
+     */
+    fun change(before: Map<String, String>, after: Map<String, String>, order: List<String>, rows: Int? = null): String? {
         val changed = (before.keys + after.keys).filter { before[it] != after[it] }.sortedBy { order.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }
         val first = changed.firstOrNull() ?: return null
         val one = "${title(first)} → ${value(first, after[first])}"
-        return if (changed.size == 1) one else tr(R.string.and_more_4, one, changed.size - 1)
+        val count = rows?.coerceAtLeast(1) ?: changed.size
+        return if (count == 1) one else tr(R.string.and_more_4, one, count - 1)
     }
 }

@@ -8,6 +8,8 @@ import com.vinz.music.ui.theme.VinzIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -48,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -83,10 +86,11 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
     // In play order, so with shuffle on this is the shuffled order.
     val order = upNext.mapNotNull { queue.getOrNull(it) }
     val userQueued by c.queue.userQueued.collectAsState()
-    // What the listener added (Play next, Add to queue) comes first, under its own heading.
-    val queued = order.filter { it.song.id in userQueued }
-    val upcoming = order.filter { it.index < autoplayFrom && it.song.id !in userQueued }
-    val autoplay = order.filter { it.index >= autoplayFrom && it.song.id !in userQueued }
+    // What the listener lined up next has its own heading; every song is listed where it plays (#368).
+    val sections = com.vinz.music.playback.QueueEdit.sections(order, { it.song.id in userQueued }, { it.index >= autoplayFrom })
+    val queued = sections.queued
+    val upcoming = sections.upcoming
+    val autoplay = sections.autoplay
 
     val controlsOnScroll = remember { ControlsOnScroll(onHide = onHidePlayer, onReveal = onRevealPlayer) }
     controlsOnScroll.reveals = scrollReveals(settings)
@@ -128,6 +132,8 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
     val dj by c.dj.on.collectAsState()
     val djProgress by c.dj.progress.collectAsState()
     val djRevision by c.dj.revision.collectAsState()
+    // #493: why the last two songs didn't blend, behind an ⓘ by the DJ chip.
+    val lastWhy by c.mixState.why.collectAsState()
     // Smart Shuffle's picks are marked ✦.
     val smartPicks by c.queue.smartPicks.collectAsState()
     val badge: (Song) -> String? = remember(dj, djRevision, smartPicks) {
@@ -155,7 +161,7 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
         c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
             val id = runCatching { c.ytm.createPlaylist(name, songs, privacy = privacy) }.getOrNull()
             android.widget.Toast.makeText(context, if (id != null) tr(R.string.saved_to, com.vinz.music.data.model.songCount(songs.size), name) else tr(R.string.couldn_t_save_the_queue), android.widget.Toast.LENGTH_SHORT).show()
-            if (id != null) c.library.refreshCollections()
+            if (id != null) c.library.created(id, name, songs.size)
         }
     }
 
@@ -171,7 +177,7 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
         if (selecting) {
             val n = selected.orEmpty().size
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(trp(R.plurals.n_songs_picked, n), style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.weight(1f))
+                Text(trp(R.plurals.n_songs_picked, n), style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 QueueChip(tr(R.string.done), selected = true) { selected = null }
             }
             Spacer(Modifier.height(10.dp))
@@ -182,28 +188,18 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
                 QueueChip(tr(R.string.add_to_playlist)) { if (enabled) adding = pc.songsAt(picked()).filter { !it.isLive && !it.isEpisode } }
                 QueueChip(tr(R.string.remove)) { if (enabled) { pc.removeMany(picked()); selected = null } }
             }
-        } else Row(pullToClose, verticalAlignment = Alignment.CenterVertically) {
-            Text(tr(R.string.queue), style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.weight(1f))
-            if (order.size > 1 && settings.view.queueDjChip) {
-                QueueChip("DJ", selected = dj) { pc.setDjMode(!dj) }
-                Spacer(Modifier.width(8.dp))
-            }
-            if (queue.size > 1) QueueChip(tr(R.string.save)) { saving = true }
-            if (order.isNotEmpty()) {
-                Spacer(Modifier.width(8.dp))
-                QueueChip(tr(R.string.clear)) { pc.clearUpcoming() }
-            }
-            Spacer(Modifier.width(8.dp))
-            // The lock: the order stays put while you scroll (#159).
-            Box(
-                Modifier.size(34.dp).clip(CircleShape).background(if (locked) Color.White else Color.White.copy(alpha = 0.12f))
-                    .clickable(onClickLabel = if (locked) tr(R.string.unlock_the_order) else tr(R.string.lock_the_order)) { c.settings.setQueueLocked(!locked) },
-                contentAlignment = Alignment.Center,
-            ) { Icon(VinzIcons.Lock, if (locked) tr(R.string.order_locked) else tr(R.string.lock_the_order), tint = if (locked) Color.Black else Color.White, modifier = Modifier.size(17.dp)) }
-        }
+        } else QueueHeader(
+            title = tr(R.string.queue),
+            dj = if (order.size > 1 && settings.view.queueDjChip) dj else null, onDj = { pc.setDjMode(!dj) },
+            djWhy = queueDjWhy(lastWhy?.why, dj || settings.mix.on),
+            onSave = if (queue.size > 1) ({ saving = true }) else null,
+            onClear = if (order.isNotEmpty()) ({ pc.clearUpcoming() }) else null,
+            locked = locked, onLock = { c.settings.setQueueLocked(!locked) },
+            modifier = pullToClose,
+        )
         if (dj) {
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 for (flow in com.vinz.music.playback.DjFlow.entries) {
                     QueueChip(flow.label, selected = settings.djFlow == flow) { c.settings.setDjFlow(flow) }
                     Spacer(Modifier.width(8.dp))
@@ -237,16 +233,24 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
         Spacer(Modifier.height(4.dp))
         // "Queue headings" off (#197): one continuous list of songs (Autoplay keeps its heading: it holds the switch).
         val headings = settings.view.queueHeadings
+        val dragging = remember { mutableStateOf<com.vinz.music.playback.QueueDrag?>(null) }
+        // A dropped song shows where it was dropped until the queue comes back with it moved (or a moment has passed).
+        LaunchedEffect(queue, upNext) { if (dragging.value?.settled == true) dragging.value = null }
+        LaunchedEffect(dragging.value) { if (dragging.value?.settled == true) { kotlinx.coroutines.delay(1_000); dragging.value = null } }
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().nestedScroll(controlsOnScroll), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (!headings) item(key = "h-gap") { Spacer(Modifier.height(8.dp)) }
+            val rows = SectionRows(selected, toggle, startSelecting, { menuFor = it }, locked, onDragStart = onHidePlayer, settings.view.queueLengths, settings.view.queueTidy, dragging)
             if (played.isNotEmpty()) {
                 if (headings) item(key = "h-played") { Heading(tr(R.string.played), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
-                items(played, key = { "played-" + it.uid }) { entry ->
+                // #294, #331: "Move songs you've played": handles here too, moving only among themselves.
+                if (settings.view.queuePlayedMoves) queueSection(played, shuffled, onRemove = remove, rows = rows, played = true)
+                else items(played, key = { "played-" + it.uid }) { entry ->
                     QueueRow(
                         entry.song, isCurrent = false, onClick = { if (selecting) toggle(entry) else pc.skipTo(entry.index) },
                         onRemove = if (selecting) null else { { remove(entry) } },
                         modifier = Modifier.alpha(0.6f),
                         pick = selected?.let { entry.uid in it }, onLongClick = { startSelecting(entry) }, onMore = { menuFor = entry }, swipeable = !locked,
+                        showLength = rows.lengths, removeButton = !rows.tidy,
                     )
                 }
             }
@@ -256,10 +260,10 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
                     QueueRow(
                         now.song, isCurrent = true, onClick = { if (selecting) toggle(now) }, onRemove = null, badge = badge(now.song),
                         pick = selected?.let { now.uid in it }, onLongClick = { startSelecting(now) }, onMore = { menuFor = now },
+                        showLength = rows.lengths,
                     )
                 }
             }
-            val rows = SectionRows(selected, toggle, startSelecting, { menuFor = it }, locked, onDragStart = onHidePlayer)
             if (queued.isNotEmpty()) {
                 if (headings) item(key = "h-queued") { Heading(tr(R.string.next_in_queue), Modifier.padding(top = 16.dp, bottom = 6.dp)) }
                 queueSection(queued, shuffled, badge = badge, onRemove = remove, rows = rows)
@@ -291,36 +295,62 @@ private class SectionRows(
     val onMore: (QueueEntry) -> Unit,
     val locked: Boolean,
     val onDragStart: () -> Unit,
+    /** #331: each song's length on its row. */
+    val lengths: Boolean,
+    /** #294: no × on the rows. */
+    val tidy: Boolean,
+    /** D46 (1.8.3): the song being dragged and how far, shown on screen only until the finger lets go. */
+    val drag: androidx.compose.runtime.MutableState<com.vinz.music.playback.QueueDrag?>,
 )
 
+/**
+ * [played]: the songs already played (#294, #331): dimmed as ever, and moving only among themselves, so nothing played
+ * can be dragged into what's still to come by accident.
+ */
 private fun LazyListScope.queueSection(
     entries: List<QueueEntry>,
     shuffled: Boolean,
     badge: (Song) -> String? = { null },
     onRemove: (QueueEntry) -> Unit,
     rows: SectionRows,
+    played: Boolean = false,
 ) {
     val selecting = rows.selected != null
-    items(entries, key = { it.uid }) { entry ->
+    // D46 (1.8.3): while a song is dragged its rows trade places here only; the player moves it once, on letting go.
+    val shown = com.vinz.music.playback.QueueDrag.shown(entries, rows.drag.value) { it.uid }
+    items(shown, key = { (if (played) "played-" else "") + it.uid }) { entry ->
         val pc = LocalContainer.current.player
         val rowPx = with(LocalDensity.current) { 56.dp.toPx() }
         var drag by remember { mutableFloatStateOf(0f) }
-        var position by remember(entry.index) { mutableStateOf(entry.index) }
-        // Read at each step of a drag, not as they were when it started (the rows move under the finger).
+        // Read at each step of a drag, not as they were when it started (the section as the player has it, unmoved).
         val section by androidx.compose.runtime.rememberUpdatedState(entries)
         val current by androidx.compose.runtime.rememberUpdatedState(entry)
         val shuffleOn by androidx.compose.runtime.rememberUpdatedState(shuffled)
-        /** Moves the song one place down ([down]) or up; false at the section's end. */
+        /** The drag so far, moved in the player in one go (in the list's order, or shuffled, in the play order). */
+        fun commit() {
+            val d = rows.drag.value?.takeIf { it.uid == current.uid && !it.settled } ?: return
+            val target = com.vinz.music.playback.QueueDrag.target(section, d) { it.uid }
+            if (target == null) { rows.drag.value = null; return }
+            // Kept on screen as dropped until the queue comes back moved (InlineQueue lets it go then).
+            rows.drag.value = d.copy(settled = true)
+            if (!shuffleOn) pc.move(current.index, target.index)
+            else pc.moveInPlayOrder(current.index, target.index, after = d.offset > 0)
+        }
+        /** Moves the song one place down ([down]) or up; false where it can't go further. */
         fun step(down: Boolean): Boolean {
-            if (!shuffleOn) {
-                if (!down && position == 0) return false
-                val to = if (down) position + 1 else position - 1
-                pc.move(position, to); position = to
-                return true
-            }
-            val at = section.indexOfFirst { it.uid == current.uid }
-            val beside = section.getOrNull(if (down) at + 1 else at - 1) ?: return false
-            pc.moveInPlayOrder(current.index, beside.index, after = down)
+            val mine = rows.drag.value?.takeIf { it.uid == current.uid }
+            // Moved in the player, not yet back in this list: the indices here are old, so nothing moves until it is.
+            if (mine?.settled == true) return false
+            val d = mine ?: com.vinz.music.playback.QueueDrag(current.uid, 0)
+            com.vinz.music.playback.QueueDrag.step(section, d, down) { it.uid }?.let { rows.drag.value = it; return true }
+            if (shuffleOn || played) return false
+            // At the section's end with a drag so far: that goes into the player first, and the next step goes on from
+            // where the queue then has it (moving `current.index` now would move whichever song took its old place).
+            if (d.offset != 0) { commit(); return false }
+            // From the section's edge: what 1.8.2 did there.
+            val from = current.index
+            if (!down && from == 0) return false
+            pc.move(from, if (down) from + 1 else from - 1)
             return true
         }
         QueueRow(
@@ -329,18 +359,20 @@ private fun LazyListScope.queueSection(
             onClick = { if (selecting) rows.toggle(entry) else pc.skipTo(entry.index) },
             onRemove = if (selecting) null else { { onRemove(entry) } },
             badge = badge(entry.song),
-            modifier = Modifier.offset { IntOffset(0, drag.roundToInt()) },
+            modifier = Modifier.offset { IntOffset(0, drag.roundToInt()) }.then(if (played) Modifier.alpha(0.6f) else Modifier),
             pick = rows.selected?.let { entry.uid in it },
             onLongClick = { rows.startSelecting(entry) },
             onMore = { rows.onMore(entry) },
             swipeable = !rows.locked,
+            showLength = rows.lengths,
+            removeButton = !rows.tidy,
             // Locked (or picking songs), there's nothing to grab: scrolling can't move a song.
             dragHandle = if (rows.locked || selecting) null else Modifier.pointerInput(entry.uid) {
                 detectDragGestures(
                     // The player's controls go while a song is moved, so the list has the room (R11).
                     onDragStart = { rows.onDragStart() },
-                    onDragEnd = { drag = 0f },
-                    onDragCancel = { drag = 0f },
+                    onDragEnd = { drag = 0f; commit() },
+                    onDragCancel = { drag = 0f; commit() },
                 ) { change, amount ->
                     change.consume()
                     drag += amount.y
@@ -353,11 +385,101 @@ private fun LazyListScope.queueSection(
     }
 }
 
+/**
+ * The queue's top row: its title, then DJ ([dj] null: no button), Save and Clear (null: not offered) and the lock.
+ */
+@Composable
+internal fun QueueHeader(
+    title: String,
+    dj: Boolean?, onDj: () -> Unit,
+    /** #493: "Last time: …", behind an ⓘ by the DJ chip (null: no ⓘ). */
+    djWhy: String? = null,
+    onSave: (() -> Unit)?,
+    onClear: (() -> Unit)?,
+    locked: Boolean, onLock: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // #427 (1.8.4): a plain Row gave the buttons their width first and the title what was left, so with a large display
+    // size and big text "Queue" was cut to a letter per line and the last button wrapped. Now the title keeps its one
+    // line (up to half the row when the buttons want more; "…" past that), the buttons scroll sideways in the rest, and
+    // the lock stays at the end. When everything fits, it's laid out as before.
+    androidx.compose.ui.layout.Layout(
+        content = {
+            Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (dj != null) QueueChip("DJ", selected = dj, onClick = onDj)
+                if (dj != null && djWhy != null) QueueWhy(djWhy)
+                if (onSave != null) QueueChip(tr(R.string.save), onClick = onSave)
+                if (onClear != null) QueueChip(tr(R.string.clear), onClick = onClear)
+            }
+            // The lock: the order stays put while you scroll (#159).
+            Box(
+                Modifier.padding(start = 8.dp).size(34.dp).clip(CircleShape).background(if (locked) Color.White else Color.White.copy(alpha = 0.12f))
+                    .clickable(onClickLabel = if (locked) tr(R.string.unlock_the_order) else tr(R.string.lock_the_order), onClick = onLock),
+                contentAlignment = Alignment.Center,
+            ) { Icon(VinzIcons.Lock, if (locked) tr(R.string.order_locked) else tr(R.string.lock_the_order), tint = if (locked) Color.Black else Color.White, modifier = Modifier.size(17.dp)) }
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val lock = measurables[2].measure(loose)
+        val chipsWant = measurables[1].maxIntrinsicWidth(constraints.maxHeight)
+        val gap = if (chipsWant > 0) 8.dp.roundToPx() else 0
+        if (!constraints.hasBoundedWidth) {
+            val titleP = measurables[0].measure(loose)
+            val chips = measurables[1].measure(loose)
+            val height = maxOf(titleP.height, chips.height, lock.height)
+            return@Layout layout(titleP.width + gap + chips.width + lock.width, height) {
+                titleP.placeRelative(0, (height - titleP.height) / 2)
+                chips.placeRelative(titleP.width + gap, (height - chips.height) / 2)
+                lock.placeRelative(titleP.width + gap + chips.width, (height - lock.height) / 2)
+            }
+        }
+        val width = constraints.maxWidth
+        val room = (width - lock.width).coerceAtLeast(0)
+        val titleP = measurables[0].measure(loose.copy(maxWidth = maxOf(room - chipsWant - gap, room / 2)))
+        val chips = measurables[1].measure(loose.copy(maxWidth = (room - titleP.width - gap).coerceAtLeast(0)))
+        val height = maxOf(titleP.height, chips.height, lock.height).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            titleP.placeRelative(0, (height - titleP.height) / 2)
+            chips.placeRelative(width - lock.width - chips.width, (height - chips.height) / 2)
+            lock.placeRelative(width - lock.width, (height - lock.height) / 2)
+        }
+    }
+}
+
+/** The DJ chip's ⓘ line (#493): why the last two songs didn't blend, while DJ mode or Crossfade is on and there's a reason. */
+internal fun queueDjWhy(why: com.vinz.music.playback.MixWhy?, mixing: Boolean): String? =
+    if (why == null || !mixing) null else com.vinz.music.ui.screens.settings.mixWhyLine(why)
+
+/** Test tag of the DJ chip's ⓘ. */
+internal const val QUEUE_DJ_WHY = "queue/dj-why"
+
+/** The small ⓘ by the DJ chip: [text] opens under it (#493). */
+@Composable
+private fun QueueWhy(text: String) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Icon(
+            VinzIcons.Info, tr(R.string.mix_why_last_blend), tint = Color.White.copy(alpha = if (open) 1f else 0.7f),
+            modifier = Modifier.testTag(QUEUE_DJ_WHY).size(30.dp).clip(CircleShape).clickable { open = !open }.padding(6.dp),
+        )
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).width(240.dp))
+        }
+    }
+}
+
 /** A small action at the top of the queue ("Save", "Clear"; [selected] for a switch like "DJ"). */
 @Composable
 private fun QueueChip(label: String, selected: Boolean = false, onClick: () -> Unit) {
     Text(
         label, style = MaterialTheme.typography.labelLarge, color = if (selected) Color.Black else Color.White,
+        // Never on two lines (#427): in a row too narrow for it, it ends in "…".
+        maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
         modifier = Modifier.clip(RoundedCornerShape(50)).background(if (selected) Color.White else Color.White.copy(alpha = 0.12f))
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp),
     )
@@ -406,6 +528,10 @@ private fun QueueRow(
     onMore: (() -> Unit)? = null,
     /** Swiping it away is on (off while the order is locked). */
     swipeable: Boolean = true,
+    /** #331: the song's length, when it's known. */
+    showLength: Boolean = false,
+    /** #294: the × ([onRemove] still goes with a swipe; the ⋯ has it too). */
+    removeButton: Boolean = true,
 ) {
     // Swiped left past a third of the row, it slides out and goes (#149); short of that it springs back. Moved in the
     // drawing layer, so a swipe doesn't lay the row out again each frame.
@@ -462,6 +588,14 @@ private fun QueueRow(
             Text(shown.title, style = MaterialTheme.typography.titleMedium, color = if (isCurrent) Color.White else Color.White.copy(alpha = 0.92f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(shown.artistText, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        if (showLength && song.durationSec > 0) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                com.vinz.music.data.model.formatDuration(song.durationSec), style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f), maxLines = 1,
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         if (badge != null) {
             Text(
                 badge, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f), maxLines = 1,
@@ -476,7 +610,7 @@ private fun QueueRow(
         if (onMore != null && pick == null) Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onMore), contentAlignment = Alignment.Center) {
             Icon(VinzIcons.More, tr(R.string.more_for, song.title), tint = Color.White.copy(alpha = 0.55f), modifier = Modifier.size(18.dp))
         }
-        if (onRemove != null) Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
+        if (onRemove != null && removeButton) Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
             Icon(VinzIcons.Close, tr(R.string.remove), tint = Color.White.copy(alpha = 0.55f), modifier = Modifier.size(18.dp))
         }
     }

@@ -55,6 +55,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.dp
 import com.vinz.music.data.ModelStore
+import com.vinz.music.data.prefs.rowButtons
 import com.vinz.music.playback.sing.words
 import com.vinz.music.data.model.Song
 import com.vinz.music.ui.components.ActionSheet
@@ -101,6 +102,13 @@ fun toggleSing(c: com.vinz.music.AppContainer, onNeedsDownload: () -> Unit) {
 }
 
 /**
+ * #501: whether the open lyrics show their own Sing button: for what can be sung, unless Sing is already one of the
+ * player's row buttons ([row], as [com.vinz.music.data.prefs.rowButtons] gives them), where it showed twice.
+ */
+internal fun lyricsShowSing(singable: Boolean, row: List<com.vinz.music.data.prefs.PlayerButton>): Boolean =
+    singable && com.vinz.music.data.prefs.PlayerButton.SING !in row
+
+/**
  * The buttons under the open lyrics: Sing's at the lower right (nothing for what can't be sung: live streams, podcasts),
  * and with Settings → Lyrics → "Lyrics source button" (1.7.9, asked for after 1.7.8 moved the source to the lyrics'
  * end) the source at the lower left.
@@ -109,8 +117,9 @@ fun toggleSing(c: com.vinz.music.AppContainer, onNeedsDownload: () -> Unit) {
 fun LyricsButtonsRow(song: Song, state: LyricsState, onChangeSource: () -> Unit, onNeedsDownload: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalContainer.current
     // Every phone sings (1.8.x): one Sing's engine doesn't run on uses the quick way.
-    val singable = c.sing.canSing(song)
-    val source = LocalAppSettings.current.lyricsSourceButton
+    val settings = LocalAppSettings.current
+    val singable = lyricsShowSing(c.sing.canSing(song), settings.rowButtons())
+    val source = settings.lyrics.sourceButton
     if (!singable && !source) return
     Box(modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
         if (source) LyricsSourceButton(state, onChangeSource, Modifier.align(Alignment.CenterStart).padding(end = if (singable) SING_BUTTON + 12.dp else 0.dp))

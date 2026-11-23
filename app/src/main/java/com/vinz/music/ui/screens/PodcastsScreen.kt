@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -50,6 +52,7 @@ import com.vinz.music.data.model.PodcastPage
 import com.vinz.music.data.model.Shelf
 import com.vinz.music.data.model.Song
 import com.vinz.music.data.model.SongItem
+import com.vinz.music.data.podcast.song
 import com.vinz.music.playback.QueueKind
 import com.vinz.music.playback.QueueSource
 import com.vinz.music.ui.Load
@@ -73,6 +76,7 @@ import com.vinz.music.ui.theme.LocalContainer
 import com.vinz.music.ui.theme.LocalUi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.launch
 
 /** A search on the Podcasts page: null lists while it's asking. */
@@ -106,6 +110,8 @@ fun PodcastsScreen(bottomPadding: Dp) {
         }
     }
     val resume by c.episodes.inProgress.collectAsState()
+    val rssShows by remember { rssShowsFlow(c) }.collectAsState(null)
+    var addingRss by remember { mutableStateOf(false) }
     val onSong: (SongItem) -> Unit = { playEpisode(c, it.song, tr(R.string.podcasts)) }
     // Search right here: shows and episodes only, as you type (a moment after the last key).
     var query by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
@@ -138,7 +144,11 @@ fun PodcastsScreen(bottomPadding: Dp) {
                     }
                     if (f.episodes.isNotEmpty()) {
                         item(key = "found-eps-h") { SectionHeader(tr(R.string.episodes)) }
-                        items(f.episodes.take(30), key = { "fe:" + it.id }) { song ->
+                        // YouTube's search can list an episode twice: each row a key of its own (#330's kind).
+                        val eps = f.episodes.take(30)
+                        val keys = com.vinz.music.ui.components.rowKeys(eps) { "fe:" + it.id }
+                        items(eps.size, key = { keys[it] }) { i ->
+                            val song = eps[i]
                             EpisodeRow(Episode(song, date = null, description = null), showShow = true) { playEpisode(c, song, tr(R.string.podcast_search)) }
                         }
                     }
@@ -156,6 +166,8 @@ fun PodcastsScreen(bottomPadding: Dp) {
                 ) { playEpisode(c, e.song, tr(R.string.continue_listening)) }
             }
         }
+        // On the phone, so here whatever YouTube's page below does.
+        item(key = "rss") { RssShowsSection(rssShows.orEmpty()) { addingRss = true } }
         when (val st = load.state) {
             Load.Loading -> item { LoadingState() }
             is Load.Err -> item { ErrorState(st.message) { load.reload(false) } }
@@ -167,7 +179,11 @@ fun PodcastsScreen(bottomPadding: Dp) {
                 }
                 if (home.saved.isNotEmpty()) {
                     item(key = "saved-h") { SectionHeader(tr(R.string.episodes_for_later), onMore = { nav.go(Routes.playlist("SE")) }) }
-                    items(home.saved.take(5), key = { "sv:" + it.id }) { song ->
+                    // A playlist ("SE") can hold an episode twice.
+                    val later = home.saved.take(5)
+                    val keys = com.vinz.music.ui.components.rowKeys(later) { "sv:" + it.id }
+                    items(later.size, key = { keys[it] }) { i ->
+                        val song = later[i]
                         EpisodeRow(Episode(song, date = null, description = null), showShow = true) { playEpisode(c, song, tr(R.string.episodes_for_later)) }
                     }
                 }
@@ -185,6 +201,10 @@ fun PodcastsScreen(bottomPadding: Dp) {
             }
         }
     }
+    if (addingRss) AddRssShowDialog(onDismiss = { addingRss = false }) { show ->
+        addingRss = false
+        nav.go(Routes.podcast(show.id))
+    }
 }
 
 /** Plays one episode on its own (no music radio follows); it resumes where it was left. */
@@ -195,6 +215,8 @@ fun playEpisode(c: com.vinz.music.AppContainer, song: Song, from: String) {
 /** A show's page: its cover, host and description, then its episodes, newest first, loading more as you go. */
 @Composable
 fun PodcastScreen(id: String, bottomPadding: Dp) {
+    // A show added by its feed has nothing on YouTube to ask for.
+    if (id.startsWith(Song.RSS_PREFIX)) { RssShowScreen(id, bottomPadding); return }
     val c = LocalContainer.current
     val s = LocalAppSettings.current
     val nav = LocalNavigator.current
@@ -312,6 +334,209 @@ fun PodcastScreen(id: String, bottomPadding: Dp) {
     if (sharing && show != null) com.vinz.music.ui.components.ShareSheet(show.shareTarget()) { sharing = false }
 }
 
+/** The shows added by their feeds, and the way to add one. */
+@Composable
+private fun RssShowsSection(shows: List<com.vinz.music.data.podcast.RssShow>, onAdd: () -> Unit) {
+    val nav = LocalNavigator.current
+    val ui = LocalUi.current
+    Column(Modifier.fillMaxWidth()) {
+        if (shows.isNotEmpty()) {
+            SectionHeader(tr(R.string.rss_your_shows))
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(shows, key = { it.id }) { show ->
+                    Column(Modifier.width(ui.cardWidth).clip(ui.shape(8.dp)).clickable { nav.go(Routes.podcast(show.id)) }.padding(6.dp)) {
+                        Artwork(show.image, Modifier.fillMaxWidth().aspectRatio(1f), ui.art, size = 544, placeholderIcon = VinzIcons.Podcasts)
+                        Text(
+                            show.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onAdd).padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(VinzIcons.Add, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(14.dp))
+            Text(tr(R.string.rss_add_a_podcast), style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+/** Paste a feed's address: the show is read and kept, or the dialog says why it can't be. */
+@Composable
+private fun AddRssShowDialog(onDismiss: () -> Unit, onAdded: (com.vinz.music.data.podcast.RssShow) -> Unit) {
+    val c = LocalContainer.current
+    val scope = rememberCoroutineScope()
+    var address by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf(false) }
+    val add = {
+        if (address.isNotBlank() && !busy) {
+            busy = true
+            problem = null
+            scope.launch {
+                try {
+                    val show = c.rssPodcastsReady().add(address)
+                    // onAdded opens the show's page, and navigating has to happen on the main thread.
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { onAdded(show) }
+                } catch (e: com.vinz.music.data.podcast.RssException) {
+                    problem = e.message
+                }
+                busy = false
+            }
+        }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr(R.string.rss_add_a_podcast), Modifier.weight(1f, fill = false))
+                InfoMark(info, tr(R.string.rss_add_a_podcast)) { info = !info }
+            }
+        },
+        text = {
+            Column {
+                InfoText(info, tr(R.string.rss_add_info), Modifier.padding(bottom = 10.dp))
+                com.vinz.music.ui.components.VinzTextField(
+                    address, { address = it; problem = null },
+                    Modifier.fillMaxWidth().testTag("rssAddress"), enabled = !busy, singleLine = true,
+                    placeholder = { Text(tr(R.string.rss_feed_address)) },
+                    supportingText = if (problem != null) ({ Text(problem.orEmpty()) }) else null,
+                    isError = problem != null,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri, imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                        autoCorrectEnabled = false,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { add() }),
+                )
+                if (busy) com.vinz.music.ui.components.VinzProgressBar(null, Modifier.fillMaxWidth().padding(top = 10.dp))
+            }
+        },
+        confirmButton = { VinzTextButton(onClick = { add() }, enabled = address.isNotBlank() && !busy) { Text(tr(R.string.add)) } },
+        dismissButton = { VinzTextButton(onClick = onDismiss, enabled = !busy) { Text(tr(R.string.cancel)) } },
+    )
+}
+
+/** The RSS shows' store, first made off the main thread: making it reads their one file, however many shows are in it. */
+private suspend fun com.vinz.music.AppContainer.rssPodcastsReady() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { rssPodcasts }
+
+/** The shows, null until that first read is done. */
+private fun rssShowsFlow(c: com.vinz.music.AppContainer) = kotlinx.coroutines.flow.flow<List<com.vinz.music.data.podcast.RssShow>?> {
+    emitAll(c.rssPodcastsReady().shows)
+}
+
+/**
+ * The page of a show added by its feed: as a YouTube show's, from what's kept on the phone, so it opens at once and works
+ * offline. The feed is asked for what's new on opening; if it can't answer, the page says so and shows what it has.
+ */
+@Composable
+private fun RssShowScreen(id: String, bottomPadding: Dp) {
+    val c = LocalContainer.current
+    val nav = LocalNavigator.current
+    val ui = LocalUi.current
+    val shows by remember { rssShowsFlow(c) }.collectAsState(null)
+    val show = shows?.firstOrNull { it.id == id }
+    val current by c.player.currentSong.collectAsState()
+    val played by c.episodes.played.collectAsState()
+    val resume by c.episodes.inProgress.collectAsState()
+    var refreshProblem by remember(id) { mutableStateOf<String?>(null) }
+    var expanded by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(id) {
+        try {
+            c.rssPodcastsReady().refresh(id) { ep -> c.episodes.positionOf(ep) > 0 || c.player.currentSong.value?.id == ep }
+        } catch (e: com.vinz.music.data.podcast.RssException) {
+            refreshProblem = e.message
+        }
+    }
+
+    SubPage(show?.title ?: tr(R.string.podcast), bottomPadding, actions = {
+        if (show != null) RoundAction(VinzIcons.Delete, tr(R.string.rss_remove_show)) { removing = true }
+    }) {
+        // Still being read: not "gone" yet.
+        if (shows == null) return@SubPage
+        if (show == null) {
+            item { EmptyState(VinzIcons.Podcasts, tr(R.string.rss_show_gone), tr(R.string.rss_show_gone_detail)) }
+            return@SubPage
+        }
+        val dates = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+        val episodes = show.episodes.map { e ->
+            Episode(e.song(show), date = e.publishedAt?.let { dates.format(java.util.Date(it)) }, description = e.description)
+        }
+        item(key = "header") {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Artwork(show.image, Modifier.size(132.dp), ui.art, size = 544, placeholderIcon = VinzIcons.Podcasts)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(show.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        show.author?.let { a ->
+                            Text(a, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        Text(tr(R.string.podcast), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                val latest = episodes.firstOrNull { it.song.id !in played } ?: episodes.firstOrNull()
+                Row(
+                    Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.onSurface)
+                        .clickable(enabled = latest != null) { latest?.let { playEpisode(c, it.song, show.title) } }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(VinzIcons.Play, null, tint = MaterialTheme.colorScheme.surface)
+                    Spacer(Modifier.width(6.dp))
+                    Text(tr(R.string.latest_episode), color = MaterialTheme.colorScheme.surface, style = MaterialTheme.typography.labelLarge)
+                }
+                show.description?.let { d ->
+                    Text(
+                        d, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 14.dp).clickable { expanded = !expanded },
+                    )
+                }
+                refreshProblem?.let { p ->
+                    Text(tr(R.string.rss_couldnt_refresh, p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
+                }
+            }
+        }
+        item(key = "eps-h") { SectionHeader(tr(R.string.episodes)) }
+        items(episodes, key = { "e:" + it.song.id }) { e ->
+            val local = resume.firstOrNull { it.song.id == e.song.id }
+            EpisodeRow(
+                e.copy(progress = local?.fraction ?: 0f, played = e.song.id in played),
+                playing = current?.id == e.song.id,
+                leftMs = local?.leftMs,
+                about = ShowAbout(show.title, show.description),
+            ) { playEpisode(c, e.song, show.title) }
+        }
+    }
+    if (removing && show != null) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { removing = false },
+        title = { Text(tr(R.string.rss_remove_show_title, show.title)) },
+        text = { Text(tr(R.string.rss_remove_show_detail)) },
+        confirmButton = {
+            VinzTextButton(onClick = {
+                removing = false
+                // Your place in its episodes goes with it (a place in an episode that can't be played would stay on the list).
+                // Written whole off the main thread, and on c.scope: leaving the page doesn't stop it.
+                c.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    c.rssPodcastsReady().remove(id).forEach { ep -> c.episodes.forget(ep); c.episodes.unmarkPlayed(ep) }
+                }
+                nav.back()
+            }) { Text(tr(R.string.remove)) }
+        },
+        dismissButton = { VinzTextButton(onClick = { removing = false }) { Text(tr(R.string.cancel)) } },
+    )
+}
+
 /**
  * One episode: its picture, title, the date and length (or what's left), a bar for how far in it is, and the start
  * of its description. A played one is dimmed with a tick.
@@ -339,8 +564,10 @@ fun EpisodeRow(
         verticalAlignment = Alignment.Top,
     ) {
         Box {
-            Artwork(song.thumbnail, Modifier.size(width = 104.dp, height = 58.dp), ui.shape(8.dp), size = 480, placeholderIcon = VinzIcons.Podcasts)
-            if (playing) Box(Modifier.size(width = 104.dp, height = 58.dp).clip(ui.shape(8.dp)).background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+            // YouTube's episode pictures are wide, a feed's are square covers.
+            val picture = if (song.isRss) Modifier.size(58.dp) else Modifier.size(width = 104.dp, height = 58.dp)
+            Artwork(song.thumbnail, picture, ui.shape(8.dp), size = 480, placeholderIcon = VinzIcons.Podcasts)
+            if (playing) Box(picture.clip(ui.shape(8.dp)).background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
                 PlayingBars(Modifier.size(20.dp))
             }
         }
@@ -405,7 +632,7 @@ private fun EpisodeDetailsSheet(e: Episode, about: ShowAbout?, leftMs: Long?, on
         )
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
             Text(
-                e.description?.let { withLinks(it, scheme.primary) } ?: androidx.compose.ui.text.AnnotatedString(tr(R.string.youtube_has_no_description_for_this_2)),
+                e.description?.let { withLinks(it, scheme.primary) } ?: androidx.compose.ui.text.AnnotatedString(if (song.isRss) tr(R.string.rss_no_description) else tr(R.string.youtube_has_no_description_for_this_2)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (e.description == null) scheme.onSurfaceVariant else scheme.onSurface,
             )
@@ -418,7 +645,7 @@ private fun EpisodeDetailsSheet(e: Episode, about: ShowAbout?, leftMs: Long?, on
                 Text(showName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
                 // Only on a show's own page do we have its description; elsewhere the show's name is enough.
                 if (about != null) Text(
-                    about.description?.let { withLinks(it, scheme.primary) } ?: androidx.compose.ui.text.AnnotatedString(tr(R.string.youtube_has_no_description_for_this)),
+                    about.description?.let { withLinks(it, scheme.primary) } ?: androidx.compose.ui.text.AnnotatedString(if (song.isRss) tr(R.string.rss_no_description) else tr(R.string.youtube_has_no_description_for_this)),
                     style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )

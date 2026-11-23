@@ -35,7 +35,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +52,7 @@ import com.vinz.music.data.prefs.LyricsAlign
 import com.vinz.music.data.prefs.PlayerBackground
 import com.vinz.music.data.prefs.ScrubberStyle
 import com.vinz.music.data.prefs.TransportStyle
+import com.vinz.music.data.prefs.shows
 import com.vinz.music.ui.components.Artwork
 import com.vinz.music.ui.components.pageTitleStyle
 import com.vinz.music.ui.components.rememberArtPalette
@@ -152,32 +155,37 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
     val hues = palette?.let { listOf(it.dominant, it.vibrant) } ?: standIns[0]
     val light = Brush.horizontalGradient(*c.run.toTypedArray())
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        when (s.playerBackground) {
+        when (s.player.background) {
             PlayerBackground.MESH -> Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(hues[0].copy(alpha = 0.85f), hues[1].copy(alpha = 0.55f), Color.Black))))
             PlayerBackground.BLUR -> {
                 StandIn(song, Modifier.fillMaxSize().blur(60.dp), RoundedCornerShape(0.dp), hues)
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = previewVeil(s.playerBackdropShow))))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = previewVeil(s.player.backdropShow))))
             }
             PlayerBackground.APPEARANCE -> {
                 PageGround(c, Modifier.fillMaxSize(), player = true)
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = previewVeil(s.playerBackdropShow))))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = previewVeil(s.player.backdropShow))))
             }
             PlayerBackground.THEME -> Box(Modifier.fillMaxSize().background(c.scheme.background))
             PlayerBackground.BLACK -> {}
             PlayerBackground.WHITE -> Box(Modifier.fillMaxSize().background(com.vinz.music.ui.player.PlayerWhiteBackdrop))
+            PlayerBackground.GRADIENT -> com.vinz.music.ui.player.CoverGradientBackdrop(
+                com.vinz.music.ui.player.rememberCoverGradient(song?.thumbnail)
+                    ?: com.vinz.music.ui.player.CoverGradient(hues[0].toArgb(), hues[1].toArgb()),
+                s.view.gradientDepth,
+            )
         }
         // Settings → Player (1.7.4): the layout, the title, the parts under it in their order, the buttons.
-        val layout = s.playerLayout
+        val layout = s.player.layout
         val vinyl = layout == com.vinz.music.data.prefs.PlayerLayout.VINYL
         val fullBleed = s.fullBleedArtwork && !vinyl && layout != com.vinz.music.data.prefs.PlayerLayout.CASSETTE
         val extra = if (layout == com.vinz.music.data.prefs.PlayerLayout.COVER) maxOf(s.coverSize.extra, CoverSize.LARGE.extra) else s.coverSize.extra
         val side = if (fullBleed) 0.dp else 28.dp - extra.dp
         Column(Modifier.fillMaxSize().padding(top = if (fullBleed) 0.dp else 64.dp)) {
-            val coverShape = if (fullBleed || s.coverSize == CoverSize.FULL) RoundedCornerShape(0.dp) else RoundedCornerShape(s.playerArtCorners.dp)
-            val centred = s.playerTitleAlign == com.vinz.music.data.prefs.PlayerTitleAlign.CENTER
+            val coverShape = if (fullBleed || s.coverSize == CoverSize.FULL) RoundedCornerShape(0.dp) else RoundedCornerShape(s.player.artCorners.dp)
+            val centred = s.player.titleAlign == com.vinz.music.data.prefs.PlayerTitleAlign.CENTER
             val title = @Composable {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
-                    val big = MaterialTheme.typography.headlineSmall.let { it.copy(fontSize = it.fontSize * s.playerTitleSize.scale) }
+                    val big = MaterialTheme.typography.headlineSmall.let { it.copy(fontSize = it.fontSize * s.player.titleSize.scale) }
                     Text(song?.title ?: tr(R.string.northern_lights), style = big, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(song?.artistText ?: tr(R.string.vinz_sample), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
                 }
@@ -218,7 +226,7 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                 }
             } else StandIn(song, Modifier.padding(horizontal = side.coerceAtLeast(0.dp)).fillMaxWidth().aspectRatio(1f), coverShape, hues)
             // #320: the title and controls dark over the White background, as the player draws them.
-            val inked = with(com.vinz.music.ui.player.PlayerInk) { Modifier.inked { s.playerBackground == PlayerBackground.WHITE } }
+            val inked = with(com.vinz.music.ui.player.PlayerInk) { Modifier.inked { s.player.background == PlayerBackground.WHITE } }
             Column(Modifier.padding(horizontal = 28.dp).padding(top = 28.dp).then(inked)) {
                 title()
                 when (layout) {
@@ -227,9 +235,9 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                         Spacer(Modifier.height(30.dp))
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { PreviewPlay(s, c, 92.dp) }
                     }
-                    else -> s.playerDeck.forEach { part ->
+                    else -> s.player.deck.forEach { part ->
                         when (part) {
-                            com.vinz.music.data.prefs.DeckPart.STRIP -> if (s.lyricsOnPlayer) {
+                            com.vinz.music.data.prefs.DeckPart.STRIP -> if (s.lyrics.onPlayer) {
                                 Spacer(Modifier.height(16.dp))
                                 Text(tr(R.string.every_color_finds_its_way), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
                             }
@@ -242,9 +250,9 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                                     Icon(VinzIcons.Next, null, Modifier.size(34.dp), tint = Color.White)
                                 }
                             }
-                            com.vinz.music.data.prefs.DeckPart.VOLUME -> if (!s.hideVolumeBar) {
+                            com.vinz.music.data.prefs.DeckPart.VOLUME -> if (s.shows(com.vinz.music.data.prefs.PlayerPart.VOLUME)) {
                                 Spacer(Modifier.height(18.dp))
-                                Box(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f))) {
+                                Box(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).testTag("previewVolume")) {
                                     Box(Modifier.fillMaxWidth(0.65f).height(5.dp).background(Color.White.copy(alpha = 0.85f)))
                                 }
                             }
@@ -254,7 +262,7 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
                                     Row(
                                         Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(horizontal = 14.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                    ) { s.playerButtons.forEach { Icon(buttonIcon(it), null, Modifier.size(24.dp), tint = Color.White.copy(alpha = 0.8f)) } }
+                                    ) { s.player.buttons.forEach { Icon(buttonIcon(it), null, Modifier.size(24.dp), tint = Color.White.copy(alpha = 0.8f)) } }
                                 }
                             }
                         }
@@ -302,7 +310,7 @@ private fun PreviewBar(s: AppSettings, light: Brush) {
             }
         }
     }
-    val times = s.playerTimes
+    val times = s.player.times
     if (times != com.vinz.music.data.prefs.PlayerTimes.NONE) Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         val st = MaterialTheme.typography.labelMedium
         Text(if (times == com.vinz.music.data.prefs.PlayerTimes.LEFT) "" else "1:12", style = st, color = Color.White.copy(alpha = 0.55f))
@@ -321,16 +329,16 @@ private val PREVIEW_WAVE = listOf(0.3f, 0.45f, 0.6f, 0.5f, 0.7f, 0.85f, 0.75f, 0
 fun MiniLyrics(c: ThemeColors, song: Song?) {
     val s = LocalAppSettings.current
     val lines = listOf(tr(R.string.somewhere_a_light_is_turning_on), tr(R.string.every_color_finds_its_way), tr(R.string.we_follow_the_line_of_the), tr(R.string.into_the_bright_of_the_day))
-    val face = when (s.lyricsFont) {
+    val face = when (s.lyrics.font) {
         "" -> null
         com.vinz.music.data.prefs.FontChoice.CUSTOM.name -> AppFonts.custom(AppFonts.FontSlot.LYRICS)
-        else -> com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == s.lyricsFont }?.let(AppFonts::family)
+        else -> com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == s.lyrics.font }?.let(AppFonts::family)
     }
     val base = MaterialTheme.typography.headlineMedium.let { t -> t.copy(
-            fontSize = t.fontSize * s.lyricsScale, fontFamily = face ?: t.fontFamily,
-            lineHeight = if (t.lineHeight.isSpecified) t.lineHeight * s.lyricsScale else t.lineHeight,
+            fontSize = t.fontSize * s.lyrics.scale, fontFamily = face ?: t.fontFamily,
+            lineHeight = if (t.lineHeight.isSpecified) t.lineHeight * s.lyrics.scale else t.lineHeight,
         ) }
-    val align = if (s.lyricsAlign == LyricsAlign.CENTER) TextAlign.Center else TextAlign.Start
+    val align = if (s.lyrics.align == LyricsAlign.CENTER) TextAlign.Center else TextAlign.Start
     // Lyrics, your way (1.7.5): the sung line in its style (held part-way through), the others in their color.
     val look = com.vinz.music.ui.player.rememberLyricsLook(s, song?.thumbnail)
     val clock = remember { androidx.compose.runtime.mutableLongStateOf(1300L) }
@@ -338,8 +346,8 @@ fun MiniLyrics(c: ThemeColors, song: Song?) {
         val words = listOf(tr(R.string.every), "color ", "finds ", "its ", "way")
         look.shown(com.vinz.music.data.lyrics.LyricLine(0, words.joinToString(""), 2800, words.mapIndexed { k, w -> com.vinz.music.data.lyrics.LyricWord(k * 520L, k * 520L + 480L, w) }))
     }
-    val axis = remember(s.lyricsFont, s.fontChoice) {
-        (if (s.lyricsFont.isEmpty()) s.fontChoice else com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == s.lyricsFont })?.let(AppFonts::axis)
+    val axis = remember(s.lyrics.font, s.fontChoice) {
+        (if (s.lyrics.font.isEmpty()) s.fontChoice else com.vinz.music.data.prefs.FontChoice.entries.firstOrNull { it.name == s.lyrics.font })?.let(AppFonts::axis)
     }
     val ground = when (s.lyricsPageBackground()) {
         com.vinz.music.data.prefs.LyricsBackground.PLAYER -> Brush.verticalGradient(listOf(standIns[0][0], Color.Black))
@@ -360,7 +368,7 @@ fun MiniLyrics(c: ThemeColors, song: Song?) {
                         look.shown(com.vinz.music.data.lyrics.LyricLine(-1, line)), base.copy(textAlign = align),
                         look, 0.7f * look.othersAlpha, Modifier.fillMaxWidth().then(if (look.blur > 0f && look.card == null) Modifier.blur((2 * look.blur).dp) else Modifier),
                     )
-                    if (now && s.lyricsProgressLine) Box(
+                    if (now && s.lyrics.progressLine) Box(
                         Modifier.padding(top = 8.dp).align(if (align == TextAlign.Center) Alignment.CenterHorizontally else Alignment.Start)
                             .width(120.dp).height(2.dp).clip(CircleShape).background(Brush.horizontalGradient(*c.run.toTypedArray())),
                     )

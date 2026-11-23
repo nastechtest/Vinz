@@ -1,7 +1,7 @@
 package com.vinz.music
 
-import com.vinz.music.data.db.LyricsDao
-import com.vinz.music.data.db.LyricsEntity
+import com.prism.music.data.db.LyricsDao
+import com.prism.music.data.db.LyricsEntity
 import com.vinz.music.data.innertube.InnerTube
 import com.vinz.music.data.innertube.YouTubeMusic
 import com.vinz.music.data.lyrics.LyricsRepository
@@ -15,8 +15,10 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.TimeUnit
+import org.junit.experimental.categories.Category
 
 /** Starred-out karaoke lyrics get their words back from Genius (live: needs network). */
+@Category(LiveNetwork::class)
 class UncensorLiveTest {
     private val http = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
     private var settings = AppSettings()

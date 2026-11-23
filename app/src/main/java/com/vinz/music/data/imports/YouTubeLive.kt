@@ -2,7 +2,7 @@ package com.vinz.music.data.imports
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.vinz.music.data.db.VinzDatabase
+import com.prism.music.data.db.PrismDatabase
 import com.vinz.music.data.model.Song
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -140,7 +140,7 @@ object HistoryDiff {
  */
 class YouTubeLive(
     val prefs: SharedPreferences,
-    private val db: VinzDatabase,
+    private val db: PrismDatabase,
     private val importer: HistoryImporter,
     private val read: suspend () -> List<Pair<String, List<Song>>>,
     /** The signed-in account ([accountOf]); null signed out (then nothing is asked). */
