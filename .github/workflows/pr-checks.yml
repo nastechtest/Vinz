@@ -232,6 +232,8 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            app/build/lockscreen/look/
+            app/build/settings-root/
           if-no-files-found: warn
           retention-days: 7
 
