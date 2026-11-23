@@ -35,20 +35,20 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
         /** Deezer's Spleeter, 2 stems, as sherpa-onnx exported it (fp16): Sing's vocal separation. */
         SING_MODEL(
             "sing-spleeter", "sing-spleeter-2stems-fp16.zip",
-            "58d3320c8161d28d70e28b0cb10d05ff5c15a5c806a3581fb720a52c41cfccb1", 36_366_462, tr(R.string.sing_s_voice_separation), 39_362_285,
+            "69714083b6fd5a88aa93cc021b4fb9534388960a532f6c987036e30f5332c191", 36_370_454, tr(R.string.sing_s_voice_separation), 39_374_474,
         ),
         /** ONNX Runtime's native libraries (Microsoft, MIT), which Sing runs Spleeter on, one per kind of processor. */
         SING_RUNTIME_ARM64(
             "onnxruntime-arm64-v8a", "onnxruntime-1.31.0-arm64-v8a.zip",
-            "4e18871c3336a30adae8f6e7aad85b144337654c859b9e62bce2c449bcfb9995", 12_888_058, tr(R.string.sing_s_engine), 34_208_828,
+            "bd993a5b14035b57d9edaf4994491dbb87de4034781852f9e16540d9100b10f5", 12_896_594, tr(R.string.sing_s_engine), 34_547_841,
         ),
         SING_RUNTIME_ARMV7(
             "onnxruntime-armeabi-v7a", "onnxruntime-1.31.0-armeabi-v7a.zip",
-            "009139aff7b881ead3dd67127e2655791424c18c0e7d7f14775d8621adb05369", 11_640_311, tr(R.string.sing_s_engine), 24_182_160,
+            "ff278a1cbd09d243b30cfe590f30c55c174c828d943edbe35c6e0fa1aac4ac3e", 11_656_050, tr(R.string.sing_s_engine), 24_521_173,
         ),
         SING_RUNTIME_X86_64(
             "onnxruntime-x86_64", "onnxruntime-1.31.0-x86_64.zip",
-            "3627836c2fdc6837d4f6e5d32abfbbc2b0c3ee565ab249f8bb2c3aaa7b788bfa", 14_993_395, tr(R.string.sing_s_engine), 40_828_092,
+            "a03df391fb77786f8a3a9f358110c16dc9559e059dd45127859524c4b7871044", 14_967_583, tr(R.string.sing_s_engine), 41_167_105,
         ),
         ;
 
