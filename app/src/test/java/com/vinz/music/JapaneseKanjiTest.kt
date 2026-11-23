@@ -21,7 +21,6 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,14 +28,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.net.URLDecoder
-import java.util.concurrent.TimeUnit
 
-/**
- * #370: a Japanese song from KuGou came out partly in pinyin. Found on the reporter's song: its lyrics write some kanji
- * in simplified Chinese forms, which the Japanese dictionary doesn't know, so those lines went to Google, which reads
- * those forms in pinyin even when told the text is Japanese; and a line of only kanji sent on its own passes for Chinese.
- * The lines here are made up for the test.
- */
+/** Main-branch lyric behavior and original-text title spelling. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
 class JapaneseKanjiTest {
@@ -61,73 +54,64 @@ class JapaneseKanjiTest {
     private fun romanizer(http: OkHttpClient, reader: Japanese? = null) =
         Romanizer(http, dao, ModelStore(RuntimeEnvironment.getApplication(), http), CoroutineScope(Dispatchers.Default), japaneseForTests = reader)
 
-    @Test fun aJapaneseSongsKanjiOnlyLineIsAskedForAsJapanese() = runBlocking {
-        val lines = listOf(LyricLine(0, "夢を見ていた"), LyricLine(2_000, "月光"))
-        val r = romanizer(fakeGoogle).romanize("ja-google", lines, emptySet(), network = true)
-        assertEquals("all as Japanese, and together", listOf("ja" to listOf("夢を見ていた", "月光")), asked)
-        assertEquals("roman", r[1]!!.text)
+    @Test fun googleUsesMainDetectionAndOriginalCharacters() = runBlocking {
+        val lines = listOf(LyricLine(0, "强い心を守る"), LyricLine(2_000, "月光"))
+        val result = romanizer(fakeGoogle).romanize("ja-google", lines, emptySet(), network = true)
+        assertEquals(listOf("auto" to listOf("强い心を守る"), "auto" to listOf("月光")), asked)
+        assertEquals(listOf("roman", "roman"), result.map { it!!.text })
     }
 
-    @Test fun chineseFormsGoToGoogleAsJapaneseKanji() = runBlocking {
-        val lines = listOf(LyricLine(0, "强い心を守る"))
-        romanizer(fakeGoogle).romanize("ja-forms", lines, emptySet(), network = true)
-        assertEquals(listOf("強い心を守る"), asked.single().second)
-    }
-
-    @Test fun theSongsTitleCanSayItsJapanese() = runBlocking {
-        romanizer(fakeGoogle).romanize("ja-title", listOf(LyricLine(0, "月光")), emptySet(), network = true, title = "ひかり")
-        assertEquals("ja", asked.single().first)
-    }
-
-    /** 6.3: a song of only kanji whose artist's name has kana is Japanese (it was read as Chinese). */
-    @Test fun theArtistsNameCanSayItsJapanese() = runBlocking {
-        romanizer(fakeGoogle).romanize("ja-artist", listOf(LyricLine(0, "月光"), LyricLine(2_000, "花火")), emptySet(), network = true, title = "春泥棒", artist = "ヨルシカ")
-        assertEquals("ja", asked.single().first)
-    }
-
-    @Test fun theAlbumsNameCanSayItsJapanese() = runBlocking {
-        romanizer(fakeGoogle).romanize("ja-album", listOf(LyricLine(0, "月光")), emptySet(), network = true, title = "春泥棒", artist = "Yorushika", album = "だから僕は音楽を辞めた")
-        assertEquals("ja", asked.single().first)
-    }
-
-    /** 6.3: the listener's word on a song sticks (kept in the song prefs, a new start too) and beats the letters. */
-    @Test fun theListenersChoiceSticks() = runBlocking {
-        val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("roman-test", android.content.Context.MODE_PRIVATE)
-        prefs.edit().clear().commit()
-        val first = Romanizer(fakeGoogle, dao, ModelStore(RuntimeEnvironment.getApplication(), fakeGoogle), CoroutineScope(Dispatchers.Default), songPrefs = prefs)
-        first.setJapanese("kanji-only", true)
-        first.setJapanese("has-kana", false)
-        val again = Romanizer(fakeGoogle, dao, ModelStore(RuntimeEnvironment.getApplication(), fakeGoogle), CoroutineScope(Dispatchers.Default), songPrefs = prefs)
-        assertEquals(true, again.japaneseChoice("kanji-only"))
-        assertTrue("the choice isn't taken for a romanize switch", again.overrides.value.isEmpty())
-        again.romanize("kanji-only", listOf(LyricLine(0, "月光")), emptySet(), network = true)
-        assertEquals("ja", asked.last().first)
-        again.romanize("has-kana", listOf(LyricLine(0, "我爱你")), emptySet(), network = true, title = "ひかり")
-        assertEquals("auto", asked.last().first)
-        again.setJapanese("kanji-only", null)
-        assertEquals(null, again.japaneseChoice("kanji-only"))
+    @Test fun existingChoicesArePreservedButDoNotChangeMainLyricsBehavior() = runBlocking {
+        val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("roman-main-test", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().putBoolean("ja-read:has-kana", false).putBoolean("ja-read:han-only", true)
+            .putBoolean("normal-override", true).commit()
+        val r = Romanizer(fakeGoogle, dao, ModelStore(RuntimeEnvironment.getApplication(), fakeGoogle),
+            CoroutineScope(Dispatchers.Default), songPrefs = prefs)
+        assertEquals(false, r.japaneseChoice("has-kana"))
+        assertEquals(true, r.japaneseChoice("han-only"))
+        assertEquals(mapOf("normal-override" to true), r.overrides.value)
+        val kana = r.romanize("has-kana", listOf(LyricLine(0, "強い")), emptySet(), network = false)
+        assertEquals(null, kana[0]) // main does not fall back to pinyin for lyrics containing kana
+        r.romanize("han-only", listOf(LyricLine(0, "月光")), emptySet(), network = true)
+        assertEquals("auto" to listOf("月光"), asked.single())
+        assertEquals(false, prefs.getBoolean("ja-read:has-kana", true))
+        assertEquals(true, prefs.getBoolean("ja-read:han-only", false))
     }
 
     @Test fun aChineseSongStaysChinese() = runBlocking {
         romanizer(fakeGoogle).romanize("zh", listOf(LyricLine(0, "我爱你"), LyricLine(2_000, "月光")), emptySet(), network = true)
         assertEquals("auto", asked.single().first)
-        assertEquals("its own characters are sent as they are", "我爱你", asked.single().second[0])
+        assertEquals(listOf("我爱你", "月光"), asked.single().second)
     }
 
-    /** With the dictionary: everything's read here, Google isn't asked, and a karaoke line's words stay lined up. */
-    @Test fun theDictionaryReadsThemWithTheirTimings() = runBlocking {
-        val line = LyricLine(
-            0, "一生悬命に", 2_000,
-            words = listOf(LyricWord(0, 1_000, "一生"), LyricWord(1_000, 1_800, "悬命"), LyricWord(1_800, 2_000, "に")),
-        )
-        val r = romanizer(fakeGoogle, Japanese.bundled()).romanize("ja-dict", listOf(line, LyricLine(3_000, "强い心")), emptySet(), network = true)
-        assertTrue("nothing left for Google: $asked", asked.isEmpty())
-        val first = r[0]
-        assertNotNull(first)
-        assertTrue(first!!.text, first.text.replace(" ", "").startsWith("isshoukenmei"))
-        assertTrue("no kanji left: ${first.text}", Script.foreignIn(first.text).isEmpty())
-        assertEquals(listOf(0L, 1_800L), first.words.map { it.startMs }.let { listOf(it.first(), it.last()) })
-        assertTrue(r[1]!!.text, r[1]!!.text.startsWith("tsuyoi"))
+    @Test fun dictionaryUsesOriginalLyricsAndKeepsTimings() = runBlocking {
+        val reader = Japanese.bundled()
+        val line = LyricLine(0, "强い心", 2_000, words = listOf(
+            LyricWord(0, 1_000, "强い"), LyricWord(1_000, 2_000, "心")))
+        val result = romanizer(fakeGoogle, reader).romanize("ja-dict", listOf(line), emptySet(), network = false)[0]!!
+        assertEquals(reader.romanize(line.text).trim(), result.text)
+        assertEquals(listOf(0L, 1_000L), result.words.map { it.startMs })
+        assertEquals(listOf(1_000L, 2_000L), result.words.map { it.endMs })
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test fun titleSearchSpellsTheOriginalText() = runBlocking {
+        val reader = Japanese.bundled()
+        val spelling = romanizer(fakeGoogle, reader).spellTitle("强い")
+        assertEquals(reader.romanize("强い").trim(), spelling)
+        assertTrue(spelling != reader.romanize("強い").trim())
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test fun oldVersionFourCachedLyricsAreNotReused() = runBlocking {
+        val line = LyricLine(0, "かな")
+        val hash = (line.text + "|").hashCode()
+        val oldKey = "ja-cache|4|-|j||$hash"
+        saved[oldKey] = RomanizedEntity(oldKey, """[{"t":"stale"}]""", 0L)
+        val result = romanizer(fakeGoogle).romanize("ja-cache", listOf(line), emptySet(), network = false)
+        assertEquals("kana", result.single()!!.text)
+        assertTrue(saved.containsKey(oldKey))
+        assertTrue(saved.keys.any { it.startsWith("ja-cache|5|") })
     }
 
     @Test fun theTextKeepsItsLength() {
@@ -146,13 +130,4 @@ class JapaneseKanjiTest {
         assertFalse("nothing maps onto another Chinese form", JapaneseKanji.pairs.values.any { it in JapaneseKanji.pairs })
     }
 
-    /** Live: Google's answer for a kanji-only line, asked as Japanese, is no pinyin. */
-    @org.junit.experimental.categories.Category(LiveNetwork::class)
-    @Test fun googleReadsTheLineAsJapanese() = runBlocking {
-        val http = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
-        val r = romanizer(http).romanize("ja-live2", listOf(LyricLine(0, "夢を見ていた"), LyricLine(2_000, "月光"), LyricLine(4_000, "一生悬命")), emptySet(), network = true)
-        println("[live] " + r.map { it?.text })
-        val pinyin = Regex("[āáǎàēéěèīíǐìǒòóǔùúǖǘǚǜ]|yuè|xuán")
-        for (line in r) assertFalse(line?.text, pinyin.containsMatchIn(line!!.text.lowercase()))
-    }
 }
