@@ -328,6 +328,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         }
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setOutput(device: AudioDeviceInfo?, reason: String = "picked in the device sheet") {
         // Picking one of the phone's own outputs while casting brings the music back here, playing on.
         if (device != null && c.cast.casting) c.cast.disconnect(keepPlaying = true)
@@ -507,6 +508,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     }
 
     /** [songs] at the end of the queue (before autoplay's suggestions), and shuffled in among what's still to come. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private suspend fun addFilled(songs: List<Song>) {
         val items = withContext(Dispatchers.Default) { songs.map { it.toMediaItem() } }
         val p = player ?: return
@@ -789,6 +791,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * Vinz Connect handoff: another device's playback continues here, the whole queue from the same song and place,
      * in the same play order ([order]: queue indices as they play; null when not shuffled) and repeat mode.
      */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun takeOver(songs: List<Song>, index: Int, positionMs: Long, playing: Boolean, order: List<Int>?, repeat: Int, title: String) {
         if (songs.isEmpty()) return
         ++playToken
@@ -877,6 +880,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val end = p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
         p.seekTo((p.currentPosition + ms).coerceIn(0, (end - 1_000).coerceAtLeast(0)))
     }
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun skipTo(index: Int) = withPlayer { p ->
         // Shuffled, the song picked plays next in the order, so Previous comes back to the one playing now.
         if (p.shuffleModeEnabled) (p.shuffleOrder as? HistoryShuffleOrder)?.let { p.setShuffleOrder(it.playingNext(p.currentMediaItemIndex, index)) }
@@ -894,6 +898,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * Takes the song at [index] out (a swipe in the queue, #149) and returns how to put it back where it was, or null
      * when there's nothing there. The item itself goes back, so it keeps everything it was queued with.
      */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun removeForUndo(index: Int): (() -> Unit)? {
         val p = player ?: return null
         if (index !in 0 until p.mediaItemCount) return null
@@ -1006,6 +1011,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * Shuffled, a song dragged in the queue: the queue shows the play order then, so the song moves there, to just after
      * (or before) [beside], and the songs themselves stay where they are in the list behind it.
      */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun moveInPlayOrder(index: Int, beside: Int, after: Boolean) = withPlayer { p ->
         if (!p.shuffleModeEnabled) return@withPlayer
         val order = p.shuffleOrder as? HistoryShuffleOrder ?: HistoryShuffleOrder(playOrder(p).toIntArray()) { p.currentMediaItemIndex }
@@ -1047,6 +1053,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * A fresh random order every time shuffle is pressed (the player otherwise keeps reusing its old one),
      * with the current song first so everything else is still ahead of it.
      */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun reshuffle(p: ExoPlayer) {
         val n = p.mediaItemCount
         if (n < 2) return
@@ -1110,6 +1117,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** The sleep timer is set to pause when the current song ends. */
     val sleepEndOfSong: StateFlow<Boolean> = _sleepEndOfSong
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setSleepEndOfSong(on: Boolean) {
         _sleepEndOfSong.value = on
         if (on) _sleepAt.value = 0
