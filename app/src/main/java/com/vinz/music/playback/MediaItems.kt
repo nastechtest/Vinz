@@ -16,6 +16,7 @@ const val EXTRA_VIDEO = "vinz.video"
  * Live streams are vinz://live/<id>, resolved to their HLS manifest, which carries the picture too: their video mode
  * keeps the same URI (so switching doesn't reload the stream) and only turns the video track on.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun Song.toMediaItem(videoId: String? = null): MediaItem {
     val uri = if (isLive) Uri.Builder().scheme("vinz").authority("live").appendPath(id).build()
     else Uri.Builder().scheme("vinz").authority("audio").appendPath(id).apply {
