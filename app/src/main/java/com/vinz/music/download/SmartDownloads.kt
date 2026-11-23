@@ -87,6 +87,7 @@ class PlayLikelihood(events: List<PlayEventEntity>, songs: Map<String, Song>, pr
  * the space holds the songs you stream ([SmartCacheEvictor]).
  */
 class SmartDownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override suspend fun doWork(): Result {
         val c = applicationContext.container
         val s = c.settings.current
