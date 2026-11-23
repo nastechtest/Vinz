@@ -88,7 +88,18 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
     }
 
     fun dir(m: Model) = File(root, m.id)
-    fun ready(m: Model) = File(dir(m), READY).isFile
+
+    /** A marker alone is not enough: a deleted or zero-byte model file must make the feature download again. */
+    fun ready(m: Model): Boolean {
+        val dir = dir(m)
+        val marker = File(dir, READY)
+        return runCatching {
+            val required = requiredFiles(m)
+            marker.isFile && marker.readText() == m.sha256 && required.isNotEmpty() && required.all {
+                File(dir, it).let { file -> file.isFile && file.length() > 0L }
+            }
+        }.getOrDefault(false)
+    }
 
     /**
      * Downloads, checks and unpacks [m] (once at a time; at once if it's already there). True when it's ready.
@@ -121,55 +132,103 @@ class ModelStore(private val context: Context, private val http: OkHttpClient) {
     private fun fetch(m: Model) {
         root.mkdirs()
         val part = File(root, m.file + ".part")
-        val req = Request.Builder().url("$BASE/${m.file}").build()
-        http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException(tr(R.string.the_download_answered_http, resp.code))
-            val body = resp.body
-            val total = body.contentLength().takeIf { it > 0 } ?: m.bytes
-            val digest = MessageDigest.getInstance("SHA-256")
-            part.outputStream().use { out ->
-                body.byteStream().use { input ->
-                    val buf = ByteArray(64 * 1024)
-                    var done = 0L
-                    var shown = 0f
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        digest.update(buf, 0, n)
-                        done += n
-                        val f = (done.toFloat() / total).coerceIn(0f, 1f)
-                        if (f - shown >= 0.01f) { shown = f; set(m, State.Downloading(f)) }
+        try {
+            val req = Request.Builder().url("$BASE/${m.file}").build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException(tr(R.string.the_download_answered_http, resp.code))
+                val body = resp.body
+                val total = body.contentLength().takeIf { it > 0 } ?: m.bytes
+                val digest = MessageDigest.getInstance("SHA-256")
+                part.outputStream().use { out ->
+                    body.byteStream().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        var done = 0L
+                        var shown = 0f
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            done += n
+                            if (m != Model.JAPANESE && done > m.bytes) throw IOException(tr(R.string.the_download_didn_t_check_out))
+                            out.write(buf, 0, n)
+                            digest.update(buf, 0, n)
+                            val f = (done.toFloat() / total).coerceIn(0f, 1f)
+                            if (f - shown >= 0.01f) { shown = f; set(m, State.Downloading(f)) }
+                        }
                     }
                 }
+                val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                if (sha != m.sha256) throw IOException(tr(R.string.the_download_didn_t_check_out))
             }
-            val sha = digest.digest().joinToString("") { "%02x".format(it) }
-            if (sha != m.sha256) { part.delete(); throw IOException(tr(R.string.the_download_didn_t_check_out)) }
+            install(m, part)
+        } finally {
+            // A stopped request, a failed checksum and a failed unpack all leave the next attempt clean.
+            part.delete()
         }
-        install(m, part)
     }
 
     /** Unpacks a checked zip into the model's folder; the ready marker goes last, so a half-unpacked one never counts. */
-    internal fun install(m: Model, zip: File) {
+    internal fun install(m: Model, zip: File, expandedLimit: Long = maxExpanded(m)) {
         val dir = dir(m)
-        dir.deleteRecursively()
-        dir.mkdirs()
-        ZipInputStream(zip.inputStream().buffered()).use { z ->
-            while (true) {
-                val e = z.nextEntry ?: break
-                val name = File(e.name).name
-                if (e.isDirectory || name.isBlank()) continue
-                File(dir, name).outputStream().use { z.copyTo(it) }
+        try {
+            if (!zip.isFile || zip.length() == 0L) throw IOException(tr(R.string.download_failed))
+            if (dir.exists() && !dir.deleteRecursively()) throw IOException(tr(R.string.download_failed))
+            if (!dir.mkdirs()) throw IOException(tr(R.string.download_failed))
+            val strictNames = mutableSetOf<String>()
+            var expanded = 0L
+            ZipInputStream(zip.inputStream().buffered()).use { z ->
+                while (true) {
+                    val e = z.nextEntry ?: break
+                    if (e.isDirectory) continue
+                    // Old Kuromoji archives have used resource folders. Keep their original basename flattening;
+                    // new Sing packages are deliberately flat, so reject paths and duplicate output names there.
+                    val name = if (m == Model.JAPANESE) File(e.name).name else e.name
+                    if (name.isBlank() || (m != Model.JAPANESE && (!safeEntryName(name) || !strictNames.add(name)))) {
+                        throw IOException(tr(R.string.download_failed))
+                    }
+                    File(dir, name).outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val count = z.read(buffer)
+                            if (count < 0) break
+                            expanded += count
+                            if (m != Model.JAPANESE && expanded > minOf(maxExpanded(m), expandedLimit)) throw IOException(tr(R.string.download_failed))
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
             }
+            val required = requiredFiles(m)
+            if (required.isEmpty() || !required.all { File(dir, it).let { file -> file.isFile && file.length() > 0L } }) {
+                throw IOException(tr(R.string.download_failed))
+            }
+            // Native code loaded from here is kept read-only (Android 14 asks that of anything loaded at run time).
+            dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach {
+                if (!it.setWritable(false, false)) throw IOException(tr(R.string.download_failed))
+            }
+            File(dir, READY).writeText(m.sha256)
+        } catch (failure: Throwable) {
+            dir.deleteRecursively()
+            throw failure
+        } finally {
+            zip.delete()
         }
-        // Native code loaded from here is kept read-only (Android 14 asks that of anything loaded at run time).
-        dir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { it.setWritable(false, false) }
-        zip.delete()
-        File(dir, READY).writeText(m.sha256)
     }
+
+    private fun requiredFiles(m: Model): List<String> = when (m) {
+        Model.SING_MODEL -> listOf("vocals.fp16.onnx", "accompaniment.fp16.onnx")
+        Model.SING_RUNTIME_ARM64, Model.SING_RUNTIME_ARMV7, Model.SING_RUNTIME_X86_64 -> listOf("libonnxruntime.so")
+        // Kuromoji has several versioned dictionary resources; a checked package must at least contain data.
+        Model.JAPANESE -> dir(m).listFiles()?.filter { it.name != READY }?.map { it.name } ?: emptyList()
+    }
+
+    private fun safeEntryName(name: String): Boolean =
+        name.isNotBlank() && name == File(name).name && !name.startsWith('.') && !name.contains('\\')
+
+    private fun maxExpanded(m: Model): Long = maxOf(m.unpacked * 2, MIN_EXPANDED_BYTES)
 
     private companion object {
         const val BASE = "https://github.com/nastechtest/Vinz/releases/download/models-v1"
         const val READY = ".ready"
+        const val MIN_EXPANDED_BYTES = 8L * 1024 * 1024
     }
 }
