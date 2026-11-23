@@ -982,6 +982,7 @@ fun PlayerActionRow(
 
 /** One of the bottom row's buttons ([PlayerButton]), as it stands for the song playing (liked, downloaded, DJ on…). */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun PlayerButtonGlyph(
     b: PlayerButton,
     width: Dp,
