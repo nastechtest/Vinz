@@ -22,6 +22,7 @@ import kotlin.math.sqrt
  * It costs nothing while no visualizer is on screen: [handleBuffer] returns at once unless one is [listen]ing, and the
  * analysis ([Spectrum]) runs on the screen's frames, only while the player that shows it is drawn.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object VisualizerTap : TeeAudioProcessor.AudioBufferSink {
     private val listeners = AtomicInteger(0)
     /** Mono samples, newest at [written] - 1 (wrapping). */
