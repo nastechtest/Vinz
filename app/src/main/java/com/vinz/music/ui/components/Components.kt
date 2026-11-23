@@ -156,6 +156,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, strapline: Strin
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun SongRow(
     song: Song,
     modifier: Modifier = Modifier,
@@ -641,6 +642,7 @@ internal class KeepFlingsOffSheet : androidx.compose.ui.input.nestedscroll.Neste
 
 /** "Download video": saves the song's music video (and the song) for offline; tapped again, takes the video back. */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun videoDownloadAction(song: Song, video: com.vinz.music.download.VideoDownload?): ActionItem? {
     if (song.isLive) return null
     val c = LocalContainer.current
@@ -663,6 +665,7 @@ fun videoDownloadAction(song: Song, video: com.vinz.music.download.VideoDownload
  * actions as tiles, then where to go. [extra] adds rows (e.g. "Remove from this playlist").
  */
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun SongActionsSheet(song: Song, extra: List<SheetItem> = emptyList(), onDismiss: () -> Unit) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
