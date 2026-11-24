@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_account_summary">Přihlaste se a spravujte svůj cloudový profil</string>
-    <string name="cloud_account_intro">Váš cloudový profil je oddělený od YouTube Music. Místní hudba a přehrávání fungují bez přihlášení.</string>
+
+    <string name="cloud_account_summary">Přihlaste se a spravujte svůj účet Vinz</string>
+
+    <string name="cloud_account_intro">Jeden účet Vinz pro váš profil, spojení a hudební svět. Připojte YouTube Music bezpečně z Nastavení účtu. Místní hudba a přehrávání vždy fungují bez přihlášení.</string>
     <string name="cloud_account_email">E-mailová adresa</string>
     <string name="cloud_account_password">Heslo</string>
     <string name="cloud_account_username">Uživatelské jméno</string>
@@ -12,7 +14,7 @@
     <string name="cloud_account_existing">Už mám účet</string>
     <string name="cloud_account_forgot">Zapomněli jste heslo?</string>
     <string name="cloud_account_recovery">Odeslat e-mail pro obnovení</string>
-    <string name="cloud_account_recovery_sent">Pokud pro tuto adresu existuje účet, byl vám odeslán sekundární e-mail.</string>
+    <string name="cloud_account_recovery_sent">Pokud pro tuto adresu existuje účet, byl odeslán e-mail pro obnovení účtu.</string>
     <string name="cloud_account_confirmation">Zkontrolujte svůj e-mail a potvrďte svůj účet a poté se vraťte a přihlaste se.</string>
     <string name="cloud_account_setup">Dokončete nastavení svého profilu.</string>
     <string name="cloud_account_bio">Životopis</string>
@@ -30,9 +32,8 @@
     <string name="cloud_account_save_failed">Váš profil se nepodařilo uložit. Zkontrolujte podrobnosti a připojení a zkuste to znovu.</string>
     <string name="cloud_account_recovery_failed">Požadavek na obnovení nebylo možné dokončit. Zkuste to znovu později.</string>
     <string name="cloud_account_sign_out_failed">Odhlášení nebylo možné dokončit. Zkuste to znovu.</string>
-    <!-- English fallback for new account guidance, pending translation. -->
-    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
-    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="cloud_account_email_hint">Zadejte e-mailovou adresu svého účtu Vinz.</string>
+    <string name="cloud_account_password_sign_in_hint">Zadejte heslo svého účtu Vinz.</string>
     <string name="cloud_account_tab_overview">Přehled</string>
     <string name="cloud_account_tab_security">Zabezpečení</string>
     <string name="cloud_account_selected_tab">• %1$s</string>
