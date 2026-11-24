@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_account_summary">Mag-sign in at pamahalaan ang iyong cloud profile</string>
-    <string name="cloud_account_intro">Ang iyong cloud profile ay hiwalay sa YouTube Music. Gumagana ang lokal na musika at pag-playback nang hindi nagsa-sign in.</string>
+
+    <string name="cloud_account_summary">Mag-sign in at pamahalaan ang iyong Vinz Account</string>
+
+    <string name="cloud_account_intro">Isang Vinz Account para sa iyong profile, mga koneksyon at mundo ng musika. Ikonekta ang YouTube Music nang secure mula sa Mga Setting ng Account. Palaging gumagana ang lokal na musika at pag-playback nang hindi nagsa-sign in.</string>
     <string name="cloud_account_email">Address ng email</string>
     <string name="cloud_account_password">Lihim na salita</string>
     <string name="cloud_account_username">Pangalan ng gumagamit</string>
@@ -30,9 +32,8 @@
     <string name="cloud_account_save_failed">Hindi ma-save ang iyong profile. Suriin ang iyong mga detalye at koneksyon, pagkatapos ay subukang muli.</string>
     <string name="cloud_account_recovery_failed">Hindi makumpleto ang kahilingan sa pagbawi. Subukan ulit mamaya.</string>
     <string name="cloud_account_sign_out_failed">Hindi makumpleto ang pag-sign out. Subukan muli.</string>
-    <!-- English fallback for new account guidance, pending translation. -->
-    <string name="cloud_account_email_hint">Enter the email address for your Vinz Account.</string>
-    <string name="cloud_account_password_sign_in_hint">Enter your Vinz Account password.</string>
+    <string name="cloud_account_email_hint">Ilagay ang email address para sa iyong Vinz Account.</string>
+    <string name="cloud_account_password_sign_in_hint">Ilagay ang password ng iyong Vinz Account.</string>
     <string name="cloud_account_tab_overview">Pangkalahatang-ideya</string>
     <string name="cloud_account_tab_security">Seguridad</string>
     <string name="cloud_account_selected_tab">• %1$s</string>
