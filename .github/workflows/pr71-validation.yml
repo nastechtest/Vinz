@@ -1,0 +1,308 @@
+# Pull request pipeline: every PR is compiled, linted, tested, and gets an installable APK the author and
+# maintainers can sideload before merging.
+#
+# Fork safety: this workflow needs no secrets and holds no write permissions, so a pull request from a fork
+# runs exactly the same steps as a branch in the repository and cannot touch the release keystore.
+name: PR71 candidate validation
+
+on:
+  push:
+    branches: [validation/pr71-fd1914d-20261124]
+
+# Read-only by default; no job here writes to the repository, a package, or a release.
+permissions:
+  contents: read
+
+# Each commit gets a complete result; runs for the same PR queue instead of cancelling each other.
+concurrency:
+  group: pr71-candidate-validation
+  # Never turn a correct build red because a newer commit arrived while it was running.
+  # Runs for the same PR queue in order; each commit gets a complete result.
+  cancel-in-progress: false
+
+env:
+  APP_PACKAGE: com.vinz.music
+  JAVA_VERSION: "17"
+  # Stamped into BuildConfig: an installed build can name the exact commit it came from.
+  VINZ_GIT_SHA: ${{ github.sha }}
+  VINZ_BUILD_CHANNEL: pr
+
+jobs:
+  wrapper:
+    name: Validate Gradle wrapper
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Apply isolated validation candidate
+        run: |
+          echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
+          unzip -o -q pr71-candidate-validation.zip
+
+  with:
+          persist-credentials: false
+
+      # Fails if gradle-wrapper.jar does not match the checksum for the declared Gradle version: a tampered
+      # wrapper is how a compromised PR would otherwise execute arbitrary code on the runner.
+      - name: Validate wrapper checksum
+        uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+  ci-scripts:
+    name: CI scripts and workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Apply isolated validation candidate
+        run: |
+          echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
+          unzip -o -q pr71-candidate-validation.zip
+
+  with:
+          persist-credentials: false
+
+      # Pinned and checksum-verified: a linter fetched by tag is the same supply-chain risk as an
+      # action referenced by tag.
+      - name: Lint the workflow files
+        run: |
+          set -euo pipefail
+          version=1.7.12
+          expected=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          curl -sSLo /tmp/actionlint.tgz \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
+          echo "${expected}  /tmp/actionlint.tgz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tgz -C /tmp actionlint
+          /tmp/actionlint -no-color
+
+      - name: Shellcheck the CI scripts
+        run: shellcheck -x scripts/*.sh scripts/ci/*.sh scripts/tests/*.sh
+
+      - name: Test the CI scripts
+        run: ./scripts/tests/ci-scripts-test.sh
+
+      - name: Verify transparent branding and all icon sizes
+        run: |
+          python3 scripts/ci/check_branding.py
+          python3 -m unittest discover -s scripts/tests -p 'test_brand_assets.py' -v
+
+      - name: Verify the Nastech Research gallery codes
+        run: python3 scripts/generate-nastech-looks.py --check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Apply isolated validation candidate
+        run: |
+          echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
+          unzip -o -q pr71-candidate-validation.zip
+
+  with:
+          persist-credentials: false
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: true
+
+      # Vinz does not configure a Kotlin formatter (no ktlint/spotless plugin), so there is no formatting
+      # task to run; Android Lint is the static check the build system actually provides.
+      - name: Run Android Lint
+        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lint-report-pr-71
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.txt
+            app/build/reports/lint-results-debug.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  build:
+    name: Unit tests and debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Apply isolated validation candidate
+        run: |
+          echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
+          unzip -o -q pr71-candidate-validation.zip
+
+  with:
+          persist-credentials: false
+          # All stable tags are needed even when the PR branch predates the latest release.
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK packages
+        run: ./scripts/ci/install-android-sdk.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # Never write to the cache from a fork: a poisoned cache entry would be restored by later runs.
+          cache-read-only: true
+
+      - name: Compute the build identifier
+        id: build-id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: 71
+        run: |
+          set -euo pipefail
+          build_number=$(./scripts/ci/pr-build-number.sh "$PR_NUMBER")
+          label=$(./scripts/ci/version.sh pr "$PR_NUMBER" "$build_number")
+          base=$(./scripts/ci/version.sh development-name)
+          version_code=$(./scripts/ci/version.sh bump-code)
+          # Keep the public version short; channel, commit and artifact label identify this test build.
+          stamped="$base"
+          {
+            echo "number=$build_number"
+            echo "label=$label"
+            echo "version-name=$stamped"
+            echo "version-code=$version_code"
+            echo "apk-name=Vinz-PR-${PR_NUMBER}-build-${build_number}.apk"
+          } >> "$GITHUB_OUTPUT"
+          echo "PR build: $label (versionName $stamped)"
+
+      - name: Run deterministic unit tests
+        run: ./scripts/ci/run-unit-tests.sh
+
+      # :baselineprofile is a com.android.test module: assembling it proves the benchmark journeys still
+      # compile against the app. Running them needs a device, which hosted PR runners do not have.
+      - name: Assemble debug APK and baseline profile module
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :baselineprofile:assemble \
+            -PciVersionName="${{ steps.build-id.outputs.version-name }}" \
+            -PciVersionCode="${{ steps.build-id.outputs.version-code }}" \
+            --no-daemon --stacktrace
+
+      - name: Verify the APK
+        env:
+          ALLOW_DEBUG_SIGNATURE: "true"
+          EXPECTED_VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+        run: ./scripts/ci/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk "$APP_PACKAGE"
+
+      - name: Stage the test build
+        env:
+          APK_NAME: ${{ steps.build-id.outputs.apk-name }}
+          LABEL: ${{ steps.build-id.outputs.label }}
+          SHA: ${{ github.sha }}
+          SOURCE_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/${APK_NAME}"
+          sha256sum "dist/${APK_NAME}" | awk '{print $1}' > "dist/${APK_NAME}.sha256"
+          {
+            echo "TEST BUILD - NOT AN OFFICIAL RELEASE"
+            echo
+            echo "build:    ${LABEL}"
+            echo "commit:   ${SHA}"
+            echo "branch:   ${SOURCE_BRANCH}"
+            echo "package:  ${APP_PACKAGE}"
+            echo "sha256:   $(cat "dist/${APK_NAME}.sha256")"
+            echo
+            echo "Install: adb install -r ${APK_NAME}"
+            echo "This build uses the Android debug key and cannot update an official Vinz install:"
+            echo "if Android reports a signature conflict, stop and preserve the official app's data; use a side-by-side build with -PsideBySide instead."
+          } > dist/BUILD-INFO.txt
+          cat dist/BUILD-INFO.txt
+
+      - name: Upload the test APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.build-id.outputs.apk-name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: ${{ vars.ARTIFACT_RETENTION_DAYS || 14 }}
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-test-report-pr-71
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/lockscreen/look/
+            app/build/settings-root/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Write the job summary
+        if: always()
+        env:
+          APK_NAME: ${{ steps.build-id.outputs.apk-name }}
+          LABEL: ${{ steps.build-id.outputs.label }}
+          VERSION_NAME: ${{ steps.build-id.outputs.version-name }}
+          PR_NUMBER: 71
+          HEAD_SHA: ${{ github.sha }}
+          BASE_SHA: 651bf7ae932e3f39bb5be9dc8d8c63b4dcd9c4c6
+          SOURCE_BRANCH: ${{ github.ref_name }}
+          STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "$STATUS" in
+            success) verdict="PASSED" ;;
+            *) verdict="FAILED ($STATUS)" ;;
+          esac
+          {
+            echo "## TEST BUILD - NOT AN OFFICIAL RELEASE"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Result | **${verdict}** |"
+            echo "| Build | \`${LABEL}\` |"
+            echo "| versionName stamped | \`${VERSION_NAME}\` |"
+            echo "| Pull request | #${PR_NUMBER} from \`${SOURCE_BRANCH}\` |"
+            echo "| Head commit | \`${HEAD_SHA}\` |"
+            echo "| Base commit | \`${BASE_SHA}\` |"
+            echo "| Build number | \`${LABEL##*-}\` |"
+            echo
+            if [[ "$STATUS" == success ]]; then
+              echo "### Download and install on a phone"
+              echo
+              echo "APK: [\`${APK_NAME}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}#artifacts)"
+              echo
+              echo '```bash'
+              echo "# or, with the GitHub CLI:"
+              echo "gh run download ${RUN_ID} -n ${APK_NAME} -R ${GITHUB_REPOSITORY}"
+              echo "adb install -r ${APK_NAME}"
+              echo '```'
+              echo
+              echo "Debug-signed, so it cannot be installed over an official Vinz. If Android reports a"
+              echo "signature conflict, stop and preserve user data; build a side-by-side copy with \`-PsideBySide\`."
+              echo
+              echo "Find it in the app under Settings -> About as \`${VERSION_NAME}\`."
+            else
+              echo "The test APK was not published because the build did not succeed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
