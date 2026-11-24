@@ -1,29 +1,19 @@
-# Pull request pipeline: every PR is compiled, linted, tested, and gets an installable APK the author and
-# maintainers can sideload before merging.
-#
-# Fork safety: this workflow needs no secrets and holds no write permissions, so a pull request from a fork
-# runs exactly the same steps as a branch in the repository and cannot touch the release keystore.
 name: PR71 candidate validation
 
 on:
   push:
     branches: [validation/pr71-fd1914d-20261124]
 
-# Read-only by default; no job here writes to the repository, a package, or a release.
 permissions:
   contents: read
 
-# Each commit gets a complete result; runs for the same PR queue instead of cancelling each other.
 concurrency:
   group: pr71-candidate-validation
-  # Never turn a correct build red because a newer commit arrived while it was running.
-  # Runs for the same PR queue in order; each commit gets a complete result.
   cancel-in-progress: false
 
 env:
   APP_PACKAGE: com.vinz.music
   JAVA_VERSION: "17"
-  # Stamped into BuildConfig: an installed build can name the exact commit it came from.
   VINZ_GIT_SHA: ${{ github.sha }}
   VINZ_BUILD_CHANNEL: pr
 
@@ -35,16 +25,14 @@ jobs:
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Apply isolated validation candidate
+        with:
+          persist-credentials: false
+
+      - name: Apply isolated validation candidate
         run: |
           echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
           unzip -o -q pr71-candidate-validation.zip
 
-  with:
-          persist-credentials: false
-
-      # Fails if gradle-wrapper.jar does not match the checksum for the declared Gradle version: a tampered
-      # wrapper is how a compromised PR would otherwise execute arbitrary code on the runner.
       - name: Validate wrapper checksum
         uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
@@ -55,16 +43,14 @@ jobs:
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Apply isolated validation candidate
+        with:
+          persist-credentials: false
+
+      - name: Apply isolated validation candidate
         run: |
           echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
           unzip -o -q pr71-candidate-validation.zip
 
-  with:
-          persist-credentials: false
-
-      # Pinned and checksum-verified: a linter fetched by tag is the same supply-chain risk as an
-      # action referenced by tag.
       - name: Lint the workflow files
         run: |
           set -euo pipefail
@@ -97,13 +83,13 @@ jobs:
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Apply isolated validation candidate
+        with:
+          persist-credentials: false
+
+      - name: Apply isolated validation candidate
         run: |
           echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
           unzip -o -q pr71-candidate-validation.zip
-
-  with:
-          persist-credentials: false
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
@@ -119,8 +105,6 @@ jobs:
         with:
           cache-read-only: true
 
-      # Vinz does not configure a Kotlin formatter (no ktlint/spotless plugin), so there is no formatting
-      # task to run; Android Lint is the static check the build system actually provides.
       - name: Run Android Lint
         run: ./gradlew :app:lintDebug --no-daemon --stacktrace
 
@@ -143,15 +127,14 @@ jobs:
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Apply isolated validation candidate
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Apply isolated validation candidate
         run: |
           echo "369f426b6c2cd61f10e7f1247d0115c3a56abed9af7f23220436bac1d4a58548  pr71-candidate-validation.zip" | sha256sum -c -
           unzip -o -q pr71-candidate-validation.zip
-
-  with:
-          persist-credentials: false
-          # All stable tags are needed even when the PR branch predates the latest release.
-          fetch-depth: 0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
@@ -165,7 +148,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          # Never write to the cache from a fork: a poisoned cache entry would be restored by later runs.
           cache-read-only: true
 
       - name: Compute the build identifier
@@ -179,7 +161,6 @@ jobs:
           label=$(./scripts/ci/version.sh pr "$PR_NUMBER" "$build_number")
           base=$(./scripts/ci/version.sh development-name)
           version_code=$(./scripts/ci/version.sh bump-code)
-          # Keep the public version short; channel, commit and artifact label identify this test build.
           stamped="$base"
           {
             echo "number=$build_number"
@@ -193,8 +174,6 @@ jobs:
       - name: Run deterministic unit tests
         run: ./scripts/ci/run-unit-tests.sh
 
-      # :baselineprofile is a com.android.test module: assembling it proves the benchmark journeys still
-      # compile against the app. Running them needs a device, which hosted PR runners do not have.
       - name: Assemble debug APK and baseline profile module
         run: |
           set -euo pipefail
