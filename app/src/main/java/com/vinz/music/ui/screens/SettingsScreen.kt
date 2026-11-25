@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -301,10 +302,11 @@ internal fun AccountCard() {
     Column(Modifier.fillMaxWidth().featurePane(ui.card)) {
     // Cloud identity is independent of the upstream local profile and YouTube playback session.
     Row(
-        Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }.padding(18.dp),
+        Modifier.fillMaxWidth().clickable { nav.go(Routes.ACCOUNT) }
+            .heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(VinzIcons.Person, null, Modifier.size(56.dp), tint = ink)
+        Icon(VinzIcons.Person, null, Modifier.size(32.dp), tint = ink)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(tr(R.string.your_vinz_account), style = MaterialTheme.typography.titleMedium, color = ink)
@@ -316,11 +318,12 @@ internal fun AccountCard() {
     }
     // Retain Prism's local profile editor and its library-copy behavior separately.
     Row(
-        Modifier.fillMaxWidth().clickable { nav.go(Routes.LOCAL_ACCOUNT) }.padding(18.dp),
+        Modifier.fillMaxWidth().clickable { nav.go(Routes.LOCAL_ACCOUNT) }
+            .heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (profile != null || s.isLoggedIn) com.vinz.music.ui.screens.ProfilePicture(Modifier.size(56.dp))
-        else Box(Modifier.size(56.dp).clip(CircleShape).background(if (frosted) com.vinz.music.ui.components.frostFill(1.6f) else scheme.surface.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+        if (profile != null || s.isLoggedIn) com.vinz.music.ui.screens.ProfilePicture(Modifier.size(32.dp))
+        else Box(Modifier.size(32.dp).clip(CircleShape).background(if (frosted) com.vinz.music.ui.components.frostFill(1.6f) else scheme.surface.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
             Icon(VinzIcons.Add, null, tint = if (frosted) scheme.primary else ink)
         }
         Spacer(Modifier.width(14.dp))
